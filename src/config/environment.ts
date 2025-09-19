@@ -20,6 +20,32 @@ const environmentSchema = z.object({
   DB_DATABASE: z.string().default('subscription_platform'),
   DB_USER: z.string().default('subscription_user'),
   DB_PASSWORD: z.string().min(1, 'Database password is required'),
+  REDIS_HOST: z.string().default('localhost'),
+  REDIS_PORT: z
+    .string()
+    .transform(val => parseInt(val, 10))
+    .default('6379'),
+  REDIS_PASSWORD: z.string().optional(),
+  REDIS_DB: z
+    .string()
+    .transform(val => parseInt(val, 10))
+    .default('0'),
+  REDIS_TTL_DEFAULT: z
+    .string()
+    .transform(val => parseInt(val, 10))
+    .default('3600'),
+  REDIS_SESSION_TTL: z
+    .string()
+    .transform(val => parseInt(val, 10))
+    .default('86400'),
+  REDIS_MAX_RETRIES: z
+    .string()
+    .transform(val => parseInt(val, 10))
+    .default('3'),
+  REDIS_RETRY_DELAY: z
+    .string()
+    .transform(val => parseInt(val, 10))
+    .default('1000'),
 });
 
 function validateEnvironment(): EnvironmentConfig {
