@@ -86,9 +86,13 @@ async function startServer(): Promise<void> {
 
 function setupGracefulShutdown(): void {
   const signals = ['SIGINT', 'SIGTERM'];
+  let isShuttingDown = false;
 
   signals.forEach(signal => {
     process.on(signal, async () => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+
       fastify.log.info(`Received ${signal}, shutting down gracefully`);
 
       try {
