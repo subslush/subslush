@@ -1,0 +1,76 @@
+# =====================================================
+# PgBouncer Systemd Service File
+# =====================================================
+# Description: Service configuration for PgBouncer connection pooler
+# Location: /etc/systemd/system/pgbouncer.service
+#
+# Installation:
+# sudo cp pgbouncer.service /etc/systemd/system/
+# sudo systemctl daemon-reload
+# sudo systemctl enable pgbouncer
+# sudo systemctl start pgbouncer
+
+[Unit]
+Description=PgBouncer PostgreSQL Connection Pooler
+Documentation=https://pgbouncer.github.io/
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=forking
+User=pgbouncer
+Group=pgbouncer
+
+# PgBouncer executable and configuration
+ExecStart=/usr/bin/pgbouncer -d /etc/pgbouncer/pgbouncer.ini
+ExecReload=/bin/kill -HUP $MAINPID
+
+# PID file location
+PIDFile=/var/run/pgbouncer/pgbouncer.pid
+
+# Runtime directory
+RuntimeDirectory=pgbouncer
+RuntimeDirectoryMode=0755
+
+# Log directory
+LogsDirectory=pgbouncer
+LogsDirectoryMode=0755
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/pgbouncer /var/run/pgbouncer
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Memory and CPU limits (adjust based on your system)
+MemoryLimit=512M
+CPUQuota=200%
+
+# Restart policy
+Restart=always
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Environment variables
+Environment=PGBOUNCER_CONFIG=/etc/pgbouncer/pgbouncer.ini
+
+# Standard output and error
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pgbouncer
+
+# Kill settings
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+Alias=pgbouncer.service

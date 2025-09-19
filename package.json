@@ -1,0 +1,91 @@
+{
+  "name": "subscription-platform-tests",
+  "version": "1.0.0",
+  "description": "Comprehensive database testing suite for subscription platform",
+  "main": "tests/test-database.js",
+  "scripts": {
+    "test": "node --test tests/test-database.js",
+    "test:watch": "node --test --watch tests/test-database.js",
+    "test:verbose": "TEST_VERBOSE=true node --test tests/test-database.js",
+    "test:performance": "TEST_PERFORMANCE=true node --test tests/test-database.js",
+    "test:parallel": "TEST_PARALLEL=true node --test tests/test-database.js",
+    "test:stress": "TEST_STRESS_CONNECTIONS=50 TEST_STRESS_DURATION=10000 node --test tests/test-database.js",
+    "test:quick": "TEST_USERS_COUNT=10 TEST_PERFORMANCE=false node --test tests/test-database.js",
+    "test:ci": "CI=true TEST_TIMEOUT=60000 TEST_RETRIES=3 node --test tests/test-database.js",
+    "test:pgbouncer": "TEST_PGBOUNCER_PORT=6432 node --test tests/test-database.js",
+    "test:postgres": "TEST_DB_PORT=5432 node --test tests/test-database.js",
+    "test:coverage": "node --test --experimental-test-coverage tests/test-database.js",
+    "test:reporter": "node --test --test-reporter=spec tests/test-database.js",
+    "test:reporter-json": "node --test --test-reporter=tap tests/test-database.js > test-results.tap",
+    "test:debug": "DEBUG=true TEST_VERBOSE=true node --inspect --test tests/test-database.js",
+    "test:connection": "node -e \"require('./tests/test-config').logSummary()\"",
+    "test:data": "node -e \"console.log(JSON.stringify(require('./tests/test-data').generateCompleteDataset({userCount: 5}), null, 2))\"",
+    "test:env": "node -e \"const config = require('./tests/test-config'); console.log('Environment:', config.getEnvironmentSettings()); console.log('Test Config:', config.getTestSettings());\"",
+    "pretest": "echo '🚀 Starting database tests...'",
+    "posttest": "echo '✅ Database tests completed!'",
+    "lint": "echo 'No linting configured - using Node.js built-in testing only'",
+    "clean": "rm -f test-results.tap test-results.json coverage-*.json",
+    "setup": "npm install && echo 'Setup complete. Copy .env.test.example to .env.test and configure your database settings.'",
+    "help": "echo 'Available commands:' && npm run | grep '^  test'"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "database",
+    "testing",
+    "postgresql",
+    "crud",
+    "subscription",
+    "node-test",
+    "pgbouncer"
+  ],
+  "author": "Subscription Platform Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourorg/subscription-platform.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourorg/subscription-platform/issues"
+  },
+  "homepage": "https://github.com/yourorg/subscription-platform#readme",
+  "directories": {
+    "test": "tests"
+  },
+  "files": [
+    "tests/",
+    "README.md",
+    ".env.test"
+  ],
+  "config": {
+    "test_timeout": "30000",
+    "test_retries": "1",
+    "test_parallel": "false"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "tests/**/*.js",
+      "!tests/**/*.test.js"
+    ]
+  },
+  "nodemonConfig": {
+    "watch": [
+      "tests/"
+    ],
+    "ext": "js,json",
+    "ignore": [
+      "node_modules/",
+      "test-results.*"
+    ],
+    "exec": "npm test"
+  }
+}
