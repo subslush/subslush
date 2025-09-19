@@ -1,91 +1,51 @@
 {
-  "name": "subscription-platform-tests",
+  "name": "subscription-platform-backend",
   "version": "1.0.0",
-  "description": "Comprehensive database testing suite for subscription platform",
-  "main": "tests/test-database.js",
-  "scripts": {
-    "test": "node --test tests/test-database.js",
-    "test:watch": "node --test --watch tests/test-database.js",
-    "test:verbose": "TEST_VERBOSE=true node --test tests/test-database.js",
-    "test:performance": "TEST_PERFORMANCE=true node --test tests/test-database.js",
-    "test:parallel": "TEST_PARALLEL=true node --test tests/test-database.js",
-    "test:stress": "TEST_STRESS_CONNECTIONS=50 TEST_STRESS_DURATION=10000 node --test tests/test-database.js",
-    "test:quick": "TEST_USERS_COUNT=10 TEST_PERFORMANCE=false node --test tests/test-database.js",
-    "test:ci": "CI=true TEST_TIMEOUT=60000 TEST_RETRIES=3 node --test tests/test-database.js",
-    "test:pgbouncer": "TEST_PGBOUNCER_PORT=6432 node --test tests/test-database.js",
-    "test:postgres": "TEST_DB_PORT=5432 node --test tests/test-database.js",
-    "test:coverage": "node --test --experimental-test-coverage tests/test-database.js",
-    "test:reporter": "node --test --test-reporter=spec tests/test-database.js",
-    "test:reporter-json": "node --test --test-reporter=tap tests/test-database.js > test-results.tap",
-    "test:debug": "DEBUG=true TEST_VERBOSE=true node --inspect --test tests/test-database.js",
-    "test:connection": "node -e \"require('./tests/test-config').logSummary()\"",
-    "test:data": "node -e \"console.log(JSON.stringify(require('./tests/test-data').generateCompleteDataset({userCount: 5}), null, 2))\"",
-    "test:env": "node -e \"const config = require('./tests/test-config'); console.log('Environment:', config.getEnvironmentSettings()); console.log('Test Config:', config.getTestSettings());\"",
-    "pretest": "echo '🚀 Starting database tests...'",
-    "posttest": "echo '✅ Database tests completed!'",
-    "lint": "echo 'No linting configured - using Node.js built-in testing only'",
-    "clean": "rm -f test-results.tap test-results.json coverage-*.json",
-    "setup": "npm install && echo 'Setup complete. Copy .env.test.example to .env.test and configure your database settings.'",
-    "help": "echo 'Available commands:' && npm run | grep '^  test'"
-  },
-  "dependencies": {
-    "pg": "^8.11.3"
-  },
-  "devDependencies": {},
+  "description": "Backend API server for subscription upgrade platform",
+  "main": "dist/server.js",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "nodemon --exec \"ts-node --transpile-only src/server.ts\"",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "format": "prettier --write src/**/*.ts",
+    "test": "echo \"No tests yet\" && exit 0",
+    "prepare": "husky"
   },
   "keywords": [
-    "database",
-    "testing",
-    "postgresql",
-    "crud",
+    "fastify",
+    "typescript",
     "subscription",
-    "node-test",
-    "pgbouncer"
+    "api"
   ],
-  "author": "Subscription Platform Team",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/yourorg/subscription-platform.git"
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@fastify/cors": "^10.0.0",
+    "@fastify/env": "^5.0.0",
+    "@fastify/helmet": "^12.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "dotenv": "^16.4.0",
+    "fastify": "^5.6.0",
+    "pg": "^8.11.3",
+    "pino-pretty": "^13.1.1",
+    "zod": "^3.23.0"
   },
-  "bugs": {
-    "url": "https://github.com/yourorg/subscription-platform/issues"
-  },
-  "homepage": "https://github.com/yourorg/subscription-platform#readme",
-  "directories": {
-    "test": "tests"
-  },
-  "files": [
-    "tests/",
-    "README.md",
-    ".env.test"
-  ],
-  "config": {
-    "test_timeout": "30000",
-    "test_retries": "1",
-    "test_parallel": "false"
-  },
-  "jest": {
-    "testEnvironment": "node",
-    "testMatch": [
-      "**/tests/**/*.test.js"
-    ],
-    "collectCoverageFrom": [
-      "tests/**/*.js",
-      "!tests/**/*.test.js"
-    ]
-  },
-  "nodemonConfig": {
-    "watch": [
-      "tests/"
-    ],
-    "ext": "js,json",
-    "ignore": [
-      "node_modules/",
-      "test-results.*"
-    ],
-    "exec": "npm test"
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.2.0",
+    "nodemon": "^3.1.0",
+    "prettier": "^3.3.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.9.2"
   }
 }
