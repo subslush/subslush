@@ -67,17 +67,19 @@ async function startServer(): Promise<void> {
   try {
     const server = await buildServer();
 
-    const [isDbConnected] = await Promise.all([
-      testDatabaseConnection(),
-      redisClient.connect(),
-    ]);
-
+    // Test database connection (required)
+    const isDbConnected = await testDatabaseConnection();
     if (!isDbConnected) {
       throw new Error('Failed to connect to database');
     }
 
-    if (!redisClient.isConnected()) {
-      throw new Error('Failed to connect to Redis');
+    // Attempt Redis connection (optional in development)
+    try {
+      await redisClient.connect();
+      server.log.info('Redis connection established');
+    } catch (redisError) {
+      server.log.warn('Redis connection failed - continuing without Redis');
+      server.log.warn(redisError);
     }
 
     await server.listen({
@@ -106,10 +108,18 @@ function setupGracefulShutdown(): void {
 
       try {
         await fastify.close();
-        await Promise.all([
-          closeDatabasePool(),
-          redisClient.disconnect(),
-        ]);
+
+        // Close database connection
+        await closeDatabasePool();
+
+        // Close Redis connection if it exists
+        try {
+          await redisClient.disconnect();
+        } catch (redisError) {
+          fastify.log.warn('Redis disconnect error (ignoring)');
+          fastify.log.warn(redisError);
+        }
+
         fastify.log.info('Server closed successfully');
         process.exit(0);
       } catch (error) {
