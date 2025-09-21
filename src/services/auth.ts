@@ -32,6 +32,7 @@ export class AuthService {
       });
 
       if (error) {
+        console.error('Supabase registration error:', error);
         return { user: null, error: this.formatAuthError(error) };
       }
 
