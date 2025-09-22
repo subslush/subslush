@@ -20,6 +20,9 @@ const environmentSchema = z.object({
   DB_DATABASE: z.string().default('subscription_platform'),
   DB_USER: z.string().default('subscription_user'),
   DB_PASSWORD: z.string().min(1, 'Database password is required'),
+  SUPABASE_URL: z.string().url('Invalid Supabase URL format'),
+  SUPABASE_ANON_KEY: z.string().min(1, 'Supabase anonymous key is required'),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'Supabase service role key is required'),
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z
     .string()

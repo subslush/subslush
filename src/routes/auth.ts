@@ -12,6 +12,7 @@ import {
 } from '../schemas/session';
 
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
+
   fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.send({
       message: 'Authentication API',

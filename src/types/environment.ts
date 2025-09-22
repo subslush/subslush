@@ -6,6 +6,9 @@ export interface EnvironmentConfig {
   DB_DATABASE: string;
   DB_USER: string;
   DB_PASSWORD: string;
+  SUPABASE_URL: string;
+  SUPABASE_ANON_KEY: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
   REDIS_HOST: string;
   REDIS_PORT: number;
   REDIS_PASSWORD?: string | undefined;

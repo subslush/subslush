@@ -108,7 +108,6 @@ function setupGracefulShutdown(): void {
 
       try {
         await fastify.close();
-
         // Close database connection
         await closeDatabasePool();
 
@@ -119,7 +118,6 @@ function setupGracefulShutdown(): void {
           fastify.log.warn('Redis disconnect error (ignoring)');
           fastify.log.warn(redisError);
         }
-
         fastify.log.info('Server closed successfully');
         process.exit(0);
       } catch (error) {

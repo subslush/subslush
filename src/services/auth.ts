@@ -8,6 +8,7 @@ import { JWTTokens } from '../types/jwt';
 export interface User {
   id: string;
   email: string;
+<<<<<<< HEAD
   role?: string | undefined;
   firstName?: string | undefined;
   lastName?: string | undefined;

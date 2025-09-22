@@ -16,7 +16,7 @@ class TestDataGenerator {
      * Setup random seeds for reproducible data generation
      */
     setupSeeds() {
-        this.seed = Date.now() + Math.random(); // Fixed seed for reproducible tests
+        this.seed = 12345; // Fixed seed for reproducible tests
         this.random = this.createSeededRandom(this.seed);
     }
 
