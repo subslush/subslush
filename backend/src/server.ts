@@ -8,6 +8,7 @@ import {
   testDatabaseConnection,
   closeDatabasePool,
 } from './config/database';
+import { redisClient } from './config/redis';
 import { errorHandler } from './middleware/errorHandler';
 import { healthRoutes } from './routes/health';
 import { apiRoutes } from './routes/api';
@@ -66,9 +67,19 @@ async function startServer(): Promise<void> {
   try {
     const server = await buildServer();
 
+    // Test database connection (required)
     const isDbConnected = await testDatabaseConnection();
     if (!isDbConnected) {
       throw new Error('Failed to connect to database');
+    }
+
+    // Attempt Redis connection (optional in development)
+    try {
+      await redisClient.connect();
+      server.log.info('Redis connection established');
+    } catch (redisError) {
+      server.log.warn('Redis connection failed - continuing without Redis');
+      server.log.warn(redisError);
     }
 
     await server.listen({
@@ -97,7 +108,16 @@ function setupGracefulShutdown(): void {
 
       try {
         await fastify.close();
+        // Close database connection
         await closeDatabasePool();
+
+        // Close Redis connection if it exists
+        try {
+          await redisClient.disconnect();
+        } catch (redisError) {
+          fastify.log.warn('Redis disconnect error (ignoring)');
+          fastify.log.warn(redisError);
+        }
         fastify.log.info('Server closed successfully');
         process.exit(0);
       } catch (error) {

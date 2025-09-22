@@ -15,6 +15,21 @@ process.env.REDIS_SESSION_TTL = '86400';
 process.env.REDIS_MAX_RETRIES = '3';
 process.env.REDIS_RETRY_DELAY = '1000';
 
+// JWT environment variables
+process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing-purposes-only';
+process.env.JWT_EXPIRY = '86400';
+process.env.JWT_ALGORITHM = 'HS256';
+
+// Session encryption environment variables
+process.env.SESSION_ENCRYPTION_KEY = 'test-session-encryption-key-32ch';
+process.env.SESSION_IV_LENGTH = '16';
+process.env.MAX_SESSIONS_PER_USER = '5';
+process.env.SESSION_CLEANUP_INTERVAL = '3600';
+
+// Supabase environment variables
+process.env.SUPABASE_URL = 'https://test-project.supabase.co';
+process.env.SUPABASE_ANON_KEY = 'test-anon-key-for-testing-purposes-only';
+
 // Database environment (not used in Redis tests but required by environment validation)
 process.env.DB_HOST = 'localhost';
 process.env.DB_PORT = '6432';

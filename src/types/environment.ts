@@ -14,4 +14,13 @@ export interface EnvironmentConfig {
   REDIS_SESSION_TTL: number;
   REDIS_MAX_RETRIES: number;
   REDIS_RETRY_DELAY: number;
+  JWT_SECRET: string;
+  JWT_EXPIRY: number;
+  JWT_ALGORITHM: 'HS256' | 'RS256';
+  SESSION_ENCRYPTION_KEY: string;
+  SESSION_IV_LENGTH: number;
+  MAX_SESSIONS_PER_USER: number;
+  SESSION_CLEANUP_INTERVAL: number;
+  SUPABASE_URL: string;
+  SUPABASE_ANON_KEY: string;
 }

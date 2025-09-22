@@ -1,25 +1,28 @@
 import { randomBytes } from 'crypto';
 import { cacheService } from './cacheService';
 import { redisClient } from '../config/redis';
+import { encryptionService } from '../utils/encryption';
+import { env } from '../config/environment';
+import {
+  SessionData,
+  SessionCreateOptions,
+  SessionValidationResult,
+  UserSessionInfo
+} from '../types/session';
 
-export interface SessionData {
-  userId: string;
-  email?: string;
-  role?: string;
-  createdAt: number;
-  lastAccessedAt: number;
-  metadata?: Record<string, any>;
-}
 
 export interface SessionService {
-  createSession(userId: string, sessionData: Omit<SessionData, 'userId' | 'createdAt' | 'lastAccessedAt'>): Promise<string>;
+  createSession(userId: string, options: SessionCreateOptions): Promise<string>;
   getSession(sessionId: string): Promise<SessionData | null>;
   updateSession(sessionId: string, data: Partial<Omit<SessionData, 'userId' | 'createdAt'>>): Promise<boolean>;
   deleteSession(sessionId: string): Promise<boolean>;
   refreshSession(sessionId: string): Promise<boolean>;
   cleanupExpiredSessions(): Promise<number>;
   getUserSessions(userId: string): Promise<string[]>;
+  getUserSessionsInfo(userId: string): Promise<UserSessionInfo[]>;
   deleteUserSessions(userId: string): Promise<number>;
+  validateSession(sessionId: string): Promise<SessionValidationResult>;
+  enforceSessionLimit(userId: string): Promise<void>;
 }
 
 class RedisSessionService implements SessionService {
@@ -43,29 +46,33 @@ class RedisSessionService implements SessionService {
     return redisClient.getConfig().sessionTtl;
   }
 
-  async createSession(
-    userId: string,
-    sessionData: Omit<SessionData, 'userId' | 'createdAt' | 'lastAccessedAt'>
-  ): Promise<string> {
+  async createSession(userId: string, options: SessionCreateOptions): Promise<string> {
     try {
+      await this.enforceSessionLimit(userId);
+
       const sessionId = this.generateSessionId();
       const sessionKey = this.getSessionKey(sessionId);
       const userSessionsKey = this.getUserSessionsKey(userId);
       const timestamp = Date.now();
 
       const fullSessionData: SessionData = {
-        ...sessionData,
         userId,
+        ...(options.email && { email: options.email }),
+        ...(options.role && { role: options.role }),
+        ...(options.ipAddress && { ipAddress: options.ipAddress }),
+        ...(options.userAgent && { userAgent: options.userAgent }),
+        ...(options.metadata && { metadata: options.metadata }),
         createdAt: timestamp,
         lastAccessedAt: timestamp,
       };
 
+      const encryptedData = encryptionService.encryptObject(fullSessionData);
       const ttl = this.getSessionTtl();
 
       const client = redisClient.getClient();
       const pipeline = client.pipeline();
 
-      pipeline.setex(sessionKey, ttl, JSON.stringify(fullSessionData));
+      pipeline.setex(sessionKey, ttl, JSON.stringify(encryptedData));
       pipeline.sadd(this.ACTIVE_SESSIONS_SET, sessionId);
       pipeline.expire(this.ACTIVE_SESSIONS_SET, ttl);
       pipeline.sadd(userSessionsKey, sessionId);
@@ -88,17 +95,24 @@ class RedisSessionService implements SessionService {
   async getSession(sessionId: string): Promise<SessionData | null> {
     try {
       const sessionKey = this.getSessionKey(sessionId);
-      const sessionData = await cacheService.get<SessionData>(sessionKey);
+      const encryptedData = await cacheService.get<any>(sessionKey);
 
-      if (!sessionData) {
+      if (!encryptedData) {
         return null;
       }
 
+      if (!encryptionService.isValidEncryptedData(encryptedData)) {
+        console.error(`Invalid encrypted session data for session ${sessionId}`);
+        await this.deleteSession(sessionId);
+        return null;
+      }
+
+      const sessionData = encryptionService.decryptObject<SessionData>(encryptedData);
       await this.updateLastAccessed(sessionId);
       return sessionData;
     } catch (error) {
       console.error(`Error getting session ${sessionId}:`, error);
-      throw error;
+      return null;
     }
   }
 
@@ -108,20 +122,22 @@ class RedisSessionService implements SessionService {
   ): Promise<boolean> {
     try {
       const sessionKey = this.getSessionKey(sessionId);
-      const existingSession = await cacheService.get<SessionData>(sessionKey);
+      const encryptedData = await cacheService.get<any>(sessionKey);
 
-      if (!existingSession) {
+      if (!encryptedData || !encryptionService.isValidEncryptedData(encryptedData)) {
         return false;
       }
 
+      const existingSession = encryptionService.decryptObject<SessionData>(encryptedData);
       const updatedSession: SessionData = {
         ...existingSession,
         ...data,
         lastAccessedAt: Date.now(),
       };
 
+      const newEncryptedData = encryptionService.encryptObject(updatedSession);
       const ttl = this.getSessionTtl();
-      return await cacheService.set(sessionKey, updatedSession, ttl);
+      return await cacheService.set(sessionKey, newEncryptedData, ttl);
     } catch (error) {
       console.error(`Error updating session ${sessionId}:`, error);
       throw error;
@@ -294,24 +310,6 @@ class RedisSessionService implements SessionService {
     }
   }
 
-  private async updateLastAccessed(sessionId: string): Promise<void> {
-    try {
-      const sessionKey = this.getSessionKey(sessionId);
-      const sessionData = await cacheService.get<SessionData>(sessionKey);
-
-      if (sessionData) {
-        const updatedSession: SessionData = {
-          ...sessionData,
-          lastAccessedAt: Date.now(),
-        };
-
-        const ttl = this.getSessionTtl();
-        await cacheService.set(sessionKey, updatedSession, ttl);
-      }
-    } catch (error) {
-      console.error(`Error updating last accessed for session ${sessionId}:`, error);
-    }
-  }
 
   async getSessionCount(): Promise<number> {
     try {
@@ -346,8 +344,11 @@ class RedisSessionService implements SessionService {
       results.forEach(([err, result]) => {
         if (err === null && result) {
           try {
-            const sessionData = JSON.parse(result as string) as SessionData;
-            uniqueUsers.add(sessionData.userId);
+            const encryptedData = JSON.parse(result as string);
+            if (encryptionService.isValidEncryptedData(encryptedData)) {
+              const sessionData = encryptionService.decryptObject<SessionData>(encryptedData);
+              uniqueUsers.add(sessionData.userId);
+            }
           } catch (parseError) {
             console.error('Error parsing session data:', parseError);
           }
@@ -358,6 +359,147 @@ class RedisSessionService implements SessionService {
     } catch (error) {
       console.error('Error getting active user count:', error);
       throw error;
+    }
+  }
+
+  async validateSession(sessionId: string): Promise<SessionValidationResult> {
+    try {
+      const sessionData = await this.getSession(sessionId);
+
+      if (!sessionData) {
+        return {
+          isValid: false,
+          error: 'Session not found',
+        };
+      }
+
+      const now = Date.now();
+      const lastAccessed = sessionData.lastAccessedAt;
+      const sessionAge = now - sessionData.createdAt;
+      const timeSinceLastAccess = now - lastAccessed;
+
+      const maxAge = this.getSessionTtl() * 1000;
+      const maxInactivity = 30 * 60 * 1000; // 30 minutes
+
+      if (sessionAge > maxAge) {
+        await this.deleteSession(sessionId);
+        return {
+          isValid: false,
+          error: 'Session expired',
+        };
+      }
+
+      if (timeSinceLastAccess > maxInactivity) {
+        await this.deleteSession(sessionId);
+        return {
+          isValid: false,
+          error: 'Session inactive too long',
+        };
+      }
+
+      return {
+        isValid: true,
+        session: sessionData,
+        sessionId,
+      };
+    } catch (error) {
+      console.error(`Error validating session ${sessionId}:`, error);
+      return {
+        isValid: false,
+        error: 'Session validation failed',
+      };
+    }
+  }
+
+  async getUserSessionsInfo(userId: string): Promise<UserSessionInfo[]> {
+    try {
+      const sessionIds = await this.getUserSessions(userId);
+      const sessionInfos: UserSessionInfo[] = [];
+
+      if (sessionIds.length === 0) {
+        return sessionInfos;
+      }
+
+      const client = redisClient.getClient();
+      const pipeline = client.pipeline();
+
+      sessionIds.forEach(sessionId => {
+        const sessionKey = this.getSessionKey(sessionId);
+        pipeline.get(sessionKey);
+      });
+
+      const results = await pipeline.exec();
+      if (!results) return sessionInfos;
+
+      sessionIds.forEach((sessionId, index) => {
+        const result = results[index];
+        if (result && result[0] === null && result[1]) {
+          try {
+            const encryptedData = JSON.parse(result[1] as string);
+            if (encryptionService.isValidEncryptedData(encryptedData)) {
+              const sessionData = encryptionService.decryptObject<SessionData>(encryptedData);
+              sessionInfos.push({
+                sessionId,
+                createdAt: sessionData.createdAt,
+                lastAccessedAt: sessionData.lastAccessedAt,
+                ipAddress: sessionData.ipAddress || undefined,
+                userAgent: sessionData.userAgent || undefined,
+              });
+            }
+          } catch (parseError) {
+            console.error(`Error parsing session data for ${sessionId}:`, parseError);
+          }
+        }
+      });
+
+      return sessionInfos.sort((a, b) => b.lastAccessedAt - a.lastAccessedAt);
+    } catch (error) {
+      console.error(`Error getting user sessions info for ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  async enforceSessionLimit(userId: string): Promise<void> {
+    try {
+      const maxSessions = env.MAX_SESSIONS_PER_USER;
+      const sessionIds = await this.getUserSessions(userId);
+
+      if (sessionIds.length < maxSessions) {
+        return;
+      }
+
+      const sessionInfos = await this.getUserSessionsInfo(userId);
+      sessionInfos.sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
+
+      const sessionsToDelete = sessionInfos.slice(0, sessionInfos.length - maxSessions + 1);
+
+      for (const sessionInfo of sessionsToDelete) {
+        await this.deleteSession(sessionInfo.sessionId);
+      }
+    } catch (error) {
+      console.error(`Error enforcing session limit for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  private async updateLastAccessed(sessionId: string): Promise<void> {
+    try {
+      const sessionKey = this.getSessionKey(sessionId);
+      const encryptedData = await cacheService.get<any>(sessionKey);
+
+      if (encryptedData && encryptionService.isValidEncryptedData(encryptedData)) {
+        const sessionData = encryptionService.decryptObject<SessionData>(encryptedData);
+        const updatedSession: SessionData = {
+          ...sessionData,
+          lastAccessedAt: Date.now(),
+        };
+
+        const newEncryptedData = encryptionService.encryptObject(updatedSession);
+        const ttl = this.getSessionTtl();
+        await cacheService.set(sessionKey, newEncryptedData, ttl);
+      }
+    } catch (error) {
+      console.error(`Error updating last accessed for session ${sessionId}:`, error);
     }
   }
 }

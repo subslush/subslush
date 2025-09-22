@@ -46,6 +46,27 @@ const environmentSchema = z.object({
     .string()
     .transform(val => parseInt(val, 10))
     .default('1000'),
+  JWT_SECRET: z.string().min(32, 'JWT secret must be at least 32 characters'),
+  JWT_EXPIRY: z
+    .string()
+    .transform(val => parseInt(val, 10))
+    .default('86400'),
+  JWT_ALGORITHM: z.enum(['HS256', 'RS256']).default('HS256'),
+  SESSION_ENCRYPTION_KEY: z.string().length(32, 'Session encryption key must be exactly 32 characters'),
+  SESSION_IV_LENGTH: z
+    .string()
+    .transform(val => parseInt(val, 10))
+    .default('16'),
+  MAX_SESSIONS_PER_USER: z
+    .string()
+    .transform(val => parseInt(val, 10))
+    .default('5'),
+  SESSION_CLEANUP_INTERVAL: z
+    .string()
+    .transform(val => parseInt(val, 10))
+    .default('3600'),
+  SUPABASE_URL: z.string().url('Valid Supabase URL is required'),
+  SUPABASE_ANON_KEY: z.string().min(1, 'Supabase anonymous key is required'),
 });
 
 function validateEnvironment(): EnvironmentConfig {
