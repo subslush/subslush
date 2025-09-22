@@ -68,8 +68,6 @@ const environmentSchema = z.object({
     .string()
     .transform(val => parseInt(val, 10))
     .default('3600'),
-  SUPABASE_URL: z.string().url('Valid Supabase URL is required'),
-  SUPABASE_ANON_KEY: z.string().min(1, 'Supabase anonymous key is required'),
 });
 
 function validateEnvironment(): EnvironmentConfig {

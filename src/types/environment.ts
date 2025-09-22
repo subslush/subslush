@@ -24,6 +24,4 @@ export interface EnvironmentConfig {
   SESSION_IV_LENGTH: number;
   MAX_SESSIONS_PER_USER: number;
   SESSION_CLEANUP_INTERVAL: number;
-  SUPABASE_URL: string;
-  SUPABASE_ANON_KEY: string;
 }

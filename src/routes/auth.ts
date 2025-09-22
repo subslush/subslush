@@ -3,9 +3,6 @@ import { authService } from '../services/auth';
 import { authRateLimit, bruteForceProtection, passwordResetRateLimit } from '../middleware/rateLimitMiddleware';
 import { requireAuth } from '../middleware/authMiddleware';
 import {
-  loginRequestSchema,
-  registerRequestSchema,
-  logoutRequestSchema,
   LoginRequestInput,
   RegisterRequestInput,
   LogoutRequestInput,
@@ -36,11 +33,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
     fastify.post<{
       Body: RegisterRequestInput;
-    }>('/register', {
-      schema: {
-        body: registerRequestSchema,
-      },
-    }, async (request: FastifyRequest<{ Body: RegisterRequestInput }>, reply: FastifyReply) => {
+    }>('/register', async (request: FastifyRequest<{ Body: RegisterRequestInput }>, reply: FastifyReply) => {
       try {
         const { email, password, firstName, lastName } = request.body;
 
@@ -89,11 +82,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
     fastify.post<{
       Body: LoginRequestInput;
-    }>('/login', {
-      schema: {
-        body: loginRequestSchema,
-      },
-    }, async (request: FastifyRequest<{ Body: LoginRequestInput }>, reply: FastifyReply) => {
+    }>('/login', async (request: FastifyRequest<{ Body: LoginRequestInput }>, reply: FastifyReply) => {
       try {
         const { email, password, rememberMe } = request.body;
 
@@ -137,11 +126,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
     fastify.post<{
       Body: LogoutRequestInput;
-    }>('/logout', {
-      schema: {
-        body: logoutRequestSchema,
-      },
-    }, async (request: FastifyRequest<{ Body: LogoutRequestInput }>, reply: FastifyReply) => {
+    }>('/logout', async (request: FastifyRequest<{ Body: LogoutRequestInput }>, reply: FastifyReply) => {
       try {
         const { allDevices = false } = request.body;
         const sessionId = request.user?.sessionId;
@@ -298,17 +283,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
     fastify.post<{
       Body: { email: string };
-    }>('/password-reset', {
-      schema: {
-        body: {
-          type: 'object',
-          required: ['email'],
-          properties: {
-            email: { type: 'string', format: 'email' },
-          },
-        },
-      },
-    }, async (request: FastifyRequest<{ Body: { email: string } }>, reply: FastifyReply) => {
+    }>('/password-reset', async (request: FastifyRequest<{ Body: { email: string } }>, reply: FastifyReply) => {
       try {
         const { email } = request.body;
 
