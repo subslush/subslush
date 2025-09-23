@@ -130,7 +130,8 @@ export const requirePremium = authMiddleware({ roles: ['premium', 'admin'] });
 
 export const allowExpiredToken = authMiddleware({ allowExpired: true });
 
-// Direct preHandler function for route-level authentication
+// Secure preHandler function for route-level authentication
+// Validates both JWT tokens AND Redis sessions
 export const authPreHandler = async (
   request: FastifyRequest,
   reply: FastifyReply
@@ -166,7 +167,22 @@ export const authPreHandler = async (
       });
     }
 
-    // Skip session validation for now and just set user from JWT
+    // SECURITY: Validate session in Redis (mandatory for security)
+    if (payload.sessionId) {
+      const sessionValidation = await sessionService.validateSession(
+        payload.sessionId
+      );
+
+      if (!sessionValidation.isValid) {
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: sessionValidation.error || 'Session expired',
+          code: 'SESSION_EXPIRED',
+        });
+      }
+
+      request.session = sessionValidation.session || undefined;
+    }
 
     request.user = {
       userId: payload.userId,
