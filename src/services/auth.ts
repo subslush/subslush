@@ -82,6 +82,37 @@ class AuthService {
         };
       }
 
+      // Create corresponding user record in PostgreSQL
+      try {
+        await this.pool.query(
+          'INSERT INTO users (id, email, created_at, status) VALUES ($1, $2, $3, $4)',
+          [
+            authData.user.id,
+            authData.user.email,
+            new Date(authData.user.created_at),
+            'active',
+          ]
+        );
+        Logger.info(
+          `PostgreSQL user record created for: ${authData.user.email}`
+        );
+      } catch (dbError) {
+        Logger.error('Failed to create PostgreSQL user record:', dbError);
+        // Clean up Supabase user on PostgreSQL failure
+        try {
+          await this.supabase.auth.admin.deleteUser(authData.user.id);
+        } catch (cleanupError) {
+          Logger.error(
+            'Failed to cleanup Supabase user after PostgreSQL failure:',
+            cleanupError
+          );
+        }
+        return {
+          success: false,
+          error: 'User registration incomplete - database error',
+        };
+      }
+
       const user: User = {
         id: authData.user.id,
         email: authData.user.email!,
