@@ -5,6 +5,7 @@ import { jwtService } from './jwtService';
 import { SessionCreateOptions } from '../types/session';
 import { JWTTokens } from '../types/jwt';
 import { Logger } from '../utils/logger';
+import { getDatabasePool } from '../config/database';
 
 export interface User {
   id: string;
@@ -42,6 +43,10 @@ class AuthService {
 
   constructor() {
     this.supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+  }
+
+  private get pool(): any {
+    return getDatabasePool();
   }
 
   async register(
@@ -150,6 +155,13 @@ class AuthService {
         createdAt: authData.user.created_at,
         lastLoginAt: new Date().toISOString(),
       };
+
+      // Update last_login timestamp in database
+      try {
+        await this.updateLastLogin(user.id);
+      } catch (error) {
+        Logger.warn('Failed to update last login timestamp:', error);
+      }
 
       const sessionId = await sessionService.createSession(user.id, {
         email: user.email,
@@ -383,6 +395,19 @@ class AuthService {
         return 'Too many email requests. Please try again later';
       default:
         return error.message || 'Authentication error occurred';
+    }
+  }
+
+  async updateLastLogin(userId: string): Promise<boolean> {
+    try {
+      await this.pool.query(
+        'UPDATE users SET last_login = NOW() WHERE id = $1',
+        [userId]
+      );
+      return true;
+    } catch (error) {
+      Logger.error('Update last login error:', error);
+      return false;
     }
   }
 
