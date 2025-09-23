@@ -94,22 +94,22 @@ export interface UserDatabaseRecord {
   created_at: string;
   last_login?: string;
   status: string;
+  display_name?: string;
+  user_timezone?: string;
+  language_preference?: string;
+  notification_preferences?: {
+    email?: boolean;
+    push?: boolean;
+    sms?: boolean;
+    marketing?: boolean;
+  };
+  profile_updated_at?: string;
 }
 
 export interface UserSupabaseMetadata {
   first_name?: string;
   last_name?: string;
-  display_name?: string;
   role?: string;
-  timezone?: string;
-  language_preference?: string;
-  notification_preferences?: {
-    email?: boolean | undefined;
-    push?: boolean | undefined;
-    sms?: boolean | undefined;
-    marketing?: boolean | undefined;
-  };
-  profile_updated_at?: string;
 }
 
 export interface UserSessionWithProfile extends UserProfile {

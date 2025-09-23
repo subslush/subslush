@@ -32,9 +32,12 @@ class UserService {
     try {
       const { includeMetadata = true, includeSessions = false } = options;
 
-      // Get user from PostgreSQL database
+      // Get user from PostgreSQL database (including new profile columns)
       const dbResult = await this.pool.query(
-        'SELECT id, email, created_at, last_login, status FROM users WHERE id = $1 AND status != $2',
+        `SELECT id, email, created_at, last_login, status,
+                display_name, user_timezone, language_preference,
+                notification_preferences, profile_updated_at
+         FROM users WHERE id = $1 AND status != $2`,
         [userId, 'deleted']
       );
 
@@ -65,21 +68,21 @@ class UserService {
         }
       }
 
-      // Build profile response
+      // Build profile response (combining PostgreSQL profile data with Supabase auth data)
       const profile: UserProfile = {
         id: dbUser.id,
         email: dbUser.email,
         firstName: metadata.first_name,
         lastName: metadata.last_name,
-        displayName: metadata.display_name,
+        displayName: dbUser.display_name,
         role: metadata.role || 'user',
         status: dbUser.status,
-        timezone: metadata.timezone,
-        languagePreference: metadata.language_preference,
-        notificationPreferences: metadata.notification_preferences,
+        timezone: dbUser.user_timezone,
+        languagePreference: dbUser.language_preference,
+        notificationPreferences: dbUser.notification_preferences,
         createdAt: dbUser.created_at,
         lastLoginAt: dbUser.last_login,
-        profileUpdatedAt: metadata.profile_updated_at,
+        profileUpdatedAt: dbUser.profile_updated_at,
       };
 
       // Include session count if requested
@@ -138,53 +141,76 @@ class UserService {
           ]);
         }
 
-        // Update metadata in Supabase
-        const metadataUpdates: UserSupabaseMetadata = {
-          profile_updated_at: new Date().toISOString(),
-        };
+        // Handle profile preferences updates in PostgreSQL
+        const hasProfileUpdates = !!(
+          updates.displayName !== undefined ||
+          updates.timezone !== undefined ||
+          updates.languagePreference !== undefined ||
+          updates.notificationPreferences !== undefined
+        );
 
-        if (updates.firstName !== undefined)
-          metadataUpdates.first_name = updates.firstName;
-        if (updates.lastName !== undefined)
-          metadataUpdates.last_name = updates.lastName;
-        if (updates.displayName !== undefined)
-          metadataUpdates.display_name = updates.displayName;
-        if (updates.timezone !== undefined)
-          metadataUpdates.timezone = updates.timezone;
-        if (updates.languagePreference !== undefined)
-          metadataUpdates.language_preference = updates.languagePreference;
-        if (updates.notificationPreferences !== undefined)
-          metadataUpdates.notification_preferences =
-            updates.notificationPreferences;
+        if (hasProfileUpdates) {
+          // Update profile data in PostgreSQL using COALESCE for partial updates
+          await client.query(
+            `
+            UPDATE users SET
+              display_name = COALESCE($1, display_name),
+              user_timezone = COALESCE($2, user_timezone),
+              language_preference = COALESCE($3, language_preference),
+              notification_preferences = COALESCE($4, notification_preferences),
+              profile_updated_at = NOW()
+            WHERE id = $5
+          `,
+            [
+              updates.displayName,
+              updates.timezone,
+              updates.languagePreference,
+              updates.notificationPreferences
+                ? JSON.stringify(updates.notificationPreferences)
+                : null,
+              userId,
+            ]
+          );
+        }
 
-        // Update Supabase user metadata
-        if (updates.email) {
-          const { error: emailError } =
-            await this.supabase.auth.admin.updateUserById(userId, {
-              email: updates.email,
-              user_metadata: metadataUpdates,
-            });
+        // Handle authentication data updates in Supabase (only firstName, lastName, role)
+        const hasAuthUpdates = !!(
+          updates.firstName !== undefined || updates.lastName !== undefined
+        );
 
-          if (emailError) {
-            await client.query('ROLLBACK');
-            return {
-              success: false,
-              error: 'Failed to update user email',
-              details: emailError.message,
-            };
+        if (hasAuthUpdates || updates.email) {
+          const supabaseUpdates: any = {};
+
+          // Handle email change
+          if (updates.email) {
+            supabaseUpdates.email = updates.email;
           }
-        } else {
-          const { error: metadataError } =
-            await this.supabase.auth.admin.updateUserById(userId, {
-              user_metadata: metadataUpdates,
-            });
 
-          if (metadataError) {
+          // Handle authentication metadata
+          if (hasAuthUpdates) {
+            const metadataUpdates: UserSupabaseMetadata = {};
+            if (updates.firstName !== undefined) {
+              metadataUpdates.first_name = updates.firstName;
+            }
+            if (updates.lastName !== undefined) {
+              metadataUpdates.last_name = updates.lastName;
+            }
+            supabaseUpdates.user_metadata = metadataUpdates;
+          }
+
+          // Update Supabase
+          const { error: supabaseError } =
+            await this.supabase.auth.admin.updateUserById(
+              userId,
+              supabaseUpdates
+            );
+
+          if (supabaseError) {
             await client.query('ROLLBACK');
             return {
               success: false,
-              error: 'Failed to update user metadata',
-              details: metadataError.message,
+              error: 'Failed to update authentication data',
+              details: supabaseError.message,
             };
           }
         }
