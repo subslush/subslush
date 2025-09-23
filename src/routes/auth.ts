@@ -1,7 +1,11 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authService } from '../services/auth';
-import { authRateLimit, bruteForceProtection, passwordResetRateLimit } from '../middleware/rateLimitMiddleware';
-import { requireAuth } from '../middleware/authMiddleware';
+import {
+  authRateLimit,
+  bruteForceProtection,
+  passwordResetRateLimit,
+} from '../middleware/rateLimitMiddleware';
+import { authPreHandler } from '../middleware/authMiddleware';
 import {
   LoginRequestInput,
   RegisterRequestInput,
@@ -9,7 +13,6 @@ import {
 } from '../schemas/session';
 
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
-
   fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.send({
       message: 'Authentication API',
@@ -21,291 +24,326 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         'POST /auth/refresh',
         'GET /auth/sessions',
         'DELETE /auth/sessions/:sessionId',
-        'POST /auth/password-reset'
-      ]
+        'POST /auth/password-reset',
+      ],
     });
   });
 
   // Register endpoint with rate limiting and brute force protection
-  fastify.register(async (fastify) => {
+  fastify.register(async fastify => {
     await fastify.register(authRateLimit);
     await fastify.register(bruteForceProtection);
 
     fastify.post<{
       Body: RegisterRequestInput;
-    }>('/register', async (request: FastifyRequest<{ Body: RegisterRequestInput }>, reply: FastifyReply) => {
-      try {
-        const { email, password, firstName, lastName } = request.body;
+    }>(
+      '/register',
+      async (
+        request: FastifyRequest<{ Body: RegisterRequestInput }>,
+        reply: FastifyReply
+      ) => {
+        try {
+          const { email, password, firstName, lastName } = request.body;
 
-        const sessionOptions = {
-          ipAddress: request.ip,
-          userAgent: request.headers['user-agent'],
-        };
+          const sessionOptions = {
+            ipAddress: request.ip,
+            userAgent: request.headers['user-agent'],
+          };
 
-        const result = await authService.register(
-          {
-            email,
-            password,
-            firstName: firstName || undefined,
-            lastName: lastName || undefined
-          },
-          sessionOptions
-        );
+          const result = await authService.register(
+            {
+              email,
+              password,
+              firstName: firstName || undefined,
+              lastName: lastName || undefined,
+            },
+            sessionOptions
+          );
 
-        if (!result.success) {
-          return reply.status(400).send({
-            error: 'Registration Failed',
-            message: result.error,
+          if (!result.success) {
+            return reply.status(400).send({
+              error: 'Registration Failed',
+              message: result.error,
+            });
+          }
+
+          return reply.status(201).send({
+            message: 'Registration successful',
+            user: result.user,
+            accessToken: result.tokens?.accessToken,
+            sessionId: result.sessionId,
+          });
+        } catch {
+          return reply.status(500).send({
+            error: 'Internal Server Error',
+            message: 'Registration failed',
           });
         }
-
-        return reply.status(201).send({
-          message: 'Registration successful',
-          user: result.user,
-          accessToken: result.tokens?.accessToken,
-          sessionId: result.sessionId,
-        });
-      } catch (error) {
-        console.error('Registration error:', error);
-        return reply.status(500).send({
-          error: 'Internal Server Error',
-          message: 'Registration failed',
-        });
       }
-    });
+    );
   });
 
   // Login endpoint with rate limiting and brute force protection
-  fastify.register(async (fastify) => {
+  fastify.register(async fastify => {
     await fastify.register(authRateLimit);
     await fastify.register(bruteForceProtection);
 
     fastify.post<{
       Body: LoginRequestInput;
-    }>('/login', async (request: FastifyRequest<{ Body: LoginRequestInput }>, reply: FastifyReply) => {
-      try {
-        const { email, password, rememberMe } = request.body;
+    }>(
+      '/login',
+      async (
+        request: FastifyRequest<{ Body: LoginRequestInput }>,
+        reply: FastifyReply
+      ) => {
+        try {
+          const { email, password, rememberMe } = request.body;
 
-        const sessionOptions = {
-          ipAddress: request.ip,
-          userAgent: request.headers['user-agent'] || undefined,
-          metadata: { rememberMe },
-        };
+          const sessionOptions = {
+            ipAddress: request.ip,
+            userAgent: request.headers['user-agent'] || undefined,
+            metadata: { rememberMe },
+          };
 
-        const result = await authService.login(
-          { email, password, rememberMe },
-          sessionOptions
-        );
+          const result = await authService.login(
+            { email, password, rememberMe },
+            sessionOptions
+          );
 
-        if (!result.success) {
-          return reply.status(401).send({
-            error: 'Authentication Failed',
-            message: result.error,
+          if (!result.success) {
+            return reply.status(401).send({
+              error: 'Authentication Failed',
+              message: result.error,
+            });
+          }
+
+          return reply.send({
+            message: 'Login successful',
+            user: result.user,
+            accessToken: result.tokens?.accessToken,
+            sessionId: result.sessionId,
+          });
+        } catch {
+          return reply.status(500).send({
+            error: 'Internal Server Error',
+            message: 'Login failed',
           });
         }
-
-        return reply.send({
-          message: 'Login successful',
-          user: result.user,
-          accessToken: result.tokens?.accessToken,
-          sessionId: result.sessionId,
-        });
-      } catch (error) {
-        console.error('Login error:', error);
-        return reply.status(500).send({
-          error: 'Internal Server Error',
-          message: 'Login failed',
-        });
       }
-    });
+    );
   });
 
   // Logout endpoint (requires authentication)
-  fastify.register(async (fastify) => {
-    await fastify.register(requireAuth);
-
+  fastify.register(async fastify => {
     fastify.post<{
       Body: LogoutRequestInput;
-    }>('/logout', async (request: FastifyRequest<{ Body: LogoutRequestInput }>, reply: FastifyReply) => {
-      try {
-        const { allDevices = false } = request.body;
-        const sessionId = request.user?.sessionId;
+    }>(
+      '/logout',
+      {
+        preHandler: [authPreHandler],
+      },
+      async (
+        request: FastifyRequest<{ Body: LogoutRequestInput }>,
+        reply: FastifyReply
+      ) => {
+        try {
+          const { allDevices = false } = request.body;
+          const sessionId = request.user?.sessionId;
 
-        if (!sessionId) {
-          return reply.status(400).send({
-            error: 'Bad Request',
-            message: 'No active session found',
+          if (!sessionId) {
+            return reply.status(400).send({
+              error: 'Bad Request',
+              message: 'No active session found',
+            });
+          }
+
+          const result = await authService.logout(sessionId, allDevices);
+
+          if (!result.success) {
+            return reply.status(500).send({
+              error: 'Logout Failed',
+              message: result.error,
+            });
+          }
+
+          return reply.send({
+            message: allDevices
+              ? 'Logged out from all devices'
+              : 'Logout successful',
           });
-        }
-
-        const result = await authService.logout(sessionId, allDevices);
-
-        if (!result.success) {
+        } catch {
           return reply.status(500).send({
-            error: 'Logout Failed',
-            message: result.error,
+            error: 'Internal Server Error',
+            message: 'Logout failed',
           });
         }
-
-        return reply.send({
-          message: allDevices ? 'Logged out from all devices' : 'Logout successful',
-        });
-      } catch (error) {
-        console.error('Logout error:', error);
-        return reply.status(500).send({
-          error: 'Internal Server Error',
-          message: 'Logout failed',
-        });
       }
-    });
+    );
   });
 
   // Refresh session endpoint (requires authentication)
-  fastify.register(async (fastify) => {
-    await fastify.register(requireAuth);
+  fastify.register(async fastify => {
+    fastify.post(
+      '/refresh',
+      {
+        preHandler: [authPreHandler],
+      },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+          const sessionId = request.user?.sessionId;
 
-    fastify.post('/refresh', async (request: FastifyRequest, reply: FastifyReply) => {
-      try {
-        const sessionId = request.user?.sessionId;
+          if (!sessionId) {
+            return reply.status(400).send({
+              error: 'Bad Request',
+              message: 'No active session found',
+            });
+          }
 
-        if (!sessionId) {
-          return reply.status(400).send({
-            error: 'Bad Request',
-            message: 'No active session found',
+          const result = await authService.refreshSession(sessionId);
+
+          if (!result.success) {
+            return reply.status(401).send({
+              error: 'Session Refresh Failed',
+              message: result.error,
+            });
+          }
+
+          return reply.send({
+            message: 'Session refreshed successfully',
+            user: result.user,
+            accessToken: result.tokens?.accessToken,
+            sessionId: result.sessionId,
+          });
+        } catch {
+          return reply.status(500).send({
+            error: 'Internal Server Error',
+            message: 'Session refresh failed',
           });
         }
-
-        const result = await authService.refreshSession(sessionId);
-
-        if (!result.success) {
-          return reply.status(401).send({
-            error: 'Session Refresh Failed',
-            message: result.error,
-          });
-        }
-
-        return reply.send({
-          message: 'Session refreshed successfully',
-          user: result.user,
-          accessToken: result.tokens?.accessToken,
-          sessionId: result.sessionId,
-        });
-      } catch (error) {
-        console.error('Session refresh error:', error);
-        return reply.status(500).send({
-          error: 'Internal Server Error',
-          message: 'Session refresh failed',
-        });
       }
-    });
+    );
   });
 
   // Get user sessions endpoint (requires authentication)
-  fastify.register(async (fastify) => {
-    await fastify.register(requireAuth);
+  fastify.register(async fastify => {
+    fastify.get(
+      '/sessions',
+      {
+        preHandler: [authPreHandler],
+      },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+          const userId = request.user?.userId;
+          const currentSessionId = request.user?.sessionId;
 
-    fastify.get('/sessions', async (request: FastifyRequest, reply: FastifyReply) => {
-      try {
-        const userId = request.user?.userId;
-        const currentSessionId = request.user?.sessionId;
+          if (!userId) {
+            return reply.status(400).send({
+              error: 'Bad Request',
+              message: 'User ID not found',
+            });
+          }
 
-        if (!userId) {
-          return reply.status(400).send({
-            error: 'Bad Request',
-            message: 'User ID not found',
+          const sessions = await authService.getUserSessions(userId);
+          const sessionsWithCurrent = sessions.map(session => ({
+            ...session,
+            isCurrent: session.sessionId === currentSessionId,
+          }));
+
+          return reply.send({
+            sessions: sessionsWithCurrent,
+            totalCount: sessions.length,
+            currentSessionId,
+          });
+        } catch {
+          return reply.status(500).send({
+            error: 'Internal Server Error',
+            message: 'Failed to retrieve sessions',
           });
         }
-
-        const sessions = await authService.getUserSessions(userId);
-        const sessionsWithCurrent = sessions.map(session => ({
-          ...session,
-          isCurrent: session.sessionId === currentSessionId,
-        }));
-
-        return reply.send({
-          sessions: sessionsWithCurrent,
-          totalCount: sessions.length,
-          currentSessionId,
-        });
-      } catch (error) {
-        console.error('Get sessions error:', error);
-        return reply.status(500).send({
-          error: 'Internal Server Error',
-          message: 'Failed to retrieve sessions',
-        });
       }
-    });
+    );
   });
 
   // Revoke specific session endpoint (requires authentication)
-  fastify.register(async (fastify) => {
-    await fastify.register(requireAuth);
-
+  fastify.register(async fastify => {
     fastify.delete<{
       Params: { sessionId: string };
-    }>('/sessions/:sessionId', async (request: FastifyRequest<{ Params: { sessionId: string } }>, reply: FastifyReply) => {
-      try {
-        const { sessionId } = request.params;
-        const currentSessionId = request.user?.sessionId;
+    }>(
+      '/sessions/:sessionId',
+      {
+        preHandler: [authPreHandler],
+      },
+      async (
+        request: FastifyRequest<{ Params: { sessionId: string } }>,
+        reply: FastifyReply
+      ) => {
+        try {
+          const { sessionId } = request.params;
+          const currentSessionId = request.user?.sessionId;
 
-        if (sessionId === currentSessionId) {
-          return reply.status(400).send({
-            error: 'Bad Request',
-            message: 'Cannot revoke current session. Use logout instead.',
+          if (sessionId === currentSessionId) {
+            return reply.status(400).send({
+              error: 'Bad Request',
+              message: 'Cannot revoke current session. Use logout instead.',
+            });
+          }
+
+          const result = await authService.revokeSession(sessionId);
+
+          if (!result.success) {
+            return reply.status(404).send({
+              error: 'Session Not Found',
+              message: result.error,
+            });
+          }
+
+          return reply.send({
+            message: 'Session revoked successfully',
+          });
+        } catch {
+          return reply.status(500).send({
+            error: 'Internal Server Error',
+            message: 'Failed to revoke session',
           });
         }
-
-        const result = await authService.revokeSession(sessionId);
-
-        if (!result.success) {
-          return reply.status(404).send({
-            error: 'Session Not Found',
-            message: result.error,
-          });
-        }
-
-        return reply.send({
-          message: 'Session revoked successfully',
-        });
-      } catch (error) {
-        console.error('Revoke session error:', error);
-        return reply.status(500).send({
-          error: 'Internal Server Error',
-          message: 'Failed to revoke session',
-        });
       }
-    });
+    );
   });
 
   // Password reset request endpoint with rate limiting
-  fastify.register(async (fastify) => {
+  fastify.register(async fastify => {
     await fastify.register(passwordResetRateLimit);
 
     fastify.post<{
       Body: { email: string };
-    }>('/password-reset', async (request: FastifyRequest<{ Body: { email: string } }>, reply: FastifyReply) => {
-      try {
-        const { email } = request.body;
+    }>(
+      '/password-reset',
+      async (
+        request: FastifyRequest<{ Body: { email: string } }>,
+        reply: FastifyReply
+      ) => {
+        try {
+          const { email } = request.body;
 
-        const result = await authService.requestPasswordReset(email);
+          const result = await authService.requestPasswordReset(email);
 
-        if (!result.success) {
-          return reply.status(400).send({
-            error: 'Password Reset Failed',
-            message: result.error,
+          if (!result.success) {
+            return reply.status(400).send({
+              error: 'Password Reset Failed',
+              message: result.error,
+            });
+          }
+
+          return reply.send({
+            message: 'Password reset email sent successfully',
+          });
+        } catch {
+          return reply.status(500).send({
+            error: 'Internal Server Error',
+            message: 'Password reset request failed',
           });
         }
-
-        return reply.send({
-          message: 'Password reset email sent successfully',
-        });
-      } catch (error) {
-        console.error('Password reset error:', error);
-        return reply.status(500).send({
-          error: 'Internal Server Error',
-          message: 'Password reset request failed',
-        });
       }
-    });
+    );
   });
 }
