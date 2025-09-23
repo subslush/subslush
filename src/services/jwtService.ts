@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../config/environment';
+import { Logger } from '../utils/logger';
 import {
   JWTPayload,
   JWTTokens,
@@ -39,7 +40,7 @@ class JWTService {
         accessToken,
       };
     } catch (error) {
-      console.error('Error generating JWT tokens:', error);
+      Logger.error('Error generating JWT tokens:', error);
       throw new Error('Failed to generate JWT tokens');
     }
   }
@@ -108,7 +109,7 @@ class JWTService {
         tokens,
       };
     } catch (error) {
-      console.error('Error refreshing token:', error);
+      Logger.error('Error refreshing token:', error);
       return {
         success: false,
         error: 'Failed to refresh token',
@@ -120,7 +121,7 @@ class JWTService {
     try {
       return jwt.decode(token) as JWTPayload;
     } catch (error) {
-      console.error('Error decoding token:', error);
+      Logger.error('Error decoding token:', error);
       return null;
     }
   }
@@ -130,7 +131,7 @@ class JWTService {
       const decoded = this.decodeToken(token);
       return decoded?.exp || null;
     } catch (error) {
-      console.error('Error getting token expiry:', error);
+      Logger.error('Error getting token expiry:', error);
       return null;
     }
   }
@@ -143,7 +144,7 @@ class JWTService {
       const now = Math.floor(Date.now() / 1000);
       return expiry < now;
     } catch (error) {
-      console.error('Error checking token expiry:', error);
+      Logger.error('Error checking token expiry:', error);
       return true;
     }
   }
@@ -156,7 +157,7 @@ class JWTService {
       const now = Math.floor(Date.now() / 1000);
       return Math.max(0, expiry - now);
     } catch (error) {
-      console.error('Error calculating time until expiry:', error);
+      Logger.error('Error calculating time until expiry:', error);
       return 0;
     }
   }

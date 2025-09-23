@@ -244,7 +244,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           }
 
           const sessions = await authService.getUserSessions(userId);
-          const sessionsWithCurrent = sessions.map(session => ({
+          const sessionsWithCurrent = sessions.map((session: any) => ({
             ...session,
             isCurrent: session.sessionId === currentSessionId,
           }));

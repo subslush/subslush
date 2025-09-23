@@ -1,5 +1,6 @@
 import { Pool, PoolConfig } from 'pg';
 import { EnvironmentConfig } from '../types/environment';
+import { Logger } from '../utils/logger';
 
 let pool: Pool;
 
@@ -22,7 +23,7 @@ export function createDatabasePool(config: EnvironmentConfig): Pool {
   pool = new Pool(poolConfig);
 
   pool.on('error', (err: Error) => {
-    console.error('Unexpected error on idle client', err);
+    Logger.error('Unexpected error on idle client', err);
     process.exit(-1);
   });
 
@@ -35,13 +36,13 @@ export async function testDatabaseConnection(): Promise<boolean> {
     const result = await client.query('SELECT NOW() as current_time');
     client.release();
 
-    console.log(
+    Logger.info(
       'Database connection successful:',
       result.rows[0]?.current_time
     );
     return true;
   } catch (error) {
-    console.error('Database connection failed:', error);
+    Logger.error('Database connection failed:', error);
     return false;
   }
 }

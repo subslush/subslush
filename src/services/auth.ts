@@ -4,6 +4,7 @@ import { sessionService } from './sessionService';
 import { jwtService } from './jwtService';
 import { SessionCreateOptions } from '../types/session';
 import { JWTTokens } from '../types/jwt';
+import { Logger } from '../utils/logger';
 
 export interface User {
   id: string;
@@ -43,20 +44,24 @@ class AuthService {
     this.supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
   }
 
-  async register(data: RegisterData, sessionOptions: SessionCreateOptions): Promise<AuthResult> {
+  async register(
+    data: RegisterData,
+    sessionOptions: SessionCreateOptions
+  ): Promise<AuthResult> {
     try {
       const { email, password, firstName, lastName } = data;
 
-      const { data: authData, error: authError } = await this.supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName,
+      const { data: authData, error: authError } =
+        await this.supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+            },
           },
-        },
-      });
+        });
 
       if (authError) {
         return {
@@ -101,7 +106,7 @@ class AuthService {
         sessionId,
       };
     } catch (error) {
-      console.error('Registration error:', error);
+      Logger.error('Registration error:', error);
       return {
         success: false,
         error: 'Registration failed due to server error',
@@ -109,14 +114,18 @@ class AuthService {
     }
   }
 
-  async login(data: LoginData, sessionOptions: SessionCreateOptions): Promise<AuthResult> {
+  async login(
+    data: LoginData,
+    sessionOptions: SessionCreateOptions
+  ): Promise<AuthResult> {
     try {
       const { email, password } = data;
 
-      const { data: authData, error: authError } = await this.supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data: authData, error: authError } =
+        await this.supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
       if (authError) {
         return {
@@ -162,7 +171,7 @@ class AuthService {
         sessionId,
       };
     } catch (error) {
-      console.error('Login error:', error);
+      Logger.error('Login error:', error);
       return {
         success: false,
         error: 'Login failed due to server error',
@@ -170,13 +179,18 @@ class AuthService {
     }
   }
 
-  async logout(sessionId: string, allDevices = false): Promise<{ success: boolean; error?: string }> {
+  async logout(
+    sessionId: string,
+    allDevices = false
+  ): Promise<{ success: boolean; error?: string }> {
     try {
       if (allDevices) {
         const session = await sessionService.getSession(sessionId);
         if (session) {
-          const deletedCount = await sessionService.deleteUserSessions(session.userId);
-          console.log(`Logged out from ${deletedCount} sessions`);
+          const deletedCount = await sessionService.deleteUserSessions(
+            session.userId
+          );
+          Logger.info(`Logged out from ${deletedCount} sessions`);
         }
       } else {
         await sessionService.deleteSession(sessionId);
@@ -186,7 +200,7 @@ class AuthService {
 
       return { success: true };
     } catch (error) {
-      console.error('Logout error:', error);
+      Logger.error('Logout error:', error);
       return {
         success: false,
         error: 'Logout failed',
@@ -228,7 +242,7 @@ class AuthService {
         sessionId,
       };
     } catch (error) {
-      console.error('Session refresh error:', error);
+      Logger.error('Session refresh error:', error);
       return {
         success: false,
         error: 'Session refresh failed',
@@ -262,7 +276,7 @@ class AuthService {
         sessionId,
       };
     } catch (error) {
-      console.error('Session validation error:', error);
+      Logger.error('Session validation error:', error);
       return {
         success: false,
         error: 'Session validation failed',
@@ -270,16 +284,18 @@ class AuthService {
     }
   }
 
-  async getUserSessions(userId: string) {
+  async getUserSessions(userId: string): Promise<any> {
     try {
       return await sessionService.getUserSessionsInfo(userId);
     } catch (error) {
-      console.error('Get user sessions error:', error);
+      Logger.error('Get user sessions error:', error);
       throw error;
     }
   }
 
-  async revokeSession(sessionId: string): Promise<{ success: boolean; error?: string }> {
+  async revokeSession(
+    sessionId: string
+  ): Promise<{ success: boolean; error?: string }> {
     try {
       const deleted = await sessionService.deleteSession(sessionId);
 
@@ -292,7 +308,7 @@ class AuthService {
 
       return { success: true };
     } catch (error) {
-      console.error('Revoke session error:', error);
+      Logger.error('Revoke session error:', error);
       return {
         success: false,
         error: 'Failed to revoke session',
@@ -300,7 +316,10 @@ class AuthService {
     }
   }
 
-  async changePassword(userId: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+  async changePassword(
+    userId: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string }> {
     try {
       const { error } = await this.supabase.auth.updateUser({
         password: newPassword,
@@ -317,7 +336,7 @@ class AuthService {
 
       return { success: true };
     } catch (error) {
-      console.error('Change password error:', error);
+      Logger.error('Change password error:', error);
       return {
         success: false,
         error: 'Password change failed',
@@ -325,7 +344,9 @@ class AuthService {
     }
   }
 
-  async requestPasswordReset(email: string): Promise<{ success: boolean; error?: string }> {
+  async requestPasswordReset(
+    email: string
+  ): Promise<{ success: boolean; error?: string }> {
     try {
       const { error } = await this.supabase.auth.resetPasswordForEmail(email);
 
@@ -338,7 +359,7 @@ class AuthService {
 
       return { success: true };
     } catch (error) {
-      console.error('Password reset request error:', error);
+      Logger.error('Password reset request error:', error);
       return {
         success: false,
         error: 'Password reset request failed',
@@ -368,9 +389,9 @@ class AuthService {
   async cleanup(): Promise<void> {
     try {
       const cleanedCount = await sessionService.cleanupExpiredSessions();
-      console.log(`Cleaned up ${cleanedCount} expired sessions`);
+      Logger.info(`Cleaned up ${cleanedCount} expired sessions`);
     } catch (error) {
-      console.error('Auth cleanup error:', error);
+      Logger.error('Auth cleanup error:', error);
     }
   }
 }

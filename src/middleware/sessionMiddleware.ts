@@ -1,117 +1,131 @@
 import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
 import { sessionService } from '../services/sessionService';
 import { jwtService } from '../services/jwtService';
-import { SessionMiddlewareOptions, AuthenticatedRequest } from '../types/session';
+import {
+  SessionMiddlewareOptions,
+  AuthenticatedRequest,
+} from '../types/session';
+import { Logger } from '../utils/logger';
 
 declare module 'fastify' {
   interface FastifyRequest extends AuthenticatedRequest {}
 }
 
-export const sessionMiddleware = (options: SessionMiddlewareOptions = {}): FastifyPluginCallback => {
+export const sessionMiddleware = (
+  options: SessionMiddlewareOptions = {}
+): FastifyPluginCallback => {
   const {
     required = true,
     autoRefresh = true,
     refreshThreshold = 3600,
   } = options;
 
-  return async (fastify, _options) => {
-    fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-      try {
-        const authHeader = request.headers.authorization;
-        const token = jwtService.extractBearerToken(authHeader);
+  return async (fastify, _options): Promise<void> => {
+    fastify.addHook(
+      'preHandler',
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+          const authHeader = request.headers.authorization;
+          const token = jwtService.extractBearerToken(authHeader);
 
-        if (!token) {
-          if (required) {
-            return reply.status(401).send({
-              error: 'Unauthorized',
-              message: 'No authentication token provided',
-            });
+          if (!token) {
+            if (required) {
+              return reply.status(401).send({
+                error: 'Unauthorized',
+                message: 'No authentication token provided',
+              });
+            }
+            return;
           }
-          return;
-        }
 
-        const tokenValidation = jwtService.verifyToken(token);
+          const tokenValidation = jwtService.verifyToken(token);
 
-        if (!tokenValidation.isValid) {
-          if (required) {
-            return reply.status(401).send({
-              error: 'Unauthorized',
-              message: tokenValidation.error || 'Invalid token',
-            });
+          if (!tokenValidation.isValid) {
+            if (required) {
+              return reply.status(401).send({
+                error: 'Unauthorized',
+                message: tokenValidation.error || 'Invalid token',
+              });
+            }
+            return;
           }
-          return;
-        }
 
-        const { payload } = tokenValidation;
-        if (!payload?.sessionId) {
-          if (required) {
-            return reply.status(401).send({
-              error: 'Unauthorized',
-              message: 'Invalid token payload',
-            });
+          const { payload } = tokenValidation;
+          if (!payload?.sessionId) {
+            if (required) {
+              return reply.status(401).send({
+                error: 'Unauthorized',
+                message: 'Invalid token payload',
+              });
+            }
+            return;
           }
-          return;
-        }
 
-        const sessionValidation = await sessionService.validateSession(payload.sessionId);
+          const sessionValidation = await sessionService.validateSession(
+            payload.sessionId
+          );
 
-        if (!sessionValidation.isValid) {
-          if (required) {
-            return reply.status(401).send({
-              error: 'Unauthorized',
-              message: sessionValidation.error || 'Invalid session',
-            });
+          if (!sessionValidation.isValid) {
+            if (required) {
+              return reply.status(401).send({
+                error: 'Unauthorized',
+                message: sessionValidation.error || 'Invalid session',
+              });
+            }
+            return;
           }
-          return;
-        }
 
-        const { session } = sessionValidation;
-        if (!session) {
-          if (required) {
-            return reply.status(401).send({
-              error: 'Unauthorized',
-              message: 'Session not found',
-            });
+          const { session } = sessionValidation;
+          if (!session) {
+            if (required) {
+              return reply.status(401).send({
+                error: 'Unauthorized',
+                message: 'Session not found',
+              });
+            }
+            return;
           }
-          return;
-        }
 
-        request.user = {
-          userId: session.userId,
-          email: session.email || payload.email,
-          role: (session.role || payload.role) || undefined,
-          sessionId: payload.sessionId,
-        };
+          request.user = {
+            userId: session.userId,
+            email: session.email || payload.email,
+            role: session.role || payload.role || undefined,
+            sessionId: payload.sessionId,
+          };
 
-        request.session = session;
+          request.session = session;
 
-        if (autoRefresh && tokenValidation.needsRefresh) {
-          const timeUntilExpiry = jwtService.getTimeUntilExpiry(token);
+          if (autoRefresh && tokenValidation.needsRefresh) {
+            const timeUntilExpiry = jwtService.getTimeUntilExpiry(token);
 
-          if (timeUntilExpiry > 0 && timeUntilExpiry < refreshThreshold) {
-            try {
-              const refreshResult = jwtService.refreshToken(token, payload.sessionId);
+            if (timeUntilExpiry > 0 && timeUntilExpiry < refreshThreshold) {
+              try {
+                const refreshResult = jwtService.refreshToken(
+                  token,
+                  payload.sessionId
+                );
 
-              if (refreshResult.success && refreshResult.tokens) {
-                reply.header('X-New-Token', refreshResult.tokens.accessToken);
-                reply.header('X-Token-Refreshed', 'true');
+                if (refreshResult.success && refreshResult.tokens) {
+                  reply.header('X-New-Token', refreshResult.tokens.accessToken);
+                  reply.header('X-Token-Refreshed', 'true');
+                }
+              } catch (refreshError) {
+                Logger.error('Error refreshing token:', refreshError);
               }
-            } catch (refreshError) {
-              console.error('Error refreshing token:', refreshError);
             }
           }
-        }
-      } catch (error) {
-        console.error('Session middleware error:', error);
+        } catch (error) {
+          Logger.error('Session middleware error:', error);
 
-        if (required) {
-          return reply.status(500).send({
-            error: 'Internal Server Error',
-            message: 'Session validation failed',
-          });
+          if (required) {
+            return reply.status(500).send({
+              error: 'Internal Server Error',
+              message: 'Session validation failed',
+            });
+          }
         }
       }
-    });
+    );
   };
 };
 

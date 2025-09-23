@@ -32,14 +32,12 @@
   },
   "include": [
     "src/**/*",
-    "tests/**/*"
+    "tests/**/*",
+    "test-*.js"
   ],
   "exclude": [
     "node_modules",
-    "dist",
-    "src/**/*.test.ts",
-    "src/**/*.spec.ts",
-    "src/tests"
+    "dist"
   ],
   "ts-node": {
     "transpileOnly": true,

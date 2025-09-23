@@ -1,5 +1,6 @@
 import Redis, { RedisOptions } from 'ioredis';
 import { env } from './environment';
+import { Logger } from '../utils/logger';
 
 export interface RedisConfig {
   host: string;
@@ -55,29 +56,29 @@ class RedisClient {
     this.client = new Redis(redisOptions);
 
     this.client.on('connect', () => {
-      console.log('Redis connection established');
+      Logger.info('Redis connection established');
     });
 
     this.client.on('ready', () => {
-      console.log('Redis client ready');
+      Logger.info('Redis client ready');
     });
 
-    this.client.on('error', (error) => {
-      console.error('Redis connection error:', error);
+    this.client.on('error', error => {
+      Logger.error('Redis connection error:', error);
     });
 
     this.client.on('close', () => {
-      console.log('Redis connection closed');
+      Logger.info('Redis connection closed');
     });
 
     this.client.on('reconnecting', () => {
-      console.log('Redis reconnecting...');
+      Logger.info('Redis reconnecting...');
     });
 
     try {
       await this.client.connect();
     } catch (connectError) {
-      console.error('Failed to connect to Redis:', connectError);
+      Logger.error('Failed to connect to Redis:', connectError);
       throw connectError;
     }
   }
@@ -121,7 +122,7 @@ class RedisClient {
         status: 'connected',
         latency,
       };
-    } catch (error) {
+    } catch {
       return { status: 'disconnected' };
     }
   }

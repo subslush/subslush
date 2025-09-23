@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { env } from '../config/environment';
 import { EncryptedSessionData } from '../types/session';
+import { Logger } from './logger';
 
 class EncryptionService {
   private readonly algorithm = 'aes-256-gcm';
@@ -28,7 +29,7 @@ class EncryptionService {
         tag: tag.toString('hex'),
       };
     } catch (error) {
-      console.error('Error encrypting data:', error);
+      Logger.error('Error encrypting data:', error);
       throw new Error('Failed to encrypt session data');
     }
   }
@@ -50,7 +51,7 @@ class EncryptionService {
 
       return decrypted;
     } catch (error) {
-      console.error('Error decrypting data:', error);
+      Logger.error('Error decrypting data:', error);
       throw new Error('Failed to decrypt session data');
     }
   }

@@ -1,4 +1,5 @@
 import { redisClient } from '../config/redis';
+import { Logger } from '../utils/logger';
 
 export interface CacheService {
   get<T>(key: string): Promise<T | null>;
@@ -40,7 +41,7 @@ class RedisCacheService implements CacheService {
       const value = await client.get(key);
       return this.deserializeValue<T>(value);
     } catch (error) {
-      console.error(`Cache GET error for key "${key}":`, error);
+      Logger.error(`Cache GET error for key "${key}":`, error);
       throw error;
     }
   }
@@ -55,11 +56,15 @@ class RedisCacheService implements CacheService {
         return result === 'OK';
       } else {
         const config = redisClient.getConfig();
-        const result = await client.setex(key, config.ttlDefault, serializedValue);
+        const result = await client.setex(
+          key,
+          config.ttlDefault,
+          serializedValue
+        );
         return result === 'OK';
       }
     } catch (error) {
-      console.error(`Cache SET error for key "${key}":`, error);
+      Logger.error(`Cache SET error for key "${key}":`, error);
       throw error;
     }
   }
@@ -70,7 +75,7 @@ class RedisCacheService implements CacheService {
       const result = await client.del(key);
       return result > 0;
     } catch (error) {
-      console.error(`Cache DEL error for key "${key}":`, error);
+      Logger.error(`Cache DEL error for key "${key}":`, error);
       throw error;
     }
   }
@@ -81,7 +86,7 @@ class RedisCacheService implements CacheService {
       const result = await client.exists(key);
       return result === 1;
     } catch (error) {
-      console.error(`Cache EXISTS error for key "${key}":`, error);
+      Logger.error(`Cache EXISTS error for key "${key}":`, error);
       throw error;
     }
   }
@@ -92,7 +97,10 @@ class RedisCacheService implements CacheService {
       const value = await client.hget(key, field);
       return this.deserializeValue<T>(value);
     } catch (error) {
-      console.error(`Cache HGET error for key "${key}", field "${field}":`, error);
+      Logger.error(
+        `Cache HGET error for key "${key}", field "${field}":`,
+        error
+      );
       throw error;
     }
   }
@@ -104,7 +112,10 @@ class RedisCacheService implements CacheService {
       const result = await client.hset(key, field, serializedValue);
       return result >= 0;
     } catch (error) {
-      console.error(`Cache HSET error for key "${key}", field "${field}":`, error);
+      Logger.error(
+        `Cache HSET error for key "${key}", field "${field}":`,
+        error
+      );
       throw error;
     }
   }
@@ -121,7 +132,7 @@ class RedisCacheService implements CacheService {
 
       return deserializedResult;
     } catch (error) {
-      console.error(`Cache HGETALL error for key "${key}":`, error);
+      Logger.error(`Cache HGETALL error for key "${key}":`, error);
       throw error;
     }
   }
@@ -132,7 +143,7 @@ class RedisCacheService implements CacheService {
       const result = await client.expire(key, ttl);
       return result === 1;
     } catch (error) {
-      console.error(`Cache EXPIRE error for key "${key}":`, error);
+      Logger.error(`Cache EXPIRE error for key "${key}":`, error);
       throw error;
     }
   }
@@ -142,7 +153,7 @@ class RedisCacheService implements CacheService {
       const client = redisClient.getClient();
       return await client.ttl(key);
     } catch (error) {
-      console.error(`Cache TTL error for key "${key}":`, error);
+      Logger.error(`Cache TTL error for key "${key}":`, error);
       throw error;
     }
   }
@@ -152,7 +163,7 @@ class RedisCacheService implements CacheService {
       const client = redisClient.getClient();
       await client.flushdb();
     } catch (error) {
-      console.error('Cache FLUSHDB error:', error);
+      Logger.error('Cache FLUSHDB error:', error);
       throw error;
     }
   }
@@ -163,12 +174,14 @@ class RedisCacheService implements CacheService {
       const values = await client.mget(...keys);
       return values.map(value => this.deserializeValue<T>(value));
     } catch (error) {
-      console.error(`Cache MGET error for keys "${keys.join(', ')}":`, error);
+      Logger.error(`Cache MGET error for keys "${keys.join(', ')}":`, error);
       throw error;
     }
   }
 
-  async multiSet<T>(keyValuePairs: Array<{ key: string; value: T; ttl?: number }>): Promise<boolean> {
+  async multiSet<T>(
+    keyValuePairs: Array<{ key: string; value: T; ttl?: number }>
+  ): Promise<boolean> {
     try {
       const client = redisClient.getClient();
       const pipeline = client.pipeline();
@@ -184,9 +197,11 @@ class RedisCacheService implements CacheService {
       }
 
       const results = await pipeline.exec();
-      return results ? results.every(([err, result]) => err === null && result === 'OK') : false;
+      return results
+        ? results.every(([err, result]) => err === null && result === 'OK')
+        : false;
     } catch (error) {
-      console.error('Cache MSET error:', error);
+      Logger.error('Cache MSET error:', error);
       throw error;
     }
   }
@@ -196,7 +211,7 @@ class RedisCacheService implements CacheService {
       const client = redisClient.getClient();
       return await client.incrby(key, delta);
     } catch (error) {
-      console.error(`Cache INCREMENT error for key "${key}":`, error);
+      Logger.error(`Cache INCREMENT error for key "${key}":`, error);
       throw error;
     }
   }
@@ -206,7 +221,7 @@ class RedisCacheService implements CacheService {
       const client = redisClient.getClient();
       return await client.decrby(key, delta);
     } catch (error) {
-      console.error(`Cache DECREMENT error for key "${key}":`, error);
+      Logger.error(`Cache DECREMENT error for key "${key}":`, error);
       throw error;
     }
   }

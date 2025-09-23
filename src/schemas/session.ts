@@ -3,17 +3,27 @@ import { z } from 'zod';
 export const sessionCreateSchema = z.object({
   email: z.string().email().optional(),
   role: z.string().optional(),
-  ipAddress: z.string().ip().optional(),
+  ipAddress: z
+    .string()
+    .regex(
+      /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$|^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/
+    )
+    .optional(),
   userAgent: z.string().optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const sessionUpdateSchema = z.object({
   email: z.string().email().optional(),
   role: z.string().optional(),
-  ipAddress: z.string().ip().optional(),
+  ipAddress: z
+    .string()
+    .regex(
+      /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$|^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/
+    )
+    .optional(),
   userAgent: z.string().optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const sessionValidationSchema = z.object({
@@ -23,7 +33,10 @@ export const sessionValidationSchema = z.object({
 export const authHeaderSchema = z.object({
   authorization: z
     .string()
-    .regex(/^Bearer\s+[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/, 'Invalid JWT format')
+    .regex(
+      /^Bearer\s+[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/,
+      'Invalid JWT format'
+    )
     .optional(),
 });
 
@@ -33,16 +46,18 @@ export const loginRequestSchema = z.object({
   rememberMe: z.boolean().optional().default(false),
 });
 
-export const registerRequestSchema = z.object({
-  email: z.string().email('Valid email is required'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  confirmPassword: z.string().min(1, 'Password confirmation is required'),
-  firstName: z.string().min(1, 'First name is required').optional(),
-  lastName: z.string().min(1, 'Last name is required').optional(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
+export const registerRequestSchema = z
+  .object({
+    email: z.string().email('Valid email is required'),
+    password: z.string().min(8, 'Password must be at least 8 characters'),
+    confirmPassword: z.string().min(1, 'Password confirmation is required'),
+    firstName: z.string().min(1, 'First name is required').optional(),
+    lastName: z.string().min(1, 'Last name is required').optional(),
+  })
+  .refine(data => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ['confirmPassword'],
+  });
 
 export const logoutRequestSchema = z.object({
   allDevices: z.boolean().optional().default(false),
@@ -52,14 +67,17 @@ export const refreshTokenRequestSchema = z.object({
   refreshToken: z.string().optional(),
 });
 
-export const sessionMetadataSchema = z.record(z.union([
+export const sessionMetadataSchema = z.record(
   z.string(),
-  z.number(),
-  z.boolean(),
-  z.null(),
-  z.array(z.any()),
-  z.record(z.any()),
-]));
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(z.unknown()),
+    z.record(z.string(), z.unknown()),
+  ])
+);
 
 export const userSessionInfoSchema = z.object({
   sessionId: z.string(),
@@ -83,7 +101,11 @@ export type AuthHeaderInput = z.infer<typeof authHeaderSchema>;
 export type LoginRequestInput = z.infer<typeof loginRequestSchema>;
 export type RegisterRequestInput = z.infer<typeof registerRequestSchema>;
 export type LogoutRequestInput = z.infer<typeof logoutRequestSchema>;
-export type RefreshTokenRequestInput = z.infer<typeof refreshTokenRequestSchema>;
+export type RefreshTokenRequestInput = z.infer<
+  typeof refreshTokenRequestSchema
+>;
 export type SessionMetadataInput = z.infer<typeof sessionMetadataSchema>;
 export type UserSessionInfoInput = z.infer<typeof userSessionInfoSchema>;
-export type SessionListResponseInput = z.infer<typeof sessionListResponseSchema>;
+export type SessionListResponseInput = z.infer<
+  typeof sessionListResponseSchema
+>;

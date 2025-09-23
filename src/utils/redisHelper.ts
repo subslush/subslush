@@ -1,4 +1,5 @@
 import { redisClient } from '../config/redis';
+import { Logger } from './logger';
 
 export interface RedisPattern {
   key: string;
@@ -41,21 +42,30 @@ export class RedisHelper {
     return this.generateKey('lock', resource);
   }
 
-  static async getKeysByPattern(pattern: string, count: number = 100): Promise<string[]> {
+  static async getKeysByPattern(
+    pattern: string,
+    count: number = 100
+  ): Promise<string[]> {
     try {
       const client = redisClient.getClient();
       const keys: string[] = [];
       let cursor = '0';
 
       do {
-        const [newCursor, batch] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', count);
+        const [newCursor, batch] = await client.scan(
+          cursor,
+          'MATCH',
+          pattern,
+          'COUNT',
+          count
+        );
         cursor = newCursor;
         keys.push(...batch);
       } while (cursor !== '0');
 
       return keys;
     } catch (error) {
-      console.error(`Error getting keys by pattern "${pattern}":`, error);
+      Logger.error(`Error getting keys by pattern "${pattern}":`, error);
       throw error;
     }
   }
@@ -71,7 +81,7 @@ export class RedisHelper {
 
       const [type, ttl] = await Promise.all([
         client.type(key),
-        client.ttl(key)
+        client.ttl(key),
       ]);
 
       let size: number | undefined;
@@ -99,10 +109,10 @@ export class RedisHelper {
         key,
         type,
         ttl,
-        size
+        size,
       };
     } catch (error) {
-      console.error(`Error getting key info for "${key}":`, error);
+      Logger.error(`Error getting key info for "${key}":`, error);
       throw error;
     }
   }
@@ -126,7 +136,7 @@ export class RedisHelper {
 
       return deletedCount;
     } catch (error) {
-      console.error(`Error deleting keys by pattern "${pattern}":`, error);
+      Logger.error(`Error deleting keys by pattern "${pattern}":`, error);
       throw error;
     }
   }
@@ -159,12 +169,15 @@ export class RedisHelper {
 
       return null;
     } catch (error) {
-      console.error(`Error acquiring lock for resource "${resource}":`, error);
+      Logger.error(`Error acquiring lock for resource "${resource}":`, error);
       throw error;
     }
   }
 
-  static async releaseLock(resource: string, lockValue: string): Promise<boolean> {
+  static async releaseLock(
+    resource: string,
+    lockValue: string
+  ): Promise<boolean> {
     try {
       const lockKey = this.generateLockKey(resource);
       const client = redisClient.getClient();
@@ -180,12 +193,16 @@ export class RedisHelper {
       const result = await client.eval(script, 1, lockKey, lockValue);
       return result === 1;
     } catch (error) {
-      console.error(`Error releasing lock for resource "${resource}":`, error);
+      Logger.error(`Error releasing lock for resource "${resource}":`, error);
       throw error;
     }
   }
 
-  static async extendLock(resource: string, lockValue: string, ttl: number): Promise<boolean> {
+  static async extendLock(
+    resource: string,
+    lockValue: string,
+    ttl: number
+  ): Promise<boolean> {
     try {
       const lockKey = this.generateLockKey(resource);
       const client = redisClient.getClient();
@@ -201,12 +218,14 @@ export class RedisHelper {
       const result = await client.eval(script, 1, lockKey, lockValue, ttl);
       return result === 1;
     } catch (error) {
-      console.error(`Error extending lock for resource "${resource}":`, error);
+      Logger.error(`Error extending lock for resource "${resource}":`, error);
       throw error;
     }
   }
 
-  static async batchOperations<T>(operations: RedisBatchOperation<T>[]): Promise<Array<T | null | boolean>> {
+  static async batchOperations<T>(
+    operations: RedisBatchOperation<T>[]
+  ): Promise<Array<T | null | boolean>> {
     try {
       const client = redisClient.getClient();
       const pipeline = client.pipeline();
@@ -269,7 +288,7 @@ export class RedisHelper {
         }
       });
     } catch (error) {
-      console.error('Error executing batch operations:', error);
+      Logger.error('Error executing batch operations:', error);
       throw error;
     }
   }
@@ -292,14 +311,22 @@ export class RedisHelper {
       pipeline.setex(backupKey, actualTtl, serializedValue);
 
       const results = await pipeline.exec();
-      return results ? results.every(([err, result]) => err === null && result === 'OK') : false;
+      return results
+        ? results.every(([err, result]) => err === null && result === 'OK')
+        : false;
     } catch (error) {
-      console.error(`Error setting with backup (${primaryKey}, ${backupKey}):`, error);
+      Logger.error(
+        `Error setting with backup (${primaryKey}, ${backupKey}):`,
+        error
+      );
       throw error;
     }
   }
 
-  static async getWithFallback<T>(primaryKey: string, fallbackKey: string): Promise<T | null> {
+  static async getWithFallback<T>(
+    primaryKey: string,
+    fallbackKey: string
+  ): Promise<T | null> {
     try {
       const client = redisClient.getClient();
       const [primary, fallback] = await client.mget(primaryKey, fallbackKey);
@@ -315,7 +342,10 @@ export class RedisHelper {
 
       return tryParse(primary) || tryParse(fallback);
     } catch (error) {
-      console.error(`Error getting with fallback (${primaryKey}, ${fallbackKey}):`, error);
+      Logger.error(
+        `Error getting with fallback (${primaryKey}, ${fallbackKey}):`,
+        error
+      );
       throw error;
     }
   }
@@ -346,7 +376,7 @@ export class RedisHelper {
         usedMemoryRss: parseInt(stats['used_memory_rss'] || '0'),
       };
     } catch (error) {
-      console.error('Error getting memory usage:', error);
+      Logger.error('Error getting memory usage:', error);
       throw error;
     }
   }
@@ -372,10 +402,12 @@ export class RedisHelper {
       return {
         connectedClients: parseInt(stats['connected_clients'] || '0'),
         blockedClients: parseInt(stats['blocked_clients'] || '0'),
-        totalConnectionsReceived: parseInt(stats['total_connections_received'] || '0'),
+        totalConnectionsReceived: parseInt(
+          stats['total_connections_received'] || '0'
+        ),
       };
     } catch (error) {
-      console.error('Error getting connection info:', error);
+      Logger.error('Error getting connection info:', error);
       throw error;
     }
   }

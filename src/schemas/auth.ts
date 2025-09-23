@@ -8,22 +8,27 @@ const passwordSchema = z
   .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
   .regex(/[0-9]/, 'Password must contain at least one number')
-  .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character');
+  .regex(
+    /[^A-Za-z0-9]/,
+    'Password must contain at least one special character'
+  );
 
-export const registerSchema = z.object({
-  email: z
-    .string()
-    .min(1, 'Email is required')
-    .regex(emailRegex, 'Please enter a valid email address')
-    .max(255, 'Email must be less than 255 characters')
-    .toLowerCase()
-    .trim(),
-  password: passwordSchema,
-  confirmPassword: z.string().min(1, 'Password confirmation is required')
-}).refine((data) => data.password === data.confirmPassword, {
-  message: 'Passwords do not match',
-  path: ['confirmPassword']
-});
+export const registerSchema = z
+  .object({
+    email: z
+      .string()
+      .min(1, 'Email is required')
+      .regex(emailRegex, 'Please enter a valid email address')
+      .max(255, 'Email must be less than 255 characters')
+      .toLowerCase()
+      .trim(),
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, 'Password confirmation is required'),
+  })
+  .refine(data => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
 
 export const loginSchema = z.object({
   email: z
@@ -33,9 +38,7 @@ export const loginSchema = z.object({
     .max(255, 'Email must be less than 255 characters')
     .toLowerCase()
     .trim(),
-  password: z
-    .string()
-    .min(1, 'Password is required')
+  password: z.string().min(1, 'Password is required'),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -58,21 +61,25 @@ export interface ErrorResponse {
   details?: string;
 }
 
-export function validateRegisterInput(data: unknown): { success: true; data: RegisterInput } | { success: false; error: ErrorResponse } {
+export function validateRegisterInput(
+  data: unknown
+):
+  | { success: true; data: RegisterInput }
+  | { success: false; error: ErrorResponse } {
   try {
     const validatedData = registerSchema.parse(data);
     return { success: true, data: validatedData };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const firstError = error.errors[0];
+      const firstError = error.issues[0];
       if (firstError) {
         return {
           success: false,
           error: {
             success: false,
             error: firstError.message,
-            details: `Field: ${firstError.path.join('.')}`
-          }
+            details: `Field: ${firstError.path.join('.')}`,
+          },
         };
       }
     }
@@ -80,27 +87,31 @@ export function validateRegisterInput(data: unknown): { success: true; data: Reg
       success: false,
       error: {
         success: false,
-        error: 'Invalid input data'
-      }
+        error: 'Invalid input data',
+      },
     };
   }
 }
 
-export function validateLoginInput(data: unknown): { success: true; data: LoginInput } | { success: false; error: ErrorResponse } {
+export function validateLoginInput(
+  data: unknown
+):
+  | { success: true; data: LoginInput }
+  | { success: false; error: ErrorResponse } {
   try {
     const validatedData = loginSchema.parse(data);
     return { success: true, data: validatedData };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const firstError = error.errors[0];
+      const firstError = error.issues[0];
       if (firstError) {
         return {
           success: false,
           error: {
             success: false,
             error: firstError.message,
-            details: `Field: ${firstError.path.join('.')}`
-          }
+            details: `Field: ${firstError.path.join('.')}`,
+          },
         };
       }
     }
@@ -108,8 +119,8 @@ export function validateLoginInput(data: unknown): { success: true; data: LoginI
       success: false,
       error: {
         success: false,
-        error: 'Invalid input data'
-      }
+        error: 'Invalid input data',
+      },
     };
   }
 }

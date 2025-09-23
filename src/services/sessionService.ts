@@ -3,26 +3,32 @@ import { cacheService } from './cacheService';
 import { redisClient } from '../config/redis';
 import { encryptionService } from '../utils/encryption';
 import { env } from '../config/environment';
+import { Logger } from '../utils/logger';
 import {
   SessionData,
   SessionCreateOptions,
   SessionValidationResult,
-  UserSessionInfo
+  UserSessionInfo,
 } from '../types/session';
 
-
 export interface SessionService {
-  createSession(userId: string, options: SessionCreateOptions): Promise<string>;
-  getSession(sessionId: string): Promise<SessionData | null>;
-  updateSession(sessionId: string, data: Partial<Omit<SessionData, 'userId' | 'createdAt'>>): Promise<boolean>;
-  deleteSession(sessionId: string): Promise<boolean>;
-  refreshSession(sessionId: string): Promise<boolean>;
+  createSession(
+    _userId: string,
+    _options: SessionCreateOptions
+  ): Promise<string>;
+  getSession(_sessionId: string): Promise<SessionData | null>;
+  updateSession(
+    _sessionId: string,
+    _data: Partial<Omit<SessionData, 'userId' | 'createdAt'>>
+  ): Promise<boolean>;
+  deleteSession(_sessionId: string): Promise<boolean>;
+  refreshSession(_sessionId: string): Promise<boolean>;
   cleanupExpiredSessions(): Promise<number>;
-  getUserSessions(userId: string): Promise<string[]>;
-  getUserSessionsInfo(userId: string): Promise<UserSessionInfo[]>;
-  deleteUserSessions(userId: string): Promise<number>;
-  validateSession(sessionId: string): Promise<SessionValidationResult>;
-  enforceSessionLimit(userId: string): Promise<void>;
+  getUserSessions(_userId: string): Promise<string[]>;
+  getUserSessionsInfo(_userId: string): Promise<UserSessionInfo[]>;
+  deleteUserSessions(_userId: string): Promise<number>;
+  validateSession(_sessionId: string): Promise<SessionValidationResult>;
+  enforceSessionLimit(_userId: string): Promise<void>;
 }
 
 class RedisSessionService implements SessionService {
@@ -46,7 +52,10 @@ class RedisSessionService implements SessionService {
     return redisClient.getConfig().sessionTtl;
   }
 
-  async createSession(userId: string, options: SessionCreateOptions): Promise<string> {
+  async createSession(
+    userId: string,
+    options: SessionCreateOptions
+  ): Promise<string> {
     try {
       await this.enforceSessionLimit(userId);
 
@@ -87,7 +96,7 @@ class RedisSessionService implements SessionService {
 
       return sessionId;
     } catch (error) {
-      console.error('Error creating session:', error);
+      Logger.error('Error creating session:', error);
       throw error;
     }
   }
@@ -102,16 +111,17 @@ class RedisSessionService implements SessionService {
       }
 
       if (!encryptionService.isValidEncryptedData(encryptedData)) {
-        console.error(`Invalid encrypted session data for session ${sessionId}`);
+        Logger.error(`Invalid encrypted session data for session ${sessionId}`);
         await this.deleteSession(sessionId);
         return null;
       }
 
-      const sessionData = encryptionService.decryptObject<SessionData>(encryptedData);
+      const sessionData =
+        encryptionService.decryptObject<SessionData>(encryptedData);
       await this.updateLastAccessed(sessionId);
       return sessionData;
     } catch (error) {
-      console.error(`Error getting session ${sessionId}:`, error);
+      Logger.error(`Error getting session ${sessionId}:`, error);
       return null;
     }
   }
@@ -124,11 +134,15 @@ class RedisSessionService implements SessionService {
       const sessionKey = this.getSessionKey(sessionId);
       const encryptedData = await cacheService.get<any>(sessionKey);
 
-      if (!encryptedData || !encryptionService.isValidEncryptedData(encryptedData)) {
+      if (
+        !encryptedData ||
+        !encryptionService.isValidEncryptedData(encryptedData)
+      ) {
         return false;
       }
 
-      const existingSession = encryptionService.decryptObject<SessionData>(encryptedData);
+      const existingSession =
+        encryptionService.decryptObject<SessionData>(encryptedData);
       const updatedSession: SessionData = {
         ...existingSession,
         ...data,
@@ -139,7 +153,7 @@ class RedisSessionService implements SessionService {
       const ttl = this.getSessionTtl();
       return await cacheService.set(sessionKey, newEncryptedData, ttl);
     } catch (error) {
-      console.error(`Error updating session ${sessionId}:`, error);
+      Logger.error(`Error updating session ${sessionId}:`, error);
       throw error;
     }
   }
@@ -162,9 +176,13 @@ class RedisSessionService implements SessionService {
       pipeline.srem(userSessionsKey, sessionId);
 
       const results = await pipeline.exec();
-      return results ? results.some(([err, result]) => err === null && result && (result as number) > 0) : false;
+      return results
+        ? results.some(
+            ([err, result]) => err === null && result && (result as number) > 0
+          )
+        : false;
     } catch (error) {
-      console.error(`Error deleting session ${sessionId}:`, error);
+      Logger.error(`Error deleting session ${sessionId}:`, error);
       throw error;
     }
   }
@@ -186,7 +204,7 @@ class RedisSessionService implements SessionService {
 
       return await cacheService.set(sessionKey, updatedSession, ttl);
     } catch (error) {
-      console.error(`Error refreshing session ${sessionId}:`, error);
+      Logger.error(`Error refreshing session ${sessionId}:`, error);
       throw error;
     }
   }
@@ -239,7 +257,7 @@ class RedisSessionService implements SessionService {
 
       return cleanedCount;
     } catch (error) {
-      console.error('Error cleaning up expired sessions:', error);
+      Logger.error('Error cleaning up expired sessions:', error);
       throw error;
     }
   }
@@ -276,7 +294,7 @@ class RedisSessionService implements SessionService {
 
       return validSessions;
     } catch (error) {
-      console.error(`Error getting user sessions for ${userId}:`, error);
+      Logger.error(`Error getting user sessions for ${userId}:`, error);
       throw error;
     }
   }
@@ -301,22 +319,29 @@ class RedisSessionService implements SessionService {
       pipeline.del(userSessionsKey);
 
       const results = await pipeline.exec();
-      const successfulDeletions = results ? results.filter(result => result && result[0] === null && result[1] && (result[1] as number) > 0).length : 0;
+      const successfulDeletions = results
+        ? results.filter(
+            result =>
+              result &&
+              result[0] === null &&
+              result[1] &&
+              (result[1] as number) > 0
+          ).length
+        : 0;
 
       return Math.min(successfulDeletions, sessions.length);
     } catch (error) {
-      console.error(`Error deleting user sessions for ${userId}:`, error);
+      Logger.error(`Error deleting user sessions for ${userId}:`, error);
       throw error;
     }
   }
-
 
   async getSessionCount(): Promise<number> {
     try {
       const client = redisClient.getClient();
       return await client.scard(this.ACTIVE_SESSIONS_SET);
     } catch (error) {
-      console.error('Error getting session count:', error);
+      Logger.error('Error getting session count:', error);
       throw error;
     }
   }
@@ -346,18 +371,19 @@ class RedisSessionService implements SessionService {
           try {
             const encryptedData = JSON.parse(result as string);
             if (encryptionService.isValidEncryptedData(encryptedData)) {
-              const sessionData = encryptionService.decryptObject<SessionData>(encryptedData);
+              const sessionData =
+                encryptionService.decryptObject<SessionData>(encryptedData);
               uniqueUsers.add(sessionData.userId);
             }
           } catch (parseError) {
-            console.error('Error parsing session data:', parseError);
+            Logger.error('Error parsing session data:', parseError);
           }
         }
       });
 
       return uniqueUsers.size;
     } catch (error) {
-      console.error('Error getting active user count:', error);
+      Logger.error('Error getting active user count:', error);
       throw error;
     }
   }
@@ -403,7 +429,7 @@ class RedisSessionService implements SessionService {
         sessionId,
       };
     } catch (error) {
-      console.error(`Error validating session ${sessionId}:`, error);
+      Logger.error(`Error validating session ${sessionId}:`, error);
       return {
         isValid: false,
         error: 'Session validation failed',
@@ -437,7 +463,8 @@ class RedisSessionService implements SessionService {
           try {
             const encryptedData = JSON.parse(result[1] as string);
             if (encryptionService.isValidEncryptedData(encryptedData)) {
-              const sessionData = encryptionService.decryptObject<SessionData>(encryptedData);
+              const sessionData =
+                encryptionService.decryptObject<SessionData>(encryptedData);
               sessionInfos.push({
                 sessionId,
                 createdAt: sessionData.createdAt,
@@ -447,14 +474,17 @@ class RedisSessionService implements SessionService {
               });
             }
           } catch (parseError) {
-            console.error(`Error parsing session data for ${sessionId}:`, parseError);
+            Logger.error(
+              `Error parsing session data for ${sessionId}:`,
+              parseError
+            );
           }
         }
       });
 
       return sessionInfos.sort((a, b) => b.lastAccessedAt - a.lastAccessedAt);
     } catch (error) {
-      console.error(`Error getting user sessions info for ${userId}:`, error);
+      Logger.error(`Error getting user sessions info for ${userId}:`, error);
       throw error;
     }
   }
@@ -471,13 +501,16 @@ class RedisSessionService implements SessionService {
       const sessionInfos = await this.getUserSessionsInfo(userId);
       sessionInfos.sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
 
-      const sessionsToDelete = sessionInfos.slice(0, sessionInfos.length - maxSessions + 1);
+      const sessionsToDelete = sessionInfos.slice(
+        0,
+        sessionInfos.length - maxSessions + 1
+      );
 
       for (const sessionInfo of sessionsToDelete) {
         await this.deleteSession(sessionInfo.sessionId);
       }
     } catch (error) {
-      console.error(`Error enforcing session limit for user ${userId}:`, error);
+      Logger.error(`Error enforcing session limit for user ${userId}:`, error);
       throw error;
     }
   }
@@ -487,19 +520,27 @@ class RedisSessionService implements SessionService {
       const sessionKey = this.getSessionKey(sessionId);
       const encryptedData = await cacheService.get<any>(sessionKey);
 
-      if (encryptedData && encryptionService.isValidEncryptedData(encryptedData)) {
-        const sessionData = encryptionService.decryptObject<SessionData>(encryptedData);
+      if (
+        encryptedData &&
+        encryptionService.isValidEncryptedData(encryptedData)
+      ) {
+        const sessionData =
+          encryptionService.decryptObject<SessionData>(encryptedData);
         const updatedSession: SessionData = {
           ...sessionData,
           lastAccessedAt: Date.now(),
         };
 
-        const newEncryptedData = encryptionService.encryptObject(updatedSession);
+        const newEncryptedData =
+          encryptionService.encryptObject(updatedSession);
         const ttl = this.getSessionTtl();
         await cacheService.set(sessionKey, newEncryptedData, ttl);
       }
     } catch (error) {
-      console.error(`Error updating last accessed for session ${sessionId}:`, error);
+      Logger.error(
+        `Error updating last accessed for session ${sessionId}:`,
+        error
+      );
     }
   }
 }

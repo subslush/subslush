@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
 import { redisClient } from '../config/redis';
+import { Logger } from '../utils/logger';
 
 export interface RateLimitOptions {
   windowMs?: number;
@@ -7,80 +8,90 @@ export interface RateLimitOptions {
   keyGenerator?: (request: FastifyRequest) => string;
   skipFailedRequests?: boolean;
   skipSuccessfulRequests?: boolean;
-  onLimitReached?: (request: FastifyRequest, reply: FastifyReply) => void;
+  onLimitReached?: (request: FastifyRequest, reply?: FastifyReply) => void;
 }
 
-export const rateLimitMiddleware = (options: RateLimitOptions = {}): FastifyPluginCallback => {
+export const rateLimitMiddleware = (
+  options: RateLimitOptions = {}
+): FastifyPluginCallback => {
   const {
     windowMs = 15 * 60 * 1000, // 15 minutes
     maxRequests = 100,
-    keyGenerator = (request: FastifyRequest) => request.ip,
+    keyGenerator = (request: FastifyRequest): string => request.ip,
     skipFailedRequests = false,
     skipSuccessfulRequests = false,
     onLimitReached,
   } = options;
 
-  return async (fastify, _options) => {
-    fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-      try {
-        const key = `rate_limit:${keyGenerator(request)}`;
-        const client = redisClient.getClient();
+  return async (fastify, _options): Promise<void> => {
+    fastify.addHook(
+      'preHandler',
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+          const key = `rate_limit:${keyGenerator(request)}`;
+          const client = redisClient.getClient();
 
-        const current = await client.incr(key);
+          const current = await client.incr(key);
 
-        if (current === 1) {
-          await client.expire(key, Math.ceil(windowMs / 1000));
-        }
+          if (current === 1) {
+            await client.expire(key, Math.ceil(windowMs / 1000));
+          }
 
-        if (current > maxRequests) {
-          if (onLimitReached) {
-            onLimitReached(request, reply);
+          if (current > maxRequests) {
+            if (onLimitReached) {
+              onLimitReached(request, reply);
+            }
+
+            const ttl = await client.ttl(key);
+            const resetTime = new Date(Date.now() + ttl * 1000);
+
+            return reply.status(429).send({
+              error: 'Too Many Requests',
+              message: 'Rate limit exceeded',
+              retryAfter: ttl,
+              resetTime: resetTime.toISOString(),
+              limit: maxRequests,
+              windowMs,
+            });
           }
 
           const ttl = await client.ttl(key);
-          const resetTime = new Date(Date.now() + (ttl * 1000));
+          const resetTime = new Date(Date.now() + ttl * 1000);
 
-          return reply.status(429).send({
-            error: 'Too Many Requests',
-            message: 'Rate limit exceeded',
-            retryAfter: ttl,
-            resetTime: resetTime.toISOString(),
-            limit: maxRequests,
-            windowMs,
+          reply.headers({
+            'X-RateLimit-Limit': maxRequests.toString(),
+            'X-RateLimit-Remaining': Math.max(
+              0,
+              maxRequests - current
+            ).toString(),
+            'X-RateLimit-Reset': resetTime.toISOString(),
+            'X-RateLimit-Window': windowMs.toString(),
           });
+        } catch (error) {
+          Logger.error('Rate limit middleware error:', error);
         }
-
-        const ttl = await client.ttl(key);
-        const resetTime = new Date(Date.now() + (ttl * 1000));
-
-        reply.headers({
-          'X-RateLimit-Limit': maxRequests.toString(),
-          'X-RateLimit-Remaining': Math.max(0, maxRequests - current).toString(),
-          'X-RateLimit-Reset': resetTime.toISOString(),
-          'X-RateLimit-Window': windowMs.toString(),
-        });
-
-      } catch (error) {
-        console.error('Rate limit middleware error:', error);
       }
-    });
+    );
 
     if (skipFailedRequests || skipSuccessfulRequests) {
-      fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
-        try {
-          const shouldSkip =
-            (skipFailedRequests && reply.statusCode >= 400) ||
-            (skipSuccessfulRequests && reply.statusCode < 400);
+      fastify.addHook(
+        'onResponse',
+        async (request: FastifyRequest, reply: FastifyReply) => {
+          try {
+            const shouldSkip =
+              (skipFailedRequests && reply.statusCode >= 400) ||
+              (skipSuccessfulRequests && reply.statusCode < 400);
 
-          if (shouldSkip) {
-            const key = `rate_limit:${keyGenerator(request)}`;
-            const client = redisClient.getClient();
-            await client.decr(key);
+            if (shouldSkip) {
+              const key = `rate_limit:${keyGenerator(request)}`;
+              const client = redisClient.getClient();
+              await client.decr(key);
+            }
+          } catch (error) {
+            Logger.error('Rate limit response hook error:', error);
           }
-        } catch (error) {
-          console.error('Rate limit response hook error:', error);
         }
-      });
+      );
     }
   };
 };
@@ -132,15 +143,17 @@ export const passwordResetRateLimit = rateLimitMiddleware({
 export const bruteForceProtection = rateLimitMiddleware({
   windowMs: 30 * 60 * 1000, // 30 minutes
   maxRequests: 20, // 20 attempts per 30 minutes
-  keyGenerator: (request: FastifyRequest) => {
+  keyGenerator: (request: FastifyRequest): string => {
     const body = request.body as any;
     const email = body?.email || 'unknown';
     return `brute_force:${email}`;
   },
-  onLimitReached: (request: FastifyRequest, _reply: FastifyReply) => {
+  onLimitReached: (request: FastifyRequest): void => {
     const body = request.body as any;
     const email = body?.email || 'unknown';
-    console.warn(`Brute force attack detected for email: ${email} from IP: ${request.ip}`);
+    Logger.warn(
+      `Brute force attack detected for email: ${email} from IP: ${request.ip}`
+    );
   },
 });
 
