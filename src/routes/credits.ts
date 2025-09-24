@@ -1,5 +1,4 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import { creditService } from '../services/creditService';
 import { CreditTransactionQuery } from '../types/credit';
 import {
@@ -15,11 +14,6 @@ import {
   adminCreditOperationMiddleware,
 } from '../middleware/creditMiddleware';
 import {
-  AddCreditsInputSchema,
-  SpendCreditsInputSchema,
-  RefundCreditsInputSchema,
-  UserIdParamSchema,
-  TransactionIdParamSchema,
   AddCreditsInput,
   SpendCreditsInput,
   RefundCreditsInput,
@@ -27,6 +21,86 @@ import {
   UserIdParam,
   TransactionIdParam,
 } from '../schemas/credit';
+
+// Native Fastify JSON Schema definitions (compatible with Fastify v5)
+const FastifySchemas = {
+  // Parameter schemas
+  userIdParam: {
+    type: 'object',
+    properties: {
+      userId: { type: 'string', format: 'uuid' },
+    },
+    required: ['userId'],
+  } as const,
+
+  transactionIdParam: {
+    type: 'object',
+    properties: {
+      transactionId: { type: 'string', format: 'uuid' },
+    },
+    required: ['transactionId'],
+  } as const,
+
+  // Body schemas
+  spendCreditsInput: {
+    type: 'object',
+    properties: {
+      userId: { type: 'string', format: 'uuid' },
+      amount: { type: 'number', minimum: 0.01, maximum: 10000 },
+      description: { type: 'string', minLength: 1, maxLength: 500 },
+      metadata: {
+        type: 'object',
+        additionalProperties: true,
+      },
+    },
+    required: ['userId', 'amount', 'description'],
+  } as const,
+
+  addCreditsInput: {
+    type: 'object',
+    properties: {
+      userId: { type: 'string', format: 'uuid' },
+      amount: { type: 'number', minimum: 0.01, maximum: 10000 },
+      type: { type: 'string', enum: ['deposit', 'bonus'] },
+      description: { type: 'string', minLength: 1, maxLength: 500 },
+      metadata: {
+        type: 'object',
+        additionalProperties: true,
+      },
+    },
+    required: ['userId', 'amount', 'type', 'description'],
+  } as const,
+
+  addCreditsDepositOnly: {
+    type: 'object',
+    properties: {
+      userId: { type: 'string', format: 'uuid' },
+      amount: { type: 'number', minimum: 0.01, maximum: 10000 },
+      type: { type: 'string', enum: ['deposit'] },
+      description: { type: 'string', minLength: 1, maxLength: 500 },
+      metadata: {
+        type: 'object',
+        additionalProperties: true,
+      },
+    },
+    required: ['userId', 'amount', 'type', 'description'],
+  } as const,
+
+  refundCreditsInput: {
+    type: 'object',
+    properties: {
+      userId: { type: 'string', format: 'uuid' },
+      amount: { type: 'number', minimum: 0.01, maximum: 10000 },
+      description: { type: 'string', minLength: 1, maxLength: 500 },
+      originalTransactionId: { type: 'string', format: 'uuid' },
+      metadata: {
+        type: 'object',
+        additionalProperties: true,
+      },
+    },
+    required: ['userId', 'amount', 'description'],
+  } as const,
+};
 
 export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
   // API info endpoint
@@ -59,7 +133,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/balance/:userId',
       {
         schema: {
-          params: zodToJsonSchema(UserIdParamSchema),
+          params: FastifySchemas.userIdParam,
         },
       },
       async (
@@ -103,7 +177,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/summary/:userId',
       {
         schema: {
-          params: zodToJsonSchema(UserIdParamSchema),
+          params: FastifySchemas.userIdParam,
         },
       },
       async (
@@ -141,7 +215,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/history/:userId',
       {
         schema: {
-          params: zodToJsonSchema(UserIdParamSchema),
+          params: FastifySchemas.userIdParam,
         },
       },
       async (
@@ -204,7 +278,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/transactions/:transactionId',
       {
         schema: {
-          params: zodToJsonSchema(TransactionIdParamSchema),
+          params: FastifySchemas.transactionIdParam,
         },
       },
       async (
@@ -246,7 +320,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/spend',
       {
         schema: {
-          body: zodToJsonSchema(SpendCreditsInputSchema),
+          body: FastifySchemas.spendCreditsInput,
         },
       },
       async (
@@ -297,14 +371,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/deposit',
       {
         schema: {
-          body: zodToJsonSchema(
-            AddCreditsInputSchema.extend({
-              type: AddCreditsInputSchema.shape.type.refine(
-                type => type === 'deposit',
-                { message: 'Only deposit type allowed for this endpoint' }
-              ),
-            })
-          ),
+          body: FastifySchemas.addCreditsDepositOnly,
         },
       },
       async (
@@ -359,7 +426,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/refund',
       {
         schema: {
-          body: zodToJsonSchema(RefundCreditsInputSchema),
+          body: FastifySchemas.refundCreditsInput,
         },
       },
       async (
@@ -463,7 +530,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
         '/admin/add',
         {
           schema: {
-            body: zodToJsonSchema(AddCreditsInputSchema),
+            body: FastifySchemas.addCreditsInput,
           },
         },
         async (
