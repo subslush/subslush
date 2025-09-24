@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
 import { rateLimitMiddleware } from './rateLimitMiddleware';
-import { authPreHandler } from './authMiddleware';
+import { requireAuth } from './authMiddleware';
 import { Logger } from '../utils/logger';
 
 // Credit operations rate limiting
@@ -202,7 +202,7 @@ export const auditCreditOperation: FastifyPluginCallback = async fastify => {
 export const creditOperationMiddleware = async (
   fastify: any
 ): Promise<void> => {
-  await fastify.register(authPreHandler);
+  await fastify.register(requireAuth);
   await fastify.register(creditOperationRateLimit);
   await fastify.register(validateCreditAmount);
   await fastify.register(validateCreditUserAccess);
@@ -213,7 +213,7 @@ export const creditOperationMiddleware = async (
 export const heavyCreditOperationMiddleware = async (
   fastify: any
 ): Promise<void> => {
-  await fastify.register(authPreHandler);
+  await fastify.register(requireAuth);
   await fastify.register(heavyCreditOperationRateLimit);
   await fastify.register(validateCreditAmount);
   await fastify.register(validateCreditUserAccess);
@@ -224,7 +224,7 @@ export const heavyCreditOperationMiddleware = async (
 export const adminCreditOperationMiddleware = async (
   fastify: any
 ): Promise<void> => {
-  await fastify.register(authPreHandler);
+  await fastify.register(requireAuth);
   await fastify.register(adminCreditOperationRateLimit);
   await fastify.register(requireAdminForCreditOps);
   await fastify.register(validateCreditAmount);
@@ -233,7 +233,7 @@ export const adminCreditOperationMiddleware = async (
 
 // Combined middleware for credit queries (read-only operations)
 export const creditQueryMiddleware = async (fastify: any): Promise<void> => {
-  await fastify.register(authPreHandler);
+  await fastify.register(requireAuth);
   await fastify.register(creditQueryRateLimit);
   await fastify.register(validateCreditUserAccess);
 };

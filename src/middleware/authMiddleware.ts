@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
 import { jwtService } from '../services/jwtService';
 import { sessionService } from '../services/sessionService';
 import { AuthenticatedRequest } from '../types/session';
+import { HttpStatus } from '../utils/response';
 
 declare module 'fastify' {
   interface FastifyRequest extends AuthenticatedRequest {}
@@ -27,8 +28,7 @@ export const authMiddleware = (
           const token = jwtService.extractBearerToken(authHeader);
 
           if (!token) {
-            reply.statusCode = 401;
-            return reply.send({
+            return reply.status(HttpStatus.UNAUTHORIZED).send({
               error: 'Unauthorized',
               message: 'Authentication token required',
               code: 'MISSING_TOKEN',
@@ -38,8 +38,7 @@ export const authMiddleware = (
           const tokenValidation = jwtService.verifyToken(token);
 
           if (!tokenValidation.isValid && !allowExpired) {
-            reply.statusCode = 401;
-            return reply.send({
+            return reply.status(HttpStatus.UNAUTHORIZED).send({
               error: 'Unauthorized',
               message: tokenValidation.error || 'Invalid token',
               code: 'INVALID_TOKEN',
@@ -48,8 +47,7 @@ export const authMiddleware = (
 
           const payload = tokenValidation.payload;
           if (!payload) {
-            reply.statusCode = 401;
-            return reply.send({
+            return reply.status(HttpStatus.UNAUTHORIZED).send({
               error: 'Unauthorized',
               message: 'Invalid token payload',
               code: 'INVALID_PAYLOAD',
@@ -62,8 +60,7 @@ export const authMiddleware = (
             );
 
             if (!sessionValidation.isValid) {
-              reply.statusCode = 401;
-              return reply.send({
+              return reply.status(HttpStatus.UNAUTHORIZED).send({
                 error: 'Unauthorized',
                 message: sessionValidation.error || 'Session expired',
                 code: 'SESSION_EXPIRED',
@@ -82,8 +79,7 @@ export const authMiddleware = (
 
           if (roles.length > 0 && payload.role) {
             if (!roles.includes(payload.role)) {
-              reply.statusCode = 403;
-              return reply.send({
+              return reply.status(HttpStatus.FORBIDDEN).send({
                 error: 'Forbidden',
                 message: 'Insufficient role permissions',
                 code: 'INSUFFICIENT_ROLE',
@@ -109,8 +105,7 @@ export const authMiddleware = (
             'User authenticated successfully'
           );
         } catch {
-          reply.statusCode = 500;
-          return reply.send({
+          return reply.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
             error: 'Internal Server Error',
             message: 'Authentication validation failed',
             code: 'AUTH_ERROR',
@@ -147,8 +142,7 @@ export const authPreHandler = async (
     const token = jwtService.extractBearerToken(authHeader);
 
     if (!token) {
-      reply.statusCode = 401;
-      return reply.send({
+      return reply.status(HttpStatus.UNAUTHORIZED).send({
         error: 'Unauthorized',
         message: 'Authentication token required',
         code: 'MISSING_TOKEN',
@@ -158,8 +152,7 @@ export const authPreHandler = async (
     const tokenValidation = jwtService.verifyToken(token);
 
     if (!tokenValidation.isValid) {
-      reply.statusCode = 401;
-      return reply.send({
+      return reply.status(HttpStatus.UNAUTHORIZED).send({
         error: 'Unauthorized',
         message: tokenValidation.error || 'Invalid token',
         code: 'INVALID_TOKEN',
@@ -168,8 +161,7 @@ export const authPreHandler = async (
 
     const payload = tokenValidation.payload;
     if (!payload) {
-      reply.statusCode = 401;
-      return reply.send({
+      return reply.status(HttpStatus.UNAUTHORIZED).send({
         error: 'Unauthorized',
         message: 'Invalid token payload',
         code: 'INVALID_PAYLOAD',
@@ -183,8 +175,7 @@ export const authPreHandler = async (
       );
 
       if (!sessionValidation.isValid) {
-        reply.statusCode = 401;
-        return reply.send({
+        return reply.status(HttpStatus.UNAUTHORIZED).send({
           error: 'Unauthorized',
           message: sessionValidation.error || 'Session expired',
           code: 'SESSION_EXPIRED',
@@ -201,8 +192,7 @@ export const authPreHandler = async (
       sessionId: payload.sessionId,
     };
   } catch {
-    reply.statusCode = 500;
-    return reply.send({
+    return reply.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
       error: 'Internal Server Error',
       message: 'Authentication validation failed',
       code: 'AUTH_ERROR',
