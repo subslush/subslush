@@ -1,6 +1,13 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { creditService } from '../services/creditService';
 import { CreditTransactionQuery } from '../types/credit';
+import {
+  HttpStatus,
+  ErrorResponses,
+  SuccessResponses,
+  sendError,
+} from '../utils/response';
 import {
   creditQueryMiddleware,
   creditOperationMiddleware,
@@ -52,7 +59,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/balance/:userId',
       {
         schema: {
-          params: UserIdParamSchema,
+          params: zodToJsonSchema(UserIdParamSchema),
         },
       },
       async (
@@ -65,14 +72,10 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           const balance = await creditService.getUserBalance(userId);
 
           if (!balance) {
-            reply.statusCode = 404;
-            return reply.send({
-              error: 'Not Found',
-              message: 'User balance not found',
-            });
+            return ErrorResponses.notFound(reply, 'User balance not found');
           }
 
-          return reply.send({
+          return SuccessResponses.ok(reply, {
             balance: {
               totalBalance: balance.totalBalance,
               availableBalance: balance.availableBalance,
@@ -80,11 +83,10 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
             },
           });
         } catch {
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to retrieve balance',
-          });
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to retrieve balance'
+          );
         }
       }
     );
@@ -101,7 +103,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/summary/:userId',
       {
         schema: {
-          params: UserIdParamSchema,
+          params: zodToJsonSchema(UserIdParamSchema),
         },
       },
       async (
@@ -117,15 +119,12 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
 
           const summary = await creditService.getBalanceSummary(userId, limit);
 
-          return reply.send({
-            summary,
-          });
+          return SuccessResponses.ok(reply, { summary });
         } catch {
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to retrieve balance summary',
-          });
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to retrieve balance summary'
+          );
         }
       }
     );
@@ -142,7 +141,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/history/:userId',
       {
         schema: {
-          params: UserIdParamSchema,
+          params: zodToJsonSchema(UserIdParamSchema),
         },
       },
       async (
@@ -175,7 +174,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           const hasMore =
             (query.offset || 0) + transactions.length < totalCount;
 
-          return reply.send({
+          return SuccessResponses.ok(reply, {
             transactions,
             totalCount,
             hasMore,
@@ -186,11 +185,10 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
             },
           });
         } catch {
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to retrieve transaction history',
-          });
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to retrieve transaction history'
+          );
         }
       }
     );
@@ -206,7 +204,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/transactions/:transactionId',
       {
         schema: {
-          params: TransactionIdParamSchema,
+          params: zodToJsonSchema(TransactionIdParamSchema),
         },
       },
       async (
@@ -224,22 +222,15 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!transaction) {
-            reply.statusCode = 404;
-            return reply.send({
-              error: 'Not Found',
-              message: 'Transaction not found',
-            });
+            return ErrorResponses.notFound(reply, 'Transaction not found');
           }
 
-          return reply.send({
-            transaction,
-          });
+          return SuccessResponses.ok(reply, { transaction });
         } catch {
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to retrieve transaction',
-          });
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to retrieve transaction'
+          );
         }
       }
     );
@@ -255,7 +246,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/spend',
       {
         schema: {
-          body: SpendCreditsInputSchema,
+          body: zodToJsonSchema(SpendCreditsInputSchema),
         },
       },
       async (
@@ -273,24 +264,24 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Credit Operation Failed',
-              message: result.error,
-            });
+            return sendError(
+              reply,
+              HttpStatus.BAD_REQUEST,
+              'Credit Operation Failed',
+              result.error || 'Unknown error'
+            );
           }
 
-          return reply.send({
-            message: 'Credits spent successfully',
-            transaction: result.transaction,
-            newBalance: result.balance,
-          });
+          return SuccessResponses.ok(
+            reply,
+            {
+              transaction: result.transaction,
+              newBalance: result.balance,
+            },
+            'Credits spent successfully'
+          );
         } catch {
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to spend credits',
-          });
+          return ErrorResponses.internalError(reply, 'Failed to spend credits');
         }
       }
     );
@@ -306,12 +297,14 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/deposit',
       {
         schema: {
-          body: AddCreditsInputSchema.extend({
-            type: AddCreditsInputSchema.shape.type.refine(
-              type => type === 'deposit',
-              { message: 'Only deposit type allowed for this endpoint' }
-            ),
-          }),
+          body: zodToJsonSchema(
+            AddCreditsInputSchema.extend({
+              type: AddCreditsInputSchema.shape.type.refine(
+                type => type === 'deposit',
+                { message: 'Only deposit type allowed for this endpoint' }
+              ),
+            })
+          ),
         },
       },
       async (
@@ -330,25 +323,27 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Credit Operation Failed',
-              message: result.error,
-            });
+            return sendError(
+              reply,
+              HttpStatus.BAD_REQUEST,
+              'Credit Operation Failed',
+              result.error || 'Unknown error'
+            );
           }
 
-          reply.statusCode = 201;
-          return reply.send({
-            message: 'Credits deposited successfully',
-            transaction: result.transaction,
-            newBalance: result.balance,
-          });
+          return SuccessResponses.created(
+            reply,
+            {
+              transaction: result.transaction,
+              newBalance: result.balance,
+            },
+            'Credits deposited successfully'
+          );
         } catch {
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to deposit credits',
-          });
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to deposit credits'
+          );
         }
       }
     );
@@ -364,7 +359,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       '/refund',
       {
         schema: {
-          body: RefundCreditsInputSchema,
+          body: zodToJsonSchema(RefundCreditsInputSchema),
         },
       },
       async (
@@ -389,25 +384,27 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Credit Operation Failed',
-              message: result.error,
-            });
+            return sendError(
+              reply,
+              HttpStatus.BAD_REQUEST,
+              'Credit Operation Failed',
+              result.error || 'Unknown error'
+            );
           }
 
-          reply.statusCode = 201;
-          return reply.send({
-            message: 'Credits refunded successfully',
-            transaction: result.transaction,
-            newBalance: result.balance,
-          });
+          return SuccessResponses.created(
+            reply,
+            {
+              transaction: result.transaction,
+              newBalance: result.balance,
+            },
+            'Credits refunded successfully'
+          );
         } catch {
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to refund credits',
-          });
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to refund credits'
+          );
         }
       }
     );
@@ -438,7 +435,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
               offset
             );
 
-            return reply.send({
+            return SuccessResponses.ok(reply, {
               balances,
               pagination: {
                 limit,
@@ -447,11 +444,10 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
               },
             });
           } catch {
-            reply.statusCode = 500;
-            return reply.send({
-              error: 'Internal Server Error',
-              message: 'Failed to retrieve user balances',
-            });
+            return ErrorResponses.internalError(
+              reply,
+              'Failed to retrieve user balances'
+            );
           }
         }
       );
@@ -467,7 +463,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
         '/admin/add',
         {
           schema: {
-            body: AddCreditsInputSchema,
+            body: zodToJsonSchema(AddCreditsInputSchema),
           },
         },
         async (
@@ -498,18 +494,16 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
               });
             }
 
-            reply.statusCode = 201;
-            return reply.send({
-              message: `Credits ${type === 'bonus' ? 'awarded' : 'added'} successfully`,
-              transaction: result.transaction,
-              newBalance: result.balance,
-            });
+            return SuccessResponses.created(
+              reply,
+              {
+                transaction: result.transaction,
+                newBalance: result.balance,
+              },
+              `Credits ${type === 'bonus' ? 'awarded' : 'added'} successfully`
+            );
           } catch {
-            reply.statusCode = 500;
-            return reply.send({
-              error: 'Internal Server Error',
-              message: 'Failed to add credits',
-            });
+            return ErrorResponses.internalError(reply, 'Failed to add credits');
           }
         }
       );
@@ -562,17 +556,19 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
               });
             }
 
-            return reply.send({
-              message: 'Credits withdrawn successfully',
-              transaction: result.transaction,
-              newBalance: result.balance,
-            });
+            return SuccessResponses.ok(
+              reply,
+              {
+                transaction: result.transaction,
+                newBalance: result.balance,
+              },
+              'Credits withdrawn successfully'
+            );
           } catch {
-            reply.statusCode = 500;
-            return reply.send({
-              error: 'Internal Server Error',
-              message: 'Failed to withdraw credits',
-            });
+            return ErrorResponses.internalError(
+              reply,
+              'Failed to withdraw credits'
+            );
           }
         }
       );
@@ -587,27 +583,38 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
         const isHealthy = await creditService.healthCheck();
 
         if (isHealthy) {
-          return reply.send({
+          return SuccessResponses.ok(reply, {
             status: 'healthy',
             service: 'credit-system',
             timestamp: new Date().toISOString(),
           });
         } else {
-          reply.statusCode = 503;
-          return reply.send({
-            status: 'unhealthy',
-            service: 'credit-system',
-            timestamp: new Date().toISOString(),
-          });
+          return sendError(
+            reply,
+            HttpStatus.SERVICE_UNAVAILABLE,
+            'Service Unavailable',
+            'Health check failed',
+            'SERVICE_UNHEALTHY',
+            {
+              status: 'unhealthy',
+              service: 'credit-system',
+              timestamp: new Date().toISOString(),
+            }
+          );
         }
       } catch {
-        reply.statusCode = 503;
-        return reply.send({
-          status: 'error',
-          service: 'credit-system',
-          timestamp: new Date().toISOString(),
-          error: 'Health check failed',
-        });
+        return sendError(
+          reply,
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'Service Unavailable',
+          'Health check failed',
+          'HEALTH_CHECK_ERROR',
+          {
+            status: 'error',
+            service: 'credit-system',
+            timestamp: new Date().toISOString(),
+          }
+        );
       }
     }
   );

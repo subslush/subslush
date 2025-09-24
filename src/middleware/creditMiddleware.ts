@@ -2,6 +2,7 @@ import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
 import { rateLimitMiddleware } from './rateLimitMiddleware';
 import { requireAuth } from './authMiddleware';
 import { Logger } from '../utils/logger';
+import { HttpStatus, ErrorResponses, sendError } from '../utils/response';
 
 // Credit operations rate limiting
 export const creditOperationRateLimit = rateLimitMiddleware({
@@ -59,36 +60,36 @@ export const validateCreditAmount: FastifyPluginCallback = async fastify => {
 
         // Validate amount is a positive number
         if (isNaN(amount) || amount <= 0) {
-          reply.statusCode = 400;
-          return reply.send({
-            error: 'Bad Request',
-            message: 'Amount must be a positive number',
-            code: 'INVALID_AMOUNT',
-          });
+          return ErrorResponses.badRequest(
+            reply,
+            'Amount must be a positive number'
+          );
         }
 
         // Validate maximum amount (configurable limit)
         const maxAmount = 10000; // $10,000 limit
         if (amount > maxAmount) {
-          reply.statusCode = 400;
-          return reply.send({
-            error: 'Bad Request',
-            message: `Amount cannot exceed ${maxAmount}`,
-            code: 'AMOUNT_TOO_LARGE',
-            maxAmount,
-          });
+          return sendError(
+            reply,
+            HttpStatus.BAD_REQUEST,
+            'Bad Request',
+            `Amount cannot exceed ${maxAmount}`,
+            'AMOUNT_TOO_LARGE',
+            { maxAmount }
+          );
         }
 
         // Validate minimum amount
         const minAmount = 0.01; // $0.01 minimum
         if (amount < minAmount) {
-          reply.statusCode = 400;
-          return reply.send({
-            error: 'Bad Request',
-            message: `Amount must be at least ${minAmount}`,
-            code: 'AMOUNT_TOO_SMALL',
-            minAmount,
-          });
+          return sendError(
+            reply,
+            HttpStatus.BAD_REQUEST,
+            'Bad Request',
+            `Amount must be at least ${minAmount}`,
+            'AMOUNT_TOO_SMALL',
+            { minAmount }
+          );
         }
       }
     }
@@ -106,12 +107,7 @@ export const validateCreditUserAccess: FastifyPluginCallback =
         const user = request.user;
 
         if (!user) {
-          reply.statusCode = 401;
-          return reply.send({
-            error: 'Unauthorized',
-            message: 'Authentication required',
-            code: 'AUTH_REQUIRED',
-          });
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
         }
 
         // Check if user is admin (can access any user's data)
@@ -123,12 +119,10 @@ export const validateCreditUserAccess: FastifyPluginCallback =
         const targetUserId = params.userId || body.userId;
 
         if (targetUserId && targetUserId !== user.userId) {
-          reply.statusCode = 403;
-          return reply.send({
-            error: 'Forbidden',
-            message: 'Cannot access other users credit data',
-            code: 'ACCESS_DENIED',
-          });
+          return ErrorResponses.forbidden(
+            reply,
+            'Cannot access other users credit data'
+          );
         }
 
         // If no userId in params/body, add current user's ID to body for operations
@@ -148,22 +142,18 @@ export const requireAdminForCreditOps: FastifyPluginCallback =
         const user = request.user;
 
         if (!user) {
-          reply.statusCode = 401;
-          return reply.send({
-            error: 'Unauthorized',
-            message: 'Authentication required',
-            code: 'AUTH_REQUIRED',
-          });
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
         }
 
         if (user.role !== 'admin') {
-          reply.statusCode = 403;
-          return reply.send({
-            error: 'Forbidden',
-            message: 'Admin role required for this operation',
-            code: 'ADMIN_REQUIRED',
-            userRole: user.role,
-          });
+          return sendError(
+            reply,
+            HttpStatus.FORBIDDEN,
+            'Forbidden',
+            'Admin role required for this operation',
+            'ADMIN_REQUIRED',
+            { userRole: user.role }
+          );
         }
       }
     );
