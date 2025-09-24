@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { userService } from '../services/userService';
 import { authPreHandler } from '../middleware/authMiddleware';
 import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
+import { ErrorResponses, SuccessResponses, sendError } from '../utils/response';
 import {
   validateUpdateProfileInput,
   validateUpdateUserStatusInput,
@@ -56,22 +57,20 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           const userId = request.user?.userId;
 
           if (!userId) {
-            reply.statusCode = 401;
-            return reply.send({
-              error: 'Unauthorized',
-              message: 'User ID not found',
-            });
+            return ErrorResponses.unauthorized(reply, 'User ID not found');
           }
 
           // Validate query parameters
           const queryValidation = validateProfileQueryInput(request.query);
           if (!queryValidation.success) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Invalid Query Parameters',
-              message: queryValidation.error,
-              details: queryValidation.details,
-            });
+            return sendError(
+              reply,
+              400,
+              'Invalid Query Parameters',
+              queryValidation.error,
+              'INVALID_QUERY',
+              queryValidation.details
+            );
           }
 
           const { includeMetadata = true, includeSessions = false } =
@@ -83,24 +82,20 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           });
 
           if (!result.success) {
-            reply.statusCode = 404;
-            return reply.send({
-              error: 'Profile Not Found',
-              message: result.error,
-            });
+            return ErrorResponses.notFound(reply, result.error);
           }
 
-          return reply.send({
-            message: 'Profile retrieved successfully',
-            profile: result.data,
-          });
+          return SuccessResponses.ok(
+            reply,
+            { profile: result.data },
+            'Profile retrieved successfully'
+          );
         } catch (error) {
           Logger.error('Get profile endpoint error:', error);
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to retrieve profile',
-          });
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to retrieve profile'
+          );
         }
       }
     );
@@ -131,22 +126,20 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           const userEmail = request.user?.email;
 
           if (!userId || !userEmail) {
-            reply.statusCode = 401;
-            return reply.send({
-              error: 'Unauthorized',
-              message: 'User ID not found',
-            });
+            return ErrorResponses.unauthorized(reply, 'User ID not found');
           }
 
           // Validate input
           const validation = validateUpdateProfileInput(request.body);
           if (!validation.success) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Invalid Input',
-              message: validation.error,
-              details: validation.details,
-            });
+            return sendError(
+              reply,
+              400,
+              'Invalid Input',
+              validation.error,
+              'INVALID_INPUT',
+              validation.details
+            );
           }
 
           const updates = validation.data;
@@ -169,26 +162,29 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
             const statusCode = result.error?.includes('already in use')
               ? 409
               : 400;
-            return reply.status(statusCode).send({
-              error: 'Profile Update Failed',
-              message: result.error,
-              details: result.details,
-            });
+            return sendError(
+              reply,
+              statusCode,
+              'Profile Update Failed',
+              result.error || 'Update failed',
+              'UPDATE_FAILED',
+              result.details
+            );
           }
 
           Logger.info(`User profile updated: ${userId}`);
 
-          return reply.send({
-            message: 'Profile updated successfully',
-            profile: result.data,
-          });
+          return SuccessResponses.ok(
+            reply,
+            { profile: result.data },
+            'Profile updated successfully'
+          );
         } catch (error) {
           Logger.error('Update profile endpoint error:', error);
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to update profile',
-          });
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to update profile'
+          );
         }
       }
     );
@@ -224,42 +220,41 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           const { userId } = request.params;
 
           if (!adminUserId) {
-            reply.statusCode = 401;
-            return reply.send({
-              error: 'Unauthorized',
-              message: 'Admin authentication required',
-            });
+            return ErrorResponses.unauthorized(
+              reply,
+              'Admin authentication required'
+            );
           }
 
           // Check admin permissions
           if (adminRole !== 'admin' && adminRole !== 'super_admin') {
-            reply.statusCode = 403;
-            return reply.send({
-              error: 'Forbidden',
-              message: 'Admin privileges required for status management',
-            });
+            return ErrorResponses.forbidden(
+              reply,
+              'Admin privileges required for status management'
+            );
           }
 
           // Validate input
           const validation = validateUpdateUserStatusInput(request.body);
           if (!validation.success) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Invalid Input',
-              message: validation.error,
-              details: validation.details,
-            });
+            return sendError(
+              reply,
+              400,
+              'Invalid Input',
+              validation.error,
+              'INVALID_INPUT',
+              validation.details
+            );
           }
 
           const statusData = validation.data;
 
           // Prevent self-status modification
           if (adminUserId === userId) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Bad Request',
-              message: 'Cannot modify your own status',
-            });
+            return ErrorResponses.badRequest(
+              reply,
+              'Cannot modify your own status'
+            );
           }
 
           const result = await userService.updateUserStatus(
@@ -270,29 +265,31 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Status Update Failed',
-              message: result.error,
-              details: result.details,
-            });
+            return sendError(
+              reply,
+              400,
+              'Status Update Failed',
+              result.error || 'Status update failed',
+              'UPDATE_FAILED',
+              result.details
+            );
           }
 
           Logger.info(
             `User status updated: ${userId} to ${statusData.status} by admin ${adminUserId}`
           );
 
-          return reply.send({
-            message: 'User status updated successfully',
-            user: result.data,
-          });
+          return SuccessResponses.ok(
+            reply,
+            { user: result.data },
+            'User status updated successfully'
+          );
         } catch (error) {
           Logger.error('Update user status endpoint error:', error);
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to update user status',
-          });
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to update user status'
+          );
         }
       }
     );
@@ -311,21 +308,13 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           const currentSessionId = request.user?.sessionId;
 
           if (!userId) {
-            reply.statusCode = 401;
-            return reply.send({
-              error: 'Unauthorized',
-              message: 'User ID not found',
-            });
+            return ErrorResponses.unauthorized(reply, 'User ID not found');
           }
 
           const result = await userService.getUserSessions(userId);
 
           if (!result.success) {
-            reply.statusCode = 500;
-            return reply.send({
-              error: 'Sessions Retrieval Failed',
-              message: result.error,
-            });
+            return ErrorResponses.internalError(reply, result.error);
           }
 
           // Mark current session
@@ -334,19 +323,21 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
             isCurrent: session.sessionId === currentSessionId,
           }));
 
-          return reply.send({
-            message: 'User sessions retrieved successfully',
-            sessions: sessionsWithCurrent,
-            totalCount: sessionsWithCurrent?.length || 0,
-            currentSessionId,
-          });
+          return SuccessResponses.ok(
+            reply,
+            {
+              sessions: sessionsWithCurrent,
+              totalCount: sessionsWithCurrent?.length || 0,
+              currentSessionId,
+            },
+            'User sessions retrieved successfully'
+          );
         } catch (error) {
           Logger.error('Get user sessions endpoint error:', error);
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to retrieve user sessions',
-          });
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to retrieve user sessions'
+          );
         }
       }
     );
@@ -380,29 +371,26 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           const { reason, confirmEmail } = request.body;
 
           if (!userId || !userEmail) {
-            reply.statusCode = 401;
-            return reply.send({
-              error: 'Unauthorized',
-              message: 'User authentication required',
-            });
+            return ErrorResponses.unauthorized(
+              reply,
+              'User authentication required'
+            );
           }
 
           // Validate input
           if (!reason || reason.trim().length < 10) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Invalid Input',
-              message: 'Deletion reason must be at least 10 characters',
-            });
+            return ErrorResponses.badRequest(
+              reply,
+              'Deletion reason must be at least 10 characters'
+            );
           }
 
           // Email confirmation for account deletion
           if (confirmEmail && confirmEmail !== userEmail) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Invalid Input',
-              message: 'Email confirmation does not match',
-            });
+            return ErrorResponses.badRequest(
+              reply,
+              'Email confirmation does not match'
+            );
           }
 
           const result = await userService.deleteUserAccount(
@@ -412,25 +400,25 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Account Deletion Failed',
-              message: result.error,
-            });
+            return ErrorResponses.badRequest(
+              reply,
+              result.error || 'Account deletion failed'
+            );
           }
 
           Logger.info(`User account deleted: ${userId} (self-deletion)`);
 
-          return reply.send({
-            message: 'Account deleted successfully',
-          });
+          return SuccessResponses.ok(
+            reply,
+            undefined,
+            'Account deleted successfully'
+          );
         } catch (error) {
           Logger.error('Delete account endpoint error:', error);
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Failed to delete account',
-          });
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to delete account'
+          );
         }
       }
     );

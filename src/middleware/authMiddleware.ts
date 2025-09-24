@@ -2,7 +2,7 @@ import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
 import { jwtService } from '../services/jwtService';
 import { sessionService } from '../services/sessionService';
 import { AuthenticatedRequest } from '../types/session';
-import { HttpStatus } from '../utils/response';
+import { HttpStatus, sendError } from '../utils/response';
 
 declare module 'fastify' {
   interface FastifyRequest extends AuthenticatedRequest {}
@@ -28,30 +28,36 @@ export const authMiddleware = (
           const token = jwtService.extractBearerToken(authHeader);
 
           if (!token) {
-            return reply.status(HttpStatus.UNAUTHORIZED).send({
-              error: 'Unauthorized',
-              message: 'Authentication token required',
-              code: 'MISSING_TOKEN',
-            });
+            return sendError(
+              reply,
+              HttpStatus.UNAUTHORIZED,
+              'Unauthorized',
+              'Authentication token required',
+              'MISSING_TOKEN'
+            );
           }
 
           const tokenValidation = jwtService.verifyToken(token);
 
           if (!tokenValidation.isValid && !allowExpired) {
-            return reply.status(HttpStatus.UNAUTHORIZED).send({
-              error: 'Unauthorized',
-              message: tokenValidation.error || 'Invalid token',
-              code: 'INVALID_TOKEN',
-            });
+            return sendError(
+              reply,
+              HttpStatus.UNAUTHORIZED,
+              'Unauthorized',
+              tokenValidation.error || 'Invalid token',
+              'INVALID_TOKEN'
+            );
           }
 
           const payload = tokenValidation.payload;
           if (!payload) {
-            return reply.status(HttpStatus.UNAUTHORIZED).send({
-              error: 'Unauthorized',
-              message: 'Invalid token payload',
-              code: 'INVALID_PAYLOAD',
-            });
+            return sendError(
+              reply,
+              HttpStatus.UNAUTHORIZED,
+              'Unauthorized',
+              'Invalid token payload',
+              'INVALID_PAYLOAD'
+            );
           }
 
           if (!allowExpired && payload.sessionId) {
@@ -60,11 +66,13 @@ export const authMiddleware = (
             );
 
             if (!sessionValidation.isValid) {
-              return reply.status(HttpStatus.UNAUTHORIZED).send({
-                error: 'Unauthorized',
-                message: sessionValidation.error || 'Session expired',
-                code: 'SESSION_EXPIRED',
-              });
+              return sendError(
+                reply,
+                HttpStatus.UNAUTHORIZED,
+                'Unauthorized',
+                sessionValidation.error || 'Session expired',
+                'SESSION_EXPIRED'
+              );
             }
 
             request.session = sessionValidation.session || undefined;
@@ -79,13 +87,14 @@ export const authMiddleware = (
 
           if (roles.length > 0 && payload.role) {
             if (!roles.includes(payload.role)) {
-              return reply.status(HttpStatus.FORBIDDEN).send({
-                error: 'Forbidden',
-                message: 'Insufficient role permissions',
-                code: 'INSUFFICIENT_ROLE',
-                required: roles,
-                current: payload.role,
-              });
+              return sendError(
+                reply,
+                HttpStatus.FORBIDDEN,
+                'Forbidden',
+                'Insufficient role permissions',
+                'INSUFFICIENT_ROLE',
+                { required: roles, current: payload.role }
+              );
             }
           }
 
@@ -105,11 +114,13 @@ export const authMiddleware = (
             'User authenticated successfully'
           );
         } catch {
-          return reply.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
-            error: 'Internal Server Error',
-            message: 'Authentication validation failed',
-            code: 'AUTH_ERROR',
-          });
+          return sendError(
+            reply,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            'Internal Server Error',
+            'Authentication validation failed',
+            'AUTH_ERROR'
+          );
         }
       }
     );
@@ -142,30 +153,36 @@ export const authPreHandler = async (
     const token = jwtService.extractBearerToken(authHeader);
 
     if (!token) {
-      return reply.status(HttpStatus.UNAUTHORIZED).send({
-        error: 'Unauthorized',
-        message: 'Authentication token required',
-        code: 'MISSING_TOKEN',
-      });
+      return sendError(
+        reply,
+        HttpStatus.UNAUTHORIZED,
+        'Unauthorized',
+        'Authentication token required',
+        'MISSING_TOKEN'
+      );
     }
 
     const tokenValidation = jwtService.verifyToken(token);
 
     if (!tokenValidation.isValid) {
-      return reply.status(HttpStatus.UNAUTHORIZED).send({
-        error: 'Unauthorized',
-        message: tokenValidation.error || 'Invalid token',
-        code: 'INVALID_TOKEN',
-      });
+      return sendError(
+        reply,
+        HttpStatus.UNAUTHORIZED,
+        'Unauthorized',
+        tokenValidation.error || 'Invalid token',
+        'INVALID_TOKEN'
+      );
     }
 
     const payload = tokenValidation.payload;
     if (!payload) {
-      return reply.status(HttpStatus.UNAUTHORIZED).send({
-        error: 'Unauthorized',
-        message: 'Invalid token payload',
-        code: 'INVALID_PAYLOAD',
-      });
+      return sendError(
+        reply,
+        HttpStatus.UNAUTHORIZED,
+        'Unauthorized',
+        'Invalid token payload',
+        'INVALID_PAYLOAD'
+      );
     }
 
     // SECURITY: Validate session in Redis (mandatory for security)
@@ -175,11 +192,13 @@ export const authPreHandler = async (
       );
 
       if (!sessionValidation.isValid) {
-        return reply.status(HttpStatus.UNAUTHORIZED).send({
-          error: 'Unauthorized',
-          message: sessionValidation.error || 'Session expired',
-          code: 'SESSION_EXPIRED',
-        });
+        return sendError(
+          reply,
+          HttpStatus.UNAUTHORIZED,
+          'Unauthorized',
+          sessionValidation.error || 'Session expired',
+          'SESSION_EXPIRED'
+        );
       }
 
       request.session = sessionValidation.session || undefined;
@@ -192,11 +211,13 @@ export const authPreHandler = async (
       sessionId: payload.sessionId,
     };
   } catch {
-    return reply.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
-      error: 'Internal Server Error',
-      message: 'Authentication validation failed',
-      code: 'AUTH_ERROR',
-    });
+    return sendError(
+      reply,
+      HttpStatus.INTERNAL_SERVER_ERROR,
+      'Internal Server Error',
+      'Authentication validation failed',
+      'AUTH_ERROR'
+    );
   }
 };
 
