@@ -59,7 +59,8 @@ export const validateCreditAmount: FastifyPluginCallback = async fastify => {
 
         // Validate amount is a positive number
         if (isNaN(amount) || amount <= 0) {
-          return reply.status(400).send({
+          reply.statusCode = 400;
+          return reply.send({
             error: 'Bad Request',
             message: 'Amount must be a positive number',
             code: 'INVALID_AMOUNT',
@@ -69,7 +70,8 @@ export const validateCreditAmount: FastifyPluginCallback = async fastify => {
         // Validate maximum amount (configurable limit)
         const maxAmount = 10000; // $10,000 limit
         if (amount > maxAmount) {
-          return reply.status(400).send({
+          reply.statusCode = 400;
+          return reply.send({
             error: 'Bad Request',
             message: `Amount cannot exceed ${maxAmount}`,
             code: 'AMOUNT_TOO_LARGE',
@@ -80,7 +82,8 @@ export const validateCreditAmount: FastifyPluginCallback = async fastify => {
         // Validate minimum amount
         const minAmount = 0.01; // $0.01 minimum
         if (amount < minAmount) {
-          return reply.status(400).send({
+          reply.statusCode = 400;
+          return reply.send({
             error: 'Bad Request',
             message: `Amount must be at least ${minAmount}`,
             code: 'AMOUNT_TOO_SMALL',
@@ -103,7 +106,8 @@ export const validateCreditUserAccess: FastifyPluginCallback =
         const user = request.user;
 
         if (!user) {
-          return reply.status(401).send({
+          reply.statusCode = 401;
+          return reply.send({
             error: 'Unauthorized',
             message: 'Authentication required',
             code: 'AUTH_REQUIRED',
@@ -119,7 +123,8 @@ export const validateCreditUserAccess: FastifyPluginCallback =
         const targetUserId = params.userId || body.userId;
 
         if (targetUserId && targetUserId !== user.userId) {
-          return reply.status(403).send({
+          reply.statusCode = 403;
+          return reply.send({
             error: 'Forbidden',
             message: 'Cannot access other users credit data',
             code: 'ACCESS_DENIED',
@@ -143,7 +148,8 @@ export const requireAdminForCreditOps: FastifyPluginCallback =
         const user = request.user;
 
         if (!user) {
-          return reply.status(401).send({
+          reply.statusCode = 401;
+          return reply.send({
             error: 'Unauthorized',
             message: 'Authentication required',
             code: 'AUTH_REQUIRED',
@@ -151,7 +157,8 @@ export const requireAdminForCreditOps: FastifyPluginCallback =
         }
 
         if (user.role !== 'admin') {
-          return reply.status(403).send({
+          reply.statusCode = 403;
+          return reply.send({
             error: 'Forbidden',
             message: 'Admin role required for this operation',
             code: 'ADMIN_REQUIRED',

@@ -56,7 +56,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           const userId = request.user?.userId;
 
           if (!userId) {
-            return reply.status(401).send({
+            reply.statusCode = 401;
+            return reply.send({
               error: 'Unauthorized',
               message: 'User ID not found',
             });
@@ -65,7 +66,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           // Validate query parameters
           const queryValidation = validateProfileQueryInput(request.query);
           if (!queryValidation.success) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Invalid Query Parameters',
               message: queryValidation.error,
               details: queryValidation.details,
@@ -81,7 +83,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           });
 
           if (!result.success) {
-            return reply.status(404).send({
+            reply.statusCode = 404;
+            return reply.send({
               error: 'Profile Not Found',
               message: result.error,
             });
@@ -93,7 +96,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           });
         } catch (error) {
           Logger.error('Get profile endpoint error:', error);
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to retrieve profile',
           });
@@ -127,7 +131,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           const userEmail = request.user?.email;
 
           if (!userId || !userEmail) {
-            return reply.status(401).send({
+            reply.statusCode = 401;
+            return reply.send({
               error: 'Unauthorized',
               message: 'User ID not found',
             });
@@ -136,7 +141,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           // Validate input
           const validation = validateUpdateProfileInput(request.body);
           if (!validation.success) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Invalid Input',
               message: validation.error,
               details: validation.details,
@@ -178,7 +184,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           });
         } catch (error) {
           Logger.error('Update profile endpoint error:', error);
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to update profile',
           });
@@ -217,7 +224,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           const { userId } = request.params;
 
           if (!adminUserId) {
-            return reply.status(401).send({
+            reply.statusCode = 401;
+            return reply.send({
               error: 'Unauthorized',
               message: 'Admin authentication required',
             });
@@ -225,7 +233,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
 
           // Check admin permissions
           if (adminRole !== 'admin' && adminRole !== 'super_admin') {
-            return reply.status(403).send({
+            reply.statusCode = 403;
+            return reply.send({
               error: 'Forbidden',
               message: 'Admin privileges required for status management',
             });
@@ -234,7 +243,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           // Validate input
           const validation = validateUpdateUserStatusInput(request.body);
           if (!validation.success) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Invalid Input',
               message: validation.error,
               details: validation.details,
@@ -245,7 +255,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
 
           // Prevent self-status modification
           if (adminUserId === userId) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Bad Request',
               message: 'Cannot modify your own status',
             });
@@ -259,7 +270,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Status Update Failed',
               message: result.error,
               details: result.details,
@@ -276,7 +288,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           });
         } catch (error) {
           Logger.error('Update user status endpoint error:', error);
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to update user status',
           });
@@ -298,7 +311,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           const currentSessionId = request.user?.sessionId;
 
           if (!userId) {
-            return reply.status(401).send({
+            reply.statusCode = 401;
+            return reply.send({
               error: 'Unauthorized',
               message: 'User ID not found',
             });
@@ -307,7 +321,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           const result = await userService.getUserSessions(userId);
 
           if (!result.success) {
-            return reply.status(500).send({
+            reply.statusCode = 500;
+            return reply.send({
               error: 'Sessions Retrieval Failed',
               message: result.error,
             });
@@ -327,7 +342,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           });
         } catch (error) {
           Logger.error('Get user sessions endpoint error:', error);
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to retrieve user sessions',
           });
@@ -364,7 +380,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           const { reason, confirmEmail } = request.body;
 
           if (!userId || !userEmail) {
-            return reply.status(401).send({
+            reply.statusCode = 401;
+            return reply.send({
               error: 'Unauthorized',
               message: 'User authentication required',
             });
@@ -372,7 +389,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
 
           // Validate input
           if (!reason || reason.trim().length < 10) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Invalid Input',
               message: 'Deletion reason must be at least 10 characters',
             });
@@ -380,7 +398,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
 
           // Email confirmation for account deletion
           if (confirmEmail && confirmEmail !== userEmail) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Invalid Input',
               message: 'Email confirmation does not match',
             });
@@ -393,7 +412,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Account Deletion Failed',
               message: result.error,
             });
@@ -406,7 +426,8 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
           });
         } catch (error) {
           Logger.error('Delete account endpoint error:', error);
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to delete account',
           });

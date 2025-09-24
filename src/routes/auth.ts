@@ -61,20 +61,23 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Registration Failed',
               message: result.error,
             });
           }
 
-          return reply.status(201).send({
+          reply.statusCode = 201;
+          return reply.send({
             message: 'Registration successful',
             user: result.user,
             accessToken: result.tokens?.accessToken,
             sessionId: result.sessionId,
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Registration failed',
           });
@@ -111,7 +114,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            return reply.status(401).send({
+            reply.statusCode = 401;
+            return reply.send({
               error: 'Authentication Failed',
               message: result.error,
             });
@@ -124,7 +128,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             sessionId: result.sessionId,
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Login failed',
           });
@@ -151,7 +156,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           const sessionId = request.user?.sessionId;
 
           if (!sessionId) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Bad Request',
               message: 'No active session found',
             });
@@ -160,7 +166,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           const result = await authService.logout(sessionId, allDevices);
 
           if (!result.success) {
-            return reply.status(500).send({
+            reply.statusCode = 500;
+            return reply.send({
               error: 'Logout Failed',
               message: result.error,
             });
@@ -172,7 +179,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
               : 'Logout successful',
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Logout failed',
           });
@@ -193,7 +201,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           const sessionId = request.user?.sessionId;
 
           if (!sessionId) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Bad Request',
               message: 'No active session found',
             });
@@ -202,7 +211,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           const result = await authService.refreshSession(sessionId);
 
           if (!result.success) {
-            return reply.status(401).send({
+            reply.statusCode = 401;
+            return reply.send({
               error: 'Session Refresh Failed',
               message: result.error,
             });
@@ -215,7 +225,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             sessionId: result.sessionId,
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Session refresh failed',
           });
@@ -237,7 +248,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           const currentSessionId = request.user?.sessionId;
 
           if (!userId) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Bad Request',
               message: 'User ID not found',
             });
@@ -255,7 +267,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             currentSessionId,
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to retrieve sessions',
           });
@@ -282,7 +295,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           const currentSessionId = request.user?.sessionId;
 
           if (sessionId === currentSessionId) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Bad Request',
               message: 'Cannot revoke current session. Use logout instead.',
             });
@@ -291,7 +305,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           const result = await authService.revokeSession(sessionId);
 
           if (!result.success) {
-            return reply.status(404).send({
+            reply.statusCode = 404;
+            return reply.send({
               error: 'Session Not Found',
               message: result.error,
             });
@@ -301,7 +316,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             message: 'Session revoked successfully',
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to revoke session',
           });
@@ -328,7 +344,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           const result = await authService.requestPasswordReset(email);
 
           if (!result.success) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Password Reset Failed',
               message: result.error,
             });
@@ -338,7 +355,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             message: 'Password reset email sent successfully',
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Password reset request failed',
           });

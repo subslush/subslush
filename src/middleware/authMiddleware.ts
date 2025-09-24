@@ -27,7 +27,8 @@ export const authMiddleware = (
           const token = jwtService.extractBearerToken(authHeader);
 
           if (!token) {
-            return reply.status(401).send({
+            reply.statusCode = 401;
+            return reply.send({
               error: 'Unauthorized',
               message: 'Authentication token required',
               code: 'MISSING_TOKEN',
@@ -37,7 +38,8 @@ export const authMiddleware = (
           const tokenValidation = jwtService.verifyToken(token);
 
           if (!tokenValidation.isValid && !allowExpired) {
-            return reply.status(401).send({
+            reply.statusCode = 401;
+            return reply.send({
               error: 'Unauthorized',
               message: tokenValidation.error || 'Invalid token',
               code: 'INVALID_TOKEN',
@@ -46,7 +48,8 @@ export const authMiddleware = (
 
           const payload = tokenValidation.payload;
           if (!payload) {
-            return reply.status(401).send({
+            reply.statusCode = 401;
+            return reply.send({
               error: 'Unauthorized',
               message: 'Invalid token payload',
               code: 'INVALID_PAYLOAD',
@@ -59,7 +62,8 @@ export const authMiddleware = (
             );
 
             if (!sessionValidation.isValid) {
-              return reply.status(401).send({
+              reply.statusCode = 401;
+              return reply.send({
                 error: 'Unauthorized',
                 message: sessionValidation.error || 'Session expired',
                 code: 'SESSION_EXPIRED',
@@ -78,7 +82,8 @@ export const authMiddleware = (
 
           if (roles.length > 0 && payload.role) {
             if (!roles.includes(payload.role)) {
-              return reply.status(403).send({
+              reply.statusCode = 403;
+              return reply.send({
                 error: 'Forbidden',
                 message: 'Insufficient role permissions',
                 code: 'INSUFFICIENT_ROLE',
@@ -104,7 +109,8 @@ export const authMiddleware = (
             'User authenticated successfully'
           );
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Authentication validation failed',
             code: 'AUTH_ERROR',
@@ -141,7 +147,8 @@ export const authPreHandler = async (
     const token = jwtService.extractBearerToken(authHeader);
 
     if (!token) {
-      return reply.status(401).send({
+      reply.statusCode = 401;
+      return reply.send({
         error: 'Unauthorized',
         message: 'Authentication token required',
         code: 'MISSING_TOKEN',
@@ -151,7 +158,8 @@ export const authPreHandler = async (
     const tokenValidation = jwtService.verifyToken(token);
 
     if (!tokenValidation.isValid) {
-      return reply.status(401).send({
+      reply.statusCode = 401;
+      return reply.send({
         error: 'Unauthorized',
         message: tokenValidation.error || 'Invalid token',
         code: 'INVALID_TOKEN',
@@ -160,7 +168,8 @@ export const authPreHandler = async (
 
     const payload = tokenValidation.payload;
     if (!payload) {
-      return reply.status(401).send({
+      reply.statusCode = 401;
+      return reply.send({
         error: 'Unauthorized',
         message: 'Invalid token payload',
         code: 'INVALID_PAYLOAD',
@@ -174,7 +183,8 @@ export const authPreHandler = async (
       );
 
       if (!sessionValidation.isValid) {
-        return reply.status(401).send({
+        reply.statusCode = 401;
+        return reply.send({
           error: 'Unauthorized',
           message: sessionValidation.error || 'Session expired',
           code: 'SESSION_EXPIRED',
@@ -191,7 +201,8 @@ export const authPreHandler = async (
       sessionId: payload.sessionId,
     };
   } catch {
-    return reply.status(500).send({
+    reply.statusCode = 500;
+    return reply.send({
       error: 'Internal Server Error',
       message: 'Authentication validation failed',
       code: 'AUTH_ERROR',

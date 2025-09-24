@@ -30,7 +30,8 @@ export const sessionMiddleware = (
 
           if (!token) {
             if (required) {
-              return reply.status(401).send({
+              reply.statusCode = 401;
+              return reply.send({
                 error: 'Unauthorized',
                 message: 'No authentication token provided',
               });
@@ -42,7 +43,8 @@ export const sessionMiddleware = (
 
           if (!tokenValidation.isValid) {
             if (required) {
-              return reply.status(401).send({
+              reply.statusCode = 401;
+              return reply.send({
                 error: 'Unauthorized',
                 message: tokenValidation.error || 'Invalid token',
               });
@@ -53,7 +55,8 @@ export const sessionMiddleware = (
           const { payload } = tokenValidation;
           if (!payload?.sessionId) {
             if (required) {
-              return reply.status(401).send({
+              reply.statusCode = 401;
+              return reply.send({
                 error: 'Unauthorized',
                 message: 'Invalid token payload',
               });
@@ -67,7 +70,8 @@ export const sessionMiddleware = (
 
           if (!sessionValidation.isValid) {
             if (required) {
-              return reply.status(401).send({
+              reply.statusCode = 401;
+              return reply.send({
                 error: 'Unauthorized',
                 message: sessionValidation.error || 'Invalid session',
               });
@@ -78,7 +82,8 @@ export const sessionMiddleware = (
           const { session } = sessionValidation;
           if (!session) {
             if (required) {
-              return reply.status(401).send({
+              reply.statusCode = 401;
+              return reply.send({
                 error: 'Unauthorized',
                 message: 'Session not found',
               });
@@ -118,7 +123,8 @@ export const sessionMiddleware = (
           Logger.error('Session middleware error:', error);
 
           if (required) {
-            return reply.status(500).send({
+            reply.statusCode = 500;
+            return reply.send({
               error: 'Internal Server Error',
               message: 'Session validation failed',
             });

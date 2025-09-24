@@ -65,7 +65,8 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           const balance = await creditService.getUserBalance(userId);
 
           if (!balance) {
-            return reply.status(404).send({
+            reply.statusCode = 404;
+            return reply.send({
               error: 'Not Found',
               message: 'User balance not found',
             });
@@ -79,7 +80,8 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
             },
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to retrieve balance',
           });
@@ -119,7 +121,8 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
             summary,
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to retrieve balance summary',
           });
@@ -183,7 +186,8 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
             },
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to retrieve transaction history',
           });
@@ -220,7 +224,8 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!transaction) {
-            return reply.status(404).send({
+            reply.statusCode = 404;
+            return reply.send({
               error: 'Not Found',
               message: 'Transaction not found',
             });
@@ -230,7 +235,8 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
             transaction,
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to retrieve transaction',
           });
@@ -267,7 +273,8 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Credit Operation Failed',
               message: result.error,
             });
@@ -279,7 +286,8 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
             newBalance: result.balance,
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to spend credits',
           });
@@ -322,19 +330,22 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Credit Operation Failed',
               message: result.error,
             });
           }
 
-          return reply.status(201).send({
+          reply.statusCode = 201;
+          return reply.send({
             message: 'Credits deposited successfully',
             transaction: result.transaction,
             newBalance: result.balance,
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to deposit credits',
           });
@@ -378,19 +389,22 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           if (!result.success) {
-            return reply.status(400).send({
+            reply.statusCode = 400;
+            return reply.send({
               error: 'Credit Operation Failed',
               message: result.error,
             });
           }
 
-          return reply.status(201).send({
+          reply.statusCode = 201;
+          return reply.send({
             message: 'Credits refunded successfully',
             transaction: result.transaction,
             newBalance: result.balance,
           });
         } catch {
-          return reply.status(500).send({
+          reply.statusCode = 500;
+          return reply.send({
             error: 'Internal Server Error',
             message: 'Failed to refund credits',
           });
@@ -433,7 +447,8 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
               },
             });
           } catch {
-            return reply.status(500).send({
+            reply.statusCode = 500;
+            return reply.send({
               error: 'Internal Server Error',
               message: 'Failed to retrieve user balances',
             });
@@ -476,19 +491,22 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
             );
 
             if (!result.success) {
-              return reply.status(400).send({
+              reply.statusCode = 400;
+              return reply.send({
                 error: 'Credit Operation Failed',
                 message: result.error,
               });
             }
 
-            return reply.status(201).send({
+            reply.statusCode = 201;
+            return reply.send({
               message: `Credits ${type === 'bonus' ? 'awarded' : 'added'} successfully`,
               transaction: result.transaction,
               newBalance: result.balance,
             });
           } catch {
-            return reply.status(500).send({
+            reply.statusCode = 500;
+            return reply.send({
               error: 'Internal Server Error',
               message: 'Failed to add credits',
             });
@@ -537,7 +555,8 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
             );
 
             if (!result.success) {
-              return reply.status(400).send({
+              reply.statusCode = 400;
+              return reply.send({
                 error: 'Credit Operation Failed',
                 message: result.error,
               });
@@ -549,7 +568,8 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
               newBalance: result.balance,
             });
           } catch {
-            return reply.status(500).send({
+            reply.statusCode = 500;
+            return reply.send({
               error: 'Internal Server Error',
               message: 'Failed to withdraw credits',
             });
@@ -573,14 +593,16 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
             timestamp: new Date().toISOString(),
           });
         } else {
-          return reply.status(503).send({
+          reply.statusCode = 503;
+          return reply.send({
             status: 'unhealthy',
             service: 'credit-system',
             timestamp: new Date().toISOString(),
           });
         }
       } catch {
-        return reply.status(503).send({
+        reply.statusCode = 503;
+        return reply.send({
           status: 'error',
           service: 'credit-system',
           timestamp: new Date().toISOString(),

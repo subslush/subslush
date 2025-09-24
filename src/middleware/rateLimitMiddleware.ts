@@ -45,7 +45,8 @@ export const rateLimitMiddleware = (
             const ttl = await client.ttl(key);
             const resetTime = new Date(Date.now() + ttl * 1000);
 
-            return reply.status(429).send({
+            reply.statusCode = 429;
+            return reply.send({
               error: 'Too Many Requests',
               message: 'Rate limit exceeded',
               retryAfter: ttl,
