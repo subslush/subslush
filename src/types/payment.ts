@@ -80,6 +80,12 @@ export interface NOWPaymentsPaymentStatus {
   payout_hash?: string;
 }
 
+// Actual API response format from NOWPayments /currencies endpoint
+export interface NOWPaymentsCurrenciesResponse {
+  currencies: string[];
+}
+
+// Full currency details from /currencies-full endpoint (if available)
 export interface NOWPaymentsCurrency {
   ticker: string;
   name: string;

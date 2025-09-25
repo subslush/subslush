@@ -12,6 +12,7 @@ import { redisClient } from './config/redis';
 import { errorHandler } from './middleware/errorHandler';
 import { healthRoutes } from './routes/health';
 import { apiRoutes } from './routes/api';
+import { nowpaymentsClient } from './utils/nowpaymentsClient';
 
 const fastify = Fastify({
   logger:
@@ -80,6 +81,41 @@ async function startServer(): Promise<void> {
     } catch (redisError) {
       server.log.warn('Redis connection failed - continuing without Redis');
       server.log.warn(redisError);
+    }
+
+    // Validate NOWPayments integration
+    server.log.info('Validating NOWPayments configuration...');
+    try {
+      const validation = await nowpaymentsClient.validateConfiguration();
+      if (!validation.valid) {
+        server.log.error(
+          `NOWPayments configuration validation failed: ${validation.errors.join(', ')}`
+        );
+        if (env.NODE_ENV === 'production') {
+          throw new Error(
+            `NOWPayments configuration invalid: ${validation.errors.join(', ')}`
+          );
+        } else {
+          server.log.warn(
+            'Continuing in development mode despite NOWPayments configuration issues'
+          );
+        }
+      } else {
+        server.log.info('NOWPayments configuration validated successfully');
+      }
+    } catch (validationError) {
+      server.log.error(
+        `NOWPayments validation failed: ${validationError instanceof Error ? validationError.message : 'Unknown error'}`
+      );
+      if (env.NODE_ENV === 'production') {
+        throw new Error(
+          `NOWPayments validation failed: ${validationError instanceof Error ? validationError.message : 'Unknown error'}`
+        );
+      } else {
+        server.log.warn(
+          'Continuing in development mode despite NOWPayments validation failure'
+        );
+      }
     }
 
     await server.listen({

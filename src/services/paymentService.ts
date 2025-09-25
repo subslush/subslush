@@ -8,7 +8,6 @@ import { Logger } from '../utils/logger';
 import {
   Payment,
   CreatePaymentRequest,
-  CreatePaymentResponse,
   PaymentStatusResponse,
   PaymentHistoryQuery,
   PaymentHistoryItem,
@@ -80,7 +79,9 @@ export class PaymentService {
         pay_currency: currency,
         ipn_callback_url: env.NOWPAYMENTS_WEBHOOK_URL,
         order_id: orderId,
-        order_description: request.orderDescription || `Credit purchase: $${request.creditAmount}`,
+        order_description:
+          request.orderDescription ||
+          `Credit purchase: $${request.creditAmount}`,
       };
 
       const invoice = await nowpaymentsClient.createInvoice(invoiceRequest);
@@ -99,7 +100,9 @@ export class PaymentService {
         amount: invoice.pay_amount,
         creditAmount: request.creditAmount,
         payAddress: invoice.pay_address,
-        orderDescription: request.orderDescription,
+        ...(request.orderDescription && {
+          orderDescription: request.orderDescription,
+        }),
         metadata: {
           orderId,
           invoiceUrl: invoice.invoice_url,
@@ -124,7 +127,8 @@ export class PaymentService {
         [
           payment.id,
           payment.userId,
-          payment.orderDescription || `Pending crypto payment - ${invoice.pay_currency.toUpperCase()}`,
+          payment.orderDescription ||
+            `Pending crypto payment - ${invoice.pay_currency.toUpperCase()}`,
           JSON.stringify(payment.metadata || {}),
           payment.createdAt,
           payment.updatedAt,
@@ -148,7 +152,6 @@ export class PaymentService {
         currency: payment.currency,
         amount: payment.amount,
       });
-
 
       return {
         success: true,
@@ -214,11 +217,15 @@ export class PaymentService {
         creditAmount: metadata.priceAmount || Math.abs(parseFloat(row.amount)),
         payAmount: parseFloat(row.payment_amount || '0'),
         payCurrency: row.payment_currency,
-        actuallyPaid: metadata.actuallyPaid ? parseFloat(metadata.actuallyPaid) : undefined,
+        ...(row.actually_paid && {
+          actuallyPaid: parseFloat(row.actually_paid),
+        }),
         blockchainHash: row.blockchain_hash,
         createdAt: new Date(row.created_at),
         updatedAt: new Date(row.updated_at),
-        expiresAt: metadata.expiresAt ? new Date(metadata.expiresAt) : undefined,
+        expiresAt: metadata.expiresAt
+          ? new Date(metadata.expiresAt)
+          : undefined,
       };
 
       // Cache the result
@@ -277,7 +284,9 @@ export class PaymentService {
         previousStatus !== 'finished'
       ) {
         // Get the current user balance to calculate balance_after
-        const currentBalance = await creditService.getUserBalance(payment.user_id);
+        const currentBalance = await creditService.getUserBalance(
+          payment.user_id
+        );
         const balanceBefore = currentBalance?.totalBalance || 0;
         const creditAmount = metadata.priceAmount || parseFloat(payment.amount);
         const balanceAfter = balanceBefore + creditAmount;
@@ -409,7 +418,8 @@ export class PaymentService {
           provider: row.payment_provider,
           currency: row.payment_currency,
           amount: parseFloat(row.payment_amount || '0'),
-          creditAmount: metadata.priceAmount || Math.abs(parseFloat(row.amount)),
+          creditAmount:
+            metadata.priceAmount || Math.abs(parseFloat(row.amount)),
           blockchainHash: row.blockchain_hash,
           createdAt: new Date(row.created_at),
           updatedAt: new Date(row.updated_at),
@@ -431,25 +441,97 @@ export class PaymentService {
         return JSON.parse(cached);
       }
 
-      const currencies = await nowpaymentsClient.getCurrencies();
-      const currencyInfo: CurrencyInfo[] = currencies.map(currency => ({
-        ticker: currency.ticker,
-        name: currency.name,
-        image: currency.image,
-        isPopular: currency.is_popular,
-        isStable: currency.is_stable,
-      }));
+      // Get currency ticker list from NOWPayments API
+      const currencyTickers = await nowpaymentsClient.getCurrencies();
+
+      Logger.debug(
+        `Received ${currencyTickers.length} currencies from NOWPayments API`
+      );
+
+      // Transform string array to CurrencyInfo objects with metadata
+      const currencyInfo: CurrencyInfo[] = currencyTickers.map(ticker => {
+        const lowerTicker = ticker.toLowerCase();
+
+        // Define popular currencies
+        const popularCurrencies = [
+          'btc',
+          'eth',
+          'usdt',
+          'usdc',
+          'ltc',
+          'bch',
+          'xrp',
+          'ada',
+          'dot',
+          'matic',
+        ];
+        const isPopular = popularCurrencies.includes(lowerTicker);
+
+        // Define stable currencies
+        const stableCurrencies = [
+          'usdt',
+          'usdc',
+          'usdp',
+          'dai',
+          'busd',
+          'tusd',
+          'usdcbsc',
+          'usdttrc20',
+        ];
+        const isStable = stableCurrencies.includes(lowerTicker);
+
+        // Generate display name from ticker
+        const name = this.generateCurrencyName(ticker);
+
+        return {
+          ticker: ticker.toLowerCase(),
+          name,
+          image: `https://nowpayments.io/images/coins/${ticker.toLowerCase()}.svg`,
+          isPopular,
+          isStable,
+        };
+      });
 
       // Cache for 1 hour
       await redisClient
         .getClient()
         .setex(cacheKey, 3600, JSON.stringify(currencyInfo));
 
+      Logger.info(
+        `Successfully processed ${currencyInfo.length} supported currencies`
+      );
       return currencyInfo;
     } catch (error) {
       Logger.error('Error getting supported currencies:', error);
       return [];
     }
+  }
+
+  // Helper method to generate currency display names
+  private generateCurrencyName(ticker: string): string {
+    const currencyNames: Record<string, string> = {
+      btc: 'Bitcoin',
+      eth: 'Ethereum',
+      usdt: 'Tether',
+      usdc: 'USD Coin',
+      ltc: 'Litecoin',
+      bch: 'Bitcoin Cash',
+      xrp: 'Ripple',
+      ada: 'Cardano',
+      dot: 'Polkadot',
+      matic: 'Polygon',
+      avax: 'Avalanche',
+      now: 'ChangeNOW',
+      fil: 'Filecoin',
+      usdp: 'Pax Dollar',
+      dai: 'Dai',
+      busd: 'Binance USD',
+      tusd: 'TrueUSD',
+      usdcbsc: 'USD Coin (BSC)',
+      usdttrc20: 'Tether (TRC20)',
+    };
+
+    return currencyNames[ticker.toLowerCase()] || ticker.toUpperCase();
   }
 
   // Get payment estimate
@@ -490,7 +572,9 @@ export class PaymentService {
       }
 
       const nowpaymentsId = result.rows[0].payment_id;
-      const metadata = result.rows[0].metadata ? JSON.parse(result.rows[0].metadata) : {};
+      const metadata = result.rows[0].metadata
+        ? JSON.parse(result.rows[0].metadata)
+        : {};
 
       // Get latest status from NOWPayments
       const status = await nowpaymentsClient.getPaymentStatus(nowpaymentsId);

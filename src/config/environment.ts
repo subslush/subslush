@@ -37,15 +37,57 @@ const environmentSchema = z.object({
   MAX_SESSIONS_PER_USER: z.coerce.number().default(5),
   SESSION_CLEANUP_INTERVAL: z.coerce.number().default(3600),
   NOWPAYMENTS_API_KEY: z.string().min(1, 'NOWPayments API key is required'),
-  NOWPAYMENTS_IPN_SECRET: z.string().min(1, 'NOWPayments IPN secret is required'),
-  NOWPAYMENTS_BASE_URL: z.string().url().default('https://api.nowpayments.io/v1'),
-  NOWPAYMENTS_SANDBOX_MODE: z.coerce.boolean().default(true),
+  NOWPAYMENTS_IPN_SECRET: z
+    .string()
+    .min(1, 'NOWPayments IPN secret is required'),
+  NOWPAYMENTS_BASE_URL: z
+    .string()
+    .url()
+    .default('https://api.nowpayments.io/v1'),
+  NOWPAYMENTS_SANDBOX_MODE: z
+    .string()
+    .optional()
+    .transform(val => {
+      if (val === undefined) return false;
+      if (val.toLowerCase() === 'true') return true;
+      if (val.toLowerCase() === 'false') return false;
+      throw new Error(
+        `Invalid boolean value: ${val}. Expected 'true' or 'false'`
+      );
+    })
+    .default('false')
+    .transform(val =>
+      typeof val === 'string' ? val.toLowerCase() === 'true' : val
+    ),
   NOWPAYMENTS_WEBHOOK_URL: z.string().url('Invalid webhook URL format'),
 });
 
 function validateEnvironment(): EnvironmentConfig {
   try {
-    return environmentSchema.parse(process.env);
+    const parsed = environmentSchema.parse(process.env);
+
+    // Log critical configuration values for debugging
+    console.log('Environment configuration loaded:');
+    console.log(`- NODE_ENV: ${parsed.NODE_ENV}`);
+    console.log(
+      `- Raw env value: process.env.NOWPAYMENTS_SANDBOX_MODE = "${process.env.NOWPAYMENTS_SANDBOX_MODE}"`
+    );
+    console.log(
+      `- Parsed value: ${parsed.NOWPAYMENTS_SANDBOX_MODE} (type: ${typeof parsed.NOWPAYMENTS_SANDBOX_MODE})`
+    );
+    console.log(`- NOWPAYMENTS_BASE_URL: ${parsed.NOWPAYMENTS_BASE_URL}`);
+
+    // Validate production configuration
+    if (
+      parsed.NODE_ENV === 'production' &&
+      parsed.NOWPAYMENTS_SANDBOX_MODE === true
+    ) {
+      console.warn(
+        'WARNING: Production environment detected but NOWPayments is in sandbox mode!'
+      );
+    }
+
+    return parsed;
   } catch (error) {
     console.error('Environment validation failed:', error);
     process.exit(1);
