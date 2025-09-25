@@ -24,4 +24,9 @@ export interface EnvironmentConfig {
   SESSION_IV_LENGTH: number;
   MAX_SESSIONS_PER_USER: number;
   SESSION_CLEANUP_INTERVAL: number;
+  NOWPAYMENTS_API_KEY: string;
+  NOWPAYMENTS_IPN_SECRET: string;
+  NOWPAYMENTS_BASE_URL: string;
+  NOWPAYMENTS_SANDBOX_MODE: boolean;
+  NOWPAYMENTS_WEBHOOK_URL: string;
 }

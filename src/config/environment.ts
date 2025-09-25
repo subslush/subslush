@@ -36,6 +36,11 @@ const environmentSchema = z.object({
   SESSION_IV_LENGTH: z.coerce.number().default(16),
   MAX_SESSIONS_PER_USER: z.coerce.number().default(5),
   SESSION_CLEANUP_INTERVAL: z.coerce.number().default(3600),
+  NOWPAYMENTS_API_KEY: z.string().min(1, 'NOWPayments API key is required'),
+  NOWPAYMENTS_IPN_SECRET: z.string().min(1, 'NOWPayments IPN secret is required'),
+  NOWPAYMENTS_BASE_URL: z.string().url().default('https://api.nowpayments.io/v1'),
+  NOWPAYMENTS_SANDBOX_MODE: z.coerce.boolean().default(true),
+  NOWPAYMENTS_WEBHOOK_URL: z.string().url('Invalid webhook URL format'),
 });
 
 function validateEnvironment(): EnvironmentConfig {
