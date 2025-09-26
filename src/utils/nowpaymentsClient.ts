@@ -3,6 +3,8 @@ import { Logger } from './logger';
 import {
   NOWPaymentsCreateInvoiceRequest,
   NOWPaymentsCreateInvoiceResponse,
+  NOWPaymentsCreatePaymentRequest,
+  NOWPaymentsCreatePaymentResponse,
   NOWPaymentsPaymentStatus,
   NOWPaymentsCurrenciesResponse,
   PaymentEstimate,
@@ -177,6 +179,23 @@ export class NOWPaymentsClient {
     });
 
     return this.makeRequest('/invoice', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  // Create direct payment
+  async createPayment(
+    request: NOWPaymentsCreatePaymentRequest
+  ): Promise<NOWPaymentsCreatePaymentResponse> {
+    Logger.info('Creating NOWPayments direct payment:', {
+      orderId: request.order_id,
+      amount: request.price_amount,
+      currency: request.price_currency,
+      payCurrency: request.pay_currency,
+    });
+
+    return this.makeRequest('/payment', {
       method: 'POST',
       body: JSON.stringify(request),
     });

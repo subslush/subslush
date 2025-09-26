@@ -1,5 +1,6 @@
 export type PaymentStatus =
   | 'pending'
+  | 'waiting'
   | 'confirming'
   | 'confirmed'
   | 'sending'
@@ -58,6 +59,31 @@ export interface NOWPaymentsCreateInvoiceResponse {
   invoice_url: string;
   success_url?: string;
   cancel_url?: string;
+}
+
+// Direct payment interfaces for NOWPayments /payment endpoint
+export interface NOWPaymentsCreatePaymentRequest {
+  price_amount: number;
+  price_currency: string;
+  pay_currency: string;
+  order_id: string;
+  order_description?: string;
+  ipn_callback_url: string;
+}
+
+export interface NOWPaymentsCreatePaymentResponse {
+  payment_id: string; // NOWPayments payment ID for direct payments
+  payment_status: PaymentStatus;
+  pay_address: string;
+  pay_amount: number;
+  pay_currency: string;
+  price_amount: number;
+  price_currency: string;
+  order_id: string;
+  order_description?: string;
+  ipn_callback_url: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface NOWPaymentsPaymentStatus {

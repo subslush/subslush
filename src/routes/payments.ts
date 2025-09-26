@@ -16,9 +16,9 @@ import {
 } from '../types/payment';
 
 export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
-  // Create payment invoice
+  // Create payment
   fastify.post(
-    '/create-invoice',
+    '/create-payment',
     {
       schema: {
         body: createPaymentRequestJsonSchema,
@@ -35,7 +35,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
 
         const body = request.body as CreatePaymentRequest;
 
-        Logger.info(`Creating payment invoice for user ${user.userId}`, {
+        Logger.info(`Creating payment for user ${user.userId}`, {
           userId: user.userId,
           creditAmount: body.creditAmount,
           currency: body.currency,
@@ -56,7 +56,6 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
 
         const response = {
           paymentId: result.payment!.paymentId, // Use NOWPayments payment_id, not local id
-          invoiceUrl: result.payment!.metadata?.['invoiceUrl'],
           payAddress: result.payment!.payAddress,
           payAmount: result.payment!.amount,
           payCurrency: result.payment!.currency,
@@ -67,14 +66,11 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         return SuccessResponses.created(
           reply,
           response,
-          'Payment invoice created successfully'
+          'Payment created successfully'
         );
       } catch (error) {
-        Logger.error('Error creating payment invoice:', error);
-        return ErrorResponses.internalError(
-          reply,
-          'Failed to create payment invoice'
-        );
+        Logger.error('Error creating payment:', error);
+        return ErrorResponses.internalError(reply, 'Failed to create payment');
       }
     }
   );

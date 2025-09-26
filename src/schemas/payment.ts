@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const paymentStatusSchema = z.enum([
   'pending',
+  'waiting',
   'confirming',
   'confirmed',
   'sending',
@@ -39,12 +40,12 @@ export const paymentHistoryQuerySchema = z.object({
   startDate: z
     .string()
     .datetime('Invalid start date format')
-    .transform((val) => new Date(val))
+    .transform(val => new Date(val))
     .optional(),
   endDate: z
     .string()
     .datetime('Invalid end date format')
-    .transform((val) => new Date(val))
+    .transform(val => new Date(val))
     .optional(),
   limit: z
     .number()
@@ -131,6 +132,7 @@ export const paymentHistoryQueryJsonSchema = {
       type: 'string',
       enum: [
         'pending',
+        'waiting',
         'confirming',
         'confirmed',
         'sending',
@@ -187,6 +189,7 @@ export const webhookPayloadJsonSchema = {
       type: 'string',
       enum: [
         'pending',
+        'waiting',
         'confirming',
         'confirmed',
         'sending',

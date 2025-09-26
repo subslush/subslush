@@ -14,7 +14,7 @@ import {
   PaymentOperationResult,
   WebhookPayload,
   CurrencyInfo,
-  NOWPaymentsCreateInvoiceRequest,
+  NOWPaymentsCreatePaymentRequest,
 } from '../types/payment';
 
 export class PaymentService {
@@ -72,8 +72,8 @@ export class PaymentService {
         };
       }
 
-      // Create NOWPayments invoice
-      const invoiceRequest: NOWPaymentsCreateInvoiceRequest = {
+      // Create NOWPayments direct payment
+      const paymentRequest: NOWPaymentsCreatePaymentRequest = {
         price_amount: request.creditAmount,
         price_currency: 'usd',
         pay_currency: currency,
@@ -84,41 +84,33 @@ export class PaymentService {
           `Credit purchase: $${request.creditAmount}`,
       };
 
-      const invoice = await nowpaymentsClient.createInvoice(invoiceRequest);
+      const payment = await nowpaymentsClient.createPayment(paymentRequest);
 
-      // Validate invoice response has all critical data
-      if (!invoice.id) {
-        Logger.error('NOWPayments invoice missing id:', invoice);
+      // Validate payment response has all critical data
+      if (!payment.payment_id) {
+        Logger.error('NOWPayments payment missing payment_id:', payment);
         return {
           success: false,
-          error: 'Invalid invoice response: missing payment ID',
+          error: 'Invalid payment response: missing payment ID',
         };
       }
 
-      if (!invoice.pay_address) {
-        Logger.error('NOWPayments invoice missing pay_address:', invoice);
+      if (!payment.pay_address) {
+        Logger.error('NOWPayments payment missing pay_address:', payment);
         return {
           success: false,
-          error: 'Invalid invoice response: missing payment address',
+          error: 'Invalid payment response: missing payment address',
         };
       }
 
-      if (!invoice.pay_amount || invoice.pay_amount <= 0) {
+      if (!payment.pay_amount || payment.pay_amount <= 0) {
         Logger.error(
-          'NOWPayments invoice missing/invalid pay_amount:',
-          invoice
+          'NOWPayments payment missing/invalid pay_amount:',
+          payment
         );
         return {
           success: false,
-          error: 'Invalid invoice response: missing payment amount',
-        };
-      }
-
-      if (!invoice.invoice_url) {
-        Logger.error('NOWPayments invoice missing invoice_url:', invoice);
-        return {
-          success: false,
-          error: 'Invalid invoice response: missing invoice URL',
+          error: 'Invalid payment response: missing payment amount',
         };
       }
 
@@ -126,25 +118,24 @@ export class PaymentService {
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
       // Store payment in credit_transactions table with payment fields
-      const payment: Partial<Payment> = {
+      const paymentRecord: Partial<Payment> = {
         id: paymentId,
         userId,
-        paymentId: invoice.id,
+        paymentId: payment.payment_id,
         provider: 'nowpayments',
-        status: invoice.payment_status,
-        currency: invoice.pay_currency,
-        amount: invoice.pay_amount,
+        status: payment.payment_status,
+        currency: payment.pay_currency,
+        amount: payment.pay_amount,
         creditAmount: request.creditAmount,
-        payAddress: invoice.pay_address,
+        payAddress: payment.pay_address,
         ...(request.orderDescription && {
           orderDescription: request.orderDescription,
         }),
         metadata: {
           orderId,
-          invoiceUrl: invoice.invoice_url,
-          priceAmount: invoice.price_amount,
-          priceCurrency: invoice.price_currency,
-          payAddress: invoice.pay_address,
+          priceAmount: payment.price_amount,
+          priceCurrency: payment.price_currency,
+          payAddress: payment.pay_address,
           expiresAt: expiresAt.toISOString(),
         },
         createdAt: new Date(),
@@ -161,37 +152,37 @@ export class PaymentService {
           payment_currency, payment_amount)
          VALUES ($1, $2, 'deposit', 0, 0, 0, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
-          payment.id,
-          payment.userId,
-          payment.orderDescription ||
-            `Pending crypto payment - ${invoice.pay_currency.toUpperCase()}`,
-          JSON.stringify(payment.metadata || {}),
-          payment.createdAt,
-          payment.updatedAt,
-          payment.paymentId,
-          payment.provider,
-          payment.status,
-          payment.currency,
-          payment.amount,
+          paymentRecord.id,
+          paymentRecord.userId,
+          paymentRecord.orderDescription ||
+            `Pending crypto payment - ${payment.pay_currency.toUpperCase()}`,
+          JSON.stringify(paymentRecord.metadata || {}),
+          paymentRecord.createdAt,
+          paymentRecord.updatedAt,
+          paymentRecord.paymentId,
+          paymentRecord.provider,
+          paymentRecord.status,
+          paymentRecord.currency,
+          paymentRecord.amount,
         ]
       );
 
       await client.query('COMMIT');
 
       // Cache payment data
-      await this.cachePayment(payment as Payment);
+      await this.cachePayment(paymentRecord as Payment);
 
       Logger.info(`Created payment for user ${userId}`, {
-        paymentId: payment.id,
-        nowPaymentsId: payment.paymentId,
-        creditAmount: payment.creditAmount,
-        currency: payment.currency,
-        amount: payment.amount,
+        paymentId: paymentRecord.id,
+        nowPaymentsId: paymentRecord.paymentId,
+        creditAmount: paymentRecord.creditAmount,
+        currency: paymentRecord.currency,
+        amount: paymentRecord.amount,
       });
 
       return {
         success: true,
-        payment: payment as Payment,
+        payment: paymentRecord as Payment,
       };
     } catch (error) {
       await client.query('ROLLBACK');
@@ -246,7 +237,24 @@ export class PaymentService {
       }
 
       const row = result.rows[0];
-      const metadata = row.metadata ? JSON.parse(row.metadata) : {};
+      // Safe metadata parsing with fallback for corrupted data
+      const metadata = row.metadata
+        ? typeof row.metadata === 'string'
+          ? row.metadata === '[object Object]'
+            ? {}
+            : ((): any => {
+                try {
+                  return JSON.parse(row.metadata);
+                } catch {
+                  Logger.warn(
+                    'Failed to parse metadata JSON, using empty object:',
+                    row.metadata
+                  );
+                  return {};
+                }
+              })()
+          : row.metadata
+        : {};
       const response: PaymentStatusResponse = {
         paymentId: row.payment_id, // Use NOWPayments payment_id, not local id
         status: row.payment_status,
@@ -446,7 +454,24 @@ export class PaymentService {
       const result = await pool.query(sql, params);
 
       return result.rows.map(row => {
-        const metadata = row.metadata ? JSON.parse(row.metadata) : {};
+        // Safe metadata parsing with fallback for corrupted data
+        const metadata = row.metadata
+          ? typeof row.metadata === 'string'
+            ? row.metadata === '[object Object]'
+              ? {}
+              : ((): any => {
+                  try {
+                    return JSON.parse(row.metadata);
+                  } catch {
+                    Logger.warn(
+                      'Failed to parse metadata JSON in payment history, using empty object:',
+                      row.metadata
+                    );
+                    return {};
+                  }
+                })()
+            : row.metadata
+          : {};
         return {
           id: row.id,
           paymentId: row.payment_id,
