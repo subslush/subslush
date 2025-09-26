@@ -43,7 +43,7 @@ export interface NOWPaymentsCreateInvoiceRequest {
 }
 
 export interface NOWPaymentsCreateInvoiceResponse {
-  payment_id: string;
+  id: string; // NOWPayments invoice ID (actual API response field)
   payment_status: PaymentStatus;
   pay_address: string;
   price_amount: number;

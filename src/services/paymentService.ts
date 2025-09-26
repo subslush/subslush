@@ -86,6 +86,42 @@ export class PaymentService {
 
       const invoice = await nowpaymentsClient.createInvoice(invoiceRequest);
 
+      // Validate invoice response has all critical data
+      if (!invoice.id) {
+        Logger.error('NOWPayments invoice missing id:', invoice);
+        return {
+          success: false,
+          error: 'Invalid invoice response: missing payment ID',
+        };
+      }
+
+      if (!invoice.pay_address) {
+        Logger.error('NOWPayments invoice missing pay_address:', invoice);
+        return {
+          success: false,
+          error: 'Invalid invoice response: missing payment address',
+        };
+      }
+
+      if (!invoice.pay_amount || invoice.pay_amount <= 0) {
+        Logger.error(
+          'NOWPayments invoice missing/invalid pay_amount:',
+          invoice
+        );
+        return {
+          success: false,
+          error: 'Invalid invoice response: missing payment amount',
+        };
+      }
+
+      if (!invoice.invoice_url) {
+        Logger.error('NOWPayments invoice missing invoice_url:', invoice);
+        return {
+          success: false,
+          error: 'Invalid invoice response: missing invoice URL',
+        };
+      }
+
       // Calculate expiry time (30 minutes from now)
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
@@ -93,7 +129,7 @@ export class PaymentService {
       const payment: Partial<Payment> = {
         id: paymentId,
         userId,
-        paymentId: invoice.payment_id,
+        paymentId: invoice.id,
         provider: 'nowpayments',
         status: invoice.payment_status,
         currency: invoice.pay_currency,
@@ -188,13 +224,13 @@ export class PaymentService {
         return payment;
       }
 
-      // Get from credit_transactions table
+      // Get from credit_transactions table using NOWPayments payment_id
       const pool = getDatabasePool();
       let query = `
         SELECT id, user_id, payment_id, payment_status, payment_currency, payment_amount,
                blockchain_hash, created_at, updated_at, amount, description, metadata
         FROM credit_transactions
-        WHERE id = $1 AND payment_id IS NOT NULL
+        WHERE payment_id = $1 AND payment_id IS NOT NULL
       `;
       const params: any[] = [paymentId];
 
@@ -212,7 +248,7 @@ export class PaymentService {
       const row = result.rows[0];
       const metadata = row.metadata ? JSON.parse(row.metadata) : {};
       const response: PaymentStatusResponse = {
-        paymentId: row.id,
+        paymentId: row.payment_id, // Use NOWPayments payment_id, not local id
         status: row.payment_status,
         creditAmount: metadata.priceAmount || Math.abs(parseFloat(row.amount)),
         payAmount: parseFloat(row.payment_amount || '0'),
@@ -561,9 +597,9 @@ export class PaymentService {
     try {
       const pool = getDatabasePool();
 
-      // Get payment from credit_transactions table
+      // Get payment from credit_transactions table using NOWPayments payment_id
       const result = await pool.query(
-        'SELECT payment_id, metadata FROM credit_transactions WHERE id = $1',
+        'SELECT id, payment_id, metadata FROM credit_transactions WHERE payment_id = $1',
         [paymentId]
       );
 
@@ -571,6 +607,7 @@ export class PaymentService {
         return false;
       }
 
+      const localId = result.rows[0].id;
       const nowpaymentsId = result.rows[0].payment_id;
       const metadata = result.rows[0].metadata
         ? JSON.parse(result.rows[0].metadata)
@@ -582,7 +619,7 @@ export class PaymentService {
       // Update metadata with latest payment info
       metadata.actuallyPaid = status.actually_paid;
 
-      // Update database
+      // Update database using local ID for WHERE clause
       await pool.query(
         `UPDATE credit_transactions
          SET payment_status = $1, blockchain_hash = $2, updated_at = NOW(), metadata = $3
@@ -591,7 +628,7 @@ export class PaymentService {
           status.payment_status,
           status.payin_hash,
           JSON.stringify(metadata),
-          paymentId,
+          localId,
         ]
       );
 

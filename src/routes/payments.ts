@@ -1,6 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { authMiddleware } from '../middleware/authMiddleware';
-import { paymentRateLimit, webhookRateLimit } from '../middleware/paymentMiddleware';
+import { authPreHandler } from '../middleware/authMiddleware';
 import { paymentService } from '../services/paymentService';
 import { SuccessResponses, ErrorResponses } from '../utils/response';
 import { Logger } from '../utils/logger';
@@ -24,28 +23,39 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
       schema: {
         body: createPaymentRequestJsonSchema,
       },
-      preHandler: [authMiddleware(), paymentRateLimit],
+      preHandler: [authPreHandler],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const user = (request as any).user;
+        const user = request.user;
+
+        if (!user || !user.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
+
         const body = request.body as CreatePaymentRequest;
 
-        Logger.info(`Creating payment invoice for user ${user.id}`, {
-          userId: user.id,
+        Logger.info(`Creating payment invoice for user ${user.userId}`, {
+          userId: user.userId,
           creditAmount: body.creditAmount,
           currency: body.currency,
         });
 
-        const result = await paymentService.createPayment(user.id, body);
+        const result = await paymentService.createPayment(user.userId, body);
 
         if (!result.success) {
-          Logger.error(`Payment creation failed for user ${user.id}:`, result.error);
-          return ErrorResponses.badRequest(reply, result.error || 'Payment creation failed');
+          Logger.error(
+            `Payment creation failed for user ${user.userId}:`,
+            result.error
+          );
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Payment creation failed'
+          );
         }
 
         const response = {
-          paymentId: result.payment!.id,
+          paymentId: result.payment!.paymentId, // Use NOWPayments payment_id, not local id
           invoiceUrl: result.payment!.metadata?.['invoiceUrl'],
           payAddress: result.payment!.payAddress,
           payAmount: result.payment!.amount,
@@ -54,10 +64,17 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           status: result.payment!.status,
         };
 
-        return SuccessResponses.created(reply, response, 'Payment invoice created successfully');
+        return SuccessResponses.created(
+          reply,
+          response,
+          'Payment invoice created successfully'
+        );
       } catch (error) {
         Logger.error('Error creating payment invoice:', error);
-        return ErrorResponses.internalError(reply, 'Failed to create payment invoice');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to create payment invoice'
+        );
       }
     }
   );
@@ -75,14 +92,22 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           },
         },
       },
-      preHandler: [authMiddleware()],
+      preHandler: [authPreHandler],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const user = (request as any).user;
+        const user = request.user;
+
+        if (!user || !user.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
+
         const { paymentId } = request.params as { paymentId: string };
 
-        const status = await paymentService.getPaymentStatus(paymentId, user.id);
+        const status = await paymentService.getPaymentStatus(
+          paymentId,
+          user.userId
+        );
 
         if (!status) {
           return ErrorResponses.notFound(reply, 'Payment not found');
@@ -91,7 +116,10 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         return SuccessResponses.ok(reply, status);
       } catch (error) {
         Logger.error('Error getting payment status:', error);
-        return ErrorResponses.internalError(reply, 'Failed to get payment status');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to get payment status'
+        );
       }
     }
   );
@@ -103,7 +131,6 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
       schema: {
         body: webhookPayloadJsonSchema,
       },
-      preHandler: [webhookRateLimit],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
@@ -118,7 +145,9 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         const success = await paymentService.processWebhook(payload);
 
         if (!success) {
-          Logger.error(`Failed to process webhook for payment ${payload.payment_id}`);
+          Logger.error(
+            `Failed to process webhook for payment ${payload.payment_id}`
+          );
           return ErrorResponses.badRequest(reply, 'Failed to process webhook');
         }
 
@@ -134,15 +163,18 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
     '/currencies',
     {
-      preHandler: [authMiddleware()],
+      preHandler: [authPreHandler],
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (_request: FastifyRequest, reply: FastifyReply) => {
       try {
         const currencies = await paymentService.getSupportedCurrencies();
         return SuccessResponses.ok(reply, currencies);
       } catch (error) {
         Logger.error('Error getting supported currencies:', error);
-        return ErrorResponses.internalError(reply, 'Failed to get supported currencies');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to get supported currencies'
+        );
       }
     }
   );
@@ -154,22 +186,31 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
       schema: {
         body: estimateRequestJsonSchema,
       },
-      preHandler: [authMiddleware()],
+      preHandler: [authPreHandler],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const { amount, currency_to } = request.body as { amount: number; currency_to: string };
+        const { amount, currency_to } = request.body as {
+          amount: number;
+          currency_to: string;
+        };
 
         const estimate = await paymentService.getEstimate(amount, currency_to);
 
         if (!estimate) {
-          return ErrorResponses.badRequest(reply, 'Unable to calculate estimate');
+          return ErrorResponses.badRequest(
+            reply,
+            'Unable to calculate estimate'
+          );
         }
 
         return SuccessResponses.ok(reply, estimate);
       } catch (error) {
         Logger.error('Error getting payment estimate:', error);
-        return ErrorResponses.internalError(reply, 'Failed to get payment estimate');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to get payment estimate'
+        );
       }
     }
   );
@@ -188,16 +229,21 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         },
         querystring: paymentHistoryQueryJsonSchema,
       },
-      preHandler: [authMiddleware()],
+      preHandler: [authPreHandler],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const user = (request as any).user;
+        const user = request.user;
+
+        if (!user || !user.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
+
         const { userId } = request.params as { userId: string };
         const query = request.query as PaymentHistoryQuery;
 
         // Users can only access their own payment history
-        if (user.id !== userId) {
+        if (user.userId !== userId) {
           return ErrorResponses.forbidden(reply, 'Access denied');
         }
 
@@ -210,7 +256,10 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         });
       } catch (error) {
         Logger.error('Error getting payment history:', error);
-        return ErrorResponses.internalError(reply, 'Failed to get payment history');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to get payment history'
+        );
       }
     }
   );
@@ -228,15 +277,22 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           },
         },
       },
-      preHandler: [authMiddleware()],
+      preHandler: [authPreHandler],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const { paymentId } = request.params as { paymentId: string };
-        const user = (request as any).user;
+        const user = request.user;
+
+        if (!user || !user.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
 
         // Verify user owns this payment
-        const currentStatus = await paymentService.getPaymentStatus(paymentId, user.id);
+        const currentStatus = await paymentService.getPaymentStatus(
+          paymentId,
+          user.userId
+        );
         if (!currentStatus) {
           return ErrorResponses.notFound(reply, 'Payment not found');
         }
@@ -244,36 +300,55 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         const success = await paymentService.refreshPaymentStatus(paymentId);
 
         if (!success) {
-          return ErrorResponses.internalError(reply, 'Failed to refresh payment status');
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to refresh payment status'
+          );
         }
 
         // Get updated status
-        const updatedStatus = await paymentService.getPaymentStatus(paymentId, user.id);
+        const updatedStatus = await paymentService.getPaymentStatus(
+          paymentId,
+          user.userId
+        );
 
-        return SuccessResponses.ok(reply, updatedStatus, 'Payment status refreshed');
+        return SuccessResponses.ok(
+          reply,
+          updatedStatus,
+          'Payment status refreshed'
+        );
       } catch (error) {
         Logger.error('Error refreshing payment status:', error);
-        return ErrorResponses.internalError(reply, 'Failed to refresh payment status');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to refresh payment status'
+        );
       }
     }
   );
 
   // Health check endpoint
-  fastify.get('/health', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const isHealthy = await paymentService.healthCheck();
+  fastify.get(
+    '/health',
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const isHealthy = await paymentService.healthCheck();
 
-      if (!isHealthy) {
-        return ErrorResponses.internalError(reply, 'Payment service unhealthy');
+        if (!isHealthy) {
+          return ErrorResponses.internalError(
+            reply,
+            'Payment service unhealthy'
+          );
+        }
+
+        return SuccessResponses.ok(reply, {
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        Logger.error('Payment health check failed:', error);
+        return ErrorResponses.internalError(reply, 'Health check failed');
       }
-
-      return SuccessResponses.ok(reply, {
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      Logger.error('Payment health check failed:', error);
-      return ErrorResponses.internalError(reply, 'Health check failed');
     }
-  });
+  );
 }
