@@ -12,7 +12,6 @@ import {
   ProfileQueryInput,
 } from '../schemas/user';
 import { Logger } from '../utils/logger';
-import '../types/fastify';
 
 export async function userRoutes(fastify: FastifyInstance): Promise<void> {
   // API info endpoint

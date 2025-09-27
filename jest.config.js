@@ -9,6 +9,10 @@ module.exports = {
   transform: {
     '^.+\\.ts$': 'ts-jest',
   },
+  // Module mocking for problematic ESM packages
+  moduleNameMapper: {
+    '^uuid$': '<rootDir>/src/tests/__mocks__/uuid.ts'
+  },
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',

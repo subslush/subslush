@@ -6,7 +6,6 @@ import { paymentFailureService } from '../../services/paymentFailureService';
 import { refundService } from '../../services/refundService';
 import { SuccessResponses, ErrorResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
-import '../../types/fastify';
 
 // Middleware to check admin permissions
 const adminPreHandler = async (

@@ -2,7 +2,6 @@ import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
 import { jwtService } from '../services/jwtService';
 import { sessionService } from '../services/sessionService';
 import { HttpStatus, sendError } from '../utils/response';
-import '../types/fastify';
 
 export interface AuthMiddlewareOptions {
   roles?: string[];
