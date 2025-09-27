@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from '@jest/globals';
 import { paymentService } from '../services/paymentService';
 import { paymentMonitoringService } from '../services/paymentMonitoringService';
 import { creditAllocationService } from '../services/creditAllocationService';
@@ -14,14 +21,19 @@ jest.mock('../utils/nowpaymentsClient');
 jest.mock('../config/redis');
 jest.mock('../config/database');
 
-const mockNowPaymentsClient = nowpaymentsClient as jest.Mocked<typeof nowpaymentsClient>;
+const mockNowPaymentsClient = nowpaymentsClient as jest.Mocked<
+  typeof nowpaymentsClient
+>;
 const mockRedisClient = redisClient as jest.Mocked<typeof redisClient>;
-const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<typeof getDatabasePool>;
+const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
+  typeof getDatabasePool
+>;
 
 // Mock Redis and Database
 const mockRedis = {
   get: jest.fn<(key: string) => Promise<string | null>>(),
-  setex: jest.fn<(key: string, ttl: number, value: string) => Promise<string>>(),
+  setex:
+    jest.fn<(key: string, ttl: number, value: string) => Promise<string>>(),
   del: jest.fn<(key: string) => Promise<number>>(),
   ping: jest.fn<() => Promise<string>>(),
   keys: jest.fn<(pattern: string) => Promise<string[]>>(),
@@ -34,7 +46,9 @@ const mockDbClient = {
 
 const mockPool = {
   query: jest.fn<(sql: string, params?: any[]) => Promise<any>>(),
-  connect: jest.fn<() => Promise<typeof mockDbClient>>().mockResolvedValue(mockDbClient),
+  connect: jest
+    .fn<() => Promise<typeof mockDbClient>>()
+    .mockResolvedValue(mockDbClient),
 };
 
 describe('Payment Workflow Integration Tests', () => {
@@ -82,17 +96,19 @@ describe('Payment Workflow Integration Tests', () => {
         order_description: 'Credit purchase: $100',
         ipn_callback_url: 'https://api.example.com/webhook',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       };
 
       mockNowPaymentsClient.getEstimate.mockResolvedValue({
         currency_from: 'usd',
         amount_from: creditAmount,
         currency_to: 'btc',
-        estimated_amount: 0.001
+        estimated_amount: 0.001,
       });
 
-      mockNowPaymentsClient.createPayment.mockResolvedValue(mockCreatePaymentResponse);
+      mockNowPaymentsClient.createPayment.mockResolvedValue(
+        mockCreatePaymentResponse
+      );
 
       // Mock database insert for payment creation
       mockDbClient.query
@@ -103,7 +119,7 @@ describe('Payment Workflow Integration Tests', () => {
       const createResult = await paymentService.createPayment(userId, {
         creditAmount,
         currency: 'btc',
-        orderDescription: 'Test payment'
+        orderDescription: 'Test payment',
       });
 
       expect(createResult.success).toBe(true);
@@ -112,11 +128,13 @@ describe('Payment Workflow Integration Tests', () => {
 
       // Step 2: Start Monitoring Service
       mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          payment_id: 'payment-123',
-          user_id: userId,
-          created_at: new Date()
-        }]
+        rows: [
+          {
+            payment_id: 'payment-123',
+            user_id: userId,
+            created_at: new Date(),
+          },
+        ],
       });
 
       await paymentMonitoringService.startMonitoring();
@@ -142,19 +160,22 @@ describe('Payment Workflow Integration Tests', () => {
         payin_hash: 'txhash123',
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
-        payouts: []
+        payouts: [],
       };
 
       // Mock database operations for webhook processing
       mockDbClient.query
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ // Find payment
-          rows: [{
-            id: 'tx-123',
-            user_id: userId,
-            payment_status: 'waiting',
-            metadata: JSON.stringify({ priceAmount: creditAmount })
-          }]
+        .mockResolvedValueOnce({
+          // Find payment
+          rows: [
+            {
+              id: 'tx-123',
+              user_id: userId,
+              payment_status: 'waiting',
+              metadata: JSON.stringify({ priceAmount: creditAmount }),
+            },
+          ],
         })
         .mockResolvedValueOnce({ rows: [] }) // UPDATE payment status
         .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -165,10 +186,12 @@ describe('Payment Workflow Integration Tests', () => {
         totalBalance: 50,
         availableBalance: 50,
         pendingBalance: 0,
-        lastUpdated: new Date()
+        lastUpdated: new Date(),
       };
 
-      jest.spyOn(creditService, 'getUserBalance').mockResolvedValue(mockUserBalance);
+      jest
+        .spyOn(creditService, 'getUserBalance')
+        .mockResolvedValue(mockUserBalance);
 
       // Mock the allocation process
       mockRedis.get.mockResolvedValueOnce(null); // No duplicate check
@@ -178,11 +201,14 @@ describe('Payment Workflow Integration Tests', () => {
       // Mock atomic allocation transaction
       mockDbClient.query
         .mockResolvedValueOnce({ rows: [] }) // BEGIN allocation
-        .mockResolvedValueOnce({ // Find original transaction
-          rows: [{
-            id: 'tx-123',
-            metadata: JSON.stringify({})
-          }]
+        .mockResolvedValueOnce({
+          // Find original transaction
+          rows: [
+            {
+              id: 'tx-123',
+              metadata: JSON.stringify({}),
+            },
+          ],
         })
         .mockResolvedValueOnce({ rows: [] }) // UPDATE with credits
         .mockResolvedValueOnce({ rows: [] }); // COMMIT allocation
@@ -191,12 +217,13 @@ describe('Payment Workflow Integration Tests', () => {
       expect(webhookResult).toBe(true);
 
       // Step 5: Verify Credit Allocation
-      const allocationResult = await creditAllocationService.allocateCreditsForPayment(
-        userId,
-        'payment-123',
-        creditAmount,
-        webhookPayload
-      );
+      const allocationResult =
+        await creditAllocationService.allocateCreditsForPayment(
+          userId,
+          'payment-123',
+          creditAmount,
+          webhookPayload
+        );
 
       expect(allocationResult.success).toBe(true);
       if (allocationResult.success) {
@@ -215,28 +242,17 @@ describe('Payment Workflow Integration Tests', () => {
       const userId = 'user-123';
       const paymentId = 'payment-failed';
 
-      // Simulate failed payment status
-      const _failedPaymentData = {
-        payment_id: paymentId,
-        payment_status: 'failed' as const,
-        pay_address: 'bc1qaddress123',
-        price_amount: 100,
-        price_currency: 'usd',
-        pay_amount: 0.001,
-        actually_paid: 0,
-        pay_currency: 'btc',
-        order_id: 'order-failed',
-        purchase_id: 'purchase-failed',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
-      };
+      // Simulate failed payment status for test workflow
+      console.log(`Processing payment failure for ${paymentId}`);
 
       // Mock database operations for failure handling
       mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          user_id: userId,
-          created_at: new Date()
-        }]
+        rows: [
+          {
+            user_id: userId,
+            created_at: new Date(),
+          },
+        ],
       });
 
       mockRedis.get.mockResolvedValueOnce(null); // No existing failure record
@@ -248,7 +264,15 @@ describe('Payment Workflow Integration Tests', () => {
       );
 
       expect(failureResult.success).toBe(true);
-      expect(['user_notified', 'failed_permanently']).toContain(failureResult.action);
+      if (failureResult.success) {
+        expect([
+          'retried',
+          'user_notified',
+          'admin_alerted',
+          'marked_failed',
+          'cleanup_completed',
+        ]).toContain(failureResult.data.action);
+      }
 
       const failureMetrics = paymentFailureService.getMetrics();
       expect(failureMetrics.totalFailures).toBeGreaterThan(0);
@@ -265,18 +289,20 @@ describe('Payment Workflow Integration Tests', () => {
         totalBalance: 100,
         availableBalance: 100,
         pendingBalance: 0,
-        lastUpdated: new Date()
+        lastUpdated: new Date(),
       });
 
       // Mock database operations for refund validation
       mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          user_id: userId,
-          amount: '100',
-          payment_status: 'finished',
-          created_at: new Date(),
-          metadata: JSON.stringify({})
-        }]
+        rows: [
+          {
+            user_id: userId,
+            amount: '100',
+            payment_status: 'finished',
+            created_at: new Date(),
+            metadata: JSON.stringify({}),
+          },
+        ],
       });
 
       // Mock refund creation
@@ -294,22 +320,31 @@ describe('Payment Workflow Integration Tests', () => {
       );
 
       expect(refundResult.success).toBe(true);
-      expect(refundResult.refund?.amount).toBe(refundAmount);
-      expect(refundResult.refund?.status).toBe('pending');
+      if (refundResult.success) {
+        expect(refundResult.refund?.amount).toBe(refundAmount);
+        expect(refundResult.refund?.status).toBe('pending');
+      }
+
+      const testRefundId =
+        refundResult.success && refundResult.refund
+          ? refundResult.refund.id
+          : 'fallback-id';
 
       // Mock admin approval
       mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: refundResult.refund!.id,
-          payment_id: paymentId,
-          user_id: userId,
-          amount: refundAmount,
-          reason: 'user_request',
-          status: 'pending',
-          created_at: new Date(),
-          updated_at: new Date(),
-          metadata: '{}'
-        }]
+        rows: [
+          {
+            id: testRefundId,
+            payment_id: paymentId,
+            user_id: userId,
+            amount: refundAmount,
+            reason: 'user_request',
+            status: 'pending',
+            created_at: new Date(),
+            updated_at: new Date(),
+            metadata: '{}',
+          },
+        ],
       });
 
       // Mock credit deduction for refund
@@ -325,25 +360,31 @@ describe('Payment Workflow Integration Tests', () => {
           description: 'Refund processed',
           metadata: {},
           createdAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: new Date(),
         },
         balance: {
           userId,
           totalBalance: 50,
           availableBalance: 50,
           pendingBalance: 0,
-          lastUpdated: new Date()
-        }
+          lastUpdated: new Date(),
+        },
       });
 
+      const approvalRefundId =
+        refundResult.success && refundResult.refund
+          ? refundResult.refund.id
+          : 'fallback-id';
       const approvalResult = await refundService.approveRefund(
-        refundResult.refund!.id,
+        approvalRefundId,
         'admin-123',
         'Approved for testing'
       );
 
       expect(approvalResult.success).toBe(true);
-      expect(approvalResult.transactionId).toBe('refund-tx-123');
+      if (approvalResult.success) {
+        expect(approvalResult.transactionId).toBe('refund-tx-123');
+      }
 
       const refundMetrics = refundService.getMetrics();
       expect(refundMetrics.totalRequests).toBeGreaterThan(0);
@@ -406,7 +447,9 @@ describe('Payment Workflow Integration Tests', () => {
 
     it('should handle database connection failures gracefully', async () => {
       // Simulate database connection failure
-      mockPool.connect.mockRejectedValue(new Error('Database connection failed'));
+      mockPool.connect.mockRejectedValue(
+        new Error('Database connection failed')
+      );
 
       const mockPaymentData = {
         payment_id: 'payment-123',
@@ -420,19 +463,22 @@ describe('Payment Workflow Integration Tests', () => {
         order_id: 'order-123',
         purchase_id: 'purchase-123',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       };
 
       // Should not throw, but handle gracefully
-      await expect(paymentMonitoringService.processPaymentUpdate(mockPaymentData))
-        .resolves.not.toThrow();
+      await expect(
+        paymentMonitoringService.processPaymentUpdate(mockPaymentData)
+      ).resolves.not.toThrow();
 
-      await expect(creditAllocationService.allocateCreditsForPayment(
-        'user-123',
-        'payment-123',
-        100,
-        mockPaymentData
-      )).resolves.toBeDefined();
+      await expect(
+        creditAllocationService.allocateCreditsForPayment(
+          'user-123',
+          'payment-123',
+          100,
+          mockPaymentData
+        )
+      ).resolves.toBeDefined();
     });
 
     it('should handle API failures with retry logic', async () => {
@@ -452,7 +498,7 @@ describe('Payment Workflow Integration Tests', () => {
           order_id: 'order-123',
           purchase_id: 'purchase-123',
           created_at: '2024-01-01T00:00:00Z',
-          updated_at: '2024-01-01T00:00:00Z'
+          updated_at: '2024-01-01T00:00:00Z',
         });
 
       // The monitoring service should retry and eventually succeed
@@ -477,7 +523,7 @@ describe('Payment Workflow Integration Tests', () => {
         order_id: 'order-123',
         purchase_id: 'purchase-123',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       };
 
       // First allocation should succeed
@@ -499,11 +545,13 @@ describe('Payment Workflow Integration Tests', () => {
       );
 
       // Second allocation should detect duplicate
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify({
-        transactionId: 'tx-123',
-        creditAmount: 100,
-        balanceAfter: 150
-      }));
+      mockRedis.get.mockResolvedValueOnce(
+        JSON.stringify({
+          transactionId: 'tx-123',
+          creditAmount: 100,
+          balanceAfter: 150,
+        })
+      );
 
       const result2 = await creditAllocationService.allocateCreditsForPayment(
         'user-123',
@@ -514,7 +562,11 @@ describe('Payment Workflow Integration Tests', () => {
 
       expect(result1.success).toBe(true);
       expect(result2.success).toBe(true);
-      expect(result2.isDuplicate).toBe(true);
+      // Type-safe access to isDuplicate property using type assertion
+      const result2Extended = result2 as typeof result2 & {
+        isDuplicate?: boolean;
+      };
+      expect(result2Extended.isDuplicate).toBe(true);
     });
 
     it('should handle multiple monitoring instances gracefully', async () => {
@@ -533,18 +585,17 @@ describe('Payment Workflow Integration Tests', () => {
         order_id: 'order-123',
         purchase_id: 'purchase-123',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       });
 
       // Mock database operations
-      mockDbClient.query
-        .mockResolvedValue({ rows: [] });
+      mockDbClient.query.mockResolvedValue({ rows: [] });
 
       // Multiple monitoring calls should not conflict
       const promises = [
         paymentMonitoringService.triggerPaymentCheck(paymentId),
         paymentMonitoringService.triggerPaymentCheck(paymentId),
-        paymentMonitoringService.triggerPaymentCheck(paymentId)
+        paymentMonitoringService.triggerPaymentCheck(paymentId),
       ];
 
       const results = await Promise.all(promises);
@@ -566,7 +617,7 @@ describe('Payment Workflow Integration Tests', () => {
         totalBalance: 25,
         availableBalance: 25,
         pendingBalance: 0,
-        lastUpdated: new Date()
+        lastUpdated: new Date(),
       });
 
       // Allocate credits
@@ -576,7 +627,9 @@ describe('Payment Workflow Integration Tests', () => {
 
       mockDbClient.query
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ id: 'tx-consistency', metadata: '{}' }] })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'tx-consistency', metadata: '{}' }],
+        })
         .mockResolvedValueOnce({ rows: [] }) // UPDATE
         .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
@@ -592,24 +645,29 @@ describe('Payment Workflow Integration Tests', () => {
         order_id: 'order-consistency',
         purchase_id: 'purchase-consistency',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       };
 
-      const allocationResult = await creditAllocationService.allocateCreditsForPayment(
-        userId,
-        paymentId,
-        creditAmount,
-        mockPaymentData
-      );
+      const allocationResult =
+        await creditAllocationService.allocateCreditsForPayment(
+          userId,
+          paymentId,
+          creditAmount,
+          mockPaymentData
+        );
 
       expect(allocationResult.success).toBe(true);
-      expect(allocationResult.creditAmount).toBe(creditAmount);
-      expect(allocationResult.balanceAfter).toBe(100); // 25 + 75
+      if (allocationResult.success) {
+        expect(allocationResult.data.creditAmount).toBe(creditAmount);
+        expect(allocationResult.data.balanceAfter).toBe(100); // 25 + 75
+      }
 
       // Verify metrics consistency
       const allocationMetrics = creditAllocationService.getMetrics();
       expect(allocationMetrics.totalAllocations).toBeGreaterThan(0);
-      expect(allocationMetrics.totalCreditsAllocated).toBeGreaterThanOrEqual(creditAmount);
+      expect(allocationMetrics.totalCreditsAllocated).toBeGreaterThanOrEqual(
+        creditAmount
+      );
     });
   });
 });

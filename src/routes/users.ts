@@ -12,17 +12,7 @@ import {
   ProfileQueryInput,
 } from '../schemas/user';
 import { Logger } from '../utils/logger';
-
-declare module 'fastify' {
-  interface FastifyRequest {
-    user?: {
-      userId: string;
-      email: string;
-      role?: string | undefined;
-      sessionId: string;
-    };
-  }
-}
+import '../types/fastify';
 
 export async function userRoutes(fastify: FastifyInstance): Promise<void> {
   // API info endpoint

@@ -6,9 +6,13 @@ import { paymentFailureService } from '../../services/paymentFailureService';
 import { refundService } from '../../services/refundService';
 import { SuccessResponses, ErrorResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
+import '../../types/fastify';
 
 // Middleware to check admin permissions
-const adminPreHandler = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+const adminPreHandler = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> => {
   const user = request.user;
 
   if (!user || !user.isAdmin) {
@@ -16,7 +20,9 @@ const adminPreHandler = async (request: FastifyRequest, reply: FastifyReply): Pr
   }
 };
 
-export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void> {
+export async function adminPaymentRoutes(
+  fastify: FastifyInstance
+): Promise<void> {
   // Start payment monitoring service
   fastify.post(
     '/monitoring/start',
@@ -27,13 +33,20 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
       try {
         await paymentMonitoringService.startMonitoring();
 
-        return SuccessResponses.ok(reply, {
-          status: 'started',
-          timestamp: new Date().toISOString(),
-        }, 'Payment monitoring service started');
+        return SuccessResponses.ok(
+          reply,
+          {
+            status: 'started',
+            timestamp: new Date().toISOString(),
+          },
+          'Payment monitoring service started'
+        );
       } catch (error) {
         Logger.error('Error starting payment monitoring:', error);
-        return ErrorResponses.internalError(reply, 'Failed to start monitoring service');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to start monitoring service'
+        );
       }
     }
   );
@@ -48,13 +61,20 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
       try {
         await paymentMonitoringService.stopMonitoring();
 
-        return SuccessResponses.ok(reply, {
-          status: 'stopped',
-          timestamp: new Date().toISOString(),
-        }, 'Payment monitoring service stopped');
+        return SuccessResponses.ok(
+          reply,
+          {
+            status: 'stopped',
+            timestamp: new Date().toISOString(),
+          },
+          'Payment monitoring service stopped'
+        );
       } catch (error) {
         Logger.error('Error stopping payment monitoring:', error);
-        return ErrorResponses.internalError(reply, 'Failed to stop monitoring service');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to stop monitoring service'
+        );
       }
     }
   );
@@ -83,7 +103,10 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
         });
       } catch (error) {
         Logger.error('Error getting monitoring dashboard:', error);
-        return ErrorResponses.internalError(reply, 'Failed to get monitoring data');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to get monitoring data'
+        );
       }
     }
   );
@@ -110,8 +133,12 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
           offset?: number;
         };
 
-        const pendingAllocations = await creditAllocationService.getPendingAllocations();
-        const failedPayments = await paymentFailureService.getFailedPayments(limit, offset);
+        const pendingAllocations =
+          await creditAllocationService.getPendingAllocations();
+        const failedPayments = await paymentFailureService.getFailedPayments(
+          limit,
+          offset
+        );
 
         return SuccessResponses.ok(reply, {
           pendingAllocations,
@@ -123,7 +150,10 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
         });
       } catch (error) {
         Logger.error('Error getting pending payments:', error);
-        return ErrorResponses.internalError(reply, 'Failed to get pending payments');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to get pending payments'
+        );
       }
     }
   );
@@ -178,7 +208,10 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
         );
       } catch (error) {
         Logger.error('Error in manual credit allocation:', error);
-        return ErrorResponses.internalError(reply, 'Failed to allocate credits');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to allocate credits'
+        );
       }
     }
   );
@@ -249,7 +282,10 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
           offset?: number;
         };
 
-        const pendingRefunds = await refundService.getPendingRefunds(limit, offset);
+        const pendingRefunds = await refundService.getPendingRefunds(
+          limit,
+          offset
+        );
 
         return SuccessResponses.ok(reply, {
           refunds: pendingRefunds,
@@ -257,7 +293,10 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
         });
       } catch (error) {
         Logger.error('Error getting pending refunds:', error);
-        return ErrorResponses.internalError(reply, 'Failed to get pending refunds');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to get pending refunds'
+        );
       }
     }
   );
@@ -272,7 +311,14 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
           properties: {
             status: {
               type: 'string',
-              enum: ['pending', 'approved', 'processing', 'completed', 'failed', 'rejected']
+              enum: [
+                'pending',
+                'approved',
+                'processing',
+                'completed',
+                'failed',
+                'rejected',
+              ],
             },
             limit: { type: 'number', minimum: 1, maximum: 100, default: 50 },
             offset: { type: 'number', minimum: 0, default: 0 },
@@ -283,13 +329,21 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const { status, limit = 50, offset = 0 } = request.query as {
+        const {
+          status,
+          limit = 50,
+          offset = 0,
+        } = request.query as {
           status?: string;
           limit?: number;
           offset?: number;
         };
 
-        const refunds = await refundService.getAllRefunds(status as any, limit, offset);
+        const refunds = await refundService.getAllRefunds(
+          status as any,
+          limit,
+          offset
+        );
 
         return SuccessResponses.ok(reply, {
           refunds,
@@ -395,11 +449,7 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
           );
         }
 
-        return SuccessResponses.ok(
-          reply,
-          result.refund,
-          'Refund rejected'
-        );
+        return SuccessResponses.ok(reply, result.refund, 'Refund rejected');
       } catch (error) {
         Logger.error('Error rejecting refund:', error);
         return ErrorResponses.internalError(reply, 'Failed to reject refund');
@@ -512,10 +562,14 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
         paymentFailureService.resetMetrics();
         refundService.resetMetrics();
 
-        return SuccessResponses.ok(reply, {
-          reset: true,
-          timestamp: new Date().toISOString(),
-        }, 'All service metrics reset');
+        return SuccessResponses.ok(
+          reply,
+          {
+            reset: true,
+            timestamp: new Date().toISOString(),
+          },
+          'All service metrics reset'
+        );
       } catch (error) {
         Logger.error('Error resetting metrics:', error);
         return ErrorResponses.internalError(reply, 'Failed to reset metrics');
@@ -534,11 +588,15 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
         const failureCleanup = await paymentFailureService.cleanupOldFailures();
         const refundCleanup = await refundService.cleanupOldRefunds();
 
-        return SuccessResponses.ok(reply, {
-          cleanedFailures: failureCleanup,
-          cleanedRefunds: refundCleanup,
-          timestamp: new Date().toISOString(),
-        }, 'Cleanup completed');
+        return SuccessResponses.ok(
+          reply,
+          {
+            cleanedFailures: failureCleanup,
+            cleanedRefunds: refundCleanup,
+            timestamp: new Date().toISOString(),
+          },
+          'Cleanup completed'
+        );
       } catch (error) {
         Logger.error('Error during cleanup:', error);
         return ErrorResponses.internalError(reply, 'Failed to cleanup records');
@@ -559,7 +617,11 @@ export async function adminPaymentRoutes(fastify: FastifyInstance): Promise<void
         const failureHealthy = await paymentFailureService.healthCheck();
         const refundHealthy = await refundService.healthCheck();
 
-        const allHealthy = monitoringHealthy && allocationHealthy && failureHealthy && refundHealthy;
+        const allHealthy =
+          monitoringHealthy &&
+          allocationHealthy &&
+          failureHealthy &&
+          refundHealthy;
 
         return SuccessResponses.ok(reply, {
           overall: allHealthy ? 'healthy' : 'unhealthy',

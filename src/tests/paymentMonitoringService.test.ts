@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from '@jest/globals';
 import { paymentMonitoringService } from '../services/paymentMonitoringService';
 import { creditAllocationService } from '../services/creditAllocationService';
 import { paymentFailureService } from '../services/paymentFailureService';
@@ -13,16 +20,25 @@ jest.mock('../config/database');
 jest.mock('../services/creditAllocationService');
 jest.mock('../services/paymentFailureService');
 
-const mockNowPaymentsClient = nowpaymentsClient as jest.Mocked<typeof nowpaymentsClient>;
+const mockNowPaymentsClient = nowpaymentsClient as jest.Mocked<
+  typeof nowpaymentsClient
+>;
 const mockRedisClient = redisClient as jest.Mocked<typeof redisClient>;
-const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<typeof getDatabasePool>;
-const mockCreditAllocationService = creditAllocationService as jest.Mocked<typeof creditAllocationService>;
-const mockPaymentFailureService = paymentFailureService as jest.Mocked<typeof paymentFailureService>;
+const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
+  typeof getDatabasePool
+>;
+const mockCreditAllocationService = creditAllocationService as jest.Mocked<
+  typeof creditAllocationService
+>;
+const mockPaymentFailureService = paymentFailureService as jest.Mocked<
+  typeof paymentFailureService
+>;
 
 // Mock Redis client
 const mockRedis = {
   get: jest.fn<(key: string) => Promise<string | null>>(),
-  setex: jest.fn<(key: string, ttl: number, value: string) => Promise<string>>(),
+  setex:
+    jest.fn<(key: string, ttl: number, value: string) => Promise<string>>(),
   del: jest.fn<(key: string) => Promise<number>>(),
   ping: jest.fn<() => Promise<string>>(),
   keys: jest.fn<(pattern: string) => Promise<string[]>>(),
@@ -36,7 +52,9 @@ const mockDbClient = {
 
 const mockPool = {
   query: jest.fn<(sql: string, params?: any[]) => Promise<any>>(),
-  connect: jest.fn<() => Promise<typeof mockDbClient>>().mockResolvedValue(mockDbClient),
+  connect: jest
+    .fn<() => Promise<typeof mockDbClient>>()
+    .mockResolvedValue(mockDbClient),
 };
 
 describe('PaymentMonitoringService', () => {
@@ -58,16 +76,16 @@ describe('PaymentMonitoringService', () => {
         transactionId: 'tx-123',
         balanceAfter: 100,
         userId: 'user-123',
-        paymentId: 'payment-123'
-      }
+        paymentId: 'payment-123',
+      },
     });
 
     mockPaymentFailureService.handlePaymentFailure.mockResolvedValue({
       success: true,
       data: {
         action: 'user_notified',
-        notificationSent: true
-      }
+        notificationSent: true,
+      },
     });
 
     mockPaymentFailureService.handleMonitoringFailure.mockResolvedValue();
@@ -90,14 +108,14 @@ describe('PaymentMonitoringService', () => {
           {
             payment_id: 'payment-123',
             user_id: 'user-123',
-            created_at: new Date()
-          }
-        ]
+            created_at: new Date(),
+          },
+        ],
       });
 
       mockRedis.setex.mockResolvedValue('OK');
 
-      paymentMonitoringService.startMonitoring();
+      void paymentMonitoringService.startMonitoring();
 
       // Wait a bit for initialization
       await new Promise(resolve => global.setTimeout(resolve, 100));
@@ -147,40 +165,47 @@ describe('PaymentMonitoringService', () => {
         order_id: 'order-123',
         purchase_id: 'purchase-123',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       };
 
-      mockNowPaymentsClient.getPaymentStatus.mockResolvedValue(mockPaymentStatus);
+      mockNowPaymentsClient.getPaymentStatus.mockResolvedValue(
+        mockPaymentStatus
+      );
 
       // Mock database queries for payment processing
       mockDbClient.query
-        .mockResolvedValueOnce({ // BEGIN
-          rows: []
+        .mockResolvedValueOnce({
+          // BEGIN
+          rows: [],
         })
-        .mockResolvedValueOnce({ // SELECT current payment
-          rows: [{
-            id: 'tx-123',
-            user_id: 'user-123',
-            payment_status: 'pending',
-            metadata: JSON.stringify({})
-          }]
+        .mockResolvedValueOnce({
+          // SELECT current payment
+          rows: [
+            {
+              id: 'tx-123',
+              user_id: 'user-123',
+              payment_status: 'pending',
+              metadata: JSON.stringify({}),
+            },
+          ],
         })
-        .mockResolvedValueOnce({ // UPDATE payment status
-          rows: []
+        .mockResolvedValueOnce({
+          // UPDATE payment status
+          rows: [],
         })
-        .mockResolvedValueOnce({ // COMMIT
-          rows: []
+        .mockResolvedValueOnce({
+          // COMMIT
+          rows: [],
         });
 
       await paymentMonitoringService.monitorPayment('payment-123');
 
-      expect(mockNowPaymentsClient.getPaymentStatus).toHaveBeenCalledWith('payment-123');
-      expect(mockCreditAllocationService.allocateCreditsForPayment).toHaveBeenCalledWith(
-        'user-123',
-        'payment-123',
-        100,
-        mockPaymentStatus
+      expect(mockNowPaymentsClient.getPaymentStatus).toHaveBeenCalledWith(
+        'payment-123'
       );
+      expect(
+        mockCreditAllocationService.allocateCreditsForPayment
+      ).toHaveBeenCalledWith('user-123', 'payment-123', 100, mockPaymentStatus);
     });
 
     it('should handle payment status update correctly', async () => {
@@ -196,34 +221,45 @@ describe('PaymentMonitoringService', () => {
         order_id: 'order-123',
         purchase_id: 'purchase-123',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       };
 
       // Mock database queries
       mockDbClient.query
-        .mockResolvedValueOnce({ // BEGIN
-          rows: []
+        .mockResolvedValueOnce({
+          // BEGIN
+          rows: [],
         })
-        .mockResolvedValueOnce({ // SELECT current payment
-          rows: [{
-            id: 'tx-123',
-            user_id: 'user-123',
-            payment_status: 'pending',
-            metadata: JSON.stringify({})
-          }]
+        .mockResolvedValueOnce({
+          // SELECT current payment
+          rows: [
+            {
+              id: 'tx-123',
+              user_id: 'user-123',
+              payment_status: 'pending',
+              metadata: JSON.stringify({}),
+            },
+          ],
         })
-        .mockResolvedValueOnce({ // UPDATE payment status
-          rows: []
+        .mockResolvedValueOnce({
+          // UPDATE payment status
+          rows: [],
         })
-        .mockResolvedValueOnce({ // COMMIT
-          rows: []
+        .mockResolvedValueOnce({
+          // COMMIT
+          rows: [],
         });
 
       await paymentMonitoringService.processPaymentUpdate(mockPaymentStatus);
 
       expect(mockDbClient.query).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE credit_transactions'),
-        expect.arrayContaining(['confirmed', undefined, expect.any(String), 'payment-123'])
+        expect.arrayContaining([
+          'confirmed',
+          undefined,
+          expect.any(String),
+          'payment-123',
+        ])
       );
     });
 
@@ -233,10 +269,9 @@ describe('PaymentMonitoringService', () => {
 
       await paymentMonitoringService.monitorPayment('payment-123');
 
-      expect(mockPaymentFailureService.handleMonitoringFailure).toHaveBeenCalledWith(
-        'payment-123',
-        'API Error'
-      );
+      expect(
+        mockPaymentFailureService.handleMonitoringFailure
+      ).toHaveBeenCalledWith('payment-123', 'API Error');
     });
 
     it('should skip monitoring if payment status unchanged', async () => {
@@ -252,29 +287,36 @@ describe('PaymentMonitoringService', () => {
         order_id: 'order-123',
         purchase_id: 'purchase-123',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       };
 
       mockDbClient.query
-        .mockResolvedValueOnce({ // BEGIN
-          rows: []
+        .mockResolvedValueOnce({
+          // BEGIN
+          rows: [],
         })
-        .mockResolvedValueOnce({ // SELECT current payment
-          rows: [{
-            id: 'tx-123',
-            user_id: 'user-123',
-            payment_status: 'pending', // Same status
-            metadata: JSON.stringify({})
-          }]
+        .mockResolvedValueOnce({
+          // SELECT current payment
+          rows: [
+            {
+              id: 'tx-123',
+              user_id: 'user-123',
+              payment_status: 'pending', // Same status
+              metadata: JSON.stringify({}),
+            },
+          ],
         })
-        .mockResolvedValueOnce({ // COMMIT
-          rows: []
+        .mockResolvedValueOnce({
+          // COMMIT
+          rows: [],
         });
 
       await paymentMonitoringService.processPaymentUpdate(mockPaymentStatus);
 
       // Should not call allocation service since status didn't change
-      expect(mockCreditAllocationService.allocateCreditsForPayment).not.toHaveBeenCalled();
+      expect(
+        mockCreditAllocationService.allocateCreditsForPayment
+      ).not.toHaveBeenCalled();
     });
   });
 
@@ -292,25 +334,26 @@ describe('PaymentMonitoringService', () => {
         order_id: 'order-123',
         purchase_id: 'purchase-123',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       };
 
       // Mock database query for payment info
       mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          user_id: 'user-123',
-          metadata: JSON.stringify({ priceAmount: 100 })
-        }]
+        rows: [
+          {
+            user_id: 'user-123',
+            metadata: JSON.stringify({ priceAmount: 100 }),
+          },
+        ],
       });
 
-      await (paymentMonitoringService as any).handlePaymentSuccess(mockPaymentData);
-
-      expect(mockCreditAllocationService.allocateCreditsForPayment).toHaveBeenCalledWith(
-        'user-123',
-        'payment-123',
-        100,
+      await (paymentMonitoringService as any).handlePaymentSuccess(
         mockPaymentData
       );
+
+      expect(
+        mockCreditAllocationService.allocateCreditsForPayment
+      ).toHaveBeenCalledWith('user-123', 'payment-123', 100, mockPaymentData);
     });
   });
 
@@ -328,12 +371,16 @@ describe('PaymentMonitoringService', () => {
         order_id: 'order-123',
         purchase_id: 'purchase-123',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       };
 
-      await (paymentMonitoringService as any).handlePaymentFailure(mockPaymentData);
+      await (paymentMonitoringService as any).handlePaymentFailure(
+        mockPaymentData
+      );
 
-      expect(mockPaymentFailureService.handlePaymentFailure).toHaveBeenCalledWith(
+      expect(
+        mockPaymentFailureService.handlePaymentFailure
+      ).toHaveBeenCalledWith(
         'payment-123',
         'failed',
         'Payment failed during monitoring'
@@ -346,7 +393,10 @@ describe('PaymentMonitoringService', () => {
       mockRedis.get.mockResolvedValue(JSON.stringify([]));
       mockRedis.setex.mockResolvedValue('OK');
 
-      await paymentMonitoringService.addPendingPayment('payment-123', 'user-123');
+      await paymentMonitoringService.addPendingPayment(
+        'payment-123',
+        'user-123'
+      );
 
       expect(mockRedis.setex).toHaveBeenCalledWith(
         'payment_monitoring:pending_payments',
@@ -356,10 +406,15 @@ describe('PaymentMonitoringService', () => {
     });
 
     it('should not add duplicate pending payment', async () => {
-      const existingPayments = [{ paymentId: 'payment-123', userId: 'user-123' }];
+      const existingPayments = [
+        { paymentId: 'payment-123', userId: 'user-123' },
+      ];
       mockRedis.get.mockResolvedValue(JSON.stringify(existingPayments));
 
-      await paymentMonitoringService.addPendingPayment('payment-123', 'user-123');
+      await paymentMonitoringService.addPendingPayment(
+        'payment-123',
+        'user-123'
+      );
 
       expect(mockRedis.setex).not.toHaveBeenCalled();
     });
@@ -375,7 +430,7 @@ describe('PaymentMonitoringService', () => {
         failedUpdates: expect.any(Number),
         creditsAllocated: expect.any(Number),
         lastRunTime: expect.any(Date),
-        averageProcessingTime: expect.any(Number)
+        averageProcessingTime: expect.any(Number),
       });
     });
 
@@ -422,34 +477,45 @@ describe('PaymentMonitoringService', () => {
         order_id: 'order-123',
         purchase_id: 'purchase-123',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       };
 
-      mockNowPaymentsClient.getPaymentStatus.mockResolvedValue(mockPaymentStatus);
+      mockNowPaymentsClient.getPaymentStatus.mockResolvedValue(
+        mockPaymentStatus
+      );
 
       mockDbClient.query
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ // SELECT current payment
-          rows: [{
-            id: 'tx-123',
-            user_id: 'user-123',
-            payment_status: 'pending',
-            metadata: JSON.stringify({})
-          }]
+        .mockResolvedValueOnce({
+          // SELECT current payment
+          rows: [
+            {
+              id: 'tx-123',
+              user_id: 'user-123',
+              payment_status: 'pending',
+              metadata: JSON.stringify({}),
+            },
+          ],
         })
         .mockResolvedValueOnce({ rows: [] }) // UPDATE
         .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
-      const result = await paymentMonitoringService.triggerPaymentCheck('payment-123');
+      const result =
+        await paymentMonitoringService.triggerPaymentCheck('payment-123');
 
       expect(result).toBe(true);
-      expect(mockNowPaymentsClient.getPaymentStatus).toHaveBeenCalledWith('payment-123');
+      expect(mockNowPaymentsClient.getPaymentStatus).toHaveBeenCalledWith(
+        'payment-123'
+      );
     });
 
     it('should handle manual payment check failure', async () => {
-      mockNowPaymentsClient.getPaymentStatus.mockRejectedValue(new Error('API Error'));
+      mockNowPaymentsClient.getPaymentStatus.mockRejectedValue(
+        new Error('API Error')
+      );
 
-      const result = await paymentMonitoringService.triggerPaymentCheck('payment-123');
+      const result =
+        await paymentMonitoringService.triggerPaymentCheck('payment-123');
 
       expect(result).toBe(false);
     });
@@ -457,7 +523,9 @@ describe('PaymentMonitoringService', () => {
 
   describe('Error Handling', () => {
     it('should handle database connection errors gracefully', async () => {
-      mockPool.connect.mockRejectedValue(new Error('Database connection failed'));
+      mockPool.connect.mockRejectedValue(
+        new Error('Database connection failed')
+      );
 
       const mockPaymentStatus = {
         payment_id: 'payment-123',
@@ -471,19 +539,22 @@ describe('PaymentMonitoringService', () => {
         order_id: 'order-123',
         purchase_id: 'purchase-123',
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z'
+        updated_at: '2024-01-01T00:00:00Z',
       };
 
       // Should not throw error, but handle gracefully
-      await expect(paymentMonitoringService.processPaymentUpdate(mockPaymentStatus))
-        .resolves.not.toThrow();
+      await expect(
+        paymentMonitoringService.processPaymentUpdate(mockPaymentStatus)
+      ).resolves.not.toThrow();
     });
 
     it('should handle Redis connection errors gracefully', async () => {
       mockRedis.get.mockRejectedValue(new Error('Redis connection failed'));
 
       // Should not throw error, but return empty array
-      const pendingPayments = await (paymentMonitoringService as any).getPendingPayments();
+      const pendingPayments = await (
+        paymentMonitoringService as any
+      ).getPendingPayments();
       expect(pendingPayments).toEqual([]);
     });
   });

@@ -8,7 +8,6 @@
 import { jest } from '@jest/globals';
 import type { NOWPaymentsPaymentStatus, PaymentStatus } from './payment';
 // Database and Redis type imports handled locally to avoid dependency issues
-import type { QueryResult } from 'pg';
 
 // Database Mock Types
 export interface MockQueryResult<T = any> {
@@ -20,12 +19,16 @@ export interface MockQueryResult<T = any> {
 }
 
 export interface MockPoolClient {
-  query: jest.MockedFunction<(text: string, params?: any[]) => Promise<MockQueryResult>>;
+  query: jest.MockedFunction<
+    (text: string, params?: any[]) => Promise<MockQueryResult>
+  >;
   release: jest.MockedFunction<() => void>;
 }
 
 export interface MockDatabasePool {
-  query: jest.MockedFunction<(text: string, params?: any[]) => Promise<MockQueryResult>>;
+  query: jest.MockedFunction<
+    (text: string, params?: any[]) => Promise<MockQueryResult>
+  >;
   connect: jest.MockedFunction<() => Promise<MockPoolClient>>;
   end: jest.MockedFunction<() => Promise<void>>;
   totalCount: number;
@@ -37,12 +40,16 @@ export interface MockDatabasePool {
 export interface MockRedisClient {
   get: jest.MockedFunction<(key: string) => Promise<string | null>>;
   set: jest.MockedFunction<(key: string, value: string) => Promise<string>>;
-  setex: jest.MockedFunction<(key: string, seconds: number, value: string) => Promise<string>>;
+  setex: jest.MockedFunction<
+    (key: string, seconds: number, value: string) => Promise<string>
+  >;
   del: jest.MockedFunction<(key: string) => Promise<number>>;
   ping: jest.MockedFunction<() => Promise<string>>;
   keys: jest.MockedFunction<(pattern: string) => Promise<string[]>>;
   exists: jest.MockedFunction<(key: string) => Promise<number>>;
-  expire: jest.MockedFunction<(key: string, seconds: number) => Promise<number>>;
+  expire: jest.MockedFunction<
+    (key: string, seconds: number) => Promise<number>
+  >;
   ttl: jest.MockedFunction<(key: string) => Promise<number>>;
   isConnected: boolean;
   isReady: boolean;
@@ -96,7 +103,9 @@ export interface MockRefundService {
 }
 
 export interface MockNOWPaymentsClient {
-  getPaymentStatus: jest.MockedFunction<(paymentId: string) => Promise<NOWPaymentsPaymentStatus>>;
+  getPaymentStatus: jest.MockedFunction<
+    (paymentId: string) => Promise<NOWPaymentsPaymentStatus>
+  >;
   createPayment: jest.MockedFunction<any>;
   getPaymentHistory: jest.MockedFunction<any>;
   healthCheck: jest.MockedFunction<() => Promise<boolean>>;
@@ -141,7 +150,13 @@ export interface TestRefundRequest {
   user_id: string;
   amount: number;
   reason: string;
-  status: 'pending' | 'approved' | 'processing' | 'completed' | 'failed' | 'rejected';
+  status:
+    | 'pending'
+    | 'approved'
+    | 'processing'
+    | 'completed'
+    | 'failed'
+    | 'rejected';
   payment_id?: string;
   requested_by: string;
   requested_at: Date;
@@ -183,7 +198,10 @@ export const createMockRedisClient = (): MockRedisClient => ({
   isReady: true,
 });
 
-export const createMockQueryResult = <T>(rows: T[] = [], rowCount?: number): MockQueryResult<T> => ({
+export const createMockQueryResult = <T>(
+  rows: T[] = [],
+  rowCount?: number
+): MockQueryResult<T> => ({
   rows,
   rowCount: rowCount ?? rows.length,
   command: 'SELECT',
@@ -268,14 +286,17 @@ export const createTestPaymentData = (
 });
 
 // Utility functions for test setup
-export const setupDatabaseMocks = (mockPool: MockDatabasePool, mockClient: MockPoolClient) => {
+export const setupDatabaseMocks = (
+  mockPool: MockDatabasePool,
+  mockClient: MockPoolClient
+): void => {
   mockPool.connect.mockResolvedValue(mockClient);
   mockPool.query.mockResolvedValue(createMockQueryResult([]));
   mockClient.query.mockResolvedValue(createMockQueryResult([]));
   mockClient.release.mockImplementation(() => {});
 };
 
-export const setupRedisMocks = (mockRedis: MockRedisClient) => {
+export const setupRedisMocks = (mockRedis: MockRedisClient): void => {
   mockRedis.get.mockResolvedValue(null);
   mockRedis.set.mockResolvedValue('OK');
   mockRedis.setex.mockResolvedValue('OK');
@@ -287,7 +308,7 @@ export const setupRedisMocks = (mockRedis: MockRedisClient) => {
   mockRedis.ttl.mockResolvedValue(-1);
 };
 
-export const setupServiceMocks = () => {
+export const setupServiceMocks = (): any => {
   return {
     creditAllocation: {
       allocateCreditsForPayment: jest.fn(),
@@ -335,8 +356,10 @@ export const setupServiceMocks = () => {
 };
 
 // Type assertion helpers for Jest mocks
-export const asMockedFunction = <T extends (...args: any[]) => any>(fn: T): jest.MockedFunction<T> =>
-  fn as jest.MockedFunction<T>;
+export const asMockedFunction = <T extends (...args: any[]) => any>(
+  fn: T
+): jest.MockedFunction<T> => fn as jest.MockedFunction<T>;
 
-export const asMockedObject = <T extends Record<string, any>>(obj: T): jest.Mocked<T> =>
-  obj as jest.Mocked<T>;
+export const asMockedObject = <T extends Record<string, any>>(
+  obj: T
+): jest.Mocked<T> => obj as jest.Mocked<T>;

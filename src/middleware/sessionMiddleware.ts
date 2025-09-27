@@ -96,6 +96,7 @@ export const sessionMiddleware = (
             email: session.email || payload.email,
             role: session.role || payload.role || undefined,
             sessionId: payload.sessionId,
+            isAdmin: (session.role || payload.role) === 'admin',
           };
 
           request.session = session;

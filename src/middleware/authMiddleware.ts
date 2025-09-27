@@ -1,12 +1,8 @@
 import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
 import { jwtService } from '../services/jwtService';
 import { sessionService } from '../services/sessionService';
-import { AuthenticatedRequest } from '../types/session';
 import { HttpStatus, sendError } from '../utils/response';
-
-declare module 'fastify' {
-  interface FastifyRequest extends AuthenticatedRequest {}
-}
+import '../types/fastify';
 
 export interface AuthMiddlewareOptions {
   roles?: string[];

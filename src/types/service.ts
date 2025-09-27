@@ -43,11 +43,17 @@ export interface ManualCreditAllocationData extends CreditAllocationData {
   approvalRequired: boolean;
 }
 
-export type ManualCreditAllocationResult = ServiceResult<ManualCreditAllocationData>;
+export type ManualCreditAllocationResult =
+  ServiceResult<ManualCreditAllocationData>;
 
 // Payment Failure specific result types
 export interface FailureHandlingData {
-  action: 'retried' | 'user_notified' | 'admin_alerted' | 'marked_failed' | 'cleanup_completed';
+  action:
+    | 'retried'
+    | 'user_notified'
+    | 'admin_alerted'
+    | 'marked_failed'
+    | 'cleanup_completed';
   retryCount?: number;
   nextRetryAt?: Date;
   notificationSent?: boolean;
@@ -60,7 +66,13 @@ export type FailureHandlingResult = ServiceResult<FailureHandlingData>;
 export interface RefundData {
   refundId: string;
   amount: number;
-  status: 'pending' | 'approved' | 'processing' | 'completed' | 'failed' | 'rejected';
+  status:
+    | 'pending'
+    | 'approved'
+    | 'processing'
+    | 'completed'
+    | 'failed'
+    | 'rejected';
   transactionId?: string;
   processedBy?: string;
   approvedBy?: string;
@@ -74,7 +86,13 @@ export interface RefundRequestData {
   userId: string;
   amount: number;
   reason: string;
-  status: 'pending' | 'approved' | 'processing' | 'completed' | 'failed' | 'rejected';
+  status:
+    | 'pending'
+    | 'approved'
+    | 'processing'
+    | 'completed'
+    | 'failed'
+    | 'rejected';
   paymentId?: string;
   requestedBy: string;
   requestedAt: Date;
@@ -126,31 +144,40 @@ export type PaginatedResult<T> = ServiceResultWithMeta<T[], PaginationMeta>;
 // Builder functions for creating results
 export const createSuccessResult = <T>(data: T): ServiceResult<T> => ({
   success: true,
-  data
+  data,
 });
 
 export const createErrorResult = <T>(error: string): ServiceResult<T> => ({
   success: false,
-  error
+  error,
 });
 
-export const createSuccessWithMeta = <T, M>(data: T, meta: M): ServiceResultWithMeta<T, M> => ({
+export const createSuccessWithMeta = <T, M>(
+  data: T,
+  meta: M
+): ServiceResultWithMeta<T, M> => ({
   success: true,
   data,
-  meta
+  meta,
 });
 
-export const createErrorWithMeta = <T, M>(error: string): ServiceResultWithMeta<T, M> => ({
+export const createErrorWithMeta = <T, M>(
+  error: string
+): ServiceResultWithMeta<T, M> => ({
   success: false,
-  error
+  error,
 });
 
 // Type guards for result checking
-export const isSuccessResult = <T>(result: ServiceResult<T>): result is { success: true; data: T } => {
+export const isSuccessResult = <T>(
+  result: ServiceResult<T>
+): result is { success: true; data: T } => {
   return result.success === true;
 };
 
-export const isErrorResult = <T>(result: ServiceResult<T>): result is { success: false; error: string } => {
+export const isErrorResult = <T>(
+  result: ServiceResult<T>
+): result is { success: false; error: string } => {
   return result.success === false;
 };
 
@@ -159,3 +186,31 @@ export type ExtractResultData<T> = T extends ServiceResult<infer U> ? U : never;
 
 // Async result type for promises
 export type AsyncServiceResult<T, E = string> = Promise<ServiceResult<T, E>>;
+
+// Type-safe helper functions for testing and backward compatibility
+export const assertSuccess = <T>(
+  result: ServiceResult<T>
+): asserts result is { success: true; data: T } => {
+  if (!result.success) {
+    throw new Error(`Expected success result, got error: ${result.error}`);
+  }
+};
+
+export const assertError = <T>(
+  result: ServiceResult<T>
+): asserts result is { success: false; error: string } => {
+  if (result.success) {
+    throw new Error('Expected error result, got success');
+  }
+};
+
+// Backward compatibility helpers for legacy property access patterns
+export const getResultData = <T>(result: ServiceResult<T>): T | undefined => {
+  return result.success ? result.data : undefined;
+};
+
+export const getResultError = <T>(
+  result: ServiceResult<T>
+): string | undefined => {
+  return result.success ? undefined : result.error;
+};
