@@ -20,21 +20,21 @@ const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<typeof getDat
 
 // Mock Redis and Database
 const mockRedis = {
-  get: jest.fn(),
-  setex: jest.fn(),
-  del: jest.fn(),
-  ping: jest.fn(),
-  keys: jest.fn(),
+  get: jest.fn<(key: string) => Promise<string | null>>(),
+  setex: jest.fn<(key: string, ttl: number, value: string) => Promise<string>>(),
+  del: jest.fn<(key: string) => Promise<number>>(),
+  ping: jest.fn<() => Promise<string>>(),
+  keys: jest.fn<(pattern: string) => Promise<string[]>>(),
 };
 
 const mockDbClient = {
-  query: jest.fn(),
-  release: jest.fn(),
+  query: jest.fn<(sql: string, params?: any[]) => Promise<any>>(),
+  release: jest.fn<() => void>(),
 };
 
 const mockPool = {
-  query: jest.fn(),
-  connect: jest.fn().mockResolvedValue(mockDbClient),
+  query: jest.fn<(sql: string, params?: any[]) => Promise<any>>(),
+  connect: jest.fn<() => Promise<typeof mockDbClient>>().mockResolvedValue(mockDbClient),
 };
 
 describe('Payment Workflow Integration Tests', () => {
@@ -139,7 +139,10 @@ describe('Payment Workflow Integration Tests', () => {
         order_id: 'credit-payment-123',
         order_description: 'Credit purchase: $100',
         purchase_id: 'purchase-123',
-        payin_hash: 'txhash123'
+        payin_hash: 'txhash123',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+        payouts: []
       };
 
       // Mock database operations for webhook processing
@@ -196,8 +199,10 @@ describe('Payment Workflow Integration Tests', () => {
       );
 
       expect(allocationResult.success).toBe(true);
-      expect(allocationResult.creditAmount).toBe(creditAmount);
-      expect(allocationResult.balanceAfter).toBe(150); // 50 + 100
+      if (allocationResult.success) {
+        expect(allocationResult.data.creditAmount).toBe(creditAmount);
+        expect(allocationResult.data.balanceAfter).toBe(150); // 50 + 100
+      }
 
       // Step 6: Verify Monitoring Service Updates
       const metrics = paymentMonitoringService.getMetrics();
@@ -211,7 +216,7 @@ describe('Payment Workflow Integration Tests', () => {
       const paymentId = 'payment-failed';
 
       // Simulate failed payment status
-      const failedPaymentData = {
+      const _failedPaymentData = {
         payment_id: paymentId,
         payment_status: 'failed' as const,
         pay_address: 'bc1qaddress123',

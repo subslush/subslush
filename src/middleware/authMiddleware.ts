@@ -83,6 +83,7 @@ export const authMiddleware = (
             email: payload.email,
             role: payload.role || undefined,
             sessionId: payload.sessionId,
+            isAdmin: payload.role === 'admin',
           };
 
           if (roles.length > 0 && payload.role) {
@@ -209,6 +210,7 @@ export const authPreHandler = async (
       email: payload.email,
       role: payload.role || undefined,
       sessionId: payload.sessionId,
+      isAdmin: payload.role === 'admin',
     };
   } catch {
     return sendError(

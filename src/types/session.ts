@@ -57,6 +57,7 @@ export interface AuthenticatedRequest {
     email: string;
     role?: string | undefined;
     sessionId: string;
+    isAdmin?: boolean;
   } | undefined;
   session?: SessionData | undefined;
 }

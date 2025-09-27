@@ -1,19 +1,15 @@
-import { v4 as uuidv4 } from 'uuid';
 import { getDatabasePool } from '../config/database';
 import { redisClient } from '../config/redis';
-import { env } from '../config/environment';
 import { creditService } from './creditService';
 import { Logger } from '../utils/logger';
 import { NOWPaymentsPaymentStatus } from '../types/payment';
-
-export interface CreditAllocationResult {
-  success: boolean;
-  transactionId?: string;
-  creditAmount?: number;
-  balanceAfter?: number;
-  error?: string;
-  isDuplicate?: boolean;
-}
+import {
+  CreditAllocationResult,
+  CreditAllocationResultWithDuplicate,
+  createSuccessResult,
+  createErrorResult
+} from '../types/service';
+import { env } from '../config/environment';
 
 export interface AllocationMetrics {
   totalAllocations: number;
@@ -26,8 +22,9 @@ export interface AllocationMetrics {
 
 export class CreditAllocationService {
   private readonly CACHE_PREFIX = 'credit_allocation:';
-  private readonly ALLOCATION_TIMEOUT = parseInt(process.env.CREDIT_ALLOCATION_TIMEOUT || '30000');
-  private readonly ALLOCATION_RATE = parseFloat(process.env.CREDIT_ALLOCATION_RATE || '1.0');
+  // Timeout setting available if needed
+  // private readonly _ALLOCATION_TIMEOUT = env.CREDIT_ALLOCATION_TIMEOUT;
+  private readonly ALLOCATION_RATE = env.CREDIT_ALLOCATION_RATE;
   private readonly DUPLICATE_CHECK_TTL = 86400; // 24 hours
 
   private metrics: AllocationMetrics = {
@@ -57,8 +54,11 @@ export class CreditAllocationService {
 
       // Check for duplicate allocation
       const duplicateCheck = await this.checkForDuplicate(paymentId);
-      if (duplicateCheck.isDuplicate) {
+      if (duplicateCheck.success && 'isDuplicate' in duplicateCheck && duplicateCheck.isDuplicate) {
         this.metrics.duplicatePrevented++;
+        return duplicateCheck;
+      }
+      if (!duplicateCheck.success) {
         return duplicateCheck;
       }
 
@@ -68,10 +68,7 @@ export class CreditAllocationService {
       // Validate allocation parameters
       const validation = await this.validateAllocation(userId, creditAmount, paymentData);
       if (!validation.valid) {
-        return {
-          success: false,
-          error: validation.error
-        };
+        return createErrorResult(validation.error || 'Validation failed');
       }
 
       // Perform atomic credit allocation
@@ -85,7 +82,7 @@ export class CreditAllocationService {
 
       if (result.success) {
         // Mark allocation as completed to prevent duplicates
-        await this.markAllocationCompleted(paymentId, result.transactionId!);
+        await this.markAllocationCompleted(paymentId, result.data.transactionId);
 
         // Update metrics
         this.metrics.totalAllocations++;
@@ -96,8 +93,8 @@ export class CreditAllocationService {
 
         Logger.info(`Successfully allocated ${creditAmount} credits for payment ${paymentId}`, {
           userId,
-          transactionId: result.transactionId,
-          balanceAfter: result.balanceAfter
+          transactionId: result.data.transactionId,
+          balanceAfter: result.data.balanceAfter
         });
       } else {
         this.metrics.failedAllocations++;
@@ -108,15 +105,12 @@ export class CreditAllocationService {
     } catch (error) {
       this.metrics.failedAllocations++;
       Logger.error(`Error allocating credits for payment ${paymentId}:`, error);
-      return {
-        success: false,
-        error: 'Credit allocation failed due to system error'
-      };
+      return createErrorResult('Credit allocation failed due to system error');
     }
   }
 
   // Check for duplicate allocation
-  private async checkForDuplicate(paymentId: string): Promise<CreditAllocationResult> {
+  private async checkForDuplicate(paymentId: string): Promise<CreditAllocationResultWithDuplicate> {
     try {
       // Check Redis cache for recent allocation
       const cacheKey = `${this.CACHE_PREFIX}completed:${paymentId}`;
@@ -127,11 +121,15 @@ export class CreditAllocationService {
         Logger.warn(`Duplicate credit allocation prevented for payment ${paymentId}`, allocationData);
         return {
           success: true,
-          isDuplicate: true,
-          transactionId: allocationData.transactionId,
-          creditAmount: allocationData.creditAmount,
-          balanceAfter: allocationData.balanceAfter
-        };
+          data: {
+            creditAmount: allocationData.creditAmount,
+            transactionId: allocationData.transactionId,
+            balanceAfter: allocationData.balanceAfter,
+            userId: '',
+            paymentId
+          },
+          isDuplicate: true
+        } as CreditAllocationResultWithDuplicate;
       }
 
       // Check database for existing allocation
@@ -163,16 +161,22 @@ export class CreditAllocationService {
 
         return {
           success: true,
-          isDuplicate: true,
-          ...allocationData
-        };
+          data: {
+            creditAmount: allocationData.creditAmount,
+            transactionId: allocationData.transactionId,
+            balanceAfter: allocationData.balanceAfter,
+            userId: '',
+            paymentId
+          },
+          isDuplicate: true
+        } as CreditAllocationResultWithDuplicate;
       }
 
-      return { success: false, isDuplicate: false };
+      return createErrorResult('No duplicate found') as CreditAllocationResultWithDuplicate;
 
     } catch (error) {
       Logger.error(`Error checking for duplicate allocation ${paymentId}:`, error);
-      return { success: false, isDuplicate: false };
+      return createErrorResult('Error checking for duplicate') as CreditAllocationResultWithDuplicate;
     }
   }
 
@@ -228,7 +232,7 @@ export class CreditAllocationService {
     userId: string,
     paymentId: string,
     creditAmount: number,
-    usdAmount: number,
+    _usdAmount: number,
     paymentData: NOWPaymentsPaymentStatus
   ): Promise<CreditAllocationResult> {
     const pool = getDatabasePool();
@@ -250,10 +254,7 @@ export class CreditAllocationService {
 
       if (paymentTxResult.rows.length === 0) {
         await client.query('ROLLBACK');
-        return {
-          success: false,
-          error: 'Original payment transaction not found'
-        };
+        return createErrorResult('Original payment transaction not found');
       }
 
       const originalTx = paymentTxResult.rows[0];
@@ -262,11 +263,7 @@ export class CreditAllocationService {
       // Check if already allocated
       if (originalMetadata.paymentCompleted) {
         await client.query('ROLLBACK');
-        return {
-          success: false,
-          error: 'Credits already allocated for this payment',
-          isDuplicate: true
-        };
+        return createErrorResult('Credits already allocated for this payment');
       }
 
       // Update the original transaction with credit allocation
@@ -306,20 +303,18 @@ export class CreditAllocationService {
       // Send real-time notification (if WebSocket system exists)
       await this.sendCreditAllocationNotification(userId, creditAmount, paymentId);
 
-      return {
-        success: true,
-        transactionId: originalTx.id,
+      return createSuccessResult({
         creditAmount,
-        balanceAfter
-      };
+        transactionId: originalTx.id,
+        balanceAfter,
+        userId,
+        paymentId
+      });
 
     } catch (error) {
       await client.query('ROLLBACK');
       Logger.error('Error in atomic credit allocation:', error);
-      return {
-        success: false,
-        error: 'Database transaction failed'
-      };
+      return createErrorResult('Database transaction failed');
     } finally {
       client.release();
     }
@@ -412,7 +407,10 @@ export class CreditAllocationService {
 
       // Check for existing allocation
       const duplicateCheck = await this.checkForDuplicate(paymentId);
-      if (duplicateCheck.isDuplicate) {
+      if (duplicateCheck.success && 'isDuplicate' in duplicateCheck && duplicateCheck.isDuplicate) {
+        return duplicateCheck;
+      }
+      if (!duplicateCheck.success) {
         return duplicateCheck;
       }
 
@@ -440,25 +438,20 @@ export class CreditAllocationService {
         this.metrics.totalCreditsAllocated += creditAmount;
         this.metrics.lastAllocationTime = new Date();
 
-        return {
-          success: true,
-          transactionId: result.transaction!.id,
+        return createSuccessResult({
           creditAmount,
-          balanceAfter: result.balance!.totalBalance
-        };
+          transactionId: result.transaction!.id,
+          balanceAfter: result.balance!.totalBalance,
+          userId,
+          paymentId
+        });
       }
 
-      return {
-        success: false,
-        error: result.error || 'Manual allocation failed'
-      };
+      return createErrorResult(result.error || 'Manual allocation failed');
 
     } catch (error) {
       Logger.error('Error in manual credit allocation:', error);
-      return {
-        success: false,
-        error: 'Manual allocation failed due to system error'
-      };
+      return createErrorResult('Manual allocation failed due to system error');
     }
   }
 
@@ -505,7 +498,8 @@ export class CreditAllocationService {
       `, [userId, limit, offset]);
 
       return result.rows.map(row => {
-        const metadata = row.metadata ? JSON.parse(row.metadata) : {};
+        // Parse metadata if needed for future use
+        // const metadata = row.metadata ? JSON.parse(row.metadata) : {};
         return {
           transactionId: row.id,
           paymentId: row.payment_id,
@@ -560,11 +554,11 @@ export class CreditAllocationService {
       `);
 
       return result.rows.map(row => {
-        const metadata = row.metadata ? JSON.parse(row.metadata) : {};
+        const _metadata = row.metadata ? JSON.parse(row.metadata) : {};
         return {
           paymentId: row.payment_id,
           userId: row.user_id,
-          usdAmount: metadata.priceAmount || 0,
+          usdAmount: _metadata.priceAmount || 0,
           createdAt: new Date(row.created_at)
         };
       });

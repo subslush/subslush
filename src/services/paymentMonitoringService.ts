@@ -1,11 +1,11 @@
 import { getDatabasePool } from '../config/database';
 import { redisClient } from '../config/redis';
-import { env } from '../config/environment';
 import { nowpaymentsClient } from '../utils/nowpaymentsClient';
 import { Logger } from '../utils/logger';
 import { NOWPaymentsPaymentStatus } from '../types/payment';
 import { creditAllocationService } from './creditAllocationService';
 import { paymentFailureService } from './paymentFailureService';
+import { env } from '../config/environment';
 
 export interface MonitoringMetrics {
   totalPaymentsMonitored: number;
@@ -14,15 +14,16 @@ export interface MonitoringMetrics {
   creditsAllocated: number;
   lastRunTime: Date;
   averageProcessingTime: number;
+  isActive: boolean;
 }
 
 export class PaymentMonitoringService {
   private isRunning = false;
-  private monitoringInterval?: NodeJS.Timeout;
-  private readonly MONITORING_INTERVAL = parseInt(process.env.PAYMENT_MONITORING_INTERVAL || '30000');
-  private readonly BATCH_SIZE = parseInt(process.env.PAYMENT_MONITORING_BATCH_SIZE || '50');
-  private readonly RETRY_ATTEMPTS = parseInt(process.env.PAYMENT_RETRY_ATTEMPTS || '3');
-  private readonly RETRY_DELAY = parseInt(process.env.PAYMENT_RETRY_DELAY || '5000');
+  private monitoringInterval: ReturnType<typeof global.setInterval> | undefined;
+  private readonly MONITORING_INTERVAL = env.PAYMENT_MONITORING_INTERVAL;
+  private readonly BATCH_SIZE = env.PAYMENT_MONITORING_BATCH_SIZE;
+  private readonly RETRY_ATTEMPTS = env.PAYMENT_RETRY_ATTEMPTS;
+  private readonly RETRY_DELAY = env.PAYMENT_RETRY_DELAY;
   private readonly CACHE_PREFIX = 'payment_monitoring:';
   private readonly PENDING_PAYMENTS_KEY = 'pending_payments';
 
@@ -32,7 +33,8 @@ export class PaymentMonitoringService {
     failedUpdates: 0,
     creditsAllocated: 0,
     lastRunTime: new Date(),
-    averageProcessingTime: 0
+    averageProcessingTime: 0,
+    isActive: false
   };
 
   // Start the monitoring service
@@ -48,12 +50,13 @@ export class PaymentMonitoringService {
     });
 
     this.isRunning = true;
+    this.metrics.isActive = true;
 
     // Initialize pending payments tracking
     await this.initializePendingPayments();
 
     // Start the monitoring loop
-    this.monitoringInterval = setInterval(() => {
+    this.monitoringInterval = global.setInterval(() => {
       this.monitorPendingPayments().catch(error => {
         Logger.error('Error in monitoring loop:', error);
       });
@@ -75,11 +78,12 @@ export class PaymentMonitoringService {
     Logger.info('Stopping payment monitoring service');
 
     this.isRunning = false;
+    this.metrics.isActive = false;
 
     if (this.monitoringInterval) {
-      clearInterval(this.monitoringInterval);
-      this.monitoringInterval = undefined;
+      global.clearInterval(this.monitoringInterval);
     }
+    this.monitoringInterval = undefined;
 
     Logger.info('Payment monitoring service stopped');
   }
@@ -412,7 +416,7 @@ export class PaymentMonitoringService {
 
   // Utility method for delays
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise(resolve => global.setTimeout(resolve, ms));
   }
 
   // Health check for monitoring service
@@ -455,7 +459,8 @@ export class PaymentMonitoringService {
       failedUpdates: 0,
       creditsAllocated: 0,
       lastRunTime: new Date(),
-      averageProcessingTime: 0
+      averageProcessingTime: 0,
+      isActive: this.isRunning
     };
   }
 }

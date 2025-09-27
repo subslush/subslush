@@ -1,9 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabasePool } from '../config/database';
 import { redisClient } from '../config/redis';
-import { env } from '../config/environment';
 import { creditService } from './creditService';
 import { Logger } from '../utils/logger';
+// Remove unused imports
+import { env } from '../config/environment';
 
 export type RefundStatus = 'pending' | 'approved' | 'processing' | 'completed' | 'failed' | 'rejected';
 export type RefundReason = 'user_request' | 'payment_error' | 'service_issue' | 'overpayment' | 'admin_decision' | 'dispute';
@@ -14,20 +15,21 @@ export interface RefundRequest {
   userId: string;
   amount: number;
   reason: RefundReason;
-  description?: string;
+  description?: string | undefined;
   status: RefundStatus;
-  approvedBy?: string;
-  processedAt?: Date;
+  approvedBy?: string | undefined;
+  processedAt?: Date | undefined;
   createdAt: Date;
   updatedAt: Date;
   metadata?: Record<string, any>;
 }
 
-export interface RefundResult {
+// Interface for local RefundRequest - renamed to avoid conflict
+export interface LocalRefundResult {
   success: boolean;
   refund?: RefundRequest;
-  transactionId?: string;
-  error?: string;
+  transactionId?: string | undefined;
+  error?: string | undefined;
 }
 
 export interface RefundMetrics {
@@ -42,8 +44,9 @@ export interface RefundMetrics {
 
 export class RefundService {
   private readonly CACHE_PREFIX = 'refund:';
-  private readonly APPROVAL_REQUIRED = process.env.REFUND_APPROVAL_REQUIRED !== 'false';
-  private readonly PROCESSING_TIMEOUT = parseInt(process.env.REFUND_PROCESSING_TIMEOUT || '300000'); // 5 minutes
+  private readonly APPROVAL_REQUIRED = env.REFUND_APPROVAL_REQUIRED;
+  // Processing timeout available if needed
+  // private readonly PROCESSING_TIMEOUT = env.REFUND_PROCESSING_TIMEOUT;
   private readonly MAX_REFUND_AMOUNT = 10000;
   private readonly REFUND_WINDOW_DAYS = 30; // Window for requesting refunds
 
@@ -64,7 +67,7 @@ export class RefundService {
     amount: number,
     reason: RefundReason,
     description?: string
-  ): Promise<RefundResult> {
+  ): Promise<LocalRefundResult> {
     try {
       Logger.info(`Initiating refund request for payment ${paymentId}`, {
         userId,
@@ -77,7 +80,7 @@ export class RefundService {
       if (!validation.valid) {
         return {
           success: false,
-          error: validation.error
+          error: validation.error || 'Validation failed'
         };
       }
 
@@ -275,7 +278,7 @@ export class RefundService {
     refundId: string,
     adminUserId: string,
     approvalNote?: string
-  ): Promise<RefundResult> {
+  ): Promise<LocalRefundResult> {
     try {
       Logger.info(`Approving refund ${refundId} by admin ${adminUserId}`);
 
@@ -335,7 +338,7 @@ export class RefundService {
     refundId: string,
     adminUserId: string,
     rejectionReason: string
-  ): Promise<RefundResult> {
+  ): Promise<LocalRefundResult> {
     try {
       Logger.info(`Rejecting refund ${refundId} by admin ${adminUserId}`);
 
@@ -394,7 +397,7 @@ export class RefundService {
   }
 
   // Process approved refund
-  private async processApprovedRefund(refund: RefundRequest): Promise<RefundResult> {
+  private async processApprovedRefund(refund: RefundRequest): Promise<LocalRefundResult> {
     try {
       Logger.info(`Processing approved refund ${refund.id}`);
 
@@ -490,15 +493,14 @@ export class RefundService {
     try {
       const updates = {
         status,
-        updated_at: new Date(),
-        ...(metadata && { metadata })
+        updated_at: new Date()
       };
 
       let query = `
         UPDATE payment_refunds
         SET status = $1, updated_at = $2
       `;
-      const params = [status, updates.updated_at];
+      const params: (string | Date)[] = [status, updates.updated_at];
 
       if (metadata) {
         query += `, metadata = COALESCE(metadata, '{}')::jsonb || $3::jsonb`;
@@ -669,20 +671,31 @@ export class RefundService {
 
   // Map database row to RefundRequest object
   private mapRowToRefund(row: any): RefundRequest {
-    return {
+    const result: RefundRequest = {
       id: row.id,
       paymentId: row.payment_id,
       userId: row.user_id,
       amount: parseFloat(row.amount),
       reason: row.reason,
-      description: row.description,
       status: row.status,
-      approvedBy: row.approved_by,
-      processedAt: row.processed_at ? new Date(row.processed_at) : undefined,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       metadata: row.metadata || {}
     };
+
+    if (row.description !== null && row.description !== undefined) {
+      result.description = row.description;
+    }
+
+    if (row.approved_by !== null && row.approved_by !== undefined) {
+      result.approvedBy = row.approved_by;
+    }
+
+    if (row.processed_at !== null && row.processed_at !== undefined) {
+      result.processedAt = new Date(row.processed_at);
+    }
+
+    return result;
   }
 
   // Notify user of refund rejection
@@ -761,7 +774,7 @@ export class RefundService {
     reason: string,
     adminUserId: string,
     paymentId?: string
-  ): Promise<RefundResult> {
+  ): Promise<LocalRefundResult> {
     try {
       Logger.info(`Manual refund initiated by admin ${adminUserId}`, {
         userId,

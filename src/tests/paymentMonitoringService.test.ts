@@ -21,22 +21,22 @@ const mockPaymentFailureService = paymentFailureService as jest.Mocked<typeof pa
 
 // Mock Redis client
 const mockRedis = {
-  get: jest.fn(),
-  setex: jest.fn(),
-  del: jest.fn(),
-  ping: jest.fn(),
-  keys: jest.fn(),
+  get: jest.fn<(key: string) => Promise<string | null>>(),
+  setex: jest.fn<(key: string, ttl: number, value: string) => Promise<string>>(),
+  del: jest.fn<(key: string) => Promise<number>>(),
+  ping: jest.fn<() => Promise<string>>(),
+  keys: jest.fn<(pattern: string) => Promise<string[]>>(),
 };
 
 // Mock database pool
 const mockDbClient = {
-  query: jest.fn(),
-  release: jest.fn(),
+  query: jest.fn<(sql: string, params?: any[]) => Promise<any>>(),
+  release: jest.fn<() => void>(),
 };
 
 const mockPool = {
-  query: jest.fn(),
-  connect: jest.fn().mockResolvedValue(mockDbClient),
+  query: jest.fn<(sql: string, params?: any[]) => Promise<any>>(),
+  connect: jest.fn<() => Promise<typeof mockDbClient>>().mockResolvedValue(mockDbClient),
 };
 
 describe('PaymentMonitoringService', () => {
@@ -53,14 +53,21 @@ describe('PaymentMonitoringService', () => {
     // Setup service mocks
     mockCreditAllocationService.allocateCreditsForPayment.mockResolvedValue({
       success: true,
-      creditAmount: 100,
-      transactionId: 'tx-123',
-      balanceAfter: 100
+      data: {
+        creditAmount: 100,
+        transactionId: 'tx-123',
+        balanceAfter: 100,
+        userId: 'user-123',
+        paymentId: 'payment-123'
+      }
     });
 
     mockPaymentFailureService.handlePaymentFailure.mockResolvedValue({
       success: true,
-      action: 'user_notified'
+      data: {
+        action: 'user_notified',
+        notificationSent: true
+      }
     });
 
     mockPaymentFailureService.handleMonitoringFailure.mockResolvedValue();
@@ -90,10 +97,10 @@ describe('PaymentMonitoringService', () => {
 
       mockRedis.setex.mockResolvedValue('OK');
 
-      const result = paymentMonitoringService.startMonitoring();
+      paymentMonitoringService.startMonitoring();
 
       // Wait a bit for initialization
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => global.setTimeout(resolve, 100));
 
       expect(paymentMonitoringService.isMonitoringActive()).toBe(true);
       expect(mockPool.query).toHaveBeenCalledWith(

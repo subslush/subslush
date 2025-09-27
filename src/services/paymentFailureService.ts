@@ -1,9 +1,14 @@
 import { getDatabasePool } from '../config/database';
 import { redisClient } from '../config/redis';
-import { env } from '../config/environment';
 import { nowpaymentsClient } from '../utils/nowpaymentsClient';
 import { Logger } from '../utils/logger';
 import { PaymentStatus } from '../types/payment';
+import {
+  FailureHandlingResult,
+  createSuccessResult,
+  createErrorResult
+} from '../types/service';
+import { env } from '../config/environment';
 
 export type FailureType = 'expired' | 'failed' | 'network_error' | 'insufficient_payment' | 'monitoring_error' | 'system_error';
 
@@ -20,11 +25,12 @@ export interface PaymentFailureData {
   metadata?: Record<string, any>;
 }
 
-export interface FailureHandlingResult {
-  success: boolean;
-  action: 'retried' | 'failed_permanently' | 'user_notified' | 'admin_alerted' | 'cleanup_completed';
+export interface FailureHandlingData {
+  action: 'retried' | 'user_notified' | 'admin_alerted' | 'cleanup_completed';
+  retryCount?: number;
   nextRetryAt?: Date;
-  error?: string;
+  notificationSent?: boolean;
+  alertLevel?: 'low' | 'medium' | 'high' | 'critical';
 }
 
 export interface FailureMetrics {
@@ -39,8 +45,8 @@ export interface FailureMetrics {
 
 export class PaymentFailureService {
   private readonly CACHE_PREFIX = 'payment_failure:';
-  private readonly MAX_RETRY_ATTEMPTS = parseInt(process.env.PAYMENT_RETRY_ATTEMPTS || '3');
-  private readonly BASE_RETRY_DELAY = parseInt(process.env.PAYMENT_RETRY_DELAY || '5000');
+  private readonly MAX_RETRY_ATTEMPTS = env.PAYMENT_RETRY_ATTEMPTS;
+  private readonly BASE_RETRY_DELAY = env.PAYMENT_RETRY_DELAY;
   private readonly MAX_RETRY_DELAY = 300000; // 5 minutes
   private readonly CLEANUP_AFTER_DAYS = 7;
 
@@ -67,11 +73,7 @@ export class PaymentFailureService {
       // Get payment information
       const paymentInfo = await this.getPaymentInfo(paymentId);
       if (!paymentInfo) {
-        return {
-          success: false,
-          action: 'failed_permanently',
-          error: 'Payment not found'
-        };
+        return createErrorResult('Payment not found');
       }
 
       // Categorize failure type
@@ -100,11 +102,7 @@ export class PaymentFailureService {
 
     } catch (error) {
       Logger.error(`Error handling payment failure for ${paymentId}:`, error);
-      return {
-        success: false,
-        action: 'failed_permanently',
-        error: 'System error in failure handling'
-      };
+      return createErrorResult('System error in failure handling');
     }
   }
 
@@ -277,11 +275,7 @@ export class PaymentFailureService {
         return await this.cleanupFailedPayment(failureData);
 
       default:
-        return {
-          success: false,
-          action: 'failed_permanently' as any,
-          error: `Unknown action: ${action}`
-        };
+        return createErrorResult(`Unknown action: ${action}`);
     }
   }
 
@@ -306,11 +300,10 @@ export class PaymentFailureService {
         if (paymentStatus.payment_status !== failureData.status) {
           Logger.info(`Payment status changed during retry: ${failureData.paymentId} now ${paymentStatus.payment_status}`);
           await this.clearFailureRecord(failureData.paymentId);
-          return {
-            success: true,
-            action: 'retried',
-            nextRetryAt: undefined
-          };
+          return createSuccessResult({
+            action: 'retried' as const,
+            retryCount: failureData.retryCount
+          });
         }
       } catch (error) {
         Logger.warn(`Retry attempt failed for ${failureData.paymentId}:`, error);
@@ -319,19 +312,15 @@ export class PaymentFailureService {
       // Update cached failure record
       await this.updateFailureRecord(failureData);
 
-      return {
-        success: true,
-        action: 'retried',
+      return createSuccessResult({
+        action: 'retried' as const,
+        retryCount: failureData.retryCount,
         nextRetryAt: failureData.nextRetryAt
-      };
+      });
 
     } catch (error) {
       Logger.error(`Error retrying payment monitoring for ${failureData.paymentId}:`, error);
-      return {
-        success: false,
-        action: 'retried',
-        error: 'Retry failed'
-      };
+      return createErrorResult('Retry failed');
     }
   }
 
@@ -346,18 +335,14 @@ export class PaymentFailureService {
       // Log notification for audit
       await this.logFailureNotification(failureData, 'user', notification);
 
-      return {
-        success: true,
-        action: 'user_notified'
-      };
+      return createSuccessResult({
+        action: 'user_notified' as const,
+        notificationSent: true
+      });
 
     } catch (error) {
       Logger.error(`Error notifying user of failure for ${failureData.paymentId}:`, error);
-      return {
-        success: false,
-        action: 'user_notified',
-        error: 'User notification failed'
-      };
+      return createErrorResult('User notification failed');
     }
   }
 
@@ -375,18 +360,14 @@ export class PaymentFailureService {
       // Also notify user about the issue
       await this.notifyUserOfFailure(failureData);
 
-      return {
-        success: true,
-        action: 'admin_alerted'
-      };
+      return createSuccessResult({
+        action: 'admin_alerted' as const,
+        alertLevel: 'high' as const
+      });
 
     } catch (error) {
       Logger.error(`Error alerting admin of failure for ${failureData.paymentId}:`, error);
-      return {
-        success: false,
-        action: 'admin_alerted',
-        error: 'Admin alert failed'
-      };
+      return createErrorResult('Admin alert failed');
     }
   }
 
@@ -406,18 +387,13 @@ export class PaymentFailureService {
         await this.notifyUserOfExpiry(failureData);
       }
 
-      return {
-        success: true,
-        action: 'cleanup_completed'
-      };
+      return createSuccessResult({
+        action: 'cleanup_completed' as const
+      });
 
     } catch (error) {
       Logger.error(`Error cleaning up failed payment ${failureData.paymentId}:`, error);
-      return {
-        success: false,
-        action: 'cleanup_completed',
-        error: 'Cleanup failed'
-      };
+      return createErrorResult('Cleanup failed');
     }
   }
 
@@ -653,11 +629,7 @@ export class PaymentFailureService {
 
       const failureData = await this.getFailureRecord(paymentId);
       if (!failureData) {
-        return {
-          success: false,
-          action: 'failed_permanently',
-          error: 'Failure record not found'
-        };
+        return createErrorResult('Failure record not found');
       }
 
       // Reset retry count for manual retry
@@ -674,11 +646,7 @@ export class PaymentFailureService {
 
     } catch (error) {
       Logger.error(`Error in manual retry for ${paymentId}:`, error);
-      return {
-        success: false,
-        action: 'failed_permanently',
-        error: 'Manual retry failed'
-      };
+      return createErrorResult('Manual retry failed');
     }
   }
 

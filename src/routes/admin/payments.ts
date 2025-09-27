@@ -8,7 +8,7 @@ import { SuccessResponses, ErrorResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
 
 // Middleware to check admin permissions
-const adminPreHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+const adminPreHandler = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
   const user = request.user;
 
   if (!user || !user.isAdmin) {

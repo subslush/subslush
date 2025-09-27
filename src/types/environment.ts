@@ -29,4 +29,18 @@ export interface EnvironmentConfig {
   NOWPAYMENTS_BASE_URL: string;
   NOWPAYMENTS_SANDBOX_MODE: boolean;
   NOWPAYMENTS_WEBHOOK_URL: string;
+
+  // Payment Monitoring Configuration
+  PAYMENT_MONITORING_INTERVAL: number;
+  PAYMENT_MONITORING_BATCH_SIZE: number;
+  PAYMENT_RETRY_ATTEMPTS: number;
+  PAYMENT_RETRY_DELAY: number;
+
+  // Credit Allocation Settings
+  CREDIT_ALLOCATION_RATE: number;
+  CREDIT_ALLOCATION_TIMEOUT: number;
+
+  // Refund Processing Configuration
+  REFUND_APPROVAL_REQUIRED: boolean;
+  REFUND_PROCESSING_TIMEOUT: number;
 }

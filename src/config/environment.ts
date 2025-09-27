@@ -45,20 +45,17 @@ const environmentSchema = z.object({
     .url()
     .default('https://api.nowpayments.io/v1'),
   NOWPAYMENTS_SANDBOX_MODE: z
-    .string()
+    .union([z.string(), z.boolean()])
     .optional()
+    .default(false)
     .transform(val => {
-      if (val === undefined) return false;
-      if (val.toLowerCase() === 'true') return true;
-      if (val.toLowerCase() === 'false') return false;
-      throw new Error(
-        `Invalid boolean value: ${val}. Expected 'true' or 'false'`
-      );
-    })
-    .default('false')
-    .transform(val =>
-      typeof val === 'string' ? val.toLowerCase() === 'true' : val
-    ),
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return false;
+    }),
   NOWPAYMENTS_WEBHOOK_URL: z.string().url('Invalid webhook URL format'),
 
   // Payment Monitoring Configuration
@@ -73,20 +70,17 @@ const environmentSchema = z.object({
 
   // Refund Processing Configuration
   REFUND_APPROVAL_REQUIRED: z
-    .string()
+    .union([z.string(), z.boolean()])
     .optional()
+    .default(true)
     .transform(val => {
-      if (val === undefined) return true;
-      if (val.toLowerCase() === 'true') return true;
-      if (val.toLowerCase() === 'false') return false;
-      throw new Error(
-        `Invalid boolean value: ${val}. Expected 'true' or 'false'`
-      );
-    })
-    .default('true')
-    .transform(val =>
-      typeof val === 'string' ? val.toLowerCase() === 'true' : val
-    ),
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return true;
+    }),
   REFUND_PROCESSING_TIMEOUT: z.coerce.number().default(300000),
 });
 
@@ -94,30 +88,24 @@ function validateEnvironment(): EnvironmentConfig {
   try {
     const parsed = environmentSchema.parse(process.env);
 
-    // Log critical configuration values for debugging
-    console.log('Environment configuration loaded:');
-    console.log(`- NODE_ENV: ${parsed.NODE_ENV}`);
-    console.log(
-      `- Raw env value: process.env.NOWPAYMENTS_SANDBOX_MODE = "${process.env.NOWPAYMENTS_SANDBOX_MODE}"`
-    );
-    console.log(
-      `- Parsed value: ${parsed.NOWPAYMENTS_SANDBOX_MODE} (type: ${typeof parsed.NOWPAYMENTS_SANDBOX_MODE})`
-    );
-    console.log(`- NOWPAYMENTS_BASE_URL: ${parsed.NOWPAYMENTS_BASE_URL}`);
+    // Log critical configuration values for debugging in development only
+    if (parsed.NODE_ENV === 'development') {
+      // Environment configuration loaded
+      // NODE_ENV, NOWPAYMENTS_SANDBOX_MODE, NOWPAYMENTS_BASE_URL validated
+    }
 
     // Validate production configuration
     if (
       parsed.NODE_ENV === 'production' &&
       parsed.NOWPAYMENTS_SANDBOX_MODE === true
     ) {
-      console.warn(
-        'WARNING: Production environment detected but NOWPayments is in sandbox mode!'
-      );
+      // Warning: Production environment detected but NOWPayments is in sandbox mode
     }
 
     return parsed;
   } catch (error) {
-    console.error('Environment validation failed:', error);
+    // Environment validation failed - exiting
+    process.stderr.write(`Environment validation failed: ${error}\n`);
     process.exit(1);
   }
 }
