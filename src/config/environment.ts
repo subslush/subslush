@@ -60,6 +60,34 @@ const environmentSchema = z.object({
       typeof val === 'string' ? val.toLowerCase() === 'true' : val
     ),
   NOWPAYMENTS_WEBHOOK_URL: z.string().url('Invalid webhook URL format'),
+
+  // Payment Monitoring Configuration
+  PAYMENT_MONITORING_INTERVAL: z.coerce.number().default(30000),
+  PAYMENT_MONITORING_BATCH_SIZE: z.coerce.number().default(50),
+  PAYMENT_RETRY_ATTEMPTS: z.coerce.number().default(3),
+  PAYMENT_RETRY_DELAY: z.coerce.number().default(5000),
+
+  // Credit Allocation Settings
+  CREDIT_ALLOCATION_RATE: z.coerce.number().default(1.0),
+  CREDIT_ALLOCATION_TIMEOUT: z.coerce.number().default(30000),
+
+  // Refund Processing Configuration
+  REFUND_APPROVAL_REQUIRED: z
+    .string()
+    .optional()
+    .transform(val => {
+      if (val === undefined) return true;
+      if (val.toLowerCase() === 'true') return true;
+      if (val.toLowerCase() === 'false') return false;
+      throw new Error(
+        `Invalid boolean value: ${val}. Expected 'true' or 'false'`
+      );
+    })
+    .default('true')
+    .transform(val =>
+      typeof val === 'string' ? val.toLowerCase() === 'true' : val
+    ),
+  REFUND_PROCESSING_TIMEOUT: z.coerce.number().default(300000),
 });
 
 function validateEnvironment(): EnvironmentConfig {

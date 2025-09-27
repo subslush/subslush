@@ -1,6 +1,10 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authPreHandler } from '../middleware/authMiddleware';
 import { paymentService } from '../services/paymentService';
+import { paymentMonitoringService } from '../services/paymentMonitoringService';
+import { creditAllocationService } from '../services/creditAllocationService';
+import { paymentFailureService } from '../services/paymentFailureService';
+import { refundService } from '../services/refundService';
 import { SuccessResponses, ErrorResponses } from '../utils/response';
 import { Logger } from '../utils/logger';
 import {
@@ -323,22 +327,263 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  // Manual retry failed payment (user action)
+  fastify.post(
+    '/retry/:paymentId',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['paymentId'],
+          properties: {
+            paymentId: { type: 'string' },
+          },
+        },
+      },
+      preHandler: [authPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { paymentId } = request.params as { paymentId: string };
+        const user = request.user;
+
+        if (!user || !user.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
+
+        // Verify user owns this payment
+        const currentStatus = await paymentService.getPaymentStatus(
+          paymentId,
+          user.userId
+        );
+        if (!currentStatus) {
+          return ErrorResponses.notFound(reply, 'Payment not found');
+        }
+
+        const success = await paymentMonitoringService.triggerPaymentCheck(paymentId);
+
+        if (!success) {
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to retry payment monitoring'
+          );
+        }
+
+        return SuccessResponses.ok(
+          reply,
+          { retried: true },
+          'Payment retry initiated'
+        );
+      } catch (error) {
+        Logger.error('Error retrying payment:', error);
+        return ErrorResponses.internalError(reply, 'Failed to retry payment');
+      }
+    }
+  );
+
+  // Get monitoring service status
+  fastify.get(
+    '/monitor-status',
+    {
+      preHandler: [authPreHandler],
+    },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const isActive = paymentMonitoringService.isMonitoringActive();
+        const metrics = paymentMonitoringService.getMetrics();
+
+        return SuccessResponses.ok(reply, {
+          active: isActive,
+          metrics,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        Logger.error('Error getting monitoring status:', error);
+        return ErrorResponses.internalError(reply, 'Failed to get monitoring status');
+      }
+    }
+  );
+
+  // Initiate refund request
+  fastify.post(
+    '/refund',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['paymentId', 'amount', 'reason'],
+          properties: {
+            paymentId: { type: 'string' },
+            amount: { type: 'number', minimum: 0.01 },
+            reason: {
+              type: 'string',
+              enum: ['user_request', 'payment_error', 'service_issue', 'overpayment', 'admin_decision', 'dispute']
+            },
+            description: { type: 'string', maxLength: 500 },
+          },
+        },
+      },
+      preHandler: [authPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const user = request.user;
+
+        if (!user || !user.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
+
+        const { paymentId, amount, reason, description } = request.body as {
+          paymentId: string;
+          amount: number;
+          reason: string;
+          description?: string;
+        };
+
+        const result = await refundService.initiateRefund(
+          user.userId,
+          paymentId,
+          amount,
+          reason as any,
+          description
+        );
+
+        if (!result.success) {
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to initiate refund'
+          );
+        }
+
+        return SuccessResponses.created(
+          reply,
+          result.refund,
+          'Refund request created successfully'
+        );
+      } catch (error) {
+        Logger.error('Error initiating refund:', error);
+        return ErrorResponses.internalError(reply, 'Failed to initiate refund');
+      }
+    }
+  );
+
+  // Get user refunds
+  fastify.get(
+    '/refunds',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: { type: 'number', minimum: 1, maximum: 100, default: 20 },
+            offset: { type: 'number', minimum: 0, default: 0 },
+          },
+        },
+      },
+      preHandler: [authPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const user = request.user;
+
+        if (!user || !user.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
+
+        const { limit = 20, offset = 0 } = request.query as {
+          limit?: number;
+          offset?: number;
+        };
+
+        const refunds = await refundService.getUserRefunds(
+          user.userId,
+          limit,
+          offset
+        );
+
+        return SuccessResponses.ok(reply, {
+          refunds,
+          count: refunds.length,
+        });
+      } catch (error) {
+        Logger.error('Error getting user refunds:', error);
+        return ErrorResponses.internalError(reply, 'Failed to get refunds');
+      }
+    }
+  );
+
+  // Get refund by ID
+  fastify.get(
+    '/refunds/:refundId',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['refundId'],
+          properties: {
+            refundId: { type: 'string' },
+          },
+        },
+      },
+      preHandler: [authPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const user = request.user;
+
+        if (!user || !user.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
+
+        const { refundId } = request.params as { refundId: string };
+        const refund = await refundService.getRefundById(refundId);
+
+        if (!refund) {
+          return ErrorResponses.notFound(reply, 'Refund not found');
+        }
+
+        // Verify user owns this refund
+        if (refund.userId !== user.userId) {
+          return ErrorResponses.forbidden(reply, 'Access denied');
+        }
+
+        return SuccessResponses.ok(reply, refund);
+      } catch (error) {
+        Logger.error('Error getting refund:', error);
+        return ErrorResponses.internalError(reply, 'Failed to get refund');
+      }
+    }
+  );
+
   // Health check endpoint
   fastify.get(
     '/health',
     async (_request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const isHealthy = await paymentService.healthCheck();
+        const paymentHealthy = await paymentService.healthCheck();
+        const monitoringHealthy = await paymentMonitoringService.healthCheck();
+        const allocationHealthy = await creditAllocationService.healthCheck();
+        const failureHealthy = await paymentFailureService.healthCheck();
+        const refundHealthy = await refundService.healthCheck();
+
+        const isHealthy = paymentHealthy && monitoringHealthy && allocationHealthy && failureHealthy && refundHealthy;
 
         if (!isHealthy) {
           return ErrorResponses.internalError(
             reply,
-            'Payment service unhealthy'
+            'Payment workflow services unhealthy'
           );
         }
 
         return SuccessResponses.ok(reply, {
           status: 'healthy',
+          services: {
+            payment: paymentHealthy,
+            monitoring: monitoringHealthy,
+            allocation: allocationHealthy,
+            failure: failureHealthy,
+            refund: refundHealthy,
+          },
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
