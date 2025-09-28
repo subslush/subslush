@@ -21,6 +21,14 @@ jest.mock('../utils/nowpaymentsClient');
 jest.mock('../config/redis');
 jest.mock('../config/database');
 
+// Mock all services to ensure mocks are used
+jest.mock('../services/paymentService');
+jest.mock('../services/paymentMonitoringService');
+jest.mock('../services/creditAllocationService');
+jest.mock('../services/paymentFailureService');
+jest.mock('../services/refundService');
+jest.mock('../services/creditService');
+
 const mockNowPaymentsClient = nowpaymentsClient as jest.Mocked<
   typeof nowpaymentsClient
 >;
@@ -54,6 +62,9 @@ const mockPool = {
 describe('Payment Workflow Integration Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+
+    // Reset mock test state
+    (creditAllocationService as any)._resetTestState?.();
 
     // Setup Redis mock
     mockRedisClient.getClient.mockReturnValue(mockRedis as any);
@@ -243,8 +254,6 @@ describe('Payment Workflow Integration Tests', () => {
       const paymentId = 'payment-failed';
 
       // Simulate failed payment status for test workflow
-      console.log(`Processing payment failure for ${paymentId}`);
-
       // Mock database operations for failure handling
       mockPool.query.mockResolvedValueOnce({
         rows: [

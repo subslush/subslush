@@ -39,4 +39,10 @@ process.env['DB_DATABASE'] = 'test_db';
 process.env['DB_USER'] = 'test_user';
 process.env['DB_PASSWORD'] = 'test_password';
 
+// Payment monitoring environment variables for fast testing
+process.env['PAYMENT_RETRY_ATTEMPTS'] = '2';
+process.env['PAYMENT_RETRY_DELAY'] = '100'; // 100ms instead of 5000ms
+process.env['PAYMENT_MONITORING_INTERVAL'] = '1000';
+process.env['PAYMENT_MONITORING_BATCH_SIZE'] = '10';
+
 Logger.info('🧪 Test environment setup complete');

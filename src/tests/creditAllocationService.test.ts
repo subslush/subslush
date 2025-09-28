@@ -315,6 +315,7 @@ describe('CreditAllocationService', () => {
   describe('Manual Credit Allocation', () => {
     it('should perform manual credit allocation successfully', async () => {
       mockRedis.get.mockResolvedValueOnce(null); // No duplicate
+      mockPool.query.mockResolvedValueOnce({ rows: [] }); // No database duplicate
 
       mockCreditService.addCredits.mockResolvedValue({
         success: true,

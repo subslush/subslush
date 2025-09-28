@@ -172,7 +172,11 @@ export class CreditAllocationService {
         } as CreditAllocationResultWithDuplicate;
       }
 
-      return createErrorResult('No duplicate found') as CreditAllocationResultWithDuplicate;
+      return {
+        success: true,
+        data: null as any, // Not applicable for non-duplicate case
+        isDuplicate: false
+      } as CreditAllocationResultWithDuplicate;
 
     } catch (error) {
       Logger.error(`Error checking for duplicate allocation ${paymentId}:`, error);
@@ -214,8 +218,8 @@ export class CreditAllocationService {
         return { valid: false, error: `Invalid payment status for allocation: ${paymentData.payment_status}` };
       }
 
-      // Validate actually paid amount
-      if (paymentData.actually_paid && paymentData.actually_paid < paymentData.price_amount * 0.95) {
+      // Validate actually paid amount (compare crypto amounts, not crypto to USD)
+      if (paymentData.actually_paid && paymentData.actually_paid < paymentData.pay_amount * 0.95) {
         return { valid: false, error: 'Insufficient payment amount received' };
       }
 
@@ -554,7 +558,13 @@ export class CreditAllocationService {
       `);
 
       return result.rows.map(row => {
-        const _metadata = row.metadata ? JSON.parse(row.metadata) : {};
+        let _metadata: any = {};
+        try {
+          _metadata = row.metadata ? JSON.parse(row.metadata) : {};
+        } catch (parseError) {
+          Logger.warn(`Invalid metadata JSON for payment ${row.payment_id}:`, parseError);
+          _metadata = {};
+        }
         return {
           paymentId: row.payment_id,
           userId: row.user_id,
