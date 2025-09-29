@@ -1,177 +1,256 @@
 <script lang="ts">
-	// Removed non-existent Card components - using Tailwind CSS instead
-	import { Mail, Lock, Eye, EyeOff } from 'lucide-svelte';
-	import { createMutation } from '@tanstack/svelte-query';
-	import axios from 'axios';
-	import { goto } from '$app/navigation';
-	import { env } from '$env/dynamic/public';
+  import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { Eye, EyeOff, LogIn, Loader2 } from 'lucide-svelte';
+  import { auth, authError, isLoading } from '$lib/stores/auth.js';
+  import { loginSchema, type LoginFormData } from '$lib/validation/auth.js';
+  import { ROUTES } from '$lib/utils/constants.js';
 
-	let email = '';
-	let password = '';
-	let showPassword = false;
-	let formErrors: Record<string, string> = {};
+  let formData: LoginFormData = {
+    email: '',
+    password: '',
+    rememberMe: false
+  };
 
-	const API_URL = env.PUBLIC_API_URL || 'http://localhost:3001';
+  let formErrors: Partial<Record<keyof LoginFormData, string>> = {};
+  let showPassword = false;
+  let emailInput: HTMLInputElement;
 
-	const loginMutation = createMutation({
-		mutationFn: async (credentials: { email: string; password: string }) => {
-			const response = await axios.post(`${API_URL}/auth/login`, credentials, {
-				withCredentials: true
-			});
-			return response.data;
-		},
-		onError: (error: any) => {
-			console.error('Login failed:', error);
-			if (error.response?.data?.errors) {
-				formErrors = error.response.data.errors;
-			} else {
-				formErrors = { general: 'Login failed. Please try again.' };
-			}
-		}
-	});
+  onMount(() => {
+    // Auto-focus email input
+    if (emailInput) {
+      emailInput.focus();
+    }
+  });
 
-	// Handle success manually using reactive statement
-	$: if ($loginMutation.isSuccess) {
-		goto('/dashboard');
-	}
+  function validateForm(): boolean {
+    formErrors = {};
 
-	const handleSubmit = (e: Event) => {
-		e.preventDefault();
-		formErrors = {};
+    try {
+      loginSchema.parse(formData);
+      return true;
+    } catch (error: any) {
+      if (error.errors) {
+        error.errors.forEach((err: any) => {
+          formErrors[err.path[0] as keyof LoginFormData] = err.message;
+        });
+      }
+      return false;
+    }
+  }
 
-		if (!email) {
-			formErrors.email = 'Email is required';
-		}
-		if (!password) {
-			formErrors.password = 'Password is required';
-		}
+  async function handleSubmit(event: Event) {
+    event.preventDefault();
 
-		if (Object.keys(formErrors).length === 0) {
-			$loginMutation.mutate({ email, password });
-		}
-	};
+    if (!validateForm()) {
+      return;
+    }
 
-	const togglePasswordVisibility = () => {
-		showPassword = !showPassword;
-	};
+    try {
+      await auth.login(formData);
+      // Navigation is handled by the auth store
+    } catch (error) {
+      // Error is handled by the auth store and displayed via authError
+      console.error('Login failed:', error);
+    }
+  }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      handleSubmit(event);
+    }
+  }
+
+  function togglePasswordVisibility() {
+    showPassword = !showPassword;
+  }
+
+  function clearFieldError(field: keyof LoginFormData) {
+    if (formErrors[field]) {
+      formErrors = { ...formErrors, [field]: undefined };
+    }
+  }
+
+  function navigateToRegister() {
+    goto(ROUTES.AUTH.REGISTER);
+  }
 </script>
 
 <svelte:head>
-	<title>Login - Subscription Platform</title>
+  <title>Sign In - Subscription Platform</title>
+  <meta name="description" content="Sign in to your Subscription Platform account to access premium subscriptions at discounted prices." />
 </svelte:head>
 
-<div class="container mx-auto px-4 py-8 max-w-md">
-	<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-8">
-		<div class="mb-6">
-			<h1 class="h2 text-center mb-2">Welcome Back</h1>
-			<p class="text-center text-surface-600-300-token mb-6">
-				Sign in to your account to continue
-			</p>
-		</div>
+<div class="space-y-6">
+  <!-- Header -->
+  <div class="text-center">
+    <h2 class="text-2xl font-bold text-surface-900 dark:text-surface-100">
+      Welcome back
+    </h2>
+    <p class="mt-2 text-sm text-surface-600 dark:text-surface-400">
+      Sign in to your account to continue
+    </p>
+  </div>
 
-		<div>
-			{#if formErrors.general}
-				<div class="alert variant-filled-error mb-4">
-					{formErrors.general}
-				</div>
-			{/if}
+  <!-- Error Alert -->
+  {#if $authError}
+    <div class="alert variant-filled-error" role="alert">
+      <div class="alert-message">
+        <p>{$authError}</p>
+      </div>
+      <div class="alert-actions">
+        <button
+          type="button"
+          class="btn-icon btn-icon-sm variant-filled"
+          on:click={() => auth.clearError()}
+          aria-label="Dismiss error"
+        >
+          <span>×</span>
+        </button>
+      </div>
+    </div>
+  {/if}
 
-			<form on:submit={handleSubmit} class="space-y-4">
-				<div>
-					<label for="email" class="label">
-						<span class="flex items-center space-x-2">
-							<Mail size={16} />
-							<span>Email</span>
-						</span>
-					</label>
-					<input
-						id="email"
-						type="email"
-						bind:value={email}
-						class="input"
-						class:input-error={formErrors.email}
-						placeholder="Enter your email"
-						disabled={$loginMutation.isPending}
-					/>
-					{#if formErrors.email}
-						<span class="text-error-500 text-sm">{formErrors.email}</span>
-					{/if}
-				</div>
+  <!-- Login Form -->
+  <form on:submit={handleSubmit} class="space-y-4" novalidate>
+    <!-- Email Field -->
+    <div>
+      <label for="email" class="label">
+        <span>Email address</span>
+      </label>
+      <input
+        bind:this={emailInput}
+        bind:value={formData.email}
+        on:input={() => clearFieldError('email')}
+        on:keydown={handleKeydown}
+        type="email"
+        id="email"
+        name="email"
+        autocomplete="email"
+        required
+        disabled={$isLoading}
+        class="input"
+        class:input-error={formErrors.email}
+        placeholder="Enter your email"
+        aria-describedby={formErrors.email ? 'email-error' : undefined}
+      />
+      {#if formErrors.email}
+        <div id="email-error" class="text-sm text-error-500 mt-1" role="alert">
+          {formErrors.email}
+        </div>
+      {/if}
+    </div>
 
-				<div>
-					<label for="password" class="label">
-						<span class="flex items-center space-x-2">
-							<Lock size={16} />
-							<span>Password</span>
-						</span>
-					</label>
-					<div class="relative">
-						{#if showPassword}
-							<input
-								id="password"
-								type="text"
-								bind:value={password}
-								class="input pr-10"
-								class:input-error={formErrors.password}
-								placeholder="Enter your password"
-								disabled={$loginMutation.isPending}
-							/>
-						{:else}
-							<input
-								id="password"
-								type="password"
-								bind:value={password}
-								class="input pr-10"
-								class:input-error={formErrors.password}
-								placeholder="Enter your password"
-								disabled={$loginMutation.isPending}
-							/>
-						{/if}
-						<button
-							type="button"
-							on:click={togglePasswordVisibility}
-							class="absolute right-3 top-1/2 transform -translate-y-1/2 text-surface-600-300-token hover:text-surface-900-50-token"
-						>
-							{#if showPassword}
-								<EyeOff size={16} />
-							{:else}
-								<Eye size={16} />
-							{/if}
-						</button>
-					</div>
-					{#if formErrors.password}
-						<span class="text-error-500 text-sm">{formErrors.password}</span>
-					{/if}
-				</div>
+    <!-- Password Field -->
+    <div>
+      <label for="password" class="label">
+        <span>Password</span>
+      </label>
+      <div class="input-group input-group-divider grid-cols-[1fr_auto]">
+        {#if showPassword}
+          <input
+            bind:value={formData.password}
+            on:input={() => clearFieldError('password')}
+            on:keydown={handleKeydown}
+            type="text"
+            id="password"
+            name="password"
+            autocomplete="current-password"
+            required
+            disabled={$isLoading}
+            class="input"
+            class:input-error={formErrors.password}
+            placeholder="Enter your password"
+            aria-describedby={formErrors.password ? 'password-error' : undefined}
+          />
+        {:else}
+          <input
+            bind:value={formData.password}
+            on:input={() => clearFieldError('password')}
+            on:keydown={handleKeydown}
+            type="password"
+            id="password"
+            name="password"
+            autocomplete="current-password"
+            required
+            disabled={$isLoading}
+            class="input"
+            class:input-error={formErrors.password}
+            placeholder="Enter your password"
+            aria-describedby={formErrors.password ? 'password-error' : undefined}
+          />
+        {/if}
+        <button
+          type="button"
+          class="btn variant-filled-surface btn-icon"
+          on:click={togglePasswordVisibility}
+          disabled={$isLoading}
+          aria-label={showPassword ? 'Hide password' : 'Show password'}
+        >
+          {#if showPassword}
+            <EyeOff class="w-4 h-4" />
+          {:else}
+            <Eye class="w-4 h-4" />
+          {/if}
+        </button>
+      </div>
+      {#if formErrors.password}
+        <div id="password-error" class="text-sm text-error-500 mt-1" role="alert">
+          {formErrors.password}
+        </div>
+      {/if}
+    </div>
 
-				<div class="flex items-center justify-between">
-					<label class="flex items-center space-x-2">
-						<input type="checkbox" class="checkbox" />
-						<span class="text-sm">Remember me</span>
-					</label>
-					<a href="/auth/forgot-password" class="text-sm text-primary-600 hover:underline">
-						Forgot password?
-					</a>
-				</div>
+    <!-- Remember Me -->
+    <div class="flex items-center">
+      <label class="flex items-center space-x-2">
+        <input
+          bind:checked={formData.rememberMe}
+          type="checkbox"
+          class="checkbox"
+          disabled={$isLoading}
+        />
+        <span class="text-sm text-surface-700 dark:text-surface-300">Remember me</span>
+      </label>
+    </div>
 
-				<button
-					type="submit"
-					class="btn variant-filled-primary w-full"
-					disabled={$loginMutation.isPending}
-				>
-					{#if $loginMutation.isPending}
-						<span class="loading loading-spinner loading-sm"></span>
-						Signing in...
-					{:else}
-						Sign In
-					{/if}
-				</button>
-			</form>
+    <!-- Submit Button -->
+    <button
+      type="submit"
+      disabled={$isLoading}
+      class="btn variant-filled-primary w-full"
+    >
+      {#if $isLoading}
+        <Loader2 class="w-4 h-4 mr-2 animate-spin" />
+        Signing in...
+      {:else}
+        <LogIn class="w-4 h-4 mr-2" />
+        Sign in
+      {/if}
+    </button>
+  </form>
 
-			<div class="text-center mt-6">
-				<span class="text-surface-600-300-token">Don't have an account? </span>
-				<a href="/auth/register" class="text-primary-600 hover:underline">Sign up</a>
-			</div>
-		</div>
-	</div>
+  <!-- Navigation Links -->
+  <div class="text-center space-y-2">
+    <p class="text-sm text-surface-600 dark:text-surface-400">
+      Don't have an account?
+      <button
+        type="button"
+        on:click={navigateToRegister}
+        class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium transition-colors"
+        disabled={$isLoading}
+      >
+        Sign up
+      </button>
+    </p>
+
+    <p class="text-sm">
+      <a
+        href="/auth/forgot-password"
+        class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+      >
+        Forgot your password?
+      </a>
+    </p>
+  </div>
 </div>

@@ -1,7 +1,20 @@
 {
 	"/": [],
-	"/auth/login": [],
-	"/auth/register": [],
-	"/dashboard": [],
-	"/profile": []
+	"/auth": [
+		"src/routes/auth/+layout.ts"
+	],
+	"/auth/login": [
+		"src/routes/auth/+layout.ts"
+	],
+	"/auth/register": [
+		"src/routes/auth/+layout.ts"
+	],
+	"/dashboard": [
+		"src/routes/dashboard/+layout.ts",
+		"src/routes/dashboard/+layout.ts"
+	],
+	"/profile": [
+		"src/routes/profile/+layout.ts",
+		"src/routes/profile/+layout.ts"
+	]
 }
