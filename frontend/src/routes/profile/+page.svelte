@@ -2,6 +2,7 @@
 	// Removed non-existent Card components - using Tailwind CSS instead
 	import { User, Mail, Lock, Save } from 'lucide-svelte';
 	import { createQuery, createMutation } from '@tanstack/svelte-query';
+	import { user as authUser } from '$lib/stores/auth.js';
 	import axios from 'axios';
 	import { env } from '$env/dynamic/public';
 
@@ -104,16 +105,31 @@
 		}
 	};
 
-	// Handle profile query success using reactive statement
+	// CRITICAL FIX: Use actual authenticated user data from auth store
+	$: if ($authUser) {
+		firstName = $authUser.firstName || '';
+		lastName = $authUser.lastName || '';
+		email = $authUser.email || '';
+		console.log('👤 [PROFILE PAGE] Using authenticated user data:', {
+			firstName,
+			lastName,
+			email,
+			userId: $authUser.id
+		});
+	}
+
+	// Handle profile query success using reactive statement (for additional profile data)
 	$: if ($profileQuery.data) {
-		firstName = $profileQuery.data.firstName || '';
-		lastName = $profileQuery.data.lastName || '';
-		email = $profileQuery.data.email || '';
+		// Use profile query data to supplement auth user data if needed
+		firstName = $profileQuery.data.firstName || firstName;
+		lastName = $profileQuery.data.lastName || lastName;
+		email = $profileQuery.data.email || email;
 	}
 
 	// Handle profile update success using reactive statement
 	$: if ($updateProfileMutation.isSuccess) {
 		formErrors = {};
+		console.log('👤 [PROFILE PAGE] Profile update successful');
 		// Show success message
 	}
 
@@ -123,14 +139,8 @@
 		newPassword = '';
 		confirmPassword = '';
 		formErrors = {};
+		console.log('👤 [PROFILE PAGE] Password change successful');
 		// Show success message
-	}
-
-	// Mock user data for demonstration
-	if (!$profileQuery.data) {
-		firstName = 'John';
-		lastName = 'Doe';
-		email = 'john.doe@example.com';
 	}
 </script>
 

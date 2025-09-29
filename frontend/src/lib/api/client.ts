@@ -122,39 +122,54 @@ class ApiClient {
   }
 
   private handleError(error: AxiosError): ApiError {
+    console.error('🌐 [API CLIENT] Handling error:', {
+      status: error.response?.status,
+      data: error.response?.data,
+      code: error.code,
+      message: error.message,
+      config: error.config?.url
+    });
+
+    let apiError: ApiError;
+
     if (error.response?.data) {
-      return error.response.data as ApiError;
+      apiError = error.response.data as ApiError;
+      console.log('🌐 [API CLIENT] Using response error data:', apiError);
+      return apiError;
     }
 
     if (error.code === 'ECONNABORTED') {
-      return {
+      apiError = {
         message: 'Request timeout. Please try again.',
         error: 'TIMEOUT',
         statusCode: 408
       };
-    }
-
-    if (error.code === 'ERR_NETWORK') {
-      return {
+    } else if (error.code === 'ERR_NETWORK') {
+      apiError = {
         message: ERROR_MESSAGES.NETWORK_ERROR,
         error: 'NETWORK_ERROR',
         statusCode: 0
       };
+    } else {
+      apiError = {
+        message: ERROR_MESSAGES.GENERIC_ERROR,
+        error: 'UNKNOWN_ERROR',
+        statusCode: error.response?.status || 500
+      };
     }
 
-    return {
-      message: ERROR_MESSAGES.GENERIC_ERROR,
-      error: 'UNKNOWN_ERROR',
-      statusCode: error.response?.status || 500
-    };
+    console.error('🌐 [API CLIENT] Returning formatted error:', apiError);
+    return apiError;
   }
 
   // HTTP methods
   async get<T = any>(url: string, config?: any): Promise<AxiosResponse<T>> {
+    console.log('🌐 [API CLIENT] GET request:', url);
     return this.client.get<T>(url, config);
   }
 
   async post<T = any>(url: string, data?: any, config?: any): Promise<AxiosResponse<T>> {
+    console.log('🌐 [API CLIENT] POST request:', url);
     return this.client.post<T>(url, data, config);
   }
 

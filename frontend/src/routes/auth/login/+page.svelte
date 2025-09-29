@@ -41,18 +41,23 @@
 
   async function handleSubmit(event: Event) {
     event.preventDefault();
+    console.log('📝 [LOGIN PAGE] Form submitted');
 
     if (!validateForm()) {
+      console.log('📝 [LOGIN PAGE] Form validation failed');
       return;
     }
 
+    console.log('📝 [LOGIN PAGE] Form validation passed, calling auth.login()');
     try {
       await auth.login(formData);
+      console.log('📝 [LOGIN PAGE] auth.login() completed successfully');
       // Navigation is handled by the auth store
     } catch (error) {
+      console.error('📝 [LOGIN PAGE] auth.login() threw error:', error);
       // Error is handled by the auth store and displayed via authError
-      console.error('Login failed:', error);
     }
+    console.log('📝 [LOGIN PAGE] handleSubmit completed');
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -73,6 +78,15 @@
 
   function navigateToRegister() {
     goto(ROUTES.AUTH.REGISTER);
+  }
+
+  // Add reactive statements to log loading state changes
+  $: {
+    console.log('📝 [LOGIN PAGE] isLoading changed:', $isLoading);
+  }
+
+  $: {
+    console.log('📝 [LOGIN PAGE] authError changed:', $authError);
   }
 </script>
 
