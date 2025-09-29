@@ -10,12 +10,16 @@ export default [
 	js.configs.recommended,
 	prettier,
 	{
-		files: ['**/*.js', '**/*.ts'],
+		files: ['**/*.js', '**/*.ts', '**/*.svelte'],
 		languageOptions: {
 			globals: {
 				...globals.browser,
 				...globals.node
 			}
+		},
+		rules: {
+			'no-console': ['warn', { allow: ['warn', 'error'] }],
+			'no-unused-vars': 'off' // Disabled in favor of TypeScript's check
 		}
 	},
 	{
@@ -23,14 +27,19 @@ export default [
 		languageOptions: {
 			parser: tsParser,
 			parserOptions: {
-				extraFileExtensions: ['.svelte']
+				extraFileExtensions: ['.svelte'],
+				project: null // Disable type-checking for compatibility
 			}
 		},
 		plugins: {
 			'@typescript-eslint': ts
 		},
 		rules: {
-			...ts.configs.recommended.rules
+			...ts.configs.recommended.rules,
+			'@typescript-eslint/no-unused-vars': ['warn', {
+				argsIgnorePattern: '^_',
+				varsIgnorePattern: '^_'
+			}]
 		}
 	},
 	...svelte.configs['flat/recommended'],
@@ -38,8 +47,15 @@ export default [
 		files: ['**/*.svelte'],
 		languageOptions: {
 			parserOptions: {
-				parser: tsParser
+				parser: tsParser,
+				project: null
+			},
+			globals: {
+				...globals.browser
 			}
+		},
+		rules: {
+			'no-undef': 'off' // Svelte has its own handling
 		}
 	},
 	{

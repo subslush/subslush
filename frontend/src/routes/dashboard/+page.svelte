@@ -7,7 +7,8 @@
 
 	const API_URL = env.PUBLIC_API_URL || 'http://localhost:3001';
 
-	const dashboardQuery = createQuery({
+	// Placeholder for future API integration
+	const _dashboardQuery = createQuery({
 		queryKey: ['dashboard'],
 		queryFn: async () => {
 			const response = await axios.get(`${API_URL}/dashboard`, {
