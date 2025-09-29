@@ -1,15 +1,22 @@
-@import '@skeletonlabs/skeleton/themes/theme-skeleton.css';
-@import '@skeletonlabs/skeleton/styles/skeleton.css';
-@import '@tailwindcss/base';
-@import '@tailwindcss/components';
-@import '@tailwindcss/utilities';
+/* Skeleton UI v2 - No CSS imports needed, styles handled by Tailwind plugin */
 
-html, body { @apply h-full overflow-hidden; }
+/* Tailwind directives - MUST use @tailwind not @import */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@tailwind variants;
+
+/* Global styles */
+html,
+body {
+	@apply h-full overflow-hidden;
+}
 
 body {
 	background-color: rgb(var(--color-surface-50));
 }
 
+/* App layout */
 .app-shell {
 	@apply h-full overflow-hidden grid;
 	grid-template-rows: auto 1fr auto;
@@ -21,4 +28,9 @@ body {
 
 .page-container {
 	@apply flex-1 overflow-y-auto;
+}
+
+/* Layer for custom component styles */
+@layer components {
+	/* Add any custom component styles here */
 }

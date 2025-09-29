@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Card, CardHeader, CardContent } from '@skeletonlabs/skeleton';
+	// Removed non-existent Card components - using Tailwind CSS instead
 	import { User, Mail, Lock, Save } from 'lucide-svelte';
 	import { createQuery, createMutation } from '@tanstack/svelte-query';
 	import axios from 'axios';
@@ -13,7 +13,7 @@
 	let currentPassword = '';
 	let newPassword = '';
 	let confirmPassword = '';
-	let formErrors = {};
+	let formErrors: Record<string, string> = {};
 
 	const profileQuery = createQuery({
 		queryKey: ['profile'],
@@ -23,11 +23,7 @@
 			});
 			return response.data;
 		},
-		onSuccess: (data) => {
-			firstName = data.firstName || '';
-			lastName = data.lastName || '';
-			email = data.email || '';
-		}
+		// onSuccess is deprecated in TanStack Query v5 - moved to reactive statement
 	});
 
 	const updateProfileMutation = createMutation({
@@ -37,10 +33,7 @@
 			});
 			return response.data;
 		},
-		onSuccess: () => {
-			formErrors = {};
-			// Show success message
-		},
+		// onSuccess is deprecated in TanStack Query v5 - moved to reactive statement
 		onError: (error: any) => {
 			if (error.response?.data?.errors) {
 				formErrors = error.response.data.errors;
@@ -57,13 +50,7 @@
 			});
 			return response.data;
 		},
-		onSuccess: () => {
-			currentPassword = '';
-			newPassword = '';
-			confirmPassword = '';
-			formErrors = {};
-			// Show success message
-		},
+		// onSuccess is deprecated in TanStack Query v5 - moved to reactive statement
 		onError: (error: any) => {
 			if (error.response?.data?.errors) {
 				formErrors = { ...formErrors, ...error.response.data.errors };
@@ -94,7 +81,7 @@
 
 	const handlePasswordSubmit = (e: Event) => {
 		e.preventDefault();
-		const passwordErrors = {};
+		const passwordErrors: Record<string, string> = {};
 
 		if (!currentPassword) {
 			passwordErrors.currentPassword = 'Current password is required';
@@ -117,6 +104,28 @@
 		}
 	};
 
+	// Handle profile query success using reactive statement
+	$: if ($profileQuery.data) {
+		firstName = $profileQuery.data.firstName || '';
+		lastName = $profileQuery.data.lastName || '';
+		email = $profileQuery.data.email || '';
+	}
+
+	// Handle profile update success using reactive statement
+	$: if ($updateProfileMutation.isSuccess) {
+		formErrors = {};
+		// Show success message
+	}
+
+	// Handle password change success using reactive statement
+	$: if ($changePasswordMutation.isSuccess) {
+		currentPassword = '';
+		newPassword = '';
+		confirmPassword = '';
+		formErrors = {};
+		// Show success message
+	}
+
 	// Mock user data for demonstration
 	if (!$profileQuery.data) {
 		firstName = 'John';
@@ -138,15 +147,15 @@
 		</div>
 
 		<!-- Profile Information -->
-		<Card class="p-6">
-			<CardHeader>
+		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+			<div class="mb-6">
 				<h2 class="h3 flex items-center space-x-2">
 					<User size={20} />
 					<span>Profile Information</span>
 				</h2>
-			</CardHeader>
+			</div>
 
-			<CardContent>
+			<div>
 				{#if formErrors.general}
 					<div class="alert variant-filled-error mb-4">
 						{formErrors.general}
@@ -224,19 +233,19 @@
 						{/if}
 					</button>
 				</form>
-			</CardContent>
-		</Card>
+			</div>
+		</div>
 
 		<!-- Change Password -->
-		<Card class="p-6">
-			<CardHeader>
+		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+			<div class="mb-6">
 				<h2 class="h3 flex items-center space-x-2">
 					<Lock size={20} />
 					<span>Change Password</span>
 				</h2>
-			</CardHeader>
+			</div>
 
-			<CardContent>
+			<div>
 				<form on:submit={handlePasswordSubmit} class="space-y-4">
 					<div>
 						<label for="currentPassword" class="label">
@@ -303,16 +312,16 @@
 						{/if}
 					</button>
 				</form>
-			</CardContent>
-		</Card>
+			</div>
+		</div>
 
 		<!-- Account Statistics -->
-		<Card class="p-6">
-			<CardHeader>
+		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+			<div class="mb-6">
 				<h2 class="h3">Account Statistics</h2>
-			</CardHeader>
+			</div>
 
-			<CardContent>
+			<div>
 				<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 					<div class="text-center p-4 bg-surface-100-800-token rounded-lg">
 						<div class="text-2xl font-bold text-primary-600">1,250</div>
@@ -327,7 +336,7 @@
 						<div class="text-sm text-surface-600-300-token">Days Active</div>
 					</div>
 				</div>
-			</CardContent>
-		</Card>
+			</div>
+		</div>
 	</div>
 </div>

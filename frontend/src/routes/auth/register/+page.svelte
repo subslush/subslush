@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Card, CardHeader, CardContent } from '@skeletonlabs/skeleton';
+	// Removed non-existent Card components - using Tailwind CSS instead
 	import { User, Mail, Lock, Eye, EyeOff } from 'lucide-svelte';
 	import { createMutation } from '@tanstack/svelte-query';
 	import axios from 'axios';
@@ -13,7 +13,7 @@
 	let confirmPassword = '';
 	let showPassword = false;
 	let showConfirmPassword = false;
-	let formErrors = {};
+	let formErrors: Record<string, string> = {};
 
 	const API_URL = env.PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -27,9 +27,6 @@
 			const response = await axios.post(`${API_URL}/auth/register`, userData);
 			return response.data;
 		},
-		onSuccess: () => {
-			goto('/auth/login?message=Registration successful. Please sign in.');
-		},
 		onError: (error: any) => {
 			console.error('Registration failed:', error);
 			if (error.response?.data?.errors) {
@@ -39,6 +36,11 @@
 			}
 		}
 	});
+
+	// Handle success manually using reactive statement
+	$: if ($registerMutation.isSuccess) {
+		goto('/auth/login?message=Registration successful. Please sign in.');
+	}
 
 	const handleSubmit = (e: Event) => {
 		e.preventDefault();
@@ -83,15 +85,15 @@
 </svelte:head>
 
 <div class="container mx-auto px-4 py-8 max-w-md">
-	<Card class="p-8">
-		<CardHeader>
+	<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-8">
+		<div class="mb-6">
 			<h1 class="h2 text-center mb-2">Create Account</h1>
 			<p class="text-center text-surface-600-300-token mb-6">
 				Join our platform to manage your subscriptions
 			</p>
-		</CardHeader>
+		</div>
 
-		<CardContent>
+		<div>
 			{#if formErrors.general}
 				<div class="alert variant-filled-error mb-4">
 					{formErrors.general}
@@ -169,15 +171,27 @@
 						</span>
 					</label>
 					<div class="relative">
-						<input
-							id="password"
-							type={showPassword ? 'text' : 'password'}
-							bind:value={password}
-							class="input pr-10"
-							class:input-error={formErrors.password}
-							placeholder="Create a strong password"
-							disabled={$registerMutation.isPending}
-						/>
+						{#if showPassword}
+							<input
+								id="password"
+								type="text"
+								bind:value={password}
+								class="input pr-10"
+								class:input-error={formErrors.password}
+								placeholder="Create a strong password"
+								disabled={$registerMutation.isPending}
+							/>
+						{:else}
+							<input
+								id="password"
+								type="password"
+								bind:value={password}
+								class="input pr-10"
+								class:input-error={formErrors.password}
+								placeholder="Create a strong password"
+								disabled={$registerMutation.isPending}
+							/>
+						{/if}
 						<button
 							type="button"
 							on:click={togglePasswordVisibility}
@@ -203,15 +217,27 @@
 						</span>
 					</label>
 					<div class="relative">
-						<input
-							id="confirmPassword"
-							type={showConfirmPassword ? 'text' : 'password'}
-							bind:value={confirmPassword}
-							class="input pr-10"
-							class:input-error={formErrors.confirmPassword}
-							placeholder="Confirm your password"
-							disabled={$registerMutation.isPending}
-						/>
+						{#if showConfirmPassword}
+							<input
+								id="confirmPassword"
+								type="text"
+								bind:value={confirmPassword}
+								class="input pr-10"
+								class:input-error={formErrors.confirmPassword}
+								placeholder="Confirm your password"
+								disabled={$registerMutation.isPending}
+							/>
+						{:else}
+							<input
+								id="confirmPassword"
+								type="password"
+								bind:value={confirmPassword}
+								class="input pr-10"
+								class:input-error={formErrors.confirmPassword}
+								placeholder="Confirm your password"
+								disabled={$registerMutation.isPending}
+							/>
+						{/if}
 						<button
 							type="button"
 							on:click={toggleConfirmPasswordVisibility}
@@ -257,6 +283,6 @@
 				<span class="text-surface-600-300-token">Already have an account? </span>
 				<a href="/auth/login" class="text-primary-600 hover:underline">Sign in</a>
 			</div>
-		</CardContent>
-	</Card>
+		</div>
+	</div>
 </div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Card, CardHeader, CardContent } from '@skeletonlabs/skeleton';
+	// Removed non-existent Card components - using Tailwind CSS instead
 	import { CreditCard, Users, TrendingUp, Activity } from 'lucide-svelte';
 	import { createQuery } from '@tanstack/svelte-query';
 	import axios from 'axios';
@@ -45,8 +45,8 @@
 
 	<!-- Stats Grid -->
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-		<Card class="p-6">
-			<CardContent>
+		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+			<div>
 				<div class="flex items-center justify-between">
 					<div>
 						<p class="text-sm text-surface-600-300-token">Total Credits</p>
@@ -56,11 +56,11 @@
 						<CreditCard size={24} />
 					</div>
 				</div>
-			</CardContent>
-		</Card>
+			</div>
+		</div>
 
-		<Card class="p-6">
-			<CardContent>
+		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+			<div>
 				<div class="flex items-center justify-between">
 					<div>
 						<p class="text-sm text-surface-600-300-token">Used Credits</p>
@@ -70,11 +70,11 @@
 						<TrendingUp size={24} />
 					</div>
 				</div>
-			</CardContent>
-		</Card>
+			</div>
+		</div>
 
-		<Card class="p-6">
-			<CardContent>
+		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+			<div>
 				<div class="flex items-center justify-between">
 					<div>
 						<p class="text-sm text-surface-600-300-token">Active Subscriptions</p>
@@ -84,11 +84,11 @@
 						<Users size={24} />
 					</div>
 				</div>
-			</CardContent>
-		</Card>
+			</div>
+		</div>
 
-		<Card class="p-6">
-			<CardContent>
+		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+			<div>
 				<div class="flex items-center justify-between">
 					<div>
 						<p class="text-sm text-surface-600-300-token">Monthly Spend</p>
@@ -98,28 +98,28 @@
 						<Activity size={24} />
 					</div>
 				</div>
-			</CardContent>
-		</Card>
+			</div>
+		</div>
 	</div>
 
 	<!-- Credit Usage Chart Placeholder -->
-	<Card class="p-6">
-		<CardHeader>
+	<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+		<div class="mb-6">
 			<h2 class="h3">Credit Usage Over Time</h2>
-		</CardHeader>
-		<CardContent>
+		</div>
+		<div>
 			<div class="h-64 bg-surface-100-800-token rounded-lg flex items-center justify-center">
 				<p class="text-surface-600-300-token">Chart visualization will be implemented here</p>
 			</div>
-		</CardContent>
-	</Card>
+		</div>
+	</div>
 
 	<!-- Recent Activity -->
-	<Card class="p-6">
-		<CardHeader>
+	<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+		<div class="mb-6">
 			<h2 class="h3">Recent Activity</h2>
-		</CardHeader>
-		<CardContent>
+		</div>
+		<div>
 			<div class="space-y-4">
 				{#each mockRecentActivity as activity}
 					<div class="flex items-center justify-between p-4 bg-surface-100-800-token rounded-lg">
@@ -146,15 +146,15 @@
 					</div>
 				{/each}
 			</div>
-		</CardContent>
-	</Card>
+		</div>
+	</div>
 
 	<!-- Quick Actions -->
-	<Card class="p-6">
-		<CardHeader>
+	<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+		<div class="mb-6">
 			<h2 class="h3">Quick Actions</h2>
-		</CardHeader>
-		<CardContent>
+		</div>
+		<div>
 			<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 				<button class="btn variant-filled-primary">
 					<CreditCard size={16} />
@@ -169,6 +169,6 @@
 					<span>View Reports</span>
 				</button>
 			</div>
-		</CardContent>
-	</Card>
+		</div>
+	</div>
 </div>

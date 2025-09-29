@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Card, CardHeader, CardContent } from '@skeletonlabs/skeleton';
+	// Removed non-existent Card components - using Tailwind CSS instead
 	import { Mail, Lock, Eye, EyeOff } from 'lucide-svelte';
 	import { createMutation } from '@tanstack/svelte-query';
 	import axios from 'axios';
@@ -9,7 +9,7 @@
 	let email = '';
 	let password = '';
 	let showPassword = false;
-	let formErrors = {};
+	let formErrors: Record<string, string> = {};
 
 	const API_URL = env.PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -20,9 +20,6 @@
 			});
 			return response.data;
 		},
-		onSuccess: () => {
-			goto('/dashboard');
-		},
 		onError: (error: any) => {
 			console.error('Login failed:', error);
 			if (error.response?.data?.errors) {
@@ -32,6 +29,11 @@
 			}
 		}
 	});
+
+	// Handle success manually using reactive statement
+	$: if ($loginMutation.isSuccess) {
+		goto('/dashboard');
+	}
 
 	const handleSubmit = (e: Event) => {
 		e.preventDefault();
@@ -59,15 +61,15 @@
 </svelte:head>
 
 <div class="container mx-auto px-4 py-8 max-w-md">
-	<Card class="p-8">
-		<CardHeader>
+	<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg p-8">
+		<div class="mb-6">
 			<h1 class="h2 text-center mb-2">Welcome Back</h1>
 			<p class="text-center text-surface-600-300-token mb-6">
 				Sign in to your account to continue
 			</p>
-		</CardHeader>
+		</div>
 
-		<CardContent>
+		<div>
 			{#if formErrors.general}
 				<div class="alert variant-filled-error mb-4">
 					{formErrors.general}
@@ -104,15 +106,27 @@
 						</span>
 					</label>
 					<div class="relative">
-						<input
-							id="password"
-							type={showPassword ? 'text' : 'password'}
-							bind:value={password}
-							class="input pr-10"
-							class:input-error={formErrors.password}
-							placeholder="Enter your password"
-							disabled={$loginMutation.isPending}
-						/>
+						{#if showPassword}
+							<input
+								id="password"
+								type="text"
+								bind:value={password}
+								class="input pr-10"
+								class:input-error={formErrors.password}
+								placeholder="Enter your password"
+								disabled={$loginMutation.isPending}
+							/>
+						{:else}
+							<input
+								id="password"
+								type="password"
+								bind:value={password}
+								class="input pr-10"
+								class:input-error={formErrors.password}
+								placeholder="Enter your password"
+								disabled={$loginMutation.isPending}
+							/>
+						{/if}
 						<button
 							type="button"
 							on:click={togglePasswordVisibility}
@@ -158,6 +172,6 @@
 				<span class="text-surface-600-300-token">Don't have an account? </span>
 				<a href="/auth/register" class="text-primary-600 hover:underline">Sign up</a>
 			</div>
-		</CardContent>
-	</Card>
+		</div>
+	</div>
 </div>

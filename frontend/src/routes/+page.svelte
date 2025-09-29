@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Card, CardHeader, CardContent } from '@skeletonlabs/skeleton';
+	// Removed non-existent Card components - using Tailwind CSS instead
 	import { CreditCard, Users, Shield, Zap } from 'lucide-svelte';
 </script>
 
@@ -24,61 +24,61 @@
 
 	<!-- Features Grid -->
 	<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-		<Card class="text-center p-6">
-			<CardHeader>
+		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg text-center p-6">
+			<div class="mb-4">
 				<div class="mx-auto mb-4 p-3 bg-primary-500 text-white rounded-full w-fit">
 					<CreditCard size={24} />
 				</div>
 				<h3 class="h3">Credit System</h3>
-			</CardHeader>
-			<CardContent>
+			</div>
+			<div>
 				<p class="text-surface-600-300-token">
 					Flexible credit-based subscription management with real-time balance tracking.
 				</p>
-			</CardContent>
-		</Card>
+			</div>
+		</div>
 
-		<Card class="text-center p-6">
-			<CardHeader>
+		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg text-center p-6">
+			<div class="mb-4">
 				<div class="mx-auto mb-4 p-3 bg-secondary-500 text-white rounded-full w-fit">
 					<Shield size={24} />
 				</div>
 				<h3 class="h3">Secure Authentication</h3>
-			</CardHeader>
-			<CardContent>
+			</div>
+			<div>
 				<p class="text-surface-600-300-token">
 					Enterprise-grade security with session management and Redis integration.
 				</p>
-			</CardContent>
-		</Card>
+			</div>
+		</div>
 
-		<Card class="text-center p-6">
-			<CardHeader>
+		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg text-center p-6">
+			<div class="mb-4">
 				<div class="mx-auto mb-4 p-3 bg-tertiary-500 text-white rounded-full w-fit">
 					<Users size={24} />
 				</div>
 				<h3 class="h3">User Management</h3>
-			</CardHeader>
-			<CardContent>
+			</div>
+			<div>
 				<p class="text-surface-600-300-token">
 					Comprehensive user profiles with subscription history and preferences.
 				</p>
-			</CardContent>
-		</Card>
+			</div>
+		</div>
 
-		<Card class="text-center p-6">
-			<CardHeader>
+		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg text-center p-6">
+			<div class="mb-4">
 				<div class="mx-auto mb-4 p-3 bg-warning-500 text-white rounded-full w-fit">
 					<Zap size={24} />
 				</div>
 				<h3 class="h3">Real-time Updates</h3>
-			</CardHeader>
-			<CardContent>
+			</div>
+			<div>
 				<p class="text-surface-600-300-token">
 					Live updates for subscriptions, credits, and account activities.
 				</p>
-			</CardContent>
-		</Card>
+			</div>
+		</div>
 	</section>
 
 	<!-- Stats Section -->
