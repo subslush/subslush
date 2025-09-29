@@ -37,7 +37,14 @@ export const registerSchema = z.object({
     .regex(/^[a-zA-Z\s'-]+$/, 'Last name can only contain letters, spaces, hyphens, and apostrophes')
     .trim()
     .optional()
-    .or(z.literal(''))
+    .or(z.literal('')),
+
+  // CRITICAL FIX: Add terms acceptance field
+  acceptTerms: z
+    .boolean()
+    .refine(val => val === true, {
+      message: 'You must agree to the Terms of Service and Privacy Policy'
+    })
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Passwords do not match',
   path: ['confirmPassword']

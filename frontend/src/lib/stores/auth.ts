@@ -82,7 +82,7 @@ function createAuthStore() {
     }, 4 * 60 * 1000); // 4 minutes
   };
 
-  const loadPersistedAuth = () => {
+  const loadPersistedAuth = async () => {
     if (!browser) return;
 
     const token = storage.get(STORAGE_KEYS.AUTH_TOKEN);
@@ -92,17 +92,38 @@ function createAuthStore() {
     if (token && sessionId && userData) {
       try {
         const user = JSON.parse(userData);
-        set({
-          user,
-          accessToken: token,
-          sessionId,
-          isAuthenticated: true,
-          isLoading: false,
-          error: null
-        });
-        scheduleTokenRefresh();
+
+        // Set loading state while validating
+        update(state => ({ ...state, isLoading: true }));
+
+        // CRITICAL FIX: Validate the token with the backend before trusting it
+        try {
+          // Try to refresh/validate the session
+          const response = await authService.refreshSession();
+
+          // If successful, set the auth data with new token
+          set({
+            user: response.user,
+            accessToken: response.accessToken,
+            sessionId: response.sessionId,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null
+          });
+
+          // Store updated token
+          storage.set(STORAGE_KEYS.AUTH_TOKEN, response.accessToken);
+          storage.set(STORAGE_KEYS.SESSION_ID, response.sessionId);
+          storage.set(STORAGE_KEYS.USER_DATA, JSON.stringify(response.user));
+
+          scheduleTokenRefresh();
+        } catch (validationError) {
+          // Token is invalid or expired - clear everything
+          console.warn('Stored token is invalid, clearing auth data');
+          clearAuthData();
+        }
       } catch (error) {
-        console.error('Failed to parse stored user data:', error);
+        console.error('Failed to parse or validate stored auth data:', error);
         clearAuthData();
       }
     }
@@ -119,9 +140,24 @@ function createAuthStore() {
         goto(ROUTES.DASHBOARD);
       }
     } catch (error: any) {
-      const errorMessage = error?.message || ERROR_MESSAGES.GENERIC_ERROR;
+      // CRITICAL FIX: Ensure loading is stopped
+      setLoading(false);
+
+      // Extract error message from various possible error formats
+      let errorMessage: string = ERROR_MESSAGES.GENERIC_ERROR;
+
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+
       setError(errorMessage);
-      throw error;
+      console.error('Registration failed:', error);
     }
   };
 
@@ -136,9 +172,24 @@ function createAuthStore() {
         goto(ROUTES.DASHBOARD);
       }
     } catch (error: any) {
-      const errorMessage = error?.message || ERROR_MESSAGES.INVALID_CREDENTIALS;
+      // CRITICAL FIX: Ensure loading is stopped even if error structure is unexpected
+      setLoading(false);
+
+      // Extract error message from various possible error formats
+      let errorMessage: string = ERROR_MESSAGES.INVALID_CREDENTIALS;
+
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+
       setError(errorMessage);
-      throw error;
+      console.error('Login failed:', error);
     }
   };
 
@@ -227,7 +278,9 @@ function createAuthStore() {
     // Export internal functions for testing
     _setAuthData: setAuthData,
     _clearAuthData: clearAuthData,
-    _loadPersistedAuth: loadPersistedAuth
+    _loadPersistedAuth: loadPersistedAuth,
+    // TESTING: Manual refresh trigger
+    _manualRefresh: refreshSession
   };
 }
 

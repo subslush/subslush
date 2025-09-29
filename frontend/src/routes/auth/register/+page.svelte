@@ -12,7 +12,8 @@
     password: '',
     confirmPassword: '',
     firstName: '',
-    lastName: ''
+    lastName: '',
+    acceptTerms: false  // CRITICAL FIX: Add this field
   };
 
   let formErrors: Partial<Record<keyof RegisterFormData, string>> = {};
@@ -55,8 +56,8 @@
     }
 
     try {
-      // Prepare data for API (remove confirmPassword and empty optional fields)
-      const { confirmPassword, ...apiData } = formData;
+      // Prepare data for API (remove confirmPassword, acceptTerms, and empty optional fields)
+      const { confirmPassword, acceptTerms, ...apiData } = formData;
       const cleanData = {
         email: apiData.email,
         password: apiData.password,
@@ -402,24 +403,34 @@
     </div>
 
     <!-- Terms and Conditions -->
-    <div class="flex items-start space-x-2">
-      <input
-        type="checkbox"
-        id="terms"
-        required
-        disabled={$isLoading}
-        class="checkbox mt-1"
-      />
-      <label for="terms" class="text-sm text-surface-700 dark:text-surface-300">
-        I agree to the
-        <a href="/terms" class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors">
-          Terms of Service
-        </a>
-        and
-        <a href="/privacy" class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors">
-          Privacy Policy
-        </a>
-      </label>
+    <div class="space-y-2">
+      <div class="flex items-start space-x-2">
+        <input
+          bind:checked={formData.acceptTerms}
+          on:change={() => clearFieldError('acceptTerms')}
+          type="checkbox"
+          id="terms"
+          disabled={$isLoading}
+          class="checkbox mt-1"
+          class:input-error={formErrors.acceptTerms}
+          aria-describedby={formErrors.acceptTerms ? 'terms-error' : undefined}
+        />
+        <label for="terms" class="text-sm text-surface-700 dark:text-surface-300">
+          I agree to the
+          <a href="/terms" class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors" target="_blank">
+            Terms of Service
+          </a>
+          and
+          <a href="/privacy" class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors" target="_blank">
+            Privacy Policy
+          </a>
+        </label>
+      </div>
+      {#if formErrors.acceptTerms}
+        <div id="terms-error" class="text-sm text-error-500" role="alert">
+          {formErrors.acceptTerms}
+        </div>
+      {/if}
     </div>
 
     <!-- Submit Button -->
