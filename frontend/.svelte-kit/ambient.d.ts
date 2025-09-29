@@ -26,8 +26,7 @@
  * ```
  */
 declare module '$env/static/private' {
-	export const VITE_API_BASE_URL: string;
-	export const VITE_APP_NAME: string;
+	export const VITE_API_URL: string;
 	export const LESSOPEN: string;
 	export const USER: string;
 	export const CLAUDE_CODE_ENTRYPOINT: string;
@@ -49,7 +48,6 @@ declare module '$env/static/private' {
 	export const npm_config_local_prefix: string;
 	export const VSCODE_PYTHON_AUTOACTIVATE_GUARD: string;
 	export const DBUS_SESSION_BUS_ADDRESS: string;
-	export const npm_config_engine_strict: string;
 	export const COLORTERM: string;
 	export const WSL_DISTRO_NAME: string;
 	export const COLOR: string;
@@ -112,7 +110,7 @@ declare module '$env/static/private' {
  * ```
  */
 declare module '$env/static/public' {
-	
+	export const PUBLIC_API_URL: string;
 }
 
 /**
@@ -129,8 +127,7 @@ declare module '$env/static/public' {
  */
 declare module '$env/dynamic/private' {
 	export const env: {
-		VITE_API_BASE_URL: string;
-		VITE_APP_NAME: string;
+		VITE_API_URL: string;
 		LESSOPEN: string;
 		USER: string;
 		CLAUDE_CODE_ENTRYPOINT: string;
@@ -152,7 +149,6 @@ declare module '$env/dynamic/private' {
 		npm_config_local_prefix: string;
 		VSCODE_PYTHON_AUTOACTIVATE_GUARD: string;
 		DBUS_SESSION_BUS_ADDRESS: string;
-		npm_config_engine_strict: string;
 		COLORTERM: string;
 		WSL_DISTRO_NAME: string;
 		COLOR: string;
@@ -220,6 +216,7 @@ declare module '$env/dynamic/private' {
  */
 declare module '$env/dynamic/public' {
 	export const env: {
+		PUBLIC_API_URL: string;
 		[key: `PUBLIC_${string}`]: string | undefined;
 	}
 }

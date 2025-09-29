@@ -1,0 +1,24 @@
+@import '@skeletonlabs/skeleton/themes/theme-skeleton.css';
+@import '@skeletonlabs/skeleton/styles/skeleton.css';
+@import '@tailwindcss/base';
+@import '@tailwindcss/components';
+@import '@tailwindcss/utilities';
+
+html, body { @apply h-full overflow-hidden; }
+
+body {
+	background-color: rgb(var(--color-surface-50));
+}
+
+.app-shell {
+	@apply h-full overflow-hidden grid;
+	grid-template-rows: auto 1fr auto;
+}
+
+.app-bar {
+	@apply bg-surface-100-800-token border-b border-surface-300-600-token;
+}
+
+.page-container {
+	@apply flex-1 overflow-y-auto;
+}

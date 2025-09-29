@@ -41,6 +41,6 @@ declare module "$app/types" {
 		};
 		Pathname(): "/" | "/auth" | "/auth/" | "/auth/login" | "/auth/login/" | "/auth/register" | "/auth/register/" | "/dashboard" | "/dashboard/" | "/profile" | "/profile/";
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
-		Asset(): "/robots.txt" | string & {};
+		Asset(): string & {};
 	}
 }
