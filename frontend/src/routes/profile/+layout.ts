@@ -5,17 +5,28 @@ import { auth } from '$lib/stores/auth.js';
 import { ROUTES } from '$lib/utils/constants.js';
 import type { LayoutLoad } from './$types';
 
+const REDIRECT_KEY = '__profile_redirecting';
+const REDIRECT_TIMEOUT = 2000; // 2 seconds
+
 export const load: LayoutLoad = async ({ url }) => {
   console.log('👤 [PROFILE GUARD] Running, URL:', url.pathname);
 
-  // Only run on client side
   if (browser) {
     console.log('👤 [PROFILE GUARD] In browser, checking auth...');
 
-    // CRITICAL FIX: Ensure auth is fully initialized before making decisions
-    console.log('👤 [PROFILE GUARD] Ensuring auth initialization...');
+    // CRITICAL FIX: Check if we're already redirecting
+    const redirectingUntil = sessionStorage.getItem(REDIRECT_KEY);
+    if (redirectingUntil) {
+      const timestamp = parseInt(redirectingUntil, 10);
+      if (Date.now() < timestamp) {
+        console.log('⚠️ [PROFILE GUARD] Already redirecting, skipping...');
+        return {};
+      } else {
+        sessionStorage.removeItem(REDIRECT_KEY);
+      }
+    }
+
     await auth.ensureAuthInitialized();
-    console.log('👤 [PROFILE GUARD] Auth initialization completed');
 
     const authState = get(auth);
     console.log('👤 [PROFILE GUARD] Auth state:', {
@@ -25,15 +36,20 @@ export const load: LayoutLoad = async ({ url }) => {
       isLoading: authState.isLoading
     });
 
-    // If not authenticated after initialization, redirect to login
     if (!authState.isAuthenticated) {
       console.log('⛔ [PROFILE GUARD] Not authenticated, redirecting to login');
+
+      // Set redirect flag
+      sessionStorage.setItem(REDIRECT_KEY, (Date.now() + REDIRECT_TIMEOUT).toString());
+
+      setTimeout(() => {
+        sessionStorage.removeItem(REDIRECT_KEY);
+      }, REDIRECT_TIMEOUT);
+
       throw redirect(302, `${ROUTES.AUTH.LOGIN}?redirect=${encodeURIComponent(url.pathname)}`);
     }
 
     console.log('✅ [PROFILE GUARD] Authenticated, allowing access');
-  } else {
-    console.log('👤 [PROFILE GUARD] Not in browser, skipping auth check');
   }
 
   return {};

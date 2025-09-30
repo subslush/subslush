@@ -29,9 +29,7 @@ declare module '$env/static/private' {
 	export const VITE_API_URL: string;
 	export const LESSOPEN: string;
 	export const USER: string;
-	export const CLAUDE_CODE_ENTRYPOINT: string;
 	export const npm_config_user_agent: string;
-	export const GIT_EDITOR: string;
 	export const GIT_ASKPASS: string;
 	export const npm_node_execpath: string;
 	export const SHLVL: string;
@@ -63,16 +61,13 @@ declare module '$env/static/private' {
 	export const npm_config_npm_version: string;
 	export const CLAUDE_CODE_SSE_PORT: string;
 	export const TERM: string;
-	export const OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: string;
 	export const npm_config_cache: string;
 	export const npm_config_node_gyp: string;
 	export const PATH: string;
 	export const NODE: string;
 	export const npm_package_name: string;
-	export const COREPACK_ENABLE_AUTO_PIN: string;
 	export const XDG_RUNTIME_DIR: string;
 	export const DISPLAY: string;
-	export const NoDefaultCurrentDirectoryInExePath: string;
 	export const LANG: string;
 	export const LS_COLORS: string;
 	export const VSCODE_GIT_IPC_HANDLE: string;
@@ -82,7 +77,6 @@ declare module '$env/static/private' {
 	export const npm_package_version: string;
 	export const npm_lifecycle_event: string;
 	export const LESSCLOSE: string;
-	export const CLAUDECODE: string;
 	export const VSCODE_GIT_ASKPASS_EXTRA_ARGS: string;
 	export const npm_config_globalconfig: string;
 	export const npm_config_init_module: string;
@@ -98,6 +92,7 @@ declare module '$env/static/private' {
 	export const WSLENV: string;
 	export const INIT_CWD: string;
 	export const EDITOR: string;
+	export const NODE_ENV: string;
 }
 
 /**
@@ -130,9 +125,7 @@ declare module '$env/dynamic/private' {
 		VITE_API_URL: string;
 		LESSOPEN: string;
 		USER: string;
-		CLAUDE_CODE_ENTRYPOINT: string;
 		npm_config_user_agent: string;
-		GIT_EDITOR: string;
 		GIT_ASKPASS: string;
 		npm_node_execpath: string;
 		SHLVL: string;
@@ -164,16 +157,13 @@ declare module '$env/dynamic/private' {
 		npm_config_npm_version: string;
 		CLAUDE_CODE_SSE_PORT: string;
 		TERM: string;
-		OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: string;
 		npm_config_cache: string;
 		npm_config_node_gyp: string;
 		PATH: string;
 		NODE: string;
 		npm_package_name: string;
-		COREPACK_ENABLE_AUTO_PIN: string;
 		XDG_RUNTIME_DIR: string;
 		DISPLAY: string;
-		NoDefaultCurrentDirectoryInExePath: string;
 		LANG: string;
 		LS_COLORS: string;
 		VSCODE_GIT_IPC_HANDLE: string;
@@ -183,7 +173,6 @@ declare module '$env/dynamic/private' {
 		npm_package_version: string;
 		npm_lifecycle_event: string;
 		LESSCLOSE: string;
-		CLAUDECODE: string;
 		VSCODE_GIT_ASKPASS_EXTRA_ARGS: string;
 		npm_config_globalconfig: string;
 		npm_config_init_module: string;
@@ -199,6 +188,7 @@ declare module '$env/dynamic/private' {
 		WSLENV: string;
 		INIT_CWD: string;
 		EDITOR: string;
+		NODE_ENV: string;
 		[key: `PUBLIC_${string}`]: undefined;
 		[key: `${string}`]: string | undefined;
 	}

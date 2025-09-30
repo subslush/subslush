@@ -5,7 +5,8 @@ import { auth } from '$lib/stores/auth.js';
 import { ROUTES } from '$lib/utils/constants.js';
 import type { LayoutLoad } from './$types';
 
-let isRedirecting = false;
+const REDIRECT_KEY = '__auth_redirecting';
+const REDIRECT_TIMEOUT = 2000; // 2 seconds
 
 export const load: LayoutLoad = async ({ url }) => {
   console.log('🔐 [AUTH GUARD] Running, URL:', url.pathname);
@@ -13,10 +14,17 @@ export const load: LayoutLoad = async ({ url }) => {
   if (browser) {
     console.log('🔐 [AUTH GUARD] In browser, checking auth...');
 
-    // CRITICAL FIX: Prevent redirect loop
-    if (isRedirecting) {
-      console.log('⚠️ [AUTH GUARD] Already redirecting, skipping...');
-      return {};
+    // CRITICAL FIX: Check if we're already redirecting using session storage
+    const redirectingUntil = sessionStorage.getItem(REDIRECT_KEY);
+    if (redirectingUntil) {
+      const timestamp = parseInt(redirectingUntil, 10);
+      if (Date.now() < timestamp) {
+        console.log('⚠️ [AUTH GUARD] Already redirecting, skipping...');
+        return {};
+      } else {
+        // Timeout expired, clear the flag
+        sessionStorage.removeItem(REDIRECT_KEY);
+      }
     }
 
     await auth.ensureAuthInitialized();
@@ -30,12 +38,14 @@ export const load: LayoutLoad = async ({ url }) => {
 
     if (authState.isAuthenticated) {
       console.log('⛔ [AUTH GUARD] Already authenticated, redirecting to:', ROUTES.DASHBOARD);
-      isRedirecting = true;
 
-      // Use setTimeout to prevent loop
+      // Set redirect flag in session storage with expiry timestamp
+      sessionStorage.setItem(REDIRECT_KEY, (Date.now() + REDIRECT_TIMEOUT).toString());
+
+      // Schedule cleanup
       setTimeout(() => {
-        isRedirecting = false;
-      }, 1000);
+        sessionStorage.removeItem(REDIRECT_KEY);
+      }, REDIRECT_TIMEOUT);
 
       throw redirect(302, ROUTES.DASHBOARD);
     }
