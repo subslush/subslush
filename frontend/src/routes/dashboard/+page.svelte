@@ -1,35 +1,51 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { CreditCard, Users, TrendingUp, Activity, LogOut, User } from 'lucide-svelte';
-  import { user, auth } from '$lib/stores/auth.js';
-  import { formatName, formatRelativeTime } from '$lib/utils/formatters.js';
+  import { createQuery } from '@tanstack/svelte-query';
+  import { CreditCard, Users, TrendingUp, Activity, ShoppingBag, Settings, User2, Calendar, Loader2 } from 'lucide-svelte';
+  import { user, isAuthenticated } from '$lib/stores/auth.js';
+  import { formatName, formatRelativeTime } from '$lib/utils/formatters.ts';
+  import axios from 'axios';
+  import { env } from '$env/dynamic/public';
 
-  // Mock data for demonstration - in a real app, this would come from your API
-  const mockStats = {
-    totalCredits: 1250,
-    usedCredits: 750,
-    activeSubscriptions: 3,
-    monthlySpend: 89.99
-  };
+  const API_URL = env.PUBLIC_API_URL || 'http://localhost:3001';
 
-  const mockRecentActivity = [
-    { id: 1, type: 'subscription', description: 'Netflix subscription renewed', amount: -15.99, date: '2024-01-15' },
-    { id: 2, type: 'credit', description: 'Credits purchased', amount: +100, date: '2024-01-14' },
-    { id: 3, type: 'subscription', description: 'Spotify subscription renewed', amount: -9.99, date: '2024-01-13' }
-  ];
+  // Get user data reactively
+  $: userId = $user?.id;
+  $: userName = $user ?
+    formatName($user.user_metadata?.firstName, $user.user_metadata?.lastName) ||
+    $user.email?.split('@')[0] ||
+    'User'
+    : 'User';
+  $: userEmail = $user?.email || '';
+  $: accountCreated = $user?.created_at ? new Date($user.created_at) : null;
+  $: lastLogin = $user?.last_sign_in_at ? new Date($user.last_sign_in_at) : null;
 
-  async function handleLogout() {
-    try {
-      await auth.logout();
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
-  }
+  // Credit Balance Query
+  const balanceQuery = createQuery({
+    queryKey: ['creditBalance', userId],
+    queryFn: async () => {
+      if (!userId) throw new Error('User ID not available');
 
-  $: userName = $user ? formatName($user.firstName, $user.lastName) || $user.email : 'User';
-  $: userInitials = $user ?
-    (($user.firstName?.charAt(0) || '') + ($user.lastName?.charAt(0) || '')).toUpperCase() ||
-    $user.email.charAt(0).toUpperCase() : 'U';
+      console.log('🏦 [DASHBOARD] Fetching credit balance for user:', userId);
+      const response = await axios.get(
+        `${API_URL}/api/v1/credits/balance/${userId}`,
+        { withCredentials: true }
+      );
+      console.log('🏦 [DASHBOARD] Credit balance response:', response.data);
+      return response.data;
+    },
+    enabled: !!userId && $isAuthenticated,
+    staleTime: 30000, // 30 seconds
+    retry: 2
+  });
+
+  // Calculate account age
+  $: accountAge = accountCreated ? (() => {
+    const diffTime = Math.abs(new Date().getTime() - accountCreated.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays < 30) return `${diffDays} days`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months`;
+    return `${Math.floor(diffDays / 365)} years`;
+  })() : 'Unknown';
 </script>
 
 <svelte:head>
@@ -37,66 +53,94 @@
 </svelte:head>
 
 <div class="space-y-6">
-	<!-- Header with User Info -->
-	<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-		<div>
-			<h1 class="h1 mb-2">Welcome back, {userName}!</h1>
-			<p class="text-surface-600 dark:text-surface-400">Overview of your subscription platform activity</p>
-		</div>
-		<div class="mt-4 sm:mt-0 flex items-center space-x-4">
-			<!-- User Avatar -->
-			<div class="flex items-center space-x-3">
-				<div class="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center text-white font-medium">
-					{userInitials}
-				</div>
-				<div class="hidden sm:block">
-					<p class="text-sm font-medium text-surface-900 dark:text-surface-100">{userName}</p>
-					<p class="text-xs text-surface-600 dark:text-surface-400">{$user?.email}</p>
-				</div>
+	<!-- Welcome Section -->
+	<div class="bg-surface-100-800-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+			<div>
+				<h1 class="text-3xl font-bold text-surface-900-50-token mb-2">
+					Welcome back, {userName}!
+				</h1>
+				<p class="text-surface-600-300-token">
+					{#if $user?.user_metadata?.firstName}
+						Good to see you again!
+					{:else}
+						Here's your dashboard overview
+					{/if}
+				</p>
+				{#if userEmail}
+					<div class="mt-2 flex items-center space-x-2">
+						<div class="w-2 h-2 rounded-full bg-success-500"></div>
+						<span class="text-sm text-surface-600-300-token">{userEmail}</span>
+					</div>
+				{/if}
 			</div>
-			<!-- Logout Button -->
-			<button
-				on:click={handleLogout}
-				class="btn variant-ghost-surface btn-sm"
-				title="Sign out"
-			>
-				<LogOut class="w-4 h-4" />
-				<span class="hidden sm:inline ml-2">Sign out</span>
-			</button>
 		</div>
 	</div>
 
-	<!-- Stats Grid -->
+	<!-- Credit Balance Card (PRIMARY FEATURE) -->
+	<div class="bg-surface-100-800-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+		<div class="flex items-center space-x-3 mb-4">
+			<div class="p-3 bg-primary-500 text-white rounded-full">
+				<CreditCard class="w-6 h-6" />
+			</div>
+			<h2 class="text-xl font-semibold text-surface-900-50-token">Credit Balance</h2>
+		</div>
+
+		{#if $balanceQuery.isLoading}
+			<div class="flex items-center justify-center h-32">
+				<div class="flex items-center space-x-3">
+					<Loader2 class="w-6 h-6 animate-spin text-primary-500" />
+					<span class="text-surface-600-300-token">Loading your balance...</span>
+				</div>
+			</div>
+		{:else if $balanceQuery.isError}
+			<div class="bg-error-100-800-token border border-error-300-600-token rounded-lg p-4">
+				<p class="text-error-600-300-token mb-2">Failed to load credit balance</p>
+				<button
+					on:click={() => $balanceQuery.refetch()}
+					class="btn variant-filled-primary btn-sm"
+				>
+					Try Again
+				</button>
+			</div>
+		{:else if $balanceQuery.data}
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+				<div class="text-center p-4 bg-surface-50-900-token rounded-lg">
+					<p class="text-sm text-surface-600-300-token">Total Balance</p>
+					<p class="text-3xl font-bold text-primary-600-300-token">
+						${$balanceQuery.data.balance.totalBalance.toFixed(2)}
+					</p>
+				</div>
+				<div class="text-center p-4 bg-surface-50-900-token rounded-lg">
+					<p class="text-sm text-surface-600-300-token">Available</p>
+					<p class="text-2xl font-semibold text-success-600-300-token">
+						${$balanceQuery.data.balance.availableBalance.toFixed(2)}
+					</p>
+				</div>
+				<div class="text-center p-4 bg-surface-50-900-token rounded-lg">
+					<p class="text-sm text-surface-600-300-token">Pending</p>
+					<p class="text-2xl font-semibold text-warning-600-300-token">
+						${$balanceQuery.data.balance.pendingBalance.toFixed(2)}
+					</p>
+				</div>
+			</div>
+			<div class="mt-4">
+				<a href="/dashboard/credits/add" class="btn variant-filled-primary">
+					<CreditCard class="w-4 h-4" />
+					<span>Add Credits</span>
+				</a>
+			</div>
+		{/if}
+	</div>
+
+	<!-- Quick Stats Section -->
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-		<div class="card p-6">
+		<div class="bg-surface-100-800-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
 			<div class="flex items-center justify-between">
 				<div>
-					<p class="text-sm text-surface-600 dark:text-surface-400">Total Credits</p>
-					<p class="text-2xl font-bold text-surface-900 dark:text-surface-100">{mockStats.totalCredits}</p>
-				</div>
-				<div class="p-3 bg-primary-500 text-white rounded-full">
-					<CreditCard class="w-6 h-6" />
-				</div>
-			</div>
-		</div>
-
-		<div class="card p-6">
-			<div class="flex items-center justify-between">
-				<div>
-					<p class="text-sm text-surface-600 dark:text-surface-400">Used Credits</p>
-					<p class="text-2xl font-bold text-surface-900 dark:text-surface-100">{mockStats.usedCredits}</p>
-				</div>
-				<div class="p-3 bg-warning-500 text-white rounded-full">
-					<TrendingUp class="w-6 h-6" />
-				</div>
-			</div>
-		</div>
-
-		<div class="card p-6">
-			<div class="flex items-center justify-between">
-				<div>
-					<p class="text-sm text-surface-600 dark:text-surface-400">Active Subscriptions</p>
-					<p class="text-2xl font-bold text-surface-900 dark:text-surface-100">{mockStats.activeSubscriptions}</p>
+					<p class="text-sm text-surface-600-300-token">Active Subscriptions</p>
+					<p class="text-2xl font-bold text-surface-900-50-token">0</p>
+					<p class="text-xs text-surface-500-400-token mt-1">Coming in Phase 2</p>
 				</div>
 				<div class="p-3 bg-secondary-500 text-white rounded-full">
 					<Users class="w-6 h-6" />
@@ -104,79 +148,83 @@
 			</div>
 		</div>
 
-		<div class="card p-6">
+		<div class="bg-surface-100-800-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
 			<div class="flex items-center justify-between">
 				<div>
-					<p class="text-sm text-surface-600 dark:text-surface-400">Monthly Spend</p>
-					<p class="text-2xl font-bold text-surface-900 dark:text-surface-100">${mockStats.monthlySpend}</p>
+					<p class="text-sm text-surface-600-300-token">Total Credits Spent</p>
+					<p class="text-2xl font-bold text-surface-900-50-token">$0.00</p>
+					<p class="text-xs text-surface-500-400-token mt-1">Coming in Phase 2</p>
+				</div>
+				<div class="p-3 bg-warning-500 text-white rounded-full">
+					<TrendingUp class="w-6 h-6" />
+				</div>
+			</div>
+		</div>
+
+		<div class="bg-surface-100-800-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+			<div class="flex items-center justify-between">
+				<div>
+					<p class="text-sm text-surface-600-300-token">Account Age</p>
+					<p class="text-2xl font-bold text-surface-900-50-token">{accountAge}</p>
+					<p class="text-xs text-surface-500-400-token mt-1">Member since</p>
 				</div>
 				<div class="p-3 bg-tertiary-500 text-white rounded-full">
+					<Calendar class="w-6 h-6" />
+				</div>
+			</div>
+		</div>
+
+		<div class="bg-surface-100-800-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+			<div class="flex items-center justify-between">
+				<div>
+					<p class="text-sm text-surface-600-300-token">Last Login</p>
+					<p class="text-lg font-bold text-surface-900-50-token">
+						{lastLogin ? formatRelativeTime(lastLogin.toISOString()) : 'Now'}
+					</p>
+					<p class="text-xs text-surface-500-400-token mt-1">Activity</p>
+				</div>
+				<div class="p-3 bg-success-500 text-white rounded-full">
 					<Activity class="w-6 h-6" />
 				</div>
 			</div>
 		</div>
 	</div>
 
-	<!-- Credit Usage Chart Placeholder -->
-	<div class="card p-6">
-		<div class="mb-6">
-			<h2 class="h3">Credit Usage Over Time</h2>
-		</div>
-		<div class="h-64 bg-surface-100 dark:bg-surface-800 rounded-lg flex items-center justify-center">
-			<p class="text-surface-600 dark:text-surface-400">Chart visualization will be implemented here</p>
-		</div>
-	</div>
-
-	<!-- Recent Activity -->
-	<div class="card p-6">
-		<div class="mb-6">
-			<h2 class="h3">Recent Activity</h2>
-		</div>
-		<div class="space-y-4">
-			{#each mockRecentActivity as activity}
-				<div class="flex items-center justify-between p-4 bg-surface-100 dark:bg-surface-800 rounded-lg">
-					<div class="flex items-center space-x-3">
-						<div class="p-2 rounded-full" class:bg-primary-500={activity.type === 'subscription'} class:bg-success-500={activity.type === 'credit'}>
-							{#if activity.type === 'subscription'}
-								<CreditCard class="w-4 h-4 text-white" />
-							{:else}
-								<TrendingUp class="w-4 h-4 text-white" />
-							{/if}
-						</div>
-						<div>
-							<p class="font-medium text-surface-900 dark:text-surface-100">{activity.description}</p>
-							<p class="text-sm text-surface-600 dark:text-surface-400">{formatRelativeTime(activity.date)}</p>
-						</div>
-					</div>
-					<div class="text-right">
-						<p class="font-medium" class:text-error-600={activity.amount < 0} class:text-success-600={activity.amount > 0}>
-							{activity.amount > 0 ? '+' : ''}{activity.amount}
-							{activity.type === 'credit' ? ' credits' : ''}
-						</p>
-					</div>
-				</div>
-			{/each}
+	<!-- Recent Activity Section -->
+	<div class="bg-surface-100-800-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+		<h2 class="text-xl font-semibold text-surface-900-50-token mb-4">Recent Activity</h2>
+		<div class="text-center py-12">
+			<div class="p-4 bg-surface-50-900-token rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+				<Activity class="w-8 h-8 text-surface-600-300-token" />
+			</div>
+			<p class="text-surface-600-300-token mb-4">Recent activity will appear here once you make purchases</p>
+			<a href="/services" class="btn variant-filled-primary">
+				<ShoppingBag class="w-4 h-4" />
+				<span>Browse Services</span>
+			</a>
 		</div>
 	</div>
 
-	<!-- Quick Actions -->
-	<div class="card p-6">
-		<div class="mb-6">
-			<h2 class="h3">Quick Actions</h2>
-		</div>
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-			<button class="btn variant-filled-primary">
-				<CreditCard class="w-4 h-4" />
-				<span>Buy Credits</span>
-			</button>
-			<button class="btn variant-ghost-surface">
-				<Users class="w-4 h-4" />
-				<span>Manage Subscriptions</span>
-			</button>
-			<button class="btn variant-ghost-surface">
-				<Activity class="w-4 h-4" />
-				<span>View Reports</span>
-			</button>
+	<!-- Quick Actions Section -->
+	<div class="bg-surface-100-800-token border border-surface-300-600-token rounded-lg shadow-lg p-6">
+		<h2 class="text-xl font-semibold text-surface-900-50-token mb-4">Quick Actions</h2>
+		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+			<a href="/services" class="btn variant-filled-primary">
+				<ShoppingBag class="w-4 h-4" />
+				<span>Browse Subscriptions</span>
+			</a>
+			<a href="/dashboard/transactions" class="btn variant-ghost-surface">
+				<TrendingUp class="w-4 h-4" />
+				<span>View Transactions</span>
+			</a>
+			<a href="/profile" class="btn variant-ghost-surface">
+				<User2 class="w-4 h-4" />
+				<span>Manage Profile</span>
+			</a>
+			<a href="/dashboard/settings" class="btn variant-ghost-surface">
+				<Settings class="w-4 h-4" />
+				<span>Account Settings</span>
+			</a>
 		</div>
 	</div>
 </div>
