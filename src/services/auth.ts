@@ -264,10 +264,15 @@ class AuthService {
 
       await sessionService.refreshSession(sessionId);
 
+      // CRITICAL FIX: Get Supabase user for metadata
+      const { data: supabaseUser } = await this.supabase.auth.admin.getUserById(session.userId);
+
       const user: User = {
         id: session.userId,
         email: session.email!,
         role: session.role || undefined,
+        firstName: supabaseUser?.user?.user_metadata?.['first_name'],
+        lastName: supabaseUser?.user?.user_metadata?.['last_name'],
         createdAt: new Date().toISOString(),
       };
 
@@ -305,10 +310,16 @@ class AuthService {
       }
 
       const { session } = validation;
+
+      // CRITICAL FIX: Get Supabase user for metadata
+      const { data: supabaseUser } = await this.supabase.auth.admin.getUserById(session.userId);
+
       const user: User = {
         id: session.userId,
         email: session.email!,
         role: session.role || undefined,
+        firstName: supabaseUser?.user?.user_metadata?.['first_name'],
+        lastName: supabaseUser?.user?.user_metadata?.['last_name'],
         createdAt: new Date().toISOString(),
         lastLoginAt: new Date(session.lastAccessedAt).toISOString(),
       };

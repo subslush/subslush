@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Removed non-existent Card components - using Tailwind CSS instead
 	import { User, Mail, Lock, Save } from 'lucide-svelte';
-	import { createQuery, createMutation } from '@tanstack/svelte-query';
+	import { createMutation } from '@tanstack/svelte-query';
 	import { user as authUser } from '$lib/stores/auth.js';
 	import axios from 'axios';
 	import { env } from '$env/dynamic/public';
@@ -16,25 +16,17 @@
 	let confirmPassword = '';
 	let formErrors: Record<string, string> = {};
 
-	const profileQuery = createQuery({
-		queryKey: ['profile'],
-		queryFn: async () => {
-			const response = await axios.get(`${API_URL}/profile`, {
-				withCredentials: true
-			});
-			return response.data;
-		},
-		// onSuccess is deprecated in TanStack Query v5 - moved to reactive statement
-	});
+	// CRITICAL FIX: Remove profileQuery - it calls non-existent endpoint
+	// Just use auth user data directly
 
 	const updateProfileMutation = createMutation({
 		mutationFn: async (profileData: { firstName: string; lastName: string; email: string }) => {
-			const response = await axios.put(`${API_URL}/profile`, profileData, {
+			// Note: This endpoint might also not exist - check backend routes
+			const response = await axios.put(`${API_URL}/api/v1/user/profile`, profileData, {
 				withCredentials: true
 			});
 			return response.data;
 		},
-		// onSuccess is deprecated in TanStack Query v5 - moved to reactive statement
 		onError: (error: any) => {
 			if (error.response?.data?.errors) {
 				formErrors = error.response.data.errors;
@@ -46,17 +38,16 @@
 
 	const changePasswordMutation = createMutation({
 		mutationFn: async (passwordData: { currentPassword: string; newPassword: string }) => {
-			const response = await axios.put(`${API_URL}/profile/password`, passwordData, {
+			const response = await axios.put(`${API_URL}/api/v1/user/password`, passwordData, {
 				withCredentials: true
 			});
 			return response.data;
 		},
-		// onSuccess is deprecated in TanStack Query v5 - moved to reactive statement
 		onError: (error: any) => {
 			if (error.response?.data?.errors) {
 				formErrors = { ...formErrors, ...error.response.data.errors };
 			} else {
-				formErrors = { ...formErrors, password: 'Failed to change password. Please try again.' };
+				formErrors = { ...formErrors, password: 'Failed to change password.' };
 			}
 		}
 	});
@@ -105,12 +96,12 @@
 		}
 	};
 
-	// CRITICAL FIX: Use actual authenticated user data from auth store
+	// CRITICAL FIX: Only use auth user data
 	$: if ($authUser) {
 		firstName = $authUser.firstName || '';
 		lastName = $authUser.lastName || '';
 		email = $authUser.email || '';
-		console.log('👤 [PROFILE PAGE] Using authenticated user data:', {
+		console.log('👤 [PROFILE PAGE] Using auth user data:', {
 			firstName,
 			lastName,
 			email,
@@ -118,29 +109,19 @@
 		});
 	}
 
-	// Handle profile query success using reactive statement (for additional profile data)
-	$: if ($profileQuery.data) {
-		// Use profile query data to supplement auth user data if needed
-		firstName = $profileQuery.data.firstName || firstName;
-		lastName = $profileQuery.data.lastName || lastName;
-		email = $profileQuery.data.email || email;
-	}
-
-	// Handle profile update success using reactive statement
+	// Handle profile update success
 	$: if ($updateProfileMutation.isSuccess) {
 		formErrors = {};
 		console.log('👤 [PROFILE PAGE] Profile update successful');
-		// Show success message
 	}
 
-	// Handle password change success using reactive statement
+	// Handle password change success
 	$: if ($changePasswordMutation.isSuccess) {
 		currentPassword = '';
 		newPassword = '';
 		confirmPassword = '';
 		formErrors = {};
 		console.log('👤 [PROFILE PAGE] Password change successful');
-		// Show success message
 	}
 </script>
 

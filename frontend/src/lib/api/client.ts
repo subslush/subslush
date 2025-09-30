@@ -45,6 +45,17 @@ class ApiClient {
       async (error: AxiosError) => {
         const originalRequest = error.config as any;
 
+        // CRITICAL FIX: Don't try to refresh on auth endpoints
+        if (
+          originalRequest.url?.includes('/auth/login') ||
+          originalRequest.url?.includes('/auth/register') ||
+          originalRequest.url?.includes('/auth/refresh')
+        ) {
+          console.log('🌐 [API CLIENT] Auth endpoint failed, not attempting refresh');
+          return Promise.reject(this.handleError(error));
+        }
+
+        // Only try refresh for authenticated requests that failed with 401
         if (error.response?.status === 401 && !originalRequest._retry) {
           if (this.isRefreshing) {
             return new Promise((resolve, reject) => {

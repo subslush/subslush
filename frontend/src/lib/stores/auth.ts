@@ -241,7 +241,6 @@ function createAuthStore() {
   const login = async (data: LoginRequest): Promise<void> => {
     console.log('🔵 [AUTH] Login started:', { email: data.email, rememberMe: data.rememberMe });
     setLoading(true);
-    console.log('🔵 [AUTH] Loading state set to TRUE');
 
     try {
       console.log('🔵 [AUTH] Calling authService.login...');
@@ -249,51 +248,35 @@ function createAuthStore() {
       console.log('✅ [AUTH] Login API call successful:', { userId: response.user.id });
 
       setAuthData(response.user, response.accessToken, response.sessionId, data.rememberMe);
-      console.log('✅ [AUTH] Auth data set, navigating to dashboard...');
 
       if (browser) {
         goto(ROUTES.DASHBOARD);
       }
     } catch (error: any) {
       console.error('❌ [AUTH] Login failed - ERROR CAUGHT:', error);
-      console.error('❌ [AUTH] Error structure:', {
-        hasResponse: !!error?.response,
-        hasResponseData: !!error?.response?.data,
-        responseData: error?.response?.data,
-        errorMessage: error?.message,
-        errorType: typeof error,
-        fullError: error
-      });
 
-      // Extract error message from various possible error formats
+      // CRITICAL FIX: Always clear loading state in finally block
       let errorMessage: string = ERROR_MESSAGES.INVALID_CREDENTIALS;
 
-      // CRITICAL FIX: Handle both direct ApiError objects and Axios error objects
       if (error?.message && typeof error.message === 'string') {
-        // Direct ApiError object from API client
         errorMessage = error.message;
       } else if (error?.response?.data?.message) {
-        // Axios error format
         errorMessage = error.response.data.message;
       } else if (error?.response?.data?.error) {
-        // Axios error format with error field
         errorMessage = error.response.data.error;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
       }
 
-      console.log('🔧 [AUTH] Setting error message and clearing loading state:', errorMessage);
+      console.log('🔧 [AUTH] Extracted error message:', errorMessage);
+      setError(errorMessage);
 
-      // CRITICAL FIX: Single state update to ensure consistency
-      setError(errorMessage); // This sets both error and isLoading: false
-
-      // CHECK: Verify the store state after setting error
+      console.log('🔧 [AUTH] Error handling complete');
+    } finally {
+      // CRITICAL FIX: Guarantee loading stops
       const currentState = get({ subscribe });
-      console.log('🔍 [AUTH] Current store state after error:', {
-        isLoading: currentState.isLoading,
-        error: currentState.error,
-        isAuthenticated: currentState.isAuthenticated
-      });
+      if (currentState.isLoading) {
+        console.warn('⚠️ [AUTH] Loading still true in finally, forcing to false');
+        update(state => ({ ...state, isLoading: false }));
+      }
     }
   };
 
