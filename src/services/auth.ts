@@ -82,13 +82,15 @@ class AuthService {
         };
       }
 
-      // Create corresponding user record in PostgreSQL
+      // Create corresponding user record in PostgreSQL with first/last names
       try {
         await this.pool.query(
-          'INSERT INTO users (id, email, created_at, status) VALUES ($1, $2, $3, $4)',
+          'INSERT INTO users (id, email, first_name, last_name, created_at, status) VALUES ($1, $2, $3, $4, $5, $6)',
           [
             authData.user.id,
             authData.user.email,
+            firstName || null,
+            lastName || null,
             new Date(authData.user.created_at),
             'active',
           ]
@@ -117,8 +119,8 @@ class AuthService {
         id: authData.user.id,
         email: authData.user.email!,
         role: 'user',
-        firstName: authData.user.user_metadata?.['first_name'],
-        lastName: authData.user.user_metadata?.['last_name'],
+        firstName: firstName,
+        lastName: lastName,
         createdAt: authData.user.created_at,
       };
 
@@ -177,15 +179,34 @@ class AuthService {
         };
       }
 
+      // Fetch user data from PostgreSQL
+      let pgUser = null;
+      try {
+        const result = await this.pool.query(
+          'SELECT first_name, last_name, role FROM users WHERE id = $1',
+          [authData.user.id]
+        );
+        pgUser = result.rows[0];
+      } catch (error) {
+        Logger.warn('Failed to fetch user data from PostgreSQL:', error);
+      }
+
       const user: User = {
         id: authData.user.id,
         email: authData.user.email!,
-        role: authData.user.user_metadata?.['role'] || 'user',
-        firstName: authData.user.user_metadata?.['first_name'],
-        lastName: authData.user.user_metadata?.['last_name'],
+        role: pgUser?.role || 'user',
+        firstName: pgUser?.first_name,
+        lastName: pgUser?.last_name,
         createdAt: authData.user.created_at,
         lastLoginAt: new Date().toISOString(),
       };
+
+      Logger.info('🔐 [AUTH] User logged in:', {
+        userId: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      });
 
       // Update last_login timestamp in database
       try {
@@ -264,33 +285,27 @@ class AuthService {
 
       await sessionService.refreshSession(sessionId);
 
-      // CRITICAL FIX: Get Supabase user for metadata
-      const { data: supabaseUser, error: supabaseError } =
-        await this.supabase.auth.admin.getUserById(session.userId);
-
-      // CRITICAL: Log to verify we're getting the metadata
-      Logger.info('🔄 [AUTH SERVICE] Supabase user metadata fetch:', {
-        userId: session.userId,
-        hasData: !!supabaseUser,
-        hasUser: !!supabaseUser?.user,
-        hasMetadata: !!supabaseUser?.user?.user_metadata,
-        firstName: supabaseUser?.user?.user_metadata?.['first_name'],
-        lastName: supabaseUser?.user?.user_metadata?.['last_name'],
-        rawMetadata: supabaseUser?.user?.user_metadata,
-        error: supabaseError,
-      });
-
-      if (supabaseError) {
-        Logger.warn('Failed to fetch Supabase user metadata:', supabaseError);
+      // Fetch user data from PostgreSQL
+      let pgUser = null;
+      try {
+        const result = await this.pool.query(
+          'SELECT first_name, last_name, role FROM users WHERE id = $1',
+          [session.userId]
+        );
+        pgUser = result.rows[0];
+      } catch (error) {
+        Logger.warn(
+          'Failed to fetch user data from PostgreSQL during refresh:',
+          error
+        );
       }
 
       const user: User = {
         id: session.userId,
         email: session.email!,
-        role: session.role || undefined,
-        firstName:
-          supabaseUser?.user?.user_metadata?.['first_name'] || undefined,
-        lastName: supabaseUser?.user?.user_metadata?.['last_name'] || undefined,
+        role: session.role || pgUser?.role || undefined,
+        firstName: pgUser?.first_name,
+        lastName: pgUser?.last_name,
         createdAt: new Date().toISOString(),
         lastLoginAt: session.lastAccessedAt,
       };
@@ -340,39 +355,27 @@ class AuthService {
 
       const { session } = validation;
 
-      // CRITICAL FIX: Get Supabase user for metadata
-      const { data: supabaseUser, error: supabaseError } =
-        await this.supabase.auth.admin.getUserById(session.userId);
-
-      // CRITICAL: Log to verify we're getting the metadata
-      Logger.info(
-        '✅ [AUTH SERVICE] Supabase user metadata fetch (validate):',
-        {
-          userId: session.userId,
-          hasData: !!supabaseUser,
-          hasUser: !!supabaseUser?.user,
-          hasMetadata: !!supabaseUser?.user?.user_metadata,
-          firstName: supabaseUser?.user?.user_metadata?.['first_name'],
-          lastName: supabaseUser?.user?.user_metadata?.['last_name'],
-          rawMetadata: supabaseUser?.user?.user_metadata,
-          error: supabaseError,
-        }
-      );
-
-      if (supabaseError) {
+      // Fetch user data from PostgreSQL
+      let pgUser = null;
+      try {
+        const result = await this.pool.query(
+          'SELECT first_name, last_name, role FROM users WHERE id = $1',
+          [session.userId]
+        );
+        pgUser = result.rows[0];
+      } catch (error) {
         Logger.warn(
-          'Failed to fetch Supabase user metadata during validation:',
-          supabaseError
+          'Failed to fetch user data from PostgreSQL during validation:',
+          error
         );
       }
 
       const user: User = {
         id: session.userId,
         email: session.email!,
-        role: session.role || undefined,
-        firstName:
-          supabaseUser?.user?.user_metadata?.['first_name'] || undefined,
-        lastName: supabaseUser?.user?.user_metadata?.['last_name'] || undefined,
+        role: session.role || pgUser?.role || undefined,
+        firstName: pgUser?.first_name,
+        lastName: pgUser?.last_name,
         createdAt: new Date().toISOString(),
         lastLoginAt: new Date(session.lastAccessedAt).toISOString(),
       };

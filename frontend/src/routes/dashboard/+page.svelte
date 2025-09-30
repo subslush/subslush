@@ -4,11 +4,8 @@
   import { CreditCard, Users, TrendingUp, Activity, ShoppingBag, Settings, User2, Calendar, Loader2 } from 'lucide-svelte';
   import { user, isAuthenticated } from '$lib/stores/auth.js';
   import { formatName, formatRelativeTime } from '$lib/utils/formatters.js';
-  import axios from 'axios';
-  import { env } from '$env/dynamic/public';
+  import { apiClient } from '$lib/api';
   import { browser } from '$app/environment';
-
-  const API_URL = env.PUBLIC_API_URL || 'http://localhost:3001';
 
   // Get user data reactively
   $: userId = $user?.id;
@@ -64,10 +61,7 @@
 
       console.log('🏦 [DASHBOARD] Fetching credit balance for user:', currentUserId);
       try {
-        const response = await axios.get(
-          `${API_URL}/api/v1/credits/balance/${currentUserId}`,
-          { withCredentials: true }
-        );
+        const response = await apiClient.get(`/credits/balance/${currentUserId}`);
         console.log('🏦 [DASHBOARD] Credit balance response:', response.data);
         return response.data;
       } catch (error) {
