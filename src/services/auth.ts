@@ -265,16 +265,45 @@ class AuthService {
       await sessionService.refreshSession(sessionId);
 
       // CRITICAL FIX: Get Supabase user for metadata
-      const { data: supabaseUser } = await this.supabase.auth.admin.getUserById(session.userId);
+      const { data: supabaseUser, error: supabaseError } =
+        await this.supabase.auth.admin.getUserById(session.userId);
+
+      // CRITICAL: Log to verify we're getting the metadata
+      Logger.info('🔄 [AUTH SERVICE] Supabase user metadata fetch:', {
+        userId: session.userId,
+        hasData: !!supabaseUser,
+        hasUser: !!supabaseUser?.user,
+        hasMetadata: !!supabaseUser?.user?.user_metadata,
+        firstName: supabaseUser?.user?.user_metadata?.['first_name'],
+        lastName: supabaseUser?.user?.user_metadata?.['last_name'],
+        rawMetadata: supabaseUser?.user?.user_metadata,
+        error: supabaseError,
+      });
+
+      if (supabaseError) {
+        Logger.warn('Failed to fetch Supabase user metadata:', supabaseError);
+      }
 
       const user: User = {
         id: session.userId,
         email: session.email!,
         role: session.role || undefined,
-        firstName: supabaseUser?.user?.user_metadata?.['first_name'],
-        lastName: supabaseUser?.user?.user_metadata?.['last_name'],
+        firstName:
+          supabaseUser?.user?.user_metadata?.['first_name'] || undefined,
+        lastName: supabaseUser?.user?.user_metadata?.['last_name'] || undefined,
         createdAt: new Date().toISOString(),
+        lastLoginAt: session.lastAccessedAt,
       };
+
+      // Log the final user object to verify
+      Logger.info('🔄 [AUTH SERVICE] Refresh user object:', {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        hasFirstName: !!user.firstName,
+        hasLastName: !!user.lastName,
+      });
 
       const tokens = jwtService.generateTokens({
         userId: session.userId,
@@ -312,17 +341,51 @@ class AuthService {
       const { session } = validation;
 
       // CRITICAL FIX: Get Supabase user for metadata
-      const { data: supabaseUser } = await this.supabase.auth.admin.getUserById(session.userId);
+      const { data: supabaseUser, error: supabaseError } =
+        await this.supabase.auth.admin.getUserById(session.userId);
+
+      // CRITICAL: Log to verify we're getting the metadata
+      Logger.info(
+        '✅ [AUTH SERVICE] Supabase user metadata fetch (validate):',
+        {
+          userId: session.userId,
+          hasData: !!supabaseUser,
+          hasUser: !!supabaseUser?.user,
+          hasMetadata: !!supabaseUser?.user?.user_metadata,
+          firstName: supabaseUser?.user?.user_metadata?.['first_name'],
+          lastName: supabaseUser?.user?.user_metadata?.['last_name'],
+          rawMetadata: supabaseUser?.user?.user_metadata,
+          error: supabaseError,
+        }
+      );
+
+      if (supabaseError) {
+        Logger.warn(
+          'Failed to fetch Supabase user metadata during validation:',
+          supabaseError
+        );
+      }
 
       const user: User = {
         id: session.userId,
         email: session.email!,
         role: session.role || undefined,
-        firstName: supabaseUser?.user?.user_metadata?.['first_name'],
-        lastName: supabaseUser?.user?.user_metadata?.['last_name'],
+        firstName:
+          supabaseUser?.user?.user_metadata?.['first_name'] || undefined,
+        lastName: supabaseUser?.user?.user_metadata?.['last_name'] || undefined,
         createdAt: new Date().toISOString(),
         lastLoginAt: new Date(session.lastAccessedAt).toISOString(),
       };
+
+      // Log the final user object to verify
+      Logger.info('✅ [AUTH SERVICE] Validate user object:', {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        hasFirstName: !!user.firstName,
+        hasLastName: !!user.lastName,
+      });
 
       return {
         success: true,

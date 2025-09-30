@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
+  import { derived } from 'svelte/store';
   import { CreditCard, Users, TrendingUp, Activity, ShoppingBag, Settings, User2, Calendar, Loader2 } from 'lucide-svelte';
   import { user, isAuthenticated } from '$lib/stores/auth.js';
   import { formatName, formatRelativeTime } from '$lib/utils/formatters.js';
@@ -37,37 +38,62 @@
   $: accountCreated = $user?.createdAt ? new Date($user.createdAt) : null;
   $: lastLogin = $user?.lastLoginAt ? new Date($user.lastLoginAt) : null;
 
-  // Credit Balance Query
+  // Create derived store for query enablement
+  const shouldFetchBalance = derived(
+    [user, isAuthenticated],
+    ([$user, $isAuthenticated]) => {
+      const enabled = !!$user?.id && $isAuthenticated;
+      console.log('🔍 [BALANCE QUERY] Enablement check:', {
+        userId: $user?.id,
+        isAuthenticated: $isAuthenticated,
+        enabled
+      });
+      return enabled;
+    }
+  );
+
+  // Credit Balance Query - now properly reactive
   const balanceQuery = createQuery({
     queryKey: ['creditBalance', userId],
     queryFn: async () => {
-      if (!userId) throw new Error('User ID not available');
+      const currentUserId = $user?.id;
+      if (!currentUserId) {
+        console.error('🏦 [DASHBOARD] No user ID available for balance fetch');
+        throw new Error('User ID not available');
+      }
 
-      console.log('🏦 [DASHBOARD] Fetching credit balance for user:', userId);
-      const response = await axios.get(
-        `${API_URL}/api/v1/credits/balance/${userId}`,
-        { withCredentials: true }
-      );
-      console.log('🏦 [DASHBOARD] Credit balance response:', response.data);
-      return response.data;
+      console.log('🏦 [DASHBOARD] Fetching credit balance for user:', currentUserId);
+      try {
+        const response = await axios.get(
+          `${API_URL}/api/v1/credits/balance/${currentUserId}`,
+          { withCredentials: true }
+        );
+        console.log('🏦 [DASHBOARD] Credit balance response:', response.data);
+        return response.data;
+      } catch (error) {
+        console.error('🏦 [DASHBOARD] Credit balance fetch error:', error);
+        throw error;
+      }
     },
-    enabled: !!userId && $isAuthenticated,
-    staleTime: 30000, // 30 seconds
-    retry: 2
+    enabled: $shouldFetchBalance,  // ✓ Now reactive!
+    staleTime: 30000,
+    retry: 2,
+    retryDelay: 1000
   });
 
-  // Add debug reactive statement after balanceQuery declaration
+  // Debug logging
   $: {
     if (browser) {
       console.log('🔍 [DASHBOARD DEBUG] ===== Credit Balance Query Debug =====');
       console.log('User ID:', userId);
       console.log('Is Authenticated:', $isAuthenticated);
-      console.log('Query Enabled:', !!userId && $isAuthenticated);
+      console.log('Should Fetch:', $shouldFetchBalance);
       console.log('Query Status:', {
         isLoading: $balanceQuery.isLoading,
         isError: $balanceQuery.isError,
         isFetching: $balanceQuery.isFetching,
-        data: $balanceQuery.data
+        data: $balanceQuery.data,
+        error: $balanceQuery.error
       });
       console.log('Full User Object:', $user);
       console.log('==============================================');
