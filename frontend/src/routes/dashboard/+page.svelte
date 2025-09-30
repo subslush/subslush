@@ -2,22 +2,40 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { CreditCard, Users, TrendingUp, Activity, ShoppingBag, Settings, User2, Calendar, Loader2 } from 'lucide-svelte';
   import { user, isAuthenticated } from '$lib/stores/auth.js';
-  import { formatName, formatRelativeTime } from '$lib/utils/formatters.ts';
+  import { formatName, formatRelativeTime } from '$lib/utils/formatters.js';
   import axios from 'axios';
   import { env } from '$env/dynamic/public';
+  import { browser } from '$app/environment';
 
   const API_URL = env.PUBLIC_API_URL || 'http://localhost:3001';
 
   // Get user data reactively
   $: userId = $user?.id;
-  $: userName = $user ?
-    formatName($user.user_metadata?.firstName, $user.user_metadata?.lastName) ||
-    $user.email?.split('@')[0] ||
-    'User'
-    : 'User';
+  $: userName = (() => {
+    if (!$user) return 'User';
+
+    console.log('🔍 [USERNAME DEBUG] User data:', { firstName: $user.firstName, lastName: $user.lastName });
+
+    // Try direct User properties first
+    const firstName = $user.firstName;
+    const lastName = $user.lastName;
+
+    console.log('🔍 [USERNAME DEBUG] Extracted names:', { firstName, lastName });
+
+    const fullName = formatName(firstName, lastName);
+    if (fullName) {
+      console.log('🔍 [USERNAME DEBUG] Using full name:', fullName);
+      return fullName;
+    }
+
+    // Fallback to email username
+    const emailUsername = $user.email?.split('@')[0] || 'User';
+    console.log('🔍 [USERNAME DEBUG] Falling back to email:', emailUsername);
+    return emailUsername;
+  })();
   $: userEmail = $user?.email || '';
-  $: accountCreated = $user?.created_at ? new Date($user.created_at) : null;
-  $: lastLogin = $user?.last_sign_in_at ? new Date($user.last_sign_in_at) : null;
+  $: accountCreated = $user?.createdAt ? new Date($user.createdAt) : null;
+  $: lastLogin = $user?.lastLoginAt ? new Date($user.lastLoginAt) : null;
 
   // Credit Balance Query
   const balanceQuery = createQuery({
@@ -37,6 +55,24 @@
     staleTime: 30000, // 30 seconds
     retry: 2
   });
+
+  // Add debug reactive statement after balanceQuery declaration
+  $: {
+    if (browser) {
+      console.log('🔍 [DASHBOARD DEBUG] ===== Credit Balance Query Debug =====');
+      console.log('User ID:', userId);
+      console.log('Is Authenticated:', $isAuthenticated);
+      console.log('Query Enabled:', !!userId && $isAuthenticated);
+      console.log('Query Status:', {
+        isLoading: $balanceQuery.isLoading,
+        isError: $balanceQuery.isError,
+        isFetching: $balanceQuery.isFetching,
+        data: $balanceQuery.data
+      });
+      console.log('Full User Object:', $user);
+      console.log('==============================================');
+    }
+  }
 
   // Calculate account age
   $: accountAge = accountCreated ? (() => {
@@ -61,7 +97,7 @@
 					Welcome back, {userName}!
 				</h1>
 				<p class="text-surface-600-300-token">
-					{#if $user?.user_metadata?.firstName}
+					{#if $user?.firstName}
 						Good to see you again!
 					{:else}
 						Here's your dashboard overview

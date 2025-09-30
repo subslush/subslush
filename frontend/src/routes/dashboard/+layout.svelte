@@ -2,10 +2,7 @@
 	import { LayoutDashboard, CreditCard, User, Settings, LogOut } from 'lucide-svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import axios from 'axios';
-	import { env } from '$env/dynamic/public';
-
-	const API_URL = env.PUBLIC_API_URL || 'http://localhost:3001';
+	import { auth } from '$lib/stores/auth.js';
 
 	const sidebarItems = [
 		{ icon: LayoutDashboard, label: 'Overview', href: '/dashboard' },
@@ -16,11 +13,29 @@
 
 	const handleLogout = async () => {
 		try {
-			await axios.post(`${API_URL}/auth/logout`, {}, { withCredentials: true });
+			console.log('🚪 [LOGOUT] Starting logout process...');
+
+			// Use the auth store logout method (preferred - already has proper endpoint)
+			await auth.logout();
+
+			console.log('✅ [LOGOUT] Logout successful, redirecting to home...');
 			goto('/');
 		} catch (error) {
-			console.error('Logout failed:', error);
-			goto('/');
+			console.error('❌ [LOGOUT] Logout error:', error);
+
+			// Force local logout even if API call fails
+			console.log('🚪 [LOGOUT] Forcing local logout and clearing storage...');
+
+			// Clear all auth-related storage
+			if (typeof window !== 'undefined') {
+				localStorage.removeItem('auth_user');
+				localStorage.removeItem('auth_token');
+				localStorage.removeItem('auth_refresh_token');
+				sessionStorage.clear();
+			}
+
+			// Redirect to login page
+			goto('/auth/login');
 		}
 	};
 </script>
