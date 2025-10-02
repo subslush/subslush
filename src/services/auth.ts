@@ -310,7 +310,9 @@ class AuthService {
         firstName: pgUser?.first_name,
         lastName: pgUser?.last_name,
         createdAt: new Date().toISOString(),
-        lastLoginAt: session.lastAccessedAt,
+        lastLoginAt: session.lastAccessedAt
+          ? session.lastAccessedAt.toString()
+          : new Date().toISOString(),
       };
 
       // Log the final user object to verify
