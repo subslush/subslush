@@ -146,9 +146,7 @@ export const statusUpdateSchema = z.object({
   updated_by: uuidSchema,
 });
 
-export function validateCreateSubscription(
-  data: unknown
-):
+export function validateCreateSubscription(data: unknown):
   | { success: true; data: CreateSubscriptionInput }
   | {
       success: false;
@@ -185,9 +183,7 @@ export function validateCreateSubscription(
   }
 }
 
-export function validateUpdateSubscription(
-  data: unknown
-):
+export function validateUpdateSubscription(data: unknown):
   | { success: true; data: UpdateSubscriptionInput }
   | {
       success: false;
@@ -224,9 +220,7 @@ export function validateUpdateSubscription(
   }
 }
 
-export function validateSubscriptionQuery(
-  data: unknown
-):
+export function validateSubscriptionQuery(data: unknown):
   | { success: true; data: SubscriptionQuery }
   | {
       success: false;
@@ -263,9 +257,7 @@ export function validateSubscriptionQuery(
   }
 }
 
-export function validateStatusUpdate(
-  data: unknown
-):
+export function validateStatusUpdate(data: unknown):
   | { success: true; data: StatusUpdateInput }
   | {
       success: false;
@@ -341,3 +333,110 @@ export function validateMetadataForService(
       return false;
   }
 }
+
+// Fastify JSON Schema for purchase request
+export const purchaseSubscriptionJsonSchema = {
+  type: 'object',
+  required: ['service_type', 'service_plan'],
+  properties: {
+    service_type: {
+      type: 'string',
+      enum: ['spotify', 'netflix', 'tradingview'],
+    },
+    service_plan: {
+      type: 'string',
+      enum: ['premium', 'family', 'basic', 'standard', 'pro', 'individual'],
+    },
+    duration_months: {
+      type: 'number',
+      minimum: 1,
+      maximum: 12,
+      default: 1,
+    },
+    metadata: {
+      type: 'object',
+      additionalProperties: true,
+    },
+    auto_renew: {
+      type: 'boolean',
+      default: false,
+    },
+  },
+} as const;
+
+// Validation request schema
+export const validatePurchaseJsonSchema = {
+  type: 'object',
+  required: ['service_type', 'service_plan'],
+  properties: {
+    service_type: {
+      type: 'string',
+      enum: ['spotify', 'netflix', 'tradingview'],
+    },
+    service_plan: {
+      type: 'string',
+      enum: ['premium', 'family', 'basic', 'standard', 'pro', 'individual'],
+    },
+    duration_months: {
+      type: 'number',
+      minimum: 1,
+      maximum: 12,
+      default: 1,
+    },
+  },
+} as const;
+
+// Query parameter schema for my-subscriptions
+export const mySubscriptionsQuerySchema = {
+  type: 'object',
+  properties: {
+    service_type: {
+      type: 'string',
+      enum: ['spotify', 'netflix', 'tradingview'],
+    },
+    status: {
+      type: 'string',
+      enum: ['active', 'expired', 'cancelled', 'pending'],
+    },
+    limit: {
+      type: 'number',
+      minimum: 1,
+      maximum: 100,
+      default: 20,
+    },
+    offset: {
+      type: 'number',
+      minimum: 0,
+      default: 0,
+    },
+    include_expired: {
+      type: 'boolean',
+      default: false,
+    },
+  },
+} as const;
+
+// Cancel subscription body schema
+export const cancelSubscriptionJsonSchema = {
+  type: 'object',
+  required: ['reason'],
+  properties: {
+    reason: {
+      type: 'string',
+      minLength: 10,
+      maxLength: 500,
+    },
+  },
+} as const;
+
+// Subscription ID parameter schema
+export const subscriptionIdParamSchema = {
+  type: 'object',
+  required: ['subscriptionId'],
+  properties: {
+    subscriptionId: {
+      type: 'string',
+      format: 'uuid',
+    },
+  },
+} as const;
