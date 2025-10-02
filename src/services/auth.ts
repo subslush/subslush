@@ -179,11 +179,11 @@ class AuthService {
         };
       }
 
-      // Fetch user data from PostgreSQL
+      // Fetch user data from PostgreSQL (names and profile data only)
       let pgUser = null;
       try {
         const result = await this.pool.query(
-          'SELECT first_name, last_name, role FROM users WHERE id = $1',
+          'SELECT first_name, last_name FROM users WHERE id = $1',
           [authData.user.id]
         );
         pgUser = result.rows[0];
@@ -191,10 +191,13 @@ class AuthService {
         Logger.warn('Failed to fetch user data from PostgreSQL:', error);
       }
 
+      // Get role from Supabase Auth metadata (where it's actually stored)
+      const role = authData.user.user_metadata?.['role'] || 'user';
+
       const user: User = {
         id: authData.user.id,
         email: authData.user.email!,
-        role: pgUser?.role || 'user',
+        role: role,
         firstName: pgUser?.first_name,
         lastName: pgUser?.last_name,
         createdAt: authData.user.created_at,
@@ -285,11 +288,11 @@ class AuthService {
 
       await sessionService.refreshSession(sessionId);
 
-      // Fetch user data from PostgreSQL
+      // Fetch user data from PostgreSQL (names and profile data only)
       let pgUser = null;
       try {
         const result = await this.pool.query(
-          'SELECT first_name, last_name, role FROM users WHERE id = $1',
+          'SELECT first_name, last_name FROM users WHERE id = $1',
           [session.userId]
         );
         pgUser = result.rows[0];
@@ -303,7 +306,7 @@ class AuthService {
       const user: User = {
         id: session.userId,
         email: session.email!,
-        role: session.role || pgUser?.role || undefined,
+        role: session.role || 'user',
         firstName: pgUser?.first_name,
         lastName: pgUser?.last_name,
         createdAt: new Date().toISOString(),
@@ -355,11 +358,11 @@ class AuthService {
 
       const { session } = validation;
 
-      // Fetch user data from PostgreSQL
+      // Fetch user data from PostgreSQL (names and profile data only)
       let pgUser = null;
       try {
         const result = await this.pool.query(
-          'SELECT first_name, last_name, role FROM users WHERE id = $1',
+          'SELECT first_name, last_name FROM users WHERE id = $1',
           [session.userId]
         );
         pgUser = result.rows[0];
@@ -373,7 +376,7 @@ class AuthService {
       const user: User = {
         id: session.userId,
         email: session.email!,
-        role: session.role || pgUser?.role || undefined,
+        role: session.role || 'user',
         firstName: pgUser?.first_name,
         lastName: pgUser?.last_name,
         createdAt: new Date().toISOString(),
