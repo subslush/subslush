@@ -2,6 +2,7 @@
 	import { LayoutDashboard, CreditCard, User, Settings, LogOut } from 'lucide-svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import { auth } from '$lib/stores/auth.js';
 
 	const sidebarItems = [
@@ -19,7 +20,11 @@
 			await auth.logout();
 
 			console.log('✅ [LOGOUT] Logout successful, redirecting to home...');
-			goto('/');
+
+			// CRITICAL FIX: Force full page reload instead of SvelteKit navigation
+			if (browser) {
+				window.location.href = '/';
+			}
 		} catch (error) {
 			console.error('❌ [LOGOUT] Logout error:', error);
 
@@ -34,8 +39,10 @@
 				sessionStorage.clear();
 			}
 
-			// Redirect to login page
-			goto('/auth/login');
+			// CRITICAL FIX: Force full page reload to login page
+			if (browser && typeof window !== 'undefined') {
+				window.location.href = '/auth/login';
+			}
 		}
 	};
 </script>

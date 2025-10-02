@@ -121,6 +121,15 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
+          // Debug logging for firstName/lastName issue
+          console.log('🔍 [LOGIN DEBUG] Login result user:', {
+            id: result.user?.id,
+            email: result.user?.email,
+            firstName: result.user?.firstName,
+            lastName: result.user?.lastName,
+            role: result.user?.role,
+          });
+
           return reply.send({
             message: 'Login successful',
             user: result.user,

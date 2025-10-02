@@ -149,7 +149,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
             return ErrorResponses.notFound(reply, 'User balance not found');
           }
 
-          return SuccessResponses.ok(reply, {
+          return reply.send({
             balance: {
               totalBalance: balance.totalBalance,
               availableBalance: balance.availableBalance,
