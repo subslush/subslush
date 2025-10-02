@@ -14,7 +14,7 @@ export const CreditTransactionSchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
   type: CreditTransactionTypeSchema,
-  amount: z.number().positive(),
+  amount: z.number(),
   balanceBefore: z.number(),
   balanceAfter: z.number(),
   description: z.string().min(1).max(500),

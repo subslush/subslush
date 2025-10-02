@@ -38,7 +38,7 @@ export class CreditService {
       const pool = getDatabasePool();
       const result = await pool.query(
         `SELECT
-           COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE -amount END), 0) as total_balance
+           COALESCE(SUM(amount), 0) as total_balance
          FROM credit_transactions
          WHERE user_id = $1`,
         [userId]
