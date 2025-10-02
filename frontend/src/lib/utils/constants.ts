@@ -7,11 +7,11 @@ export const API_CONFIG = {
 
 export const API_ENDPOINTS = {
   AUTH: {
-    REGISTER: '/api/v1/auth/register',
-    LOGIN: '/api/v1/auth/login',
-    LOGOUT: '/api/v1/auth/logout',
-    REFRESH: '/api/v1/auth/refresh',
-    SESSIONS: '/api/v1/auth/sessions'
+    REGISTER: '/auth/register',
+    LOGIN: '/auth/login',
+    LOGOUT: '/auth/logout',
+    REFRESH: '/auth/refresh',
+    SESSIONS: '/auth/sessions'
   }
 } as const;
 

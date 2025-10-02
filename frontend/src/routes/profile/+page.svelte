@@ -3,10 +3,7 @@
 	import { User, Mail, Lock, Save } from 'lucide-svelte';
 	import { createMutation } from '@tanstack/svelte-query';
 	import { user as authUser } from '$lib/stores/auth.js';
-	import axios from 'axios';
-	import { env } from '$env/dynamic/public';
-
-	const API_URL = env.PUBLIC_API_URL || 'http://localhost:3001';
+	import { apiClient } from '$lib/api/client.js';
 
 	let firstName = '';
 	let lastName = '';
@@ -22,9 +19,7 @@
 	const updateProfileMutation = createMutation({
 		mutationFn: async (profileData: { firstName: string; lastName: string; email: string }) => {
 			// Note: This endpoint might also not exist - check backend routes
-			const response = await axios.put(`${API_URL}/api/v1/user/profile`, profileData, {
-				withCredentials: true
-			});
+			const response = await apiClient.put('/users/profile', profileData);
 			return response.data;
 		},
 		onError: (error: any) => {
@@ -38,9 +33,7 @@
 
 	const changePasswordMutation = createMutation({
 		mutationFn: async (passwordData: { currentPassword: string; newPassword: string }) => {
-			const response = await axios.put(`${API_URL}/api/v1/user/password`, passwordData, {
-				withCredentials: true
-			});
+			const response = await apiClient.put('/users/password', passwordData);
 			return response.data;
 		},
 		onError: (error: any) => {

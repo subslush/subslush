@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, type AxiosResponse, type AxiosError } from 'axios';
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
-import { API_CONFIG, ROUTES, ERROR_MESSAGES } from '$lib/utils/constants.js';
+import { API_CONFIG, ROUTES, ERROR_MESSAGES, API_ENDPOINTS } from '$lib/utils/constants.js';
 import { storage, STORAGE_KEYS } from '$lib/utils/storage.js';
 import type { ApiError } from '$lib/types/api.js';
 
@@ -107,7 +107,7 @@ class ApiClient {
 
   private async refreshToken() {
     const token = storage.get(STORAGE_KEYS.AUTH_TOKEN);
-    return this.client.post('/api/v1/auth/refresh', {}, {
+    return this.client.post(API_ENDPOINTS.AUTH.REFRESH, {}, {
       headers: {
         Authorization: `Bearer ${token}`
       }
