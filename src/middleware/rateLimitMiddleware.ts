@@ -24,52 +24,86 @@ export const rateLimitMiddleware = (
   } = options;
 
   return async (fastify, _options): Promise<void> => {
+    Logger.info(
+      `Rate limit middleware registered for window: ${windowMs}ms, max: ${maxRequests}`
+    );
+
     fastify.addHook(
       'preHandler',
       async (request: FastifyRequest, reply: FastifyReply) => {
         try {
           const key = `rate_limit:${keyGenerator(request)}`;
-          const client = redisClient.getClient();
+          Logger.debug(`Rate limit check for key: ${key}`);
 
-          const current = await client.incr(key);
-
-          if (current === 1) {
-            await client.expire(key, Math.ceil(windowMs / 1000));
+          // Verify Redis client is available and ready
+          if (!redisClient.isConnected()) {
+            Logger.error('Redis client not ready for rate limiting');
+            // FAIL CLOSED - block request if Redis unavailable
+            return reply.code(503).send({
+              error: 'Service Unavailable',
+              message: 'Rate limiting service unavailable',
+            });
           }
 
-          if (current > maxRequests) {
+          const client = redisClient.getClient();
+
+          // CRITICAL: Check current count BEFORE incrementing
+          const currentValue = await client.get(key);
+          const currentCount = currentValue ? parseInt(currentValue, 10) : 0;
+
+          // Block BEFORE incrementing if limit exceeded
+          if (currentCount >= maxRequests) {
             if (onLimitReached) {
               onLimitReached(request, reply);
             }
 
             const ttl = await client.ttl(key);
-            const resetTime = new Date(Date.now() + ttl * 1000);
+            const resetTime = new Date(
+              Date.now() + (ttl > 0 ? ttl * 1000 : windowMs)
+            );
 
-            reply.statusCode = 429;
-            return reply.send({
+            // CRITICAL: Use return reply.code().send() pattern to halt execution
+            return reply.code(429).send({
               error: 'Too Many Requests',
               message: 'Rate limit exceeded',
-              retryAfter: ttl,
+              retryAfter: ttl > 0 ? ttl : Math.ceil(windowMs / 1000),
               resetTime: resetTime.toISOString(),
               limit: maxRequests,
               windowMs,
             });
           }
 
-          const ttl = await client.ttl(key);
-          const resetTime = new Date(Date.now() + ttl * 1000);
+          // Only increment AFTER checking limit
+          const newCount = await client.incr(key);
 
+          // Set expiry only on first request
+          if (newCount === 1) {
+            await client.expire(key, Math.ceil(windowMs / 1000));
+          }
+
+          // Get TTL for response headers
+          const ttl = await client.ttl(key);
+          const resetTime = new Date(
+            Date.now() + (ttl > 0 ? ttl * 1000 : windowMs)
+          );
+
+          // Add rate limit headers
           reply.headers({
             'X-RateLimit-Limit': maxRequests.toString(),
             'X-RateLimit-Remaining': Math.max(
               0,
-              maxRequests - current
+              maxRequests - newCount
             ).toString(),
             'X-RateLimit-Reset': resetTime.toISOString(),
             'X-RateLimit-Window': windowMs.toString(),
           });
         } catch (error) {
           Logger.error('Rate limit middleware error:', error);
+          // FAIL CLOSED - block request on any error
+          return reply.code(503).send({
+            error: 'Service Unavailable',
+            message: 'Rate limiting error - request blocked for security',
+          });
         }
       }
     );
