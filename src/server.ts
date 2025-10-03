@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
-import rateLimit from '@fastify/rate-limit';
+// Removed global rate limit import - using custom rate limiting middleware instead
 import { env } from './config/environment';
 import {
   createDatabasePool,
@@ -49,10 +49,8 @@ async function buildServer(): Promise<typeof fastify> {
     credentials: true,
   });
 
-  await fastify.register(rateLimit, {
-    max: 100,
-    timeWindow: '1 minute',
-  });
+  // REMOVED: Global rate limiter that was conflicting with custom rate limiting
+  // Custom rate limiting is now handled per-route with proper security controls
 
   fastify.setErrorHandler(errorHandler);
 

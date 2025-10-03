@@ -9,7 +9,7 @@ import {
   sendError,
   HttpStatus,
 } from '../utils/response';
-import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
+import { createRateLimitHandler } from '../middleware/rateLimitMiddleware';
 import { Logger } from '../utils/logger';
 import { validateSubscriptionId } from '../schemas/subscription';
 import {
@@ -19,8 +19,8 @@ import {
   CreateSubscriptionInput,
 } from '../types/subscription';
 
-// Rate limiting configurations
-const subscriptionQueryRateLimit = rateLimitMiddleware({
+// Rate limiting handlers (fixes plugin encapsulation issues)
+const subscriptionQueryRateLimit = createRateLimitHandler({
   windowMs: 60 * 1000, // 1 minute
   maxRequests: 50,
   keyGenerator: (request: FastifyRequest) => {
@@ -29,7 +29,7 @@ const subscriptionQueryRateLimit = rateLimitMiddleware({
   },
 });
 
-const subscriptionValidationRateLimit = rateLimitMiddleware({
+const subscriptionValidationRateLimit = createRateLimitHandler({
   windowMs: 60 * 1000, // 1 minute
   maxRequests: 20,
   keyGenerator: (request: FastifyRequest) => {
@@ -38,7 +38,7 @@ const subscriptionValidationRateLimit = rateLimitMiddleware({
   },
 });
 
-const subscriptionPurchaseRateLimit = rateLimitMiddleware({
+const subscriptionPurchaseRateLimit = createRateLimitHandler({
   windowMs: 5 * 60 * 1000, // 5 minutes
   maxRequests: 10,
   keyGenerator: (request: FastifyRequest) => {
@@ -47,7 +47,7 @@ const subscriptionPurchaseRateLimit = rateLimitMiddleware({
   },
 });
 
-const subscriptionOperationRateLimit = rateLimitMiddleware({
+const subscriptionOperationRateLimit = createRateLimitHandler({
   windowMs: 5 * 60 * 1000, // 5 minutes
   maxRequests: 10,
   keyGenerator: (request: FastifyRequest) => {
@@ -241,567 +241,547 @@ export async function subscriptionRoutes(
   );
 
   // Validate purchase eligibility (requires auth)
-  fastify.register(async fastify => {
-    await fastify.register(subscriptionValidationRateLimit);
-
-    fastify.post<{
-      Body: {
-        service_type: ServiceType;
-        service_plan: ServicePlan;
-        duration_months?: number;
-      };
-    }>(
-      '/validate-purchase',
-      {
-        preHandler: authPreHandler,
-        schema: {
-          body: FastifySchemas.validatePurchaseInput,
-        },
+  fastify.post<{
+    Body: {
+      service_type: ServiceType;
+      service_plan: ServicePlan;
+      duration_months?: number;
+    };
+  }>(
+    '/validate-purchase',
+    {
+      preHandler: [
+        subscriptionValidationRateLimit, // Rate limit BEFORE auth
+        authPreHandler,
+      ],
+      schema: {
+        body: FastifySchemas.validatePurchaseInput,
       },
-      async (
-        request: FastifyRequest<{
-          Body: {
-            service_type: ServiceType;
-            service_plan: ServicePlan;
-            duration_months?: number;
-          };
-        }>,
-        reply: FastifyReply
-      ) => {
+    },
+    async (
+      request: FastifyRequest<{
+        Body: {
+          service_type: ServiceType;
+          service_plan: ServicePlan;
+          duration_months?: number;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const userId = request.user?.userId;
+        if (!userId) {
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
+        }
+
+        const {
+          service_type,
+          service_plan,
+          duration_months = 1,
+        } = request.body;
+
+        Logger.info('Validating purchase eligibility', {
+          userId,
+          serviceType: service_type,
+          servicePlan: service_plan,
+          duration: duration_months,
+        });
+
+        // Get handler for pricing
+        const handler = serviceHandlerRegistry.getHandler(service_type);
+        if (!handler) {
+          return ErrorResponses.badRequest(reply, 'Invalid service type');
+        }
+
+        // Get pricing
+        let price: number;
         try {
-          const userId = request.user?.userId;
-          if (!userId) {
-            return ErrorResponses.unauthorized(
-              reply,
-              'Authentication required'
-            );
-          }
-
-          const {
-            service_type,
-            service_plan,
-            duration_months = 1,
-          } = request.body;
-
-          Logger.info('Validating purchase eligibility', {
-            userId,
-            serviceType: service_type,
-            servicePlan: service_plan,
-            duration: duration_months,
-          });
-
-          // Get handler for pricing
-          const handler = serviceHandlerRegistry.getHandler(service_type);
-          if (!handler) {
-            return ErrorResponses.badRequest(reply, 'Invalid service type');
-          }
-
-          // Get pricing
-          let price: number;
-          try {
-            price = handler.getPlanPricing(service_plan);
-          } catch {
-            return ErrorResponses.badRequest(
-              reply,
-              'Invalid service plan for this service'
-            );
-          }
-
-          // Check if user can purchase
-          const validation = await subscriptionService.canPurchaseSubscription(
-            userId,
-            service_type,
-            service_plan
+          price = handler.getPlanPricing(service_plan);
+        } catch {
+          return ErrorResponses.badRequest(
+            reply,
+            'Invalid service plan for this service'
           );
+        }
 
-          if (!validation.canPurchase) {
-            return SuccessResponses.ok(reply, {
-              can_purchase: false,
-              reason: validation.reason,
-              required_credits: price,
-              existing_subscription: validation.existing_subscription,
-            });
-          }
+        // Check if user can purchase
+        const validation = await subscriptionService.canPurchaseSubscription(
+          userId,
+          service_type,
+          service_plan
+        );
 
-          // Get user balance
-          const balance = await creditService.getUserBalance(userId);
-          if (!balance) {
-            return ErrorResponses.internalError(
-              reply,
-              'Failed to retrieve user balance'
-            );
-          }
-
-          // Check if user has enough credits
-          if (balance.availableBalance < price) {
-            return SuccessResponses.ok(reply, {
-              can_purchase: false,
-              reason: `Insufficient credits. Required: ${price}, Available: ${balance.availableBalance}`,
-              required_credits: price,
-              user_balance: balance.availableBalance,
-            });
-          }
-
-          // Calculate dates
-          const startDate = new Date();
-          const endDate = calculateEndDate(duration_months);
-          const renewalDate = calculateRenewalDate(duration_months);
-
+        if (!validation.canPurchase) {
           return SuccessResponses.ok(reply, {
-            can_purchase: true,
-            plan_details: handler.getPlanDetails(service_plan),
+            can_purchase: false,
+            reason: validation.reason,
+            required_credits: price,
+            existing_subscription: validation.existing_subscription,
+          });
+        }
+
+        // Get user balance
+        const balance = await creditService.getUserBalance(userId);
+        if (!balance) {
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to retrieve user balance'
+          );
+        }
+
+        // Check if user has enough credits
+        if (balance.availableBalance < price) {
+          return SuccessResponses.ok(reply, {
+            can_purchase: false,
+            reason: `Insufficient credits. Required: ${price}, Available: ${balance.availableBalance}`,
             required_credits: price,
             user_balance: balance.availableBalance,
-            balance_after: balance.availableBalance - price,
-            subscription_details: {
-              start_date: startDate,
-              end_date: endDate,
-              renewal_date: renewalDate,
-            },
           });
-        } catch (error) {
-          Logger.error('Purchase validation failed:', error);
-          return ErrorResponses.internalError(
-            reply,
-            'Failed to validate purchase'
-          );
         }
+
+        // Calculate dates
+        const startDate = new Date();
+        const endDate = calculateEndDate(duration_months);
+        const renewalDate = calculateRenewalDate(duration_months);
+
+        return SuccessResponses.ok(reply, {
+          can_purchase: true,
+          plan_details: handler.getPlanDetails(service_plan),
+          required_credits: price,
+          user_balance: balance.availableBalance,
+          balance_after: balance.availableBalance - price,
+          subscription_details: {
+            start_date: startDate,
+            end_date: endDate,
+            renewal_date: renewalDate,
+          },
+        });
+      } catch (error) {
+        Logger.error('Purchase validation failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to validate purchase'
+        );
       }
-    );
-  });
+    }
+  );
 
   // Purchase subscription (requires auth) - CRITICAL ENDPOINT
-  fastify.register(async fastify => {
-    await fastify.register(subscriptionPurchaseRateLimit);
-
-    fastify.post<{
-      Body: {
-        service_type: ServiceType;
-        service_plan: ServicePlan;
-        duration_months?: number;
-        metadata?: SubscriptionMetadata;
-        auto_renew?: boolean;
-      };
-    }>(
-      '/purchase',
-      {
-        preHandler: authPreHandler,
-        schema: {
-          body: FastifySchemas.purchaseSubscriptionInput,
-        },
+  fastify.post<{
+    Body: {
+      service_type: ServiceType;
+      service_plan: ServicePlan;
+      duration_months?: number;
+      metadata?: SubscriptionMetadata;
+      auto_renew?: boolean;
+    };
+  }>(
+    '/purchase',
+    {
+      preHandler: [
+        subscriptionPurchaseRateLimit, // Rate limit BEFORE auth
+        authPreHandler,
+      ],
+      schema: {
+        body: FastifySchemas.purchaseSubscriptionInput,
       },
-      async (
-        request: FastifyRequest<{
-          Body: {
-            service_type: ServiceType;
-            service_plan: ServicePlan;
-            duration_months?: number;
-            metadata?: SubscriptionMetadata;
-            auto_renew?: boolean;
-          };
-        }>,
-        reply: FastifyReply
-      ) => {
-        try {
-          const userId = request.user?.userId;
-          if (!userId) {
-            return ErrorResponses.unauthorized(
-              reply,
-              'Authentication required'
-            );
-          }
+    },
+    async (
+      request: FastifyRequest<{
+        Body: {
+          service_type: ServiceType;
+          service_plan: ServicePlan;
+          duration_months?: number;
+          metadata?: SubscriptionMetadata;
+          auto_renew?: boolean;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const userId = request.user?.userId;
+        if (!userId) {
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
+        }
 
-          const {
-            service_type,
-            service_plan,
-            duration_months = 1,
-            metadata,
-          } = request.body;
+        const {
+          service_type,
+          service_plan,
+          duration_months = 1,
+          metadata,
+        } = request.body;
 
-          Logger.info('Processing subscription purchase', {
-            userId,
-            serviceType: service_type,
-            servicePlan: service_plan,
-            duration: duration_months,
-          });
+        Logger.info('Processing subscription purchase', {
+          userId,
+          serviceType: service_type,
+          servicePlan: service_plan,
+          duration: duration_months,
+        });
 
-          // Re-validate purchase eligibility to prevent race conditions
-          const validation = await subscriptionService.canPurchaseSubscription(
-            userId,
-            service_type,
-            service_plan
-          );
+        // Re-validate purchase eligibility to prevent race conditions
+        const validation = await subscriptionService.canPurchaseSubscription(
+          userId,
+          service_type,
+          service_plan
+        );
 
-          if (!validation.canPurchase) {
-            return sendError(
-              reply,
-              HttpStatus.CONFLICT,
-              'Purchase Not Allowed',
-              validation.reason || 'Purchase validation failed',
-              'PURCHASE_VALIDATION_FAILED',
-              { existingSubscription: validation.existing_subscription }
-            );
-          }
-
-          // Get handler and pricing
-          const handler = serviceHandlerRegistry.getHandler(service_type);
-          if (!handler) {
-            return ErrorResponses.badRequest(reply, 'Invalid service type');
-          }
-
-          let price: number;
-          try {
-            price = handler.getPlanPricing(service_plan);
-          } catch {
-            return ErrorResponses.badRequest(
-              reply,
-              'Invalid service plan for this service'
-            );
-          }
-
-          // Step 1: Deduct credits (atomic operation)
-          const creditResult = await creditService.spendCredits(
-            userId,
-            price,
-            `Subscription purchase: ${service_type} ${service_plan}`,
-            {
-              service_type,
-              service_plan,
-              duration_months,
-              purchase_type: 'subscription',
-            }
-          );
-
-          if (!creditResult.success) {
-            Logger.error('Credit deduction failed', {
-              userId,
-              price,
-              error: creditResult.error,
-            });
-
-            if (creditResult.error?.includes('Insufficient')) {
-              return sendError(
-                reply,
-                HttpStatus.PAYMENT_REQUIRED,
-                'Insufficient Credits',
-                creditResult.error,
-                'INSUFFICIENT_CREDITS',
-                { required: price }
-              );
-            }
-
-            return ErrorResponses.badRequest(
-              reply,
-              creditResult.error || 'Credit deduction failed'
-            );
-          }
-
-          // Step 2: Create subscription
-          const subscriptionInput: CreateSubscriptionInput = {
-            service_type,
-            service_plan,
-            start_date: new Date(),
-            end_date: calculateEndDate(duration_months),
-            renewal_date: calculateRenewalDate(duration_months),
-            ...(metadata && { metadata }),
-          };
-
-          const subResult = await subscriptionService.createSubscription(
-            userId,
-            subscriptionInput
-          );
-
-          // Step 3: If subscription creation fails, REFUND credits
-          if (!subResult.success) {
-            Logger.error('Subscription creation failed, refunding credits', {
-              userId,
-              transactionId: creditResult.transaction!.id,
-              error: subResult.error,
-            });
-
-            await creditService.refundCredits(
-              userId,
-              price,
-              'Subscription creation failed - automatic refund',
-              creditResult.transaction!.id,
-              {
-                original_transaction_id: creditResult.transaction!.id,
-                reason: 'automatic_rollback',
-                service_type,
-                service_plan,
-              }
-            );
-
-            return ErrorResponses.internalError(
-              reply,
-              'Subscription creation failed, credits refunded'
-            );
-          }
-
-          Logger.info('Subscription purchased successfully', {
-            userId,
-            subscriptionId: subResult.data!.id,
-            price,
-            transactionId: creditResult.transaction!.id,
-          });
-
-          return SuccessResponses.created(
+        if (!validation.canPurchase) {
+          return sendError(
             reply,
-            {
-              subscription: subResult.data,
-              transaction: {
-                transaction_id: creditResult.transaction!.id,
-                amount_debited: price,
-                balance_after: creditResult.balance!.availableBalance,
-              },
-            },
-            'Subscription purchased successfully'
-          );
-        } catch (error) {
-          Logger.error('Purchase flow error:', error);
-          return ErrorResponses.internalError(
-            reply,
-            'Failed to process purchase'
+            HttpStatus.CONFLICT,
+            'Purchase Not Allowed',
+            validation.reason || 'Purchase validation failed',
+            'PURCHASE_VALIDATION_FAILED',
+            { existingSubscription: validation.existing_subscription }
           );
         }
-      }
-    );
-  });
 
-  // Get user's subscriptions (requires auth)
-  fastify.register(async fastify => {
-    await fastify.register(subscriptionQueryRateLimit);
+        // Get handler and pricing
+        const handler = serviceHandlerRegistry.getHandler(service_type);
+        if (!handler) {
+          return ErrorResponses.badRequest(reply, 'Invalid service type');
+        }
 
-    fastify.get<{
-      Querystring: {
-        service_type?: ServiceType;
-        status?: string;
-        limit?: number;
-        offset?: number;
-        include_expired?: boolean;
-      };
-    }>(
-      '/my-subscriptions',
-      {
-        preHandler: authPreHandler,
-        schema: {
-          querystring: FastifySchemas.mySubscriptionsQuery,
-        },
-      },
-      async (
-        request: FastifyRequest<{
-          Querystring: {
-            service_type?: ServiceType;
-            status?: string;
-            limit?: number;
-            offset?: number;
-            include_expired?: boolean;
-          };
-        }>,
-        reply: FastifyReply
-      ) => {
+        let price: number;
         try {
-          const userId = request.user?.userId;
-          if (!userId) {
-            return ErrorResponses.unauthorized(
+          price = handler.getPlanPricing(service_plan);
+        } catch {
+          return ErrorResponses.badRequest(
+            reply,
+            'Invalid service plan for this service'
+          );
+        }
+
+        // Step 1: Deduct credits (atomic operation)
+        const creditResult = await creditService.spendCredits(
+          userId,
+          price,
+          `Subscription purchase: ${service_type} ${service_plan}`,
+          {
+            service_type,
+            service_plan,
+            duration_months,
+            purchase_type: 'subscription',
+          }
+        );
+
+        if (!creditResult.success) {
+          Logger.error('Credit deduction failed', {
+            userId,
+            price,
+            error: creditResult.error,
+          });
+
+          if (creditResult.error?.includes('Insufficient')) {
+            return sendError(
               reply,
-              'Authentication required'
+              HttpStatus.PAYMENT_REQUIRED,
+              'Insufficient Credits',
+              creditResult.error,
+              'INSUFFICIENT_CREDITS',
+              { required: price }
             );
           }
 
-          const query = {
-            ...(request.query.service_type && {
-              service_type: request.query.service_type,
-            }),
-            ...(request.query.status && {
-              status: request.query.status as any,
-            }),
-            limit: request.query.limit || 20,
-            offset: request.query.offset || 0,
-            include_expired: request.query.include_expired || false,
-          };
+          return ErrorResponses.badRequest(
+            reply,
+            creditResult.error || 'Credit deduction failed'
+          );
+        }
 
-          Logger.info('Fetching user subscriptions', { userId, query });
+        // Step 2: Create subscription
+        const subscriptionInput: CreateSubscriptionInput = {
+          service_type,
+          service_plan,
+          start_date: new Date(),
+          end_date: calculateEndDate(duration_months),
+          renewal_date: calculateRenewalDate(duration_months),
+          ...(metadata && { metadata }),
+        };
 
-          const result = await subscriptionService.getUserSubscriptions(
+        const subResult = await subscriptionService.createSubscription(
+          userId,
+          subscriptionInput
+        );
+
+        // Step 3: If subscription creation fails, REFUND credits
+        if (!subResult.success) {
+          Logger.error('Subscription creation failed, refunding credits', {
             userId,
-            query
+            transactionId: creditResult.transaction!.id,
+            error: subResult.error,
+          });
+
+          await creditService.refundCredits(
+            userId,
+            price,
+            'Subscription creation failed - automatic refund',
+            creditResult.transaction!.id,
+            {
+              original_transaction_id: creditResult.transaction!.id,
+              reason: 'automatic_rollback',
+              service_type,
+              service_plan,
+            }
           );
 
-          if (!result.success) {
-            return ErrorResponses.internalError(
-              reply,
-              'Failed to retrieve subscriptions'
-            );
-          }
+          return ErrorResponses.internalError(
+            reply,
+            'Subscription creation failed, credits refunded'
+          );
+        }
 
-          const subscriptions = result.data;
+        Logger.info('Subscription purchased successfully', {
+          userId,
+          subscriptionId: subResult.data!.id,
+          price,
+          transactionId: creditResult.transaction!.id,
+        });
 
-          // For now, we'll calculate count from the returned data
-          // In a production scenario, you'd implement a separate count method
-          const totalCount = subscriptions?.length || 0;
+        return SuccessResponses.created(
+          reply,
+          {
+            subscription: subResult.data,
+            transaction: {
+              transaction_id: creditResult.transaction!.id,
+              amount_debited: price,
+              balance_after: creditResult.balance!.availableBalance,
+            },
+          },
+          'Subscription purchased successfully'
+        );
+      } catch (error) {
+        Logger.error('Purchase flow error:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to process purchase'
+        );
+      }
+    }
+  );
 
-          const hasMore = query.offset + subscriptions!.length < totalCount;
+  // Get user's subscriptions (requires auth)
+  fastify.get<{
+    Querystring: {
+      service_type?: ServiceType;
+      status?: string;
+      limit?: number;
+      offset?: number;
+      include_expired?: boolean;
+    };
+  }>(
+    '/my-subscriptions',
+    {
+      preHandler: [
+        subscriptionQueryRateLimit, // Rate limit BEFORE auth
+        authPreHandler,
+      ],
+      schema: {
+        querystring: FastifySchemas.mySubscriptionsQuery,
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Querystring: {
+          service_type?: ServiceType;
+          status?: string;
+          limit?: number;
+          offset?: number;
+          include_expired?: boolean;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const userId = request.user?.userId;
+        if (!userId) {
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
+        }
 
-          return SuccessResponses.ok(reply, {
-            subscriptions: subscriptions || [],
-            count: subscriptions?.length || 0,
-            total: totalCount,
-            has_more: hasMore,
-          });
-        } catch (error) {
-          Logger.error('Failed to fetch user subscriptions:', error);
+        const query = {
+          ...(request.query.service_type && {
+            service_type: request.query.service_type,
+          }),
+          ...(request.query.status && {
+            status: request.query.status as any,
+          }),
+          limit: request.query.limit || 20,
+          offset: request.query.offset || 0,
+          include_expired: request.query.include_expired || false,
+        };
+
+        Logger.info('Fetching user subscriptions', { userId, query });
+
+        const result = await subscriptionService.getUserSubscriptions(
+          userId,
+          query
+        );
+
+        if (!result.success) {
           return ErrorResponses.internalError(
             reply,
             'Failed to retrieve subscriptions'
           );
         }
+
+        const subscriptions = result.data;
+
+        // For now, we'll calculate count from the returned data
+        // In a production scenario, you'd implement a separate count method
+        const totalCount = subscriptions?.length || 0;
+
+        const hasMore = query.offset + subscriptions!.length < totalCount;
+
+        return SuccessResponses.ok(reply, {
+          subscriptions: subscriptions || [],
+          count: subscriptions?.length || 0,
+          total: totalCount,
+          has_more: hasMore,
+        });
+      } catch (error) {
+        Logger.error('Failed to fetch user subscriptions:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to retrieve subscriptions'
+        );
       }
-    );
-  });
+    }
+  );
 
   // Get specific subscription (requires auth + ownership)
-  fastify.register(async fastify => {
-    await fastify.register(subscriptionQueryRateLimit);
-
-    fastify.get<{
-      Params: { subscriptionId: string };
-    }>(
-      '/:subscriptionId',
-      {
-        preHandler: authPreHandler,
-        schema: {
-          params: FastifySchemas.subscriptionIdParam,
-        },
+  fastify.get<{
+    Params: { subscriptionId: string };
+  }>(
+    '/:subscriptionId',
+    {
+      preHandler: [
+        subscriptionQueryRateLimit, // Rate limit BEFORE auth
+        authPreHandler,
+      ],
+      schema: {
+        params: FastifySchemas.subscriptionIdParam,
       },
-      async (
-        request: FastifyRequest<{ Params: { subscriptionId: string } }>,
-        reply: FastifyReply
-      ) => {
-        try {
-          const userId = request.user?.userId;
-          if (!userId) {
-            return ErrorResponses.unauthorized(
-              reply,
-              'Authentication required'
-            );
-          }
+    },
+    async (
+      request: FastifyRequest<{ Params: { subscriptionId: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const userId = request.user?.userId;
+        if (!userId) {
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
+        }
 
-          const { subscriptionId } = request.params;
+        const { subscriptionId } = request.params;
 
-          if (!validateSubscriptionId(subscriptionId)) {
-            return ErrorResponses.badRequest(
-              reply,
-              'Invalid subscription ID format'
-            );
-          }
-
-          Logger.info('Fetching subscription by ID', {
-            userId,
-            subscriptionId,
-          });
-
-          const result = await subscriptionService.getSubscriptionById(
-            subscriptionId,
-            userId
-          );
-
-          if (!result.success || !result.data) {
-            return ErrorResponses.notFound(reply, 'Subscription not found');
-          }
-
-          return SuccessResponses.ok(reply, {
-            subscription: result.data,
-          });
-        } catch (error) {
-          Logger.error('Failed to fetch subscription:', error);
-          return ErrorResponses.internalError(
+        if (!validateSubscriptionId(subscriptionId)) {
+          return ErrorResponses.badRequest(
             reply,
-            'Failed to retrieve subscription'
+            'Invalid subscription ID format'
           );
         }
+
+        Logger.info('Fetching subscription by ID', {
+          userId,
+          subscriptionId,
+        });
+
+        const result = await subscriptionService.getSubscriptionById(
+          subscriptionId,
+          userId
+        );
+
+        if (!result.success || !result.data) {
+          return ErrorResponses.notFound(reply, 'Subscription not found');
+        }
+
+        return SuccessResponses.ok(reply, {
+          subscription: result.data,
+        });
+      } catch (error) {
+        Logger.error('Failed to fetch subscription:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to retrieve subscription'
+        );
       }
-    );
-  });
+    }
+  );
 
   // Cancel subscription (requires auth + ownership)
-  fastify.register(async fastify => {
-    await fastify.register(subscriptionOperationRateLimit);
-
-    fastify.delete<{
-      Params: { subscriptionId: string };
-      Body: { reason: string };
-    }>(
-      '/:subscriptionId',
-      {
-        preHandler: authPreHandler,
-        schema: {
-          params: FastifySchemas.subscriptionIdParam,
-          body: FastifySchemas.cancelSubscriptionInput,
-        },
+  fastify.delete<{
+    Params: { subscriptionId: string };
+    Body: { reason: string };
+  }>(
+    '/:subscriptionId',
+    {
+      preHandler: [
+        subscriptionOperationRateLimit, // Rate limit BEFORE auth
+        authPreHandler,
+      ],
+      schema: {
+        params: FastifySchemas.subscriptionIdParam,
+        body: FastifySchemas.cancelSubscriptionInput,
       },
-      async (
-        request: FastifyRequest<{
-          Params: { subscriptionId: string };
-          Body: { reason: string };
-        }>,
-        reply: FastifyReply
-      ) => {
-        try {
-          const userId = request.user?.userId;
-          if (!userId) {
-            return ErrorResponses.unauthorized(
-              reply,
-              'Authentication required'
-            );
-          }
+    },
+    async (
+      request: FastifyRequest<{
+        Params: { subscriptionId: string };
+        Body: { reason: string };
+      }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const userId = request.user?.userId;
+        if (!userId) {
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
+        }
 
-          const { subscriptionId } = request.params;
-          const { reason } = request.body;
+        const { subscriptionId } = request.params;
+        const { reason } = request.body;
 
-          if (!validateSubscriptionId(subscriptionId)) {
-            return ErrorResponses.badRequest(
-              reply,
-              'Invalid subscription ID format'
-            );
-          }
-
-          Logger.info('Cancelling subscription', {
-            userId,
-            subscriptionId,
-            reason,
-          });
-
-          const result = await subscriptionService.cancelSubscription(
-            subscriptionId,
-            userId,
-            reason
-          );
-
-          if (!result.success) {
-            if (result.error?.includes('not found')) {
-              return ErrorResponses.notFound(reply, 'Subscription not found');
-            }
-            return ErrorResponses.badRequest(
-              reply,
-              result.error || 'Failed to cancel subscription'
-            );
-          }
-
-          return SuccessResponses.ok(reply, {
-            message: 'Subscription cancelled successfully',
-            subscription_id: subscriptionId,
-          });
-        } catch (error) {
-          Logger.error('Failed to cancel subscription:', error);
-          return ErrorResponses.internalError(
+        if (!validateSubscriptionId(subscriptionId)) {
+          return ErrorResponses.badRequest(
             reply,
-            'Failed to cancel subscription'
+            'Invalid subscription ID format'
           );
         }
+
+        Logger.info('Cancelling subscription', {
+          userId,
+          subscriptionId,
+          reason,
+        });
+
+        const result = await subscriptionService.cancelSubscription(
+          subscriptionId,
+          userId,
+          reason
+        );
+
+        if (!result.success) {
+          if (result.error?.includes('not found')) {
+            return ErrorResponses.notFound(reply, 'Subscription not found');
+          }
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to cancel subscription'
+          );
+        }
+
+        return SuccessResponses.ok(reply, {
+          message: 'Subscription cancelled successfully',
+          subscription_id: subscriptionId,
+        });
+      } catch (error) {
+        Logger.error('Failed to cancel subscription:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to cancel subscription'
+        );
       }
-    );
-  });
+    }
+  );
 
   // Health check endpoint
   fastify.get(

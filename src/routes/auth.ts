@@ -1,16 +1,43 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authService } from '../services/auth';
-import {
-  authRateLimit,
-  bruteForceProtection,
-  passwordResetRateLimit,
-} from '../middleware/rateLimitMiddleware';
+import { createRateLimitHandler } from '../middleware/rateLimitMiddleware';
 import { authPreHandler } from '../middleware/authMiddleware';
 import {
   LoginRequestInput,
   RegisterRequestInput,
   LogoutRequestInput,
 } from '../schemas/session';
+
+// Rate limiting handlers (fixes plugin encapsulation issues)
+const authRateLimit = createRateLimitHandler({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 5,
+  keyGenerator: (request: FastifyRequest) => {
+    const body = request.body as any;
+    const email = body?.email || 'unknown';
+    return `auth:${request.ip}:${email}`;
+  },
+});
+
+const bruteForceProtection = createRateLimitHandler({
+  windowMs: 30 * 60 * 1000, // 30 minutes
+  maxRequests: 20,
+  keyGenerator: (request: FastifyRequest) => {
+    const body = request.body as any;
+    const email = body?.email || 'unknown';
+    return `brute_force:${email}`;
+  },
+});
+
+const passwordResetRateLimit = createRateLimitHandler({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 3,
+  keyGenerator: (request: FastifyRequest) => {
+    const body = request.body as any;
+    const email = body?.email || 'unknown';
+    return `password_reset:${request.ip}:${email}`;
+  },
+});
 
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
@@ -30,122 +57,118 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // Register endpoint with rate limiting and brute force protection
-  fastify.register(async fastify => {
-    await fastify.register(authRateLimit);
-    await fastify.register(bruteForceProtection);
+  fastify.post<{
+    Body: RegisterRequestInput;
+  }>(
+    '/register',
+    {
+      preHandler: [authRateLimit, bruteForceProtection],
+    },
+    async (
+      request: FastifyRequest<{ Body: RegisterRequestInput }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { email, password, firstName, lastName } = request.body;
 
-    fastify.post<{
-      Body: RegisterRequestInput;
-    }>(
-      '/register',
-      async (
-        request: FastifyRequest<{ Body: RegisterRequestInput }>,
-        reply: FastifyReply
-      ) => {
-        try {
-          const { email, password, firstName, lastName } = request.body;
+        const sessionOptions = {
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'],
+        };
 
-          const sessionOptions = {
-            ipAddress: request.ip,
-            userAgent: request.headers['user-agent'],
-          };
+        const result = await authService.register(
+          {
+            email,
+            password,
+            firstName: firstName || undefined,
+            lastName: lastName || undefined,
+          },
+          sessionOptions
+        );
 
-          const result = await authService.register(
-            {
-              email,
-              password,
-              firstName: firstName || undefined,
-              lastName: lastName || undefined,
-            },
-            sessionOptions
-          );
-
-          if (!result.success) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Registration Failed',
-              message: result.error,
-            });
-          }
-
-          reply.statusCode = 201;
+        if (!result.success) {
+          reply.statusCode = 400;
           return reply.send({
-            message: 'Registration successful',
-            user: result.user,
-            accessToken: result.tokens?.accessToken,
-            sessionId: result.sessionId,
-          });
-        } catch {
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Registration failed',
+            error: 'Registration Failed',
+            message: result.error,
           });
         }
+
+        reply.statusCode = 201;
+        return reply.send({
+          message: 'Registration successful',
+          user: result.user,
+          accessToken: result.tokens?.accessToken,
+          sessionId: result.sessionId,
+        });
+      } catch {
+        reply.statusCode = 500;
+        return reply.send({
+          error: 'Internal Server Error',
+          message: 'Registration failed',
+        });
       }
-    );
-  });
+    }
+  );
 
   // Login endpoint with rate limiting and brute force protection
-  fastify.register(async fastify => {
-    await fastify.register(authRateLimit);
-    await fastify.register(bruteForceProtection);
+  fastify.post<{
+    Body: LoginRequestInput;
+  }>(
+    '/login',
+    {
+      preHandler: [authRateLimit, bruteForceProtection],
+    },
+    async (
+      request: FastifyRequest<{ Body: LoginRequestInput }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { email, password, rememberMe } = request.body;
 
-    fastify.post<{
-      Body: LoginRequestInput;
-    }>(
-      '/login',
-      async (
-        request: FastifyRequest<{ Body: LoginRequestInput }>,
-        reply: FastifyReply
-      ) => {
-        try {
-          const { email, password, rememberMe } = request.body;
+        const sessionOptions = {
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'] || undefined,
+          metadata: { rememberMe },
+        };
 
-          const sessionOptions = {
-            ipAddress: request.ip,
-            userAgent: request.headers['user-agent'] || undefined,
-            metadata: { rememberMe },
-          };
+        const result = await authService.login(
+          { email, password, rememberMe },
+          sessionOptions
+        );
 
-          const result = await authService.login(
-            { email, password, rememberMe },
-            sessionOptions
-          );
-
-          if (!result.success) {
-            reply.statusCode = 401;
-            return reply.send({
-              error: 'Authentication Failed',
-              message: result.error,
-            });
-          }
-
-          // Debug logging for firstName/lastName issue
-          console.log('🔍 [LOGIN DEBUG] Login result user:', {
-            id: result.user?.id,
-            email: result.user?.email,
-            firstName: result.user?.firstName,
-            lastName: result.user?.lastName,
-            role: result.user?.role,
-          });
-
+        if (!result.success) {
+          reply.statusCode = 401;
           return reply.send({
-            message: 'Login successful',
-            user: result.user,
-            accessToken: result.tokens?.accessToken,
-            sessionId: result.sessionId,
-          });
-        } catch {
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Login failed',
+            error: 'Authentication Failed',
+            message: result.error,
           });
         }
+
+        // Debug logging for firstName/lastName issue
+        console.log('🔍 [LOGIN DEBUG] Login result user:', {
+          id: result.user?.id,
+          email: result.user?.email,
+          firstName: result.user?.firstName,
+          lastName: result.user?.lastName,
+          role: result.user?.role,
+        });
+
+        return reply.send({
+          message: 'Login successful',
+          user: result.user,
+          accessToken: result.tokens?.accessToken,
+          sessionId: result.sessionId,
+        });
+      } catch {
+        reply.statusCode = 500;
+        return reply.send({
+          error: 'Internal Server Error',
+          message: 'Login failed',
+        });
       }
-    );
-  });
+    }
+  );
 
   // Logout endpoint (requires authentication)
   fastify.register(async fastify => {
@@ -336,41 +359,40 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // Password reset request endpoint with rate limiting
-  fastify.register(async fastify => {
-    await fastify.register(passwordResetRateLimit);
+  fastify.post<{
+    Body: { email: string };
+  }>(
+    '/password-reset',
+    {
+      preHandler: [passwordResetRateLimit],
+    },
+    async (
+      request: FastifyRequest<{ Body: { email: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { email } = request.body;
 
-    fastify.post<{
-      Body: { email: string };
-    }>(
-      '/password-reset',
-      async (
-        request: FastifyRequest<{ Body: { email: string } }>,
-        reply: FastifyReply
-      ) => {
-        try {
-          const { email } = request.body;
+        const result = await authService.requestPasswordReset(email);
 
-          const result = await authService.requestPasswordReset(email);
-
-          if (!result.success) {
-            reply.statusCode = 400;
-            return reply.send({
-              error: 'Password Reset Failed',
-              message: result.error,
-            });
-          }
-
+        if (!result.success) {
+          reply.statusCode = 400;
           return reply.send({
-            message: 'Password reset email sent successfully',
-          });
-        } catch {
-          reply.statusCode = 500;
-          return reply.send({
-            error: 'Internal Server Error',
-            message: 'Password reset request failed',
+            error: 'Password Reset Failed',
+            message: result.error,
           });
         }
+
+        return reply.send({
+          message: 'Password reset email sent successfully',
+        });
+      } catch {
+        reply.statusCode = 500;
+        return reply.send({
+          error: 'Internal Server Error',
+          message: 'Password reset request failed',
+        });
       }
-    );
-  });
+    }
+  );
 }

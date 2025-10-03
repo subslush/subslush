@@ -1,51 +1,47 @@
 import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
-import { rateLimitMiddleware } from './rateLimitMiddleware';
+import { createRateLimitHandler } from './rateLimitMiddleware';
 import { requireAuth } from './authMiddleware';
 import { Logger } from '../utils/logger';
 import { HttpStatus, ErrorResponses, sendError } from '../utils/response';
 
 // Credit operations rate limiting
-export const creditOperationRateLimit = rateLimitMiddleware({
+export const creditOperationRateLimit = createRateLimitHandler({
   windowMs: 60 * 1000, // 1 minute
   maxRequests: 10, // 10 credit operations per minute
   keyGenerator: (request: FastifyRequest) => {
     const userId = request.user?.userId || request.ip;
     return `credit_ops:${userId}`;
   },
-  skipFailedRequests: false,
 });
 
 // Heavy credit operations rate limiting (spending, refunds)
-export const heavyCreditOperationRateLimit = rateLimitMiddleware({
+export const heavyCreditOperationRateLimit = createRateLimitHandler({
   windowMs: 5 * 60 * 1000, // 5 minutes
   maxRequests: 20, // 20 operations per 5 minutes
   keyGenerator: (request: FastifyRequest) => {
     const userId = request.user?.userId || request.ip;
     return `heavy_credit_ops:${userId}`;
   },
-  skipFailedRequests: false,
 });
 
 // Admin credit operations rate limiting
-export const adminCreditOperationRateLimit = rateLimitMiddleware({
+export const adminCreditOperationRateLimit = createRateLimitHandler({
   windowMs: 60 * 1000, // 1 minute
   maxRequests: 100, // 100 admin operations per minute
   keyGenerator: (request: FastifyRequest) => {
     const userId = request.user?.userId || request.ip;
     return `admin_credit_ops:${userId}`;
   },
-  skipFailedRequests: false,
 });
 
 // Credit query rate limiting (viewing balances, history)
-export const creditQueryRateLimit = rateLimitMiddleware({
+export const creditQueryRateLimit = createRateLimitHandler({
   windowMs: 60 * 1000, // 1 minute
   maxRequests: 50, // 50 queries per minute
   keyGenerator: (request: FastifyRequest) => {
     const userId = request.user?.userId || request.ip;
     return `credit_query:${userId}`;
   },
-  skipSuccessfulRequests: false,
 });
 
 // Middleware to validate credit operation amounts
@@ -193,7 +189,6 @@ export const creditOperationMiddleware = async (
   fastify: any
 ): Promise<void> => {
   await fastify.register(requireAuth);
-  await fastify.register(creditOperationRateLimit);
   await fastify.register(validateCreditAmount);
   await fastify.register(validateCreditUserAccess);
   await fastify.register(auditCreditOperation);
@@ -204,7 +199,6 @@ export const heavyCreditOperationMiddleware = async (
   fastify: any
 ): Promise<void> => {
   await fastify.register(requireAuth);
-  await fastify.register(heavyCreditOperationRateLimit);
   await fastify.register(validateCreditAmount);
   await fastify.register(validateCreditUserAccess);
   await fastify.register(auditCreditOperation);
@@ -215,7 +209,6 @@ export const adminCreditOperationMiddleware = async (
   fastify: any
 ): Promise<void> => {
   await fastify.register(requireAuth);
-  await fastify.register(adminCreditOperationRateLimit);
   await fastify.register(requireAdminForCreditOps);
   await fastify.register(validateCreditAmount);
   await fastify.register(auditCreditOperation);
@@ -224,7 +217,6 @@ export const adminCreditOperationMiddleware = async (
 // Combined middleware for credit queries (read-only operations)
 export const creditQueryMiddleware = async (fastify: any): Promise<void> => {
   await fastify.register(requireAuth);
-  await fastify.register(creditQueryRateLimit);
   await fastify.register(validateCreditUserAccess);
 };
 
