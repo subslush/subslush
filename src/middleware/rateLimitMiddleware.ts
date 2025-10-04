@@ -176,6 +176,14 @@ export const createRateLimitHandler = (options: RateLimitOptions = {}) => {
           Date.now() + (ttl > 0 ? ttl * 1000 : windowMs)
         );
 
+        // CRITICAL: Set rate limit headers for blocked requests
+        reply.headers({
+          'X-RateLimit-Limit': maxRequests.toString(),
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': resetTime.toISOString(),
+          'X-RateLimit-Window': windowMs.toString(),
+        });
+
         // CRITICAL: Use reply.code().send() pattern to halt execution
         reply.code(429).send({
           error: 'Too Many Requests',
