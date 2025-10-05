@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { LayoutDashboard, CreditCard, User, Settings, LogOut } from 'lucide-svelte';
+	import { LayoutDashboard, CreditCard, User, Settings, LogOut, ShoppingBag, Calendar } from 'lucide-svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
@@ -7,7 +7,15 @@
 
 	const sidebarItems = [
 		{ icon: LayoutDashboard, label: 'Overview', href: '/dashboard' },
-		{ icon: CreditCard, label: 'Subscriptions', href: '/dashboard/subscriptions' },
+		{
+			icon: CreditCard,
+			label: 'Subscriptions',
+			href: '/dashboard/subscriptions',
+			subItems: [
+				{ icon: ShoppingBag, label: 'Browse Plans', href: '/dashboard/subscriptions' },
+				{ icon: Calendar, label: 'My Subscriptions', href: '/dashboard/subscriptions/active' }
+			]
+		},
 		{ icon: User, label: 'Profile', href: '/profile' },
 		{ icon: Settings, label: 'Settings', href: '/dashboard/settings' }
 	];
@@ -55,16 +63,35 @@
 
 			<nav class="space-y-2">
 				{#each sidebarItems as item}
-					<a
-						href={item.href}
-						class="flex items-center space-x-3 px-3 py-2 rounded-lg text-sm transition-colors"
-						class:bg-primary-100-800-token={$page.url.pathname === item.href}
-						class:text-primary-600={$page.url.pathname === item.href}
-						class:hover:bg-surface-200-700-token={$page.url.pathname !== item.href}
-					>
-						<svelte:component this={item.icon} size={18} />
-						<span>{item.label}</span>
-					</a>
+					<div>
+						<a
+							href={item.href}
+							class="flex items-center space-x-3 px-3 py-2 rounded-lg text-sm transition-colors"
+							class:bg-primary-100-800-token={$page.url.pathname === item.href || (item.subItems && item.subItems.some(sub => $page.url.pathname === sub.href))}
+							class:text-primary-600={$page.url.pathname === item.href || (item.subItems && item.subItems.some(sub => $page.url.pathname === sub.href))}
+							class:hover:bg-surface-200-700-token={$page.url.pathname !== item.href && !(item.subItems && item.subItems.some(sub => $page.url.pathname === sub.href))}
+						>
+							<svelte:component this={item.icon} size={18} />
+							<span>{item.label}</span>
+						</a>
+
+						{#if item.subItems && ($page.url.pathname.startsWith('/dashboard/subscriptions'))}
+							<div class="ml-6 mt-1 space-y-1">
+								{#each item.subItems as subItem}
+									<a
+										href={subItem.href}
+										class="flex items-center space-x-3 px-3 py-1 rounded-lg text-sm transition-colors"
+										class:bg-primary-50-900-token={$page.url.pathname === subItem.href}
+										class:text-primary-600={$page.url.pathname === subItem.href}
+										class:hover:bg-surface-200-700-token={$page.url.pathname !== subItem.href}
+									>
+										<svelte:component this={subItem.icon} size={16} />
+										<span>{subItem.label}</span>
+									</a>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				{/each}
 
 				<button
