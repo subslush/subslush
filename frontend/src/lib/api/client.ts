@@ -1,23 +1,17 @@
 import axios, { type AxiosInstance, type AxiosResponse, type AxiosError } from 'axios';
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
-import { API_CONFIG, ROUTES, ERROR_MESSAGES, API_ENDPOINTS } from '$lib/utils/constants.js';
-import { storage, STORAGE_KEYS } from '$lib/utils/storage.js';
+import { API_CONFIG, ERROR_MESSAGES } from '$lib/utils/constants.js';
 import type { ApiError } from '$lib/types/api.js';
 
 class ApiClient {
   private client: AxiosInstance;
-  private isRefreshing = false;
-  private failedQueue: Array<{
-    resolve: (value: any) => void;
-    reject: (error: any) => void;
-  }> = [];
 
   constructor() {
     this.client = axios.create({
       baseURL: API_CONFIG.BASE_URL,
       timeout: API_CONFIG.TIMEOUT,
-      withCredentials: true,
+      withCredentials: true, // Send cookies automatically
       headers: {
         'Content-Type': 'application/json'
       }
@@ -27,76 +21,33 @@ class ApiClient {
   }
 
   private setupInterceptors(): void {
-    // Request interceptor to add auth token
+    // Request interceptor - no need to add auth headers, cookies handle it
     this.client.interceptors.request.use(
       (config) => {
-        const token = storage.get(STORAGE_KEYS.AUTH_TOKEN);
-        if (token && config.headers) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
+        // Cookies are automatically sent with withCredentials: true
         return config;
       },
       (error) => Promise.reject(error)
     );
 
-    // Response interceptor to handle token refresh and errors
+    // Response interceptor to handle errors and auth failures
     this.client.interceptors.response.use(
       (response: AxiosResponse) => response,
       async (error: AxiosError) => {
-        const originalRequest = error.config as any;
-
-        // CRITICAL FIX: Don't try to refresh on auth endpoints
-        if (
-          originalRequest.url?.includes('/auth/login') ||
-          originalRequest.url?.includes('/auth/register') ||
-          originalRequest.url?.includes('/auth/refresh')
-        ) {
-          console.log('🌐 [API CLIENT] Auth endpoint failed, not attempting refresh');
-          return Promise.reject(this.handleError(error));
-        }
-
-        // Only try refresh for authenticated requests that failed with 401
-        if (error.response?.status === 401 && !originalRequest._retry) {
-          if (this.isRefreshing) {
-            return new Promise((resolve, reject) => {
-              this.failedQueue.push({ resolve, reject });
-            }).then(token => {
-              if (originalRequest.headers) {
-                originalRequest.headers.Authorization = `Bearer ${token}`;
-              }
-              return this.client(originalRequest);
-            }).catch(err => {
-              return Promise.reject(err);
-            });
+        // On 401 errors, redirect to login (session expired/invalid)
+        if (error.response?.status === 401) {
+          // Don't redirect if this is an auth endpoint
+          const originalRequest = error.config as any;
+          if (
+            originalRequest.url?.includes('/auth/login') ||
+            originalRequest.url?.includes('/auth/register')
+          ) {
+            return Promise.reject(this.handleError(error));
           }
 
-          originalRequest._retry = true;
-          this.isRefreshing = true;
-
-          try {
-            const refreshResponse = await this.refreshToken();
-            const newToken = refreshResponse.data.accessToken;
-
-            storage.set(STORAGE_KEYS.AUTH_TOKEN, newToken);
-
-            this.processQueue(null, newToken);
-
-            if (originalRequest.headers) {
-              originalRequest.headers.Authorization = `Bearer ${newToken}`;
-            }
-
-            return this.client(originalRequest);
-          } catch (refreshError) {
-            this.processQueue(refreshError, null);
-            this.clearAuthData();
-
-            if (browser) {
-              goto(ROUTES.AUTH.LOGIN);
-            }
-
-            return Promise.reject(refreshError);
-          } finally {
-            this.isRefreshing = false;
+          // Session expired, redirect to login
+          if (browser) {
+            goto('/auth/login');
           }
         }
 
@@ -105,32 +56,6 @@ class ApiClient {
     );
   }
 
-  private async refreshToken() {
-    const token = storage.get(STORAGE_KEYS.AUTH_TOKEN);
-    return this.client.post(API_ENDPOINTS.AUTH.REFRESH, {}, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-  }
-
-  private processQueue(error: any, token: string | null) {
-    this.failedQueue.forEach(({ resolve, reject }) => {
-      if (error) {
-        reject(error);
-      } else {
-        resolve(token);
-      }
-    });
-
-    this.failedQueue = [];
-  }
-
-  private clearAuthData(): void {
-    storage.remove(STORAGE_KEYS.AUTH_TOKEN);
-    storage.remove(STORAGE_KEYS.SESSION_ID);
-    storage.remove(STORAGE_KEYS.USER_DATA);
-  }
 
   private handleError(error: AxiosError): ApiError {
     console.error('🌐 [API CLIENT] Handling error:', {
@@ -196,15 +121,8 @@ class ApiClient {
     return this.client.delete<T>(url, config);
   }
 
-  // Set auth token manually
-  setAuthToken(token: string): void {
-    storage.set(STORAGE_KEYS.AUTH_TOKEN, token);
-  }
-
-  // Clear auth token manually
-  clearAuthToken(): void {
-    this.clearAuthData();
-  }
+  // Note: Auth token management is now handled by HTTP-only cookies
+  // No need for manual token management
 }
 
 export const apiClient = new ApiClient();

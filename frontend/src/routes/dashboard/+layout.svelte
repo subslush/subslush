@@ -1,9 +1,17 @@
 <script lang="ts">
 	import { LayoutDashboard, CreditCard, User, Settings, LogOut, ShoppingBag, Calendar } from 'lucide-svelte';
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
-	import { browser } from '$app/environment';
 	import { auth } from '$lib/stores/auth.js';
+	import { onMount } from 'svelte';
+
+	export let data; // Data from +layout.server.ts
+
+	// Initialize auth store with server data
+	onMount(() => {
+		if (data.user) {
+			auth.init(data.user);
+		}
+	});
 
 	const sidebarItems = [
 		{ icon: LayoutDashboard, label: 'Overview', href: '/dashboard' },
@@ -21,37 +29,7 @@
 	];
 
 	const handleLogout = async () => {
-		try {
-			console.log('🚪 [LOGOUT] Starting logout process...');
-
-			// Use the auth store logout method (preferred - already has proper endpoint)
-			await auth.logout();
-
-			console.log('✅ [LOGOUT] Logout successful, redirecting to home...');
-
-			// CRITICAL FIX: Force full page reload instead of SvelteKit navigation
-			if (browser) {
-				window.location.href = '/';
-			}
-		} catch (error) {
-			console.error('❌ [LOGOUT] Logout error:', error);
-
-			// Force local logout even if API call fails
-			console.log('🚪 [LOGOUT] Forcing local logout and clearing storage...');
-
-			// Clear all auth-related storage
-			if (typeof window !== 'undefined') {
-				localStorage.removeItem('auth_user');
-				localStorage.removeItem('auth_token');
-				localStorage.removeItem('auth_refresh_token');
-				sessionStorage.clear();
-			}
-
-			// CRITICAL FIX: Force full page reload to login page
-			if (browser && typeof window !== 'undefined') {
-				window.location.href = '/auth/login';
-			}
-		}
+		await auth.logout();
 	};
 </script>
 

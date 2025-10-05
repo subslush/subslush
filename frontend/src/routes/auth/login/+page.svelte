@@ -1,20 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { enhance } from '$app/forms';
   import { Eye, EyeOff, LogIn, Loader2 } from 'lucide-svelte';
-  import { auth, authError, isLoading } from '$lib/stores/auth.js';
-  import { loginSchema, type LoginFormData } from '$lib/validation/auth.js';
-  import { ROUTES } from '$lib/utils/constants.js';
+  import { page } from '$app/stores';
 
-  let formData: LoginFormData = {
-    email: '',
-    password: '',
-    rememberMe: false
-  };
-
-  let formErrors: Partial<Record<keyof LoginFormData, string>> = {};
   let showPassword = false;
   let emailInput: HTMLInputElement;
+  let isSubmitting = false;
 
   onMount(() => {
     // Auto-focus email input
@@ -23,71 +15,12 @@
     }
   });
 
-  function validateForm(): boolean {
-    formErrors = {};
-
-    try {
-      loginSchema.parse(formData);
-      return true;
-    } catch (error: any) {
-      if (error.errors) {
-        error.errors.forEach((err: any) => {
-          formErrors[err.path[0] as keyof LoginFormData] = err.message;
-        });
-      }
-      return false;
-    }
-  }
-
-  async function handleSubmit(event: Event) {
-    event.preventDefault();
-    console.log('📝 [LOGIN PAGE] Form submitted');
-
-    if (!validateForm()) {
-      console.log('📝 [LOGIN PAGE] Form validation failed');
-      return;
-    }
-
-    console.log('📝 [LOGIN PAGE] Form validation passed, calling auth.login()');
-    try {
-      await auth.login(formData);
-      console.log('📝 [LOGIN PAGE] auth.login() completed successfully');
-      // Navigation is handled by the auth store
-    } catch (error) {
-      console.error('📝 [LOGIN PAGE] auth.login() threw error:', error);
-      // Error is handled by the auth store and displayed via authError
-    }
-    console.log('📝 [LOGIN PAGE] handleSubmit completed');
-  }
-
-  function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Enter') {
-      handleSubmit(event);
-    }
-  }
-
   function togglePasswordVisibility() {
     showPassword = !showPassword;
   }
 
-  function clearFieldError(field: keyof LoginFormData) {
-    if (formErrors[field]) {
-      formErrors = { ...formErrors, [field]: undefined };
-    }
-  }
-
-  function navigateToRegister() {
-    goto(ROUTES.AUTH.REGISTER);
-  }
-
-  // Add reactive statements to log loading state changes
-  $: {
-    console.log('📝 [LOGIN PAGE] isLoading changed:', $isLoading);
-  }
-
-  $: {
-    console.log('📝 [LOGIN PAGE] authError changed:', $authError);
-  }
+  // Get form data and errors from page data
+  export let form;
 </script>
 
 <svelte:head>
@@ -107,26 +40,22 @@
   </div>
 
   <!-- Error Alert -->
-  {#if $authError}
+  {#if form?.error}
     <div class="alert variant-filled-error" role="alert">
       <div class="alert-message">
-        <p>{$authError}</p>
-      </div>
-      <div class="alert-actions">
-        <button
-          type="button"
-          class="btn-icon btn-icon-sm variant-filled"
-          on:click={() => auth.clearError()}
-          aria-label="Dismiss error"
-        >
-          <span>×</span>
-        </button>
+        <p>{form.error}</p>
       </div>
     </div>
   {/if}
 
   <!-- Login Form -->
-  <form on:submit={handleSubmit} class="space-y-4" novalidate>
+  <form method="POST" use:enhance={() => {
+    isSubmitting = true;
+    return async ({ update }) => {
+      await update();
+      isSubmitting = false;
+    };
+  }} class="space-y-4" novalidate>
     <!-- Email Field -->
     <div>
       <label for="email" class="label">
@@ -134,25 +63,16 @@
       </label>
       <input
         bind:this={emailInput}
-        bind:value={formData.email}
-        on:input={() => clearFieldError('email')}
-        on:keydown={handleKeydown}
+        value={form?.email || ''}
         type="email"
         id="email"
         name="email"
         autocomplete="email"
         required
-        disabled={$isLoading}
+        disabled={isSubmitting}
         class="input"
-        class:input-error={formErrors.email}
         placeholder="Enter your email"
-        aria-describedby={formErrors.email ? 'email-error' : undefined}
       />
-      {#if formErrors.email}
-        <div id="email-error" class="text-sm text-error-500 mt-1" role="alert">
-          {formErrors.email}
-        </div>
-      {/if}
     </div>
 
     <!-- Password Field -->
@@ -161,44 +81,21 @@
         <span>Password</span>
       </label>
       <div class="input-group input-group-divider grid-cols-[1fr_auto]">
-        {#if showPassword}
-          <input
-            bind:value={formData.password}
-            on:input={() => clearFieldError('password')}
-            on:keydown={handleKeydown}
-            type="text"
-            id="password"
-            name="password"
-            autocomplete="current-password"
-            required
-            disabled={$isLoading}
-            class="input"
-            class:input-error={formErrors.password}
-            placeholder="Enter your password"
-            aria-describedby={formErrors.password ? 'password-error' : undefined}
-          />
-        {:else}
-          <input
-            bind:value={formData.password}
-            on:input={() => clearFieldError('password')}
-            on:keydown={handleKeydown}
-            type="password"
-            id="password"
-            name="password"
-            autocomplete="current-password"
-            required
-            disabled={$isLoading}
-            class="input"
-            class:input-error={formErrors.password}
-            placeholder="Enter your password"
-            aria-describedby={formErrors.password ? 'password-error' : undefined}
-          />
-        {/if}
+        <input
+          type={showPassword ? 'text' : 'password'}
+          id="password"
+          name="password"
+          autocomplete="current-password"
+          required
+          disabled={isSubmitting}
+          class="input"
+          placeholder="Enter your password"
+        />
         <button
           type="button"
           class="btn variant-filled-surface btn-icon"
           on:click={togglePasswordVisibility}
-          disabled={$isLoading}
+          disabled={isSubmitting}
           aria-label={showPassword ? 'Hide password' : 'Show password'}
         >
           {#if showPassword}
@@ -208,21 +105,16 @@
           {/if}
         </button>
       </div>
-      {#if formErrors.password}
-        <div id="password-error" class="text-sm text-error-500 mt-1" role="alert">
-          {formErrors.password}
-        </div>
-      {/if}
     </div>
 
     <!-- Remember Me -->
     <div class="flex items-center">
       <label class="flex items-center space-x-2">
         <input
-          bind:checked={formData.rememberMe}
           type="checkbox"
+          name="rememberMe"
           class="checkbox"
-          disabled={$isLoading}
+          disabled={isSubmitting}
         />
         <span class="text-sm text-surface-700 dark:text-surface-300">Remember me</span>
       </label>
@@ -231,10 +123,10 @@
     <!-- Submit Button -->
     <button
       type="submit"
-      disabled={$isLoading}
+      disabled={isSubmitting}
       class="btn variant-filled-primary w-full"
     >
-      {#if $isLoading}
+      {#if isSubmitting}
         <Loader2 class="w-4 h-4 mr-2 animate-spin" />
         Signing in...
       {:else}
@@ -248,14 +140,12 @@
   <div class="text-center space-y-2">
     <p class="text-sm text-surface-600 dark:text-surface-400">
       Don't have an account?
-      <button
-        type="button"
-        on:click={navigateToRegister}
+      <a
+        href="/auth/register"
         class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium transition-colors"
-        disabled={$isLoading}
       >
         Sign up
-      </button>
+      </a>
     </p>
 
     <p class="text-sm">

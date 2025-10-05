@@ -94,11 +94,21 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           });
         }
 
+        // Set HTTP-only cookie with access token
+        if (result.tokens?.accessToken) {
+          reply.setCookie('auth_token', result.tokens.accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
+            maxAge: 60 * 60 * 24, // 24 hours
+          });
+        }
+
         reply.statusCode = 201;
         return reply.send({
           message: 'Registration successful',
           user: result.user,
-          accessToken: result.tokens?.accessToken,
           sessionId: result.sessionId,
         });
       } catch {
@@ -154,10 +164,20 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           role: result.user?.role,
         });
 
+        // Set HTTP-only cookie with access token
+        if (result.tokens?.accessToken) {
+          reply.setCookie('auth_token', result.tokens.accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
+            maxAge: 60 * 60 * 24, // 24 hours
+          });
+        }
+
         return reply.send({
           message: 'Login successful',
           user: result.user,
-          accessToken: result.tokens?.accessToken,
           sessionId: result.sessionId,
         });
       } catch {
@@ -205,6 +225,14 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
+          // Clear auth cookie
+          reply.clearCookie('auth_token', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/',
+          });
+
           return reply.send({
             message: allDevices
               ? 'Logged out from all devices'
@@ -250,10 +278,20 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
+          // Update HTTP-only cookie with new access token
+          if (result.tokens?.accessToken) {
+            reply.setCookie('auth_token', result.tokens.accessToken, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: 'strict',
+              path: '/',
+              maxAge: 60 * 60 * 24, // 24 hours
+            });
+          }
+
           return reply.send({
             message: 'Session refreshed successfully',
             user: result.user,
-            accessToken: result.tokens?.accessToken,
             sessionId: result.sessionId,
           });
         } catch {

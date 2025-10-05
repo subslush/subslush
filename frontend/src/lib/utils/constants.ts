@@ -1,5 +1,5 @@
 export const API_CONFIG = {
-  BASE_URL: '/api/v1',
+  BASE_URL: 'http://localhost:3333/api/v1',
   API_VERSION: 'v1',
   TIMEOUT: 30000,
   RETRY_ATTEMPTS: 3

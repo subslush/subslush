@@ -39,6 +39,7 @@
     "@skeletonlabs/skeleton": "^2.10.2",
     "@tanstack/svelte-query": "^5.90.2",
     "axios": "^1.12.2",
+    "jwt-decode": "^4.0.0",
     "lucide-svelte": "^0.294.0",
     "zod": "^3.25.76"
   },
