@@ -145,10 +145,29 @@ export const authPreHandler = async (
   reply: FastifyReply
 ): Promise<void> => {
   try {
-    const authHeader = request.headers.authorization;
-    const token = jwtService.extractBearerToken(authHeader);
+    // CRITICAL: Check cookies first (HTTP-only auth tokens)
+    let token: string | undefined = request.cookies['auth_token'];
+
+    // Fallback to Authorization header for API clients
+    if (!token) {
+      const authHeader = request.headers.authorization;
+      const bearerToken = jwtService.extractBearerToken(authHeader);
+      token = bearerToken || undefined;
+    }
+
+    console.log(
+      '🔐 [AUTH MIDDLEWARE] Token source:',
+      token ? (request.cookies['auth_token'] ? 'cookie' : 'header') : 'none'
+    );
+    console.log(
+      '🔐 [AUTH MIDDLEWARE] Cookie token:',
+      request.cookies['auth_token'] ? 'exists' : 'missing'
+    );
 
     if (!token) {
+      console.warn(
+        '🔐 [AUTH MIDDLEWARE] No auth token found in cookies or headers'
+      );
       return sendError(
         reply,
         HttpStatus.UNAUTHORIZED,
@@ -161,6 +180,10 @@ export const authPreHandler = async (
     const tokenValidation = jwtService.verifyToken(token);
 
     if (!tokenValidation.isValid) {
+      console.warn(
+        '🔐 [AUTH MIDDLEWARE] Invalid token:',
+        tokenValidation.error
+      );
       return sendError(
         reply,
         HttpStatus.UNAUTHORIZED,
@@ -207,6 +230,12 @@ export const authPreHandler = async (
       sessionId: payload.sessionId,
       isAdmin: payload.role === 'admin',
     };
+
+    console.log(
+      '✅ [AUTH MIDDLEWARE] User authenticated:',
+      request.user.userId,
+      request.user.email
+    );
   } catch {
     return sendError(
       reply,

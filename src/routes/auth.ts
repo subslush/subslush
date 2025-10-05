@@ -96,13 +96,21 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
         // Set HTTP-only cookie with access token
         if (result.tokens?.accessToken) {
+          console.log('🍪 [AUTH] Setting cookie for user:', result.user?.id);
+
           reply.setCookie('auth_token', result.tokens.accessToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            secure: process.env['NODE_ENV'] === 'production',
+            sameSite: 'lax', // CHANGE: 'strict' blocks cookies in cross-origin dev scenarios
+            domain: 'localhost', // EXPLICIT: Set domain for localhost
             path: '/',
             maxAge: 60 * 60 * 24, // 24 hours
           });
+
+          console.log(
+            '🍪 [AUTH] Cookie set, token preview:',
+            result.tokens.accessToken.substring(0, 20) + '...'
+          );
         }
 
         reply.statusCode = 201;
@@ -166,13 +174,21 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
         // Set HTTP-only cookie with access token
         if (result.tokens?.accessToken) {
+          console.log('🍪 [AUTH] Setting cookie for user:', result.user?.id);
+
           reply.setCookie('auth_token', result.tokens.accessToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            secure: process.env['NODE_ENV'] === 'production',
+            sameSite: 'lax', // CHANGE: 'strict' blocks cookies in cross-origin dev scenarios
+            domain: 'localhost', // EXPLICIT: Set domain for localhost
             path: '/',
             maxAge: 60 * 60 * 24, // 24 hours
           });
+
+          console.log(
+            '🍪 [AUTH] Cookie set, token preview:',
+            result.tokens.accessToken.substring(0, 20) + '...'
+          );
         }
 
         return reply.send({
@@ -228,8 +244,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           // Clear auth cookie
           reply.clearCookie('auth_token', {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            secure: process.env['NODE_ENV'] === 'production',
+            sameSite: 'lax', // CHANGE: 'strict' blocks cookies in cross-origin dev scenarios
             path: '/',
           });
 
@@ -282,8 +298,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           if (result.tokens?.accessToken) {
             reply.setCookie('auth_token', result.tokens.accessToken, {
               httpOnly: true,
-              secure: process.env.NODE_ENV === 'production',
-              sameSite: 'strict',
+              secure: process.env['NODE_ENV'] === 'production',
+              sameSite: 'lax', // CHANGE: 'strict' blocks cookies in cross-origin dev scenarios
               path: '/',
               maxAge: 60 * 60 * 24, // 24 hours
             });
