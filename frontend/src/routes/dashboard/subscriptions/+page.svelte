@@ -17,16 +17,6 @@
     retry: 2
   });
 
-  const groupedPlans = (plans: ServicePlanDetails[]) => {
-    return plans.reduce((acc, plan) => {
-      if (!acc[plan.service_type]) {
-        acc[plan.service_type] = [];
-      }
-      acc[plan.service_type].push(plan);
-      return acc;
-    }, {} as Record<ServiceType, ServicePlanDetails[]>);
-  };
-
   const serviceDisplayNames = {
     spotify: 'Spotify',
     netflix: 'Netflix',
@@ -55,7 +45,7 @@
     selectedPlan = null;
   }
 
-  $: groupedData = $plansQuery.data?.plans ? groupedPlans($plansQuery.data.plans) : {} as Record<ServiceType, ServicePlanDetails[]>;
+  $: groupedData = $plansQuery.data?.services || {} as Record<ServiceType, ServicePlanDetails[]>;
   $: serviceTypes = Object.keys(groupedData) as ServiceType[];
 </script>
 

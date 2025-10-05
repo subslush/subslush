@@ -50,7 +50,8 @@ export interface PurchaseResponse {
 }
 
 export interface AvailablePlansResponse {
-  plans: ServicePlanDetails[];
+  services: Record<ServiceType, ServicePlanDetails[]>;
+  total_plans: number;
 }
 
 export interface SubscriptionsResponse {
