@@ -51,8 +51,8 @@ export const actions: Actions = {
       // Backend should have set the auth_token cookie
       // The cookie will be automatically sent with subsequent requests
 
-      // Redirect to dashboard on successful login
-      throw redirect(303, '/dashboard');
+      // Return success response instead of redirecting
+      return { success: true, user: result.user };
     } catch (error) {
       console.error('Login error:', error);
       return fail(500, {

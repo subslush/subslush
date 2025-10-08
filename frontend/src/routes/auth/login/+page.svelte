@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { enhance } from '$app/forms';
+  import { goto } from '$app/navigation';
   import { Eye, EyeOff, LogIn, Loader2 } from 'lucide-svelte';
   import { page } from '$app/stores';
+  import { auth } from '$lib/stores/auth';
 
   let showPassword = false;
   let emailInput: HTMLInputElement;
@@ -51,9 +53,23 @@
   <!-- Login Form -->
   <form method="POST" use:enhance={() => {
     isSubmitting = true;
-    return async ({ update }) => {
-      await update();
+    return async ({ result, update }) => {
       isSubmitting = false;
+
+      if (result.type === 'success' && result.data?.success) {
+        // Update auth store with user data
+        if (result.data.user) {
+          auth.init(result.data.user);
+        }
+        // Navigate to dashboard
+        await goto('/dashboard');
+      } else if (result.type === 'failure') {
+        // Let SvelteKit handle the error display
+        await update();
+      } else {
+        // Handle other result types
+        await update();
+      }
     };
   }} class="space-y-4" novalidate>
     <!-- Email Field -->
