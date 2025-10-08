@@ -66,11 +66,11 @@
 
   // Status filter options
   const statusFilters = [
-    { value: 'all', label: 'All Status', count: data.subscriptions.length },
-    { value: 'active', label: 'Active', count: data.subscriptions.filter(s => s.status === 'active').length },
-    { value: 'expired', label: 'Expired', count: data.subscriptions.filter(s => s.status === 'expired').length },
-    { value: 'cancelled', label: 'Cancelled', count: data.subscriptions.filter(s => s.status === 'cancelled').length }
-  ];
+    { value: 'all' as const, label: 'All Status', count: data.subscriptions.length },
+    { value: 'active' as const, label: 'Active', count: data.subscriptions.filter(s => s.status === 'active').length },
+    { value: 'expired' as const, label: 'Expired', count: data.subscriptions.filter(s => s.status === 'expired').length },
+    { value: 'cancelled' as const, label: 'Cancelled', count: data.subscriptions.filter(s => s.status === 'cancelled').length }
+  ] as const;
 </script>
 
 <svelte:head>
@@ -110,7 +110,7 @@
     <div class="flex flex-wrap gap-3">
       {#each statusFilters as filter}
         <button
-          on:click={() => selectedFilter = filter.value as any}
+          on:click={() => selectedFilter = filter.value}
           class="flex items-center space-x-2 px-4 py-2 rounded-lg border transition-all duration-200 {selectedFilter === filter.value
             ? 'bg-primary-600 text-white border-primary-600'
             : 'bg-surface-50 dark:bg-surface-800 text-surface-700 dark:text-surface-300 border-surface-300 dark:border-surface-600 hover:bg-surface-100 dark:hover:bg-surface-700'}"

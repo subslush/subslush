@@ -217,27 +217,32 @@
       {#if showCredentials}
         <div class="space-y-4">
           <div class="p-4 bg-surface-100 dark:bg-surface-700 rounded-lg">
-            <div class="space-y-3">
+            <dl class="space-y-3">
               <div>
-                <label class="text-sm font-medium text-surface-700 dark:text-surface-300">Email Address</label>
-                <div class="mt-1 p-3 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-600 rounded font-mono text-sm">
+                <dt class="text-sm font-medium text-surface-700 dark:text-surface-300">
+                  Email Address
+                </dt>
+                <dd class="mt-1 p-3 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-600 rounded font-mono text-sm">
                   premium.account@example.com
-                </div>
+                </dd>
               </div>
 
               <div>
-                <label class="text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
-                <div class="mt-1 p-3 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-600 rounded font-mono text-sm">
+                <dt class="text-sm font-medium text-surface-700 dark:text-surface-300">
+                  Password
+                </dt>
+                <dd class="mt-1 p-3 bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-600 rounded font-mono text-sm">
                   SecurePassword123!
-                </div>
+                </dd>
               </div>
 
-              <div class="p-3 bg-warning-50 dark:bg-warning-900 border border-warning-200 dark:border-warning-700 rounded-lg">
-                <p class="text-warning-800 dark:text-warning-200 text-sm">
-                  <AlertTriangle size={16} class="inline mr-2" />
-                  Keep these credentials secure. Do not share them with others.
-                </p>
-              </div>
+            </dl>
+
+            <div class="p-3 bg-warning-50 dark:bg-warning-900 border border-warning-200 dark:border-warning-700 rounded-lg">
+              <p class="text-warning-800 dark:text-warning-200 text-sm">
+                <AlertTriangle size={16} class="inline mr-2" />
+                Keep these credentials secure. Do not share them with others.
+              </p>
             </div>
           </div>
         </div>
