@@ -56,17 +56,28 @@
     return async ({ result, update }) => {
       isSubmitting = false;
 
+      console.log('✅ [LOGIN] Form submission result:', result);
+
       if (result.type === 'success' && result.data?.success) {
+        console.log('✅ [LOGIN] Success, initializing auth store');
+
         // Update auth store with user data
         if (result.data.user) {
           auth.init(result.data.user);
+          console.log('✅ [LOGIN] Auth store initialized with user:', result.data.user);
+        } else {
+          console.warn('⚠️ [LOGIN] No user data in success response');
         }
+
         // Navigate to dashboard
+        console.log('✅ [LOGIN] Redirecting to dashboard');
         await goto('/dashboard');
       } else if (result.type === 'failure') {
+        console.error('❌ [LOGIN] Login failed:', result.data);
         // Let SvelteKit handle the error display
         await update();
       } else {
+        console.log('📝 [LOGIN] Other result type:', result.type);
         // Handle other result types
         await update();
       }

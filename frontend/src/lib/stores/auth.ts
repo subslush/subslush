@@ -1,6 +1,7 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
+import { authService } from '$lib/api/auth.js';
 
 export interface User {
   id: string;
@@ -14,29 +15,87 @@ interface AuthState {
   user: User | null;
   isLoading: boolean;
   error: string | null;
+  isAuthenticated: boolean;
+  initialized: boolean;
 }
 
 const initialState: AuthState = {
   user: null,
   isLoading: false,
-  error: null
+  error: null,
+  isAuthenticated: false,
+  initialized: false
 };
 
 function createAuthStore(initialUser: User | null = null) {
   const { subscribe, set, update } = writable<AuthState>({
     ...initialState,
-    user: initialUser
+    user: initialUser,
+    isAuthenticated: !!initialUser
   });
 
   return {
     subscribe,
 
+    // Critical method needed by dashboard layout
+    ensureAuthInitialized: async (): Promise<void> => {
+      const state = get({ subscribe });
+
+      // If already initialized, skip
+      if (state.initialized) {
+        console.log('🔐 [AUTH STORE] Already initialized, skipping');
+        return;
+      }
+
+      // Only run in browser
+      if (!browser) {
+        console.log('🔐 [AUTH STORE] Server-side, skipping initialization');
+        return;
+      }
+
+      console.log('🔐 [AUTH STORE] Initializing auth from session...');
+
+      update(s => ({ ...s, isLoading: true }));
+
+      try {
+        // Try to refresh session from cookie
+        const response = await authService.refreshSession();
+
+        console.log('🔐 [AUTH STORE] Session refresh successful:', response.user);
+
+        update(s => ({
+          ...s,
+          user: response.user,
+          isAuthenticated: true,
+          isLoading: false,
+          initialized: true,
+          error: null
+        }));
+      } catch (error: any) {
+        console.error('🔐 [AUTH STORE] Session refresh failed:', error);
+
+        // If refresh fails, user is not authenticated
+        update(s => ({
+          ...s,
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+          initialized: true,
+          error: null
+        }));
+      }
+    },
+
     // Initialize with user data from server
     init: (user: User | null) => {
+      console.log('🔐 [AUTH STORE] Initializing with user:', user);
+
       set({
         user,
         isLoading: false,
-        error: null
+        error: null,
+        isAuthenticated: !!user,
+        initialized: true
       });
     },
 
@@ -62,34 +121,31 @@ function createAuthStore(initialUser: User | null = null) {
       update(state => ({ ...state, isLoading: true }));
 
       try {
-        // Call logout endpoint (will clear HTTP-only cookie)
-        const response = await fetch('/api/v1/auth/logout', {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ allDevices: false })
-        });
+        // Call logout endpoint using authService
+        await authService.logout({ allDevices: false });
 
-        // Clear local state regardless of API response
+        // Clear local state
         set({
           user: null,
           isLoading: false,
-          error: null
+          error: null,
+          isAuthenticated: false,
+          initialized: false
         });
 
-        // Redirect to home
-        goto('/');
+        // Redirect to login
+        goto('/auth/login');
       } catch (error) {
-        console.error('Logout error:', error);
+        console.error('🔐 [AUTH STORE] Logout error:', error);
         // Still clear local state and redirect on error
         set({
           user: null,
           isLoading: false,
-          error: null
+          error: null,
+          isAuthenticated: false,
+          initialized: false
         });
-        goto('/');
+        goto('/auth/login');
       }
     },
 
@@ -113,6 +169,6 @@ export const auth = createAuthStore();
 
 // Derived stores for convenience
 export const user = derived(auth, $auth => $auth.user);
-export const isAuthenticated = derived(auth, $auth => !!$auth.user);
+export const isAuthenticated = derived(auth, $auth => $auth.isAuthenticated);
 export const isLoading = derived(auth, $auth => $auth.isLoading);
 export const authError = derived(auth, $auth => $auth.error);

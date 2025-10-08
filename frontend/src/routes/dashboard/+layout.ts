@@ -32,8 +32,9 @@ export const load: LayoutLoad = async ({ url }) => {
     console.log('🛡️ [DASHBOARD GUARD] Auth state:', {
       isAuthenticated: authState.isAuthenticated,
       hasUser: !!authState.user,
-      hasToken: !!authState.accessToken,
-      isLoading: authState.isLoading
+      userId: authState.user?.id,
+      isLoading: authState.isLoading,
+      initialized: authState.initialized
     });
 
     if (!authState.isAuthenticated) {
