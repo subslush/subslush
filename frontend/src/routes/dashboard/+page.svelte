@@ -6,17 +6,21 @@
   import { formatName, formatRelativeTime } from '$lib/utils/formatters.js';
   import { apiClient } from '$lib/api';
   import { browser } from '$app/environment';
+  import type { PageData } from './$types';
 
-  // Get user data reactively
-  $: userId = $user?.id;
+  export let data: PageData;
+
+  // Use user from parent data, fallback to auth store
+  $: currentUser = data.user || $user;
+  $: userId = currentUser?.id;
   $: userName = (() => {
-    if (!$user) return 'User';
+    if (!currentUser) return 'User';
 
-    console.log('🔍 [USERNAME DEBUG] User data:', { firstName: $user.firstName, lastName: $user.lastName });
+    console.log('🔍 [USERNAME DEBUG] User data:', { firstName: currentUser.firstName, lastName: currentUser.lastName });
 
     // Try direct User properties first
-    const firstName = $user.firstName;
-    const lastName = $user.lastName;
+    const firstName = currentUser.firstName;
+    const lastName = currentUser.lastName;
 
     console.log('🔍 [USERNAME DEBUG] Extracted names:', { firstName, lastName });
 
@@ -27,22 +31,24 @@
     }
 
     // Fallback to email username
-    const emailUsername = $user.email?.split('@')[0] || 'User';
+    const emailUsername = currentUser.email?.split('@')[0] || 'User';
     console.log('🔍 [USERNAME DEBUG] Falling back to email:', emailUsername);
     return emailUsername;
   })();
-  $: userEmail = $user?.email || '';
-  $: accountCreated = $user?.createdAt ? new Date($user.createdAt) : null;
-  $: lastLogin = $user?.lastLoginAt ? new Date($user.lastLoginAt) : null;
+  $: userEmail = currentUser?.email || '';
+  $: accountCreated = currentUser?.createdAt ? new Date(currentUser.createdAt) : null;
+  $: lastLogin = currentUser?.lastLoginAt ? new Date(currentUser.lastLoginAt) : null;
 
-  // Create derived store for query enablement
+  // Create derived store for query enablement - use currentUser or auth store
   const shouldFetchBalance = derived(
     [user, isAuthenticated],
     ([$user, $isAuthenticated]) => {
-      const enabled = !!$user?.id && $isAuthenticated;
+      const effectiveUser = currentUser || $user;
+      const enabled = !!effectiveUser?.id && ($isAuthenticated || !!currentUser);
       console.log('🔍 [BALANCE QUERY] Enablement check:', {
-        userId: $user?.id,
+        userId: effectiveUser?.id,
         isAuthenticated: $isAuthenticated,
+        hasCurrentUser: !!currentUser,
         enabled
       });
       return enabled;
@@ -53,7 +59,8 @@
   const balanceQuery = createQuery({
     queryKey: ['creditBalance', userId],
     queryFn: async () => {
-      const currentUserId = $user?.id;
+      const effectiveUser = currentUser || $user;
+      const currentUserId = effectiveUser?.id;
       if (!currentUserId) {
         console.error('🏦 [DASHBOARD] No user ID available for balance fetch');
         throw new Error('User ID not available');
@@ -89,7 +96,8 @@
         data: $balanceQuery.data,
         error: $balanceQuery.error
       });
-      console.log('Full User Object:', $user);
+      console.log('Full User Object (store):', $user);
+      console.log('Current User (data):', currentUser);
       console.log('==============================================');
     }
   }
@@ -117,7 +125,7 @@
 					Welcome back, {userName}!
 				</h1>
 				<p class="text-surface-600-300-token">
-					{#if $user?.firstName}
+					{#if currentUser?.firstName}
 						Good to see you again!
 					{:else}
 						Here's your dashboard overview

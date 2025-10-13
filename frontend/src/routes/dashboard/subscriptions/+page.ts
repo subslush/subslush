@@ -2,6 +2,7 @@ import type { PageLoad } from './$types';
 import { createApiClient } from '$lib/api/client.js';
 import { API_ENDPOINTS } from '$lib/utils/constants.js';
 import { error } from '@sveltejs/kit';
+import { browser } from '$app/environment';
 import type { ServicePlanDetails, ServiceType } from '$lib/types/subscription.js';
 
 export const load: PageLoad = async ({ fetch, parent }) => {
@@ -71,7 +72,8 @@ export const load: PageLoad = async ({ fetch, parent }) => {
       plans,
       groupedPlans: responseData.services,
       userBalance, // Now guaranteed to be a number, not an object
-      totalPlans: responseData.total_plans || plans.length
+      totalPlans: responseData.total_plans || plans.length,
+      user: parentData.user, // Pass user through
     };
   } catch (err: any) {
     console.error('❌ [SUBSCRIPTIONS PAGE] Failed to load subscription plans:', err);

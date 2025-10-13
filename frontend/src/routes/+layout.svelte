@@ -16,14 +16,28 @@
 		}
 	});
 
-	// Hydrate auth store with server data
-	$: if (data.user !== undefined) {
-		console.log('🔐 [LAYOUT] Hydrating auth store with user:', data.user?.email);
-		auth.setUser(data.user);
+	// Hydrate auth store with server data immediately when data changes (SSR + CSR)
+	$: {
+		if (data.user !== undefined) {
+			console.log('🔐 [LAYOUT] Hydrating auth store with user:', data.user?.email || 'null');
+			auth.setUser(data.user);
+		}
 	}
 
 	onMount(() => {
 		document.body.setAttribute('data-theme', 'skeleton');
+
+		console.log('🔐 [LAYOUT] Component mounted');
+		console.log('🔐 [LAYOUT] Current auth state:', {
+			isAuthenticated: $auth.isAuthenticated,
+			userEmail: $auth.user?.email,
+		});
+
+		// If we have a user from server data but store is not initialized, hydrate again
+		if (data.user && !$auth.isAuthenticated) {
+			console.log('🔐 [LAYOUT] Re-hydrating auth store on mount');
+			auth.setUser(data.user);
+		}
 	});
 </script>
 
