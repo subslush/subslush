@@ -40,14 +40,14 @@ export const load: LayoutServerLoad = async ({ locals, fetch, cookies }) => {
   } catch (error) {
     console.error('Dashboard layout: Failed to get profile:', error);
     // On network error, still allow access if JWT is valid (offline tolerance)
-    // Note: firstName/lastName will be undefined here since they come from the backend
+    // Note: firstName/lastName are omitted since they're not in JWT and backend call failed
     return {
       user: {
         id: locals.user.id,
         email: locals.user.email,
-        firstName: locals.user.firstName, // Will be undefined
-        lastName: locals.user.lastName, // Will be undefined
-        role: locals.user.role
+        role: locals.user.role,
+        // firstName/lastName intentionally omitted - they're not available offline
+        displayName: null
       }
     };
   }

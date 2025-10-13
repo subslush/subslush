@@ -15,8 +15,8 @@ export const load: LayoutServerLoad = async ({ fetch, cookies }) => {
     console.log('🍪 [LAYOUT SERVER] Auth token found:', authToken.substring(0, 20) + '...');
 
     // Make request to backend with cookie in header
-    // SvelteKit's fetch automatically forwards cookies, but we'll be explicit
-    const response = await fetch('http://localhost:3001/api/v1/users/profile', {
+    // Use the auth profile endpoint which correctly returns user data
+    const response = await fetch('http://localhost:3001/api/v1/auth/profile', {
       method: 'GET',
       credentials: 'include',
       headers: {
@@ -33,10 +33,11 @@ export const load: LayoutServerLoad = async ({ fetch, cookies }) => {
     }
 
     const data = await response.json();
-    console.log('✅ [LAYOUT SERVER] User profile loaded:', data.data?.profile?.email);
+    console.log('✅ [LAYOUT SERVER] User profile loaded:', data.user?.email);
+    console.log('🔍 [LAYOUT SERVER] Full response:', JSON.stringify(data, null, 2));
 
     return {
-      user: data.data?.profile || null,
+      user: data.user || null,
     };
   } catch (error) {
     console.error('❌ [LAYOUT SERVER] Failed to load session:', error);

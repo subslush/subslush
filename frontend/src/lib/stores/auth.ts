@@ -6,9 +6,10 @@ import { authService } from '$lib/api/auth.js';
 export interface User {
   id: string;
   email: string;
-  firstName?: string;
-  lastName?: string;
-  role?: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  displayName?: string | null;
 }
 
 interface AuthState {
@@ -160,6 +161,105 @@ function createAuthStore(initialUser: User | null = null) {
         }
         return state;
       });
+    },
+
+    // Register method - calls authService and handles response
+    register: async (userData: {
+      email: string;
+      password: string;
+      firstName?: string;
+      lastName?: string;
+    }) => {
+      if (!browser) return;
+
+      update(state => ({ ...state, isLoading: true, error: null }));
+
+      try {
+        console.log('🔐 [AUTH STORE] Starting registration for:', userData.email);
+
+        const response = await authService.register(userData);
+
+        console.log('🔐 [AUTH STORE] Registration successful:', response.user);
+
+        // Update auth store with user data
+        update(state => ({
+          ...state,
+          user: response.user,
+          isAuthenticated: true,
+          isLoading: false,
+          initialized: true,
+          error: null
+        }));
+
+        // Force a complete page refresh to ensure server gets the cookie
+        console.log('🔐 [AUTH STORE] Redirecting to dashboard with refresh...');
+        if (browser) {
+          window.location.href = '/dashboard';
+        }
+
+        return response;
+      } catch (error: any) {
+        console.error('🔐 [AUTH STORE] Registration error:', error);
+
+        const errorMessage = error.message || 'Registration failed. Please try again.';
+
+        update(state => ({
+          ...state,
+          error: errorMessage,
+          isLoading: false
+        }));
+
+        throw error;
+      }
+    },
+
+    // Login method - calls authService and handles response
+    login: async (credentials: {
+      email: string;
+      password: string;
+      rememberMe?: boolean;
+    }) => {
+      if (!browser) return;
+
+      update(state => ({ ...state, isLoading: true, error: null }));
+
+      try {
+        console.log('🔐 [AUTH STORE] Starting login for:', credentials.email);
+
+        const response = await authService.login(credentials);
+
+        console.log('🔐 [AUTH STORE] Login successful:', response.user);
+
+        // Update auth store with user data
+        update(state => ({
+          ...state,
+          user: response.user,
+          isAuthenticated: true,
+          isLoading: false,
+          initialized: true,
+          error: null
+        }));
+
+        // Force a complete page refresh to ensure server gets the cookie
+        console.log('🔐 [AUTH STORE] Redirecting to dashboard with refresh...');
+        if (browser) {
+          window.location.href = '/dashboard';
+        }
+
+        return response;
+      } catch (error: any) {
+        console.error('🔐 [AUTH STORE] Login error:', error);
+
+        const errorMessage = error.message || 'Login failed. Please try again.';
+
+        update(state => ({
+          ...state,
+          error: errorMessage,
+          isLoading: false
+        }));
+
+        throw error;
+      }
     },
 
     // Alias for init method - used for SSR hydration

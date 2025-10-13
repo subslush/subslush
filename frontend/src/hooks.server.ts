@@ -29,12 +29,10 @@ export const handle: Handle = async ({ event, resolve }) => {
       // Check if token is expired
       const now = Math.floor(Date.now() / 1000);
       if (payload.exp > now) {
-        // Token is valid, set user data
+        // Token is valid, set user data (firstName/lastName omitted as they're not in JWT)
         event.locals.user = {
           id: payload.userId,
           email: payload.email,
-          firstName: undefined, // Will be populated by page loaders if needed
-          lastName: undefined,
           role: payload.role,
           sessionId: payload.sessionId
         };

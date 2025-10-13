@@ -4,6 +4,7 @@
   import { CreditCard, Users, TrendingUp, Activity, ShoppingBag, Settings, User2, Calendar, Loader2 } from 'lucide-svelte';
   import { user, isAuthenticated } from '$lib/stores/auth.js';
   import { formatName, formatRelativeTime } from '$lib/utils/formatters.js';
+  import { extractTotalBalance, extractAvailableBalance, extractPendingBalance, formatCurrency } from '$lib/utils/credits.js';
   import { apiClient } from '$lib/api';
   import { browser } from '$app/environment';
   import type { PageData } from './$types';
@@ -40,47 +41,49 @@
   $: accountCreated = currentUser?.createdAt ? new Date(currentUser.createdAt) : null;
   $: lastLogin = currentUser?.lastLoginAt ? new Date(currentUser.lastLoginAt) : null;
 
-  // Create derived store for query enablement - use server data only
-  const shouldFetchBalance = derived(
-    [user, isAuthenticated],
-    ([$user, $isAuthenticated]) => {
-      const effectiveUser = currentUser;
-      const enabled = !!effectiveUser?.id && ($isAuthenticated || !!currentUser);
-      console.log('🔍 [BALANCE QUERY] Enablement check:', {
-        userId: effectiveUser?.id,
-        isAuthenticated: $isAuthenticated,
-        hasCurrentUser: !!currentUser,
-        enabled
-      });
-      return enabled;
-    }
-  );
-
-  // Credit Balance Query - now properly reactive
-  const balanceQuery = createQuery({
-    queryKey: ['creditBalance', userId],
+  // Credit Balance Query - reactive and properly enabled
+  $: balanceQuery = createQuery({
+    queryKey: ['creditBalance', currentUser?.id, $isAuthenticated ? 'auth' : 'unauth'],
     queryFn: async () => {
-      const effectiveUser = currentUser;
-      const currentUserId = effectiveUser?.id;
+      const currentUserId = currentUser?.id;
       if (!currentUserId) {
         console.error('🏦 [DASHBOARD] No user ID available for balance fetch');
         throw new Error('User ID not available');
       }
 
       console.log('🏦 [DASHBOARD] Fetching credit balance for user:', currentUserId);
+      console.log('🏦 [DASHBOARD] API call URL:', `/credits/balance/${currentUserId}`);
+
       try {
         const response = await apiClient.get(`/credits/balance/${currentUserId}`);
         console.log('🏦 [DASHBOARD] Credit balance response:', response.data);
+        console.log('🏦 [DASHBOARD] Response status:', response.status);
         return response.data;
-      } catch (error) {
-        console.error('🏦 [DASHBOARD] Credit balance fetch error:', error);
+      } catch (error: any) {
+        console.error('🏦 [DASHBOARD] Credit balance fetch error:', {
+          message: error.message,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          config: {
+            url: error.config?.url,
+            method: error.config?.method,
+            headers: error.config?.headers
+          }
+        });
         throw error;
       }
     },
-    enabled: $shouldFetchBalance,  // ✓ Now reactive!
-    staleTime: 30000,
+    enabled: !!currentUser?.id && $isAuthenticated,
+    staleTime: 0,  // ✓ Always fetch fresh data for debugging
     retry: 2,
-    retryDelay: 1000
+    retryDelay: 1000,
+    onError: (error) => {
+      console.error('🏦 [DASHBOARD] TanStack Query error:', error);
+    },
+    onSuccess: (data) => {
+      console.log('🏦 [DASHBOARD] TanStack Query success:', data);
+    }
   });
 
   // Debug logging
@@ -88,14 +91,15 @@
     if (browser) {
       console.log('🔍 [DASHBOARD DEBUG] ===== Credit Balance Query Debug =====');
       console.log('User ID:', userId);
+      console.log('Current User ID:', currentUser?.id);
       console.log('Is Authenticated:', $isAuthenticated);
-      console.log('Should Fetch:', $shouldFetchBalance);
+      console.log('Query Enabled:', !!currentUser?.id && $isAuthenticated);
       console.log('Query Status:', {
         isLoading: $balanceQuery.isLoading,
         isError: $balanceQuery.isError,
         isFetching: $balanceQuery.isFetching,
         data: $balanceQuery.data,
-        error: $balanceQuery.error
+        error: $balanceQuery.error?.message
       });
       console.log('Full User Object (store):', $user);
       console.log('Current User (data):', currentUser);
@@ -173,19 +177,19 @@
 				<div class="text-center p-4 bg-surface-50-900-token rounded-lg">
 					<p class="text-sm text-surface-600-300-token">Total Balance</p>
 					<p class="text-3xl font-bold text-primary-600-300-token">
-						${($balanceQuery.data.totalBalance || 0).toFixed(2)}
+						{formatCurrency(extractTotalBalance($balanceQuery.data))}
 					</p>
 				</div>
 				<div class="text-center p-4 bg-surface-50-900-token rounded-lg">
 					<p class="text-sm text-surface-600-300-token">Available</p>
 					<p class="text-2xl font-semibold text-success-600-300-token">
-						${($balanceQuery.data.availableBalance || 0).toFixed(2)}
+						{formatCurrency(extractAvailableBalance($balanceQuery.data))}
 					</p>
 				</div>
 				<div class="text-center p-4 bg-surface-50-900-token rounded-lg">
 					<p class="text-sm text-surface-600-300-token">Pending</p>
 					<p class="text-2xl font-semibold text-warning-600-300-token">
-						${($balanceQuery.data.pendingBalance || 0).toFixed(2)}
+						{formatCurrency(extractPendingBalance($balanceQuery.data))}
 					</p>
 				</div>
 			</div>
