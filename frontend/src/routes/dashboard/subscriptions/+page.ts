@@ -1,38 +1,69 @@
 import type { PageLoad } from './$types';
 import { subscriptionService } from '$lib/api/subscriptions.js';
 import { error } from '@sveltejs/kit';
-import type { ServicePlanDetails } from '$lib/types/subscription.js';
+import type { ServicePlanDetails, ServiceType } from '$lib/types/subscription.js';
 
-export const load: PageLoad = async ({ fetch }) => {
+export const load: PageLoad = async ({ parent }) => {
   try {
+    // Wait for parent data (includes authenticated user)
+    const parentData = await parent();
+
+    console.log('📦 [SUBSCRIPTIONS PAGE] Loading subscription plans...');
+
     // Load available subscription plans
     const plansResponse = await subscriptionService.getAvailablePlans();
 
-    // Flatten the plans from services object to a simple array
+    console.log('📦 [SUBSCRIPTIONS PAGE] API Response:', plansResponse);
+
+    // Transform and flatten the plans from services object to a simple array
     const plans: ServicePlanDetails[] = [];
-    for (const [serviceType, servicePlans] of Object.entries(plansResponse.services)) {
-      plans.push(...servicePlans);
+
+    if (plansResponse.services) {
+      for (const [serviceType, servicePlans] of Object.entries(plansResponse.services)) {
+        if (Array.isArray(servicePlans)) {
+          // Transform each plan to match ServicePlanDetails interface
+          const transformedPlans = servicePlans.map((plan: any) => ({
+            service_type: serviceType as ServiceType,
+            plan: plan.plan,
+            price: plan.price,
+            features: plan.features || [],
+            display_name: plan.name || `${serviceType} ${plan.plan}`,
+            description: plan.description || ''
+          }));
+          plans.push(...transformedPlans);
+        }
+      }
     }
 
-    // Get user credit balance if possible (will handle auth checks in component)
+    console.log('📦 [SUBSCRIPTIONS PAGE] Transformed plans count:', plans.length);
+
+    // Get user credit balance if user is authenticated
     let userBalance = 0;
-    try {
-      // This would need user ID - we'll handle this in the component with auth store
-      // const balanceResponse = await subscriptionService.getCreditBalance(userId);
-      // userBalance = balanceResponse.balance;
-    } catch (err) {
-      // Ignore balance errors for now - component will handle
-      console.warn('Could not load user balance:', err);
+    if ((parentData as any).user?.id) {
+      try {
+        const balanceResponse = await subscriptionService.getCreditBalance((parentData as any).user.id);
+        userBalance = balanceResponse.balance;
+        console.log('📦 [SUBSCRIPTIONS PAGE] User balance:', userBalance);
+      } catch (err) {
+        console.warn('⚠️ [SUBSCRIPTIONS PAGE] Could not load user balance:', err);
+        // Don't fail the page load if balance fetch fails
+      }
     }
 
     return {
       plans,
       groupedPlans: plansResponse.services,
       userBalance,
-      totalPlans: plansResponse.total_plans
+      totalPlans: plansResponse.total_plans || plans.length
     };
-  } catch (err) {
-    console.error('Failed to load subscription plans:', err);
+  } catch (err: any) {
+    console.error('❌ [SUBSCRIPTIONS PAGE] Failed to load subscription plans:', err);
+    console.error('❌ [SUBSCRIPTIONS PAGE] Error details:', {
+      message: err.message,
+      status: err.response?.status,
+      data: err.response?.data
+    });
+
     throw error(500, 'Failed to load subscription plans. Please try again.');
   }
 };

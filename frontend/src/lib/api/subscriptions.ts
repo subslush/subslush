@@ -15,11 +15,12 @@ import type {
 export class SubscriptionService {
   async getAvailablePlans(serviceType?: ServiceType): Promise<AvailablePlansResponse> {
     const params = serviceType ? { service_type: serviceType } : {};
-    const response = await apiClient.get<AvailablePlansResponse>(
+    const response = await apiClient.get(
       API_ENDPOINTS.SUBSCRIPTIONS.AVAILABLE,
       { params }
     );
-    return response.data;
+    // Backend wraps response in a data property
+    return response.data.data;
   }
 
   async validatePurchase(data: ValidatePurchaseRequest): Promise<ValidationResponse> {
