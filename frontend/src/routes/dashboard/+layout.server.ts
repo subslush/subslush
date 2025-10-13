@@ -8,27 +8,24 @@ export const load: LayoutServerLoad = async ({ locals, fetch, cookies }) => {
     throw redirect(303, '/auth/login');
   }
 
-  // Get full user data from backend API
+  // Get full user data from backend API with cache busting
   try {
-    const response = await fetch(`${API_CONFIG.BASE_URL}/auth/sessions`, {
+    const cacheBuster = `?t=${Date.now()}`;
+    const response = await fetch(`${API_CONFIG.BASE_URL}/auth/profile${cacheBuster}`, {
       headers: {
-        'Cookie': cookies.getAll().map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
+        'Cookie': cookies.getAll().map(cookie => `${cookie.name}=${cookie.value}`).join('; '),
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
       }
     });
 
     if (response.ok) {
       const data = await response.json();
-      // If the response contains user session info, we know the session is valid
+      console.log('🔍 [LAYOUT SERVER] Profile API response:', JSON.stringify(data, null, 2));
 
-      // Return user data for the layout
+      // Return user data from the API response (which has firstName/lastName from authMiddleware)
       return {
-        user: {
-          id: locals.user.id,
-          email: locals.user.email,
-          firstName: locals.user.firstName,
-          lastName: locals.user.lastName,
-          role: locals.user.role
-        }
+        user: data.user
       };
     } else {
       // Session invalid on backend, clear cookie and redirect
@@ -41,14 +38,15 @@ export const load: LayoutServerLoad = async ({ locals, fetch, cookies }) => {
       throw redirect(303, '/auth/login');
     }
   } catch (error) {
-    console.error('Dashboard layout: Failed to validate session:', error);
+    console.error('Dashboard layout: Failed to get profile:', error);
     // On network error, still allow access if JWT is valid (offline tolerance)
+    // Note: firstName/lastName will be undefined here since they come from the backend
     return {
       user: {
         id: locals.user.id,
         email: locals.user.email,
-        firstName: locals.user.firstName,
-        lastName: locals.user.lastName,
+        firstName: locals.user.firstName, // Will be undefined
+        lastName: locals.user.lastName, // Will be undefined
         role: locals.user.role
       }
     };

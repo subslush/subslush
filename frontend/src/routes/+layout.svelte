@@ -17,9 +17,13 @@
 	});
 
 	// Hydrate auth store with server data immediately when data changes (SSR + CSR)
+	// CRITICAL: Only hydrate if server data has complete firstName/lastName or if user is null
 	$: {
 		if (data.user !== undefined) {
-			console.log('🔐 [LAYOUT] Hydrating auth store with user:', data.user?.email || 'null');
+			// Always prioritize server data since it has complete profile
+			console.log('🔐 [LAYOUT] Hydrating auth store with complete server user:', data.user?.email || 'null');
+			console.log('🔐 [LAYOUT] Server user firstName:', data.user?.firstName);
+			console.log('🔐 [LAYOUT] Server user lastName:', data.user?.lastName);
 			auth.setUser(data.user);
 		}
 	}
@@ -33,9 +37,11 @@
 			userEmail: $auth.user?.email,
 		});
 
-		// If we have a user from server data but store is not initialized, hydrate again
-		if (data.user && !$auth.isAuthenticated) {
-			console.log('🔐 [LAYOUT] Re-hydrating auth store on mount');
+		// CRITICAL: Always force complete user data refresh from server data
+		// This prevents cached/stale user data from being displayed
+		if (data.user) {
+			console.log('🔐 [LAYOUT] FORCING complete user data refresh with server data');
+			console.log('🔐 [LAYOUT] Server user data:', JSON.stringify(data.user, null, 2));
 			auth.setUser(data.user);
 		}
 	});

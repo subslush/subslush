@@ -10,8 +10,9 @@
 
   export let data: PageData;
 
-  // Use user from parent data, fallback to auth store
-  $: currentUser = data.user || $user;
+  // PERMANENT FIX: Always use server data (data.user) which has complete firstName/lastName
+  // Never fall back to auth store ($user) which only has incomplete JWT data
+  $: currentUser = data.user;
   $: userId = currentUser?.id;
   $: userName = (() => {
     if (!currentUser) return 'User';
@@ -39,11 +40,11 @@
   $: accountCreated = currentUser?.createdAt ? new Date(currentUser.createdAt) : null;
   $: lastLogin = currentUser?.lastLoginAt ? new Date(currentUser.lastLoginAt) : null;
 
-  // Create derived store for query enablement - use currentUser or auth store
+  // Create derived store for query enablement - use server data only
   const shouldFetchBalance = derived(
     [user, isAuthenticated],
     ([$user, $isAuthenticated]) => {
-      const effectiveUser = currentUser || $user;
+      const effectiveUser = currentUser;
       const enabled = !!effectiveUser?.id && ($isAuthenticated || !!currentUser);
       console.log('🔍 [BALANCE QUERY] Enablement check:', {
         userId: effectiveUser?.id,
@@ -59,7 +60,7 @@
   const balanceQuery = createQuery({
     queryKey: ['creditBalance', userId],
     queryFn: async () => {
-      const effectiveUser = currentUser || $user;
+      const effectiveUser = currentUser;
       const currentUserId = effectiveUser?.id;
       if (!currentUserId) {
         console.error('🏦 [DASHBOARD] No user ID available for balance fetch');
@@ -172,19 +173,19 @@
 				<div class="text-center p-4 bg-surface-50-900-token rounded-lg">
 					<p class="text-sm text-surface-600-300-token">Total Balance</p>
 					<p class="text-3xl font-bold text-primary-600-300-token">
-						${$balanceQuery.data.balance.totalBalance.toFixed(2)}
+						${($balanceQuery.data.totalBalance || 0).toFixed(2)}
 					</p>
 				</div>
 				<div class="text-center p-4 bg-surface-50-900-token rounded-lg">
 					<p class="text-sm text-surface-600-300-token">Available</p>
 					<p class="text-2xl font-semibold text-success-600-300-token">
-						${$balanceQuery.data.balance.availableBalance.toFixed(2)}
+						${($balanceQuery.data.availableBalance || 0).toFixed(2)}
 					</p>
 				</div>
 				<div class="text-center p-4 bg-surface-50-900-token rounded-lg">
 					<p class="text-sm text-surface-600-300-token">Pending</p>
 					<p class="text-2xl font-semibold text-warning-600-300-token">
-						${$balanceQuery.data.balance.pendingBalance.toFixed(2)}
+						${($balanceQuery.data.pendingBalance || 0).toFixed(2)}
 					</p>
 				</div>
 			</div>

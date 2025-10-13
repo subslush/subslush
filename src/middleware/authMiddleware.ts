@@ -223,9 +223,28 @@ export const authPreHandler = async (
       request.session = sessionValidation.session || undefined;
     }
 
+    // Get full user data including firstName/lastName from auth service
+    let userWithProfile = null;
+    if (payload.sessionId) {
+      try {
+        const { authService } = require('../services/auth');
+        const userResult = await authService.validateSession(payload.sessionId);
+        if (userResult.success && userResult.user) {
+          userWithProfile = userResult.user;
+        }
+      } catch (error) {
+        console.warn(
+          'Failed to get full user profile in authMiddleware:',
+          error
+        );
+      }
+    }
+
     request.user = {
       userId: payload.userId,
       email: payload.email,
+      firstName: userWithProfile?.firstName,
+      lastName: userWithProfile?.lastName,
       role: payload.role || undefined,
       sessionId: payload.sessionId,
       isAdmin: payload.role === 'admin',

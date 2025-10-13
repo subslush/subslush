@@ -49,6 +49,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         'POST /auth/login',
         'POST /auth/logout',
         'POST /auth/refresh',
+        'GET /auth/profile',
         'GET /auth/sessions',
         'DELETE /auth/sessions/:sessionId',
         'POST /auth/password-reset',
@@ -315,6 +316,46 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           return reply.send({
             error: 'Internal Server Error',
             message: 'Session refresh failed',
+          });
+        }
+      }
+    );
+  });
+
+  // Get user profile endpoint (requires authentication)
+  fastify.register(async fastify => {
+    fastify.get(
+      '/profile',
+      {
+        preHandler: [authPreHandler],
+      },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+          const userId = request.user?.userId;
+
+          if (!userId) {
+            reply.statusCode = 400;
+            return reply.send({
+              error: 'Bad Request',
+              message: 'User ID not found',
+            });
+          }
+
+          // The authPreHandler already populated firstName/lastName in request.user
+          return reply.send({
+            user: {
+              id: request.user.userId,
+              email: request.user.email,
+              firstName: request.user.firstName,
+              lastName: request.user.lastName,
+              role: request.user.role,
+            },
+          });
+        } catch {
+          reply.statusCode = 500;
+          return reply.send({
+            error: 'Internal Server Error',
+            message: 'Failed to retrieve profile',
           });
         }
       }

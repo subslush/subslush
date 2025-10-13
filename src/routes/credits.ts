@@ -150,11 +150,13 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
           }
 
           return reply.send({
-            balance: {
-              totalBalance: balance.totalBalance,
-              availableBalance: balance.availableBalance,
-              pendingBalance: balance.pendingBalance,
-            },
+            userId: balance.userId,
+            balance: balance.availableBalance, // Simple numeric balance for easy frontend consumption
+            totalBalance: balance.totalBalance,
+            availableBalance: balance.availableBalance,
+            pendingBalance: balance.pendingBalance,
+            currency: 'USD',
+            lastUpdated: balance.lastUpdated,
           });
         } catch {
           return ErrorResponses.internalError(

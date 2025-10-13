@@ -57,21 +57,24 @@
       isSubmitting = false;
 
       console.log('✅ [LOGIN] Form submission result:', result);
+      console.log('✅ [LOGIN] Result type:', result.type);
+      console.log('✅ [LOGIN] Result data:', result.data);
 
       if (result.type === 'success' && result.data?.success) {
-        console.log('✅ [LOGIN] Success, initializing auth store');
+        console.log('✅ [LOGIN] Login successful, processing...');
 
         // Update auth store with user data
         if (result.data.user) {
+          console.log('✅ [LOGIN] Initializing auth store with user:', result.data.user);
           auth.init(result.data.user);
-          console.log('✅ [LOGIN] Auth store initialized with user:', result.data.user);
         } else {
           console.warn('⚠️ [LOGIN] No user data in success response');
         }
 
-        // Navigate to dashboard
-        console.log('✅ [LOGIN] Redirecting to dashboard');
-        await goto('/dashboard');
+        // CRITICAL: Use replace to prevent back button issues and force navigation
+        console.log('✅ [LOGIN] Redirecting to dashboard...');
+        await goto('/dashboard', { replaceState: true });
+        console.log('✅ [LOGIN] Redirect completed');
       } else if (result.type === 'failure') {
         console.error('❌ [LOGIN] Login failed:', result.data);
         // Let SvelteKit handle the error display
