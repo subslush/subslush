@@ -24,7 +24,7 @@ export class SubscriptionService {
   }
 
   async validatePurchase(data: ValidatePurchaseRequest): Promise<ValidationResponse> {
-    const response = await apiClient.post<ValidationResponse>(
+    const response = await apiClient.post(
       API_ENDPOINTS.SUBSCRIPTIONS.VALIDATE,
       data
     );
@@ -32,7 +32,7 @@ export class SubscriptionService {
   }
 
   async purchaseSubscription(data: PurchaseRequest): Promise<PurchaseResponse> {
-    const response = await apiClient.post<PurchaseResponse>(
+    const response = await apiClient.post(
       API_ENDPOINTS.SUBSCRIPTIONS.PURCHASE,
       data
     );
@@ -40,7 +40,7 @@ export class SubscriptionService {
   }
 
   async getMySubscriptions(query?: SubscriptionQuery): Promise<SubscriptionsResponse> {
-    const response = await apiClient.get<SubscriptionsResponse>(
+    const response = await apiClient.get(
       API_ENDPOINTS.SUBSCRIPTIONS.MY_SUBSCRIPTIONS,
       { params: query }
     );
@@ -48,14 +48,14 @@ export class SubscriptionService {
   }
 
   async getSubscriptionById(subscriptionId: string): Promise<SubscriptionResponse> {
-    const response = await apiClient.get<SubscriptionResponse>(
+    const response = await apiClient.get(
       `${API_ENDPOINTS.SUBSCRIPTIONS.DETAILS}/${subscriptionId}`
     );
     return response.data;
   }
 
   async getCreditBalance(userId: string): Promise<{ balance: number }> {
-    const response = await apiClient.get<{ balance: number }>(
+    const response = await apiClient.get(
       `${API_ENDPOINTS.CREDITS.BALANCE}/${userId}`
     );
     return response.data;

@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { onMount } from 'svelte';
+	import { auth } from '$lib/stores/auth';
+	import type { LayoutData } from './$types';
 	import '../app.css';
+
+	export let data: LayoutData;
 
 	const queryClient = new QueryClient({
 		defaultOptions: {
@@ -11,6 +15,12 @@
 			}
 		}
 	});
+
+	// Hydrate auth store with server data
+	$: if (data.user !== undefined) {
+		console.log('🔐 [LAYOUT] Hydrating auth store with user:', data.user?.email);
+		auth.setUser(data.user);
+	}
 
 	onMount(() => {
 		document.body.setAttribute('data-theme', 'skeleton');

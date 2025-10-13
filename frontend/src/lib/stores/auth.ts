@@ -160,6 +160,19 @@ function createAuthStore(initialUser: User | null = null) {
         }
         return state;
       });
+    },
+
+    // Alias for init method - used for SSR hydration
+    setUser: (user: User | null) => {
+      console.log('🔐 [AUTH STORE] Hydrating with user:', user?.email);
+
+      set({
+        user,
+        isLoading: false,
+        error: null,
+        isAuthenticated: !!user,
+        initialized: true
+      });
     }
   };
 }

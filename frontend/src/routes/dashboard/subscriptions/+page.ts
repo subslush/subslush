@@ -1,25 +1,37 @@
 import type { PageLoad } from './$types';
-import { subscriptionService } from '$lib/api/subscriptions.js';
+import { createApiClient } from '$lib/api/client.js';
+import { API_ENDPOINTS } from '$lib/utils/constants.js';
 import { error } from '@sveltejs/kit';
 import type { ServicePlanDetails, ServiceType } from '$lib/types/subscription.js';
 
-export const load: PageLoad = async ({ parent }) => {
+export const load: PageLoad = async ({ fetch, parent }) => {
   try {
     // Wait for parent data (includes authenticated user)
     const parentData = await parent();
 
-    console.log('📦 [SUBSCRIPTIONS PAGE] Loading subscription plans...');
+    if (!parentData.user) {
+      console.error('❌ [SUBSCRIPTIONS PAGE] No authenticated user');
+      throw error(401, 'Authentication required');
+    }
 
-    // Load available subscription plans
-    const plansResponse = await subscriptionService.getAvailablePlans();
+    console.log('📦 [SUBSCRIPTIONS PAGE] Loading plans for user:', parentData.user.email);
 
-    console.log('📦 [SUBSCRIPTIONS PAGE] API Response:', plansResponse);
+    // Create API client with SvelteKit's fetch for SSR support
+    const apiClient = createApiClient(fetch);
+
+    // Fetch available plans (using custom fetch for SSR)
+    const plansResponse = await apiClient.get(API_ENDPOINTS.SUBSCRIPTIONS.AVAILABLE);
+
+    console.log('📦 [SUBSCRIPTIONS PAGE] API Response:', plansResponse.data);
+
+    // Backend wraps response in data property, extract it
+    const responseData = plansResponse.data.data;
 
     // Transform and flatten the plans from services object to a simple array
     const plans: ServicePlanDetails[] = [];
 
-    if (plansResponse.services) {
-      for (const [serviceType, servicePlans] of Object.entries(plansResponse.services)) {
+    if (responseData.services) {
+      for (const [serviceType, servicePlans] of Object.entries(responseData.services)) {
         if (Array.isArray(servicePlans)) {
           // Transform each plan to match ServicePlanDetails interface
           const transformedPlans = servicePlans.map((plan: any) => ({
@@ -37,31 +49,36 @@ export const load: PageLoad = async ({ parent }) => {
 
     console.log('📦 [SUBSCRIPTIONS PAGE] Transformed plans count:', plans.length);
 
-    // Get user credit balance if user is authenticated
+    // Fetch user credit balance using SSR-compatible API client
     let userBalance = 0;
-    if ((parentData as any).user?.id) {
-      try {
-        const balanceResponse = await subscriptionService.getCreditBalance((parentData as any).user.id);
-        userBalance = balanceResponse.balance;
-        console.log('📦 [SUBSCRIPTIONS PAGE] User balance:', userBalance);
-      } catch (err) {
-        console.warn('⚠️ [SUBSCRIPTIONS PAGE] Could not load user balance:', err);
-        // Don't fail the page load if balance fetch fails
-      }
+    try {
+      const balanceResponse = await apiClient.get(`${API_ENDPOINTS.CREDITS.BALANCE}/${parentData.user.id}`);
+
+      // CRITICAL: Extract the numeric balance, not the whole object
+      const balanceData = balanceResponse.data.data || balanceResponse.data;
+      userBalance = typeof balanceData.balance === 'number'
+        ? balanceData.balance
+        : (typeof balanceData === 'number' ? balanceData : 0);
+
+      console.log('📦 [SUBSCRIPTIONS PAGE] User balance:', userBalance);
+    } catch (err) {
+      console.warn('⚠️ [SUBSCRIPTIONS PAGE] Could not load user balance:', err);
+      // Don't fail the page load if balance fetch fails
+      userBalance = 0;
     }
 
     return {
       plans,
-      groupedPlans: plansResponse.services,
-      userBalance,
-      totalPlans: plansResponse.total_plans || plans.length
+      groupedPlans: responseData.services,
+      userBalance, // Now guaranteed to be a number, not an object
+      totalPlans: responseData.total_plans || plans.length
     };
   } catch (err: any) {
     console.error('❌ [SUBSCRIPTIONS PAGE] Failed to load subscription plans:', err);
     console.error('❌ [SUBSCRIPTIONS PAGE] Error details:', {
       message: err.message,
-      status: err.response?.status,
-      data: err.response?.data
+      statusCode: err.statusCode,
+      error: err.error
     });
 
     throw error(500, 'Failed to load subscription plans. Please try again.');
