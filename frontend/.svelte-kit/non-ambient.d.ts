@@ -27,19 +27,22 @@ export {};
 
 declare module "$app/types" {
 	export interface AppTypes {
-		RouteId(): "/" | "/auth" | "/auth/login" | "/auth/register" | "/dashboard" | "/profile";
+		RouteId(): "/" | "/auth" | "/auth/login" | "/auth/register" | "/dashboard" | "/dashboard/subscriptions" | "/dashboard/subscriptions/active" | "/dashboard/subscriptions/[subscriptionId]" | "/profile";
 		RouteParams(): {
-			
+			"/dashboard/subscriptions/[subscriptionId]": { subscriptionId: string }
 		};
 		LayoutParams(): {
-			"/": Record<string, never>;
+			"/": { subscriptionId?: string };
 			"/auth": Record<string, never>;
 			"/auth/login": Record<string, never>;
 			"/auth/register": Record<string, never>;
-			"/dashboard": Record<string, never>;
+			"/dashboard": { subscriptionId?: string };
+			"/dashboard/subscriptions": { subscriptionId?: string };
+			"/dashboard/subscriptions/active": Record<string, never>;
+			"/dashboard/subscriptions/[subscriptionId]": { subscriptionId: string };
 			"/profile": Record<string, never>
 		};
-		Pathname(): "/" | "/auth" | "/auth/" | "/auth/login" | "/auth/login/" | "/auth/register" | "/auth/register/" | "/dashboard" | "/dashboard/" | "/profile" | "/profile/";
+		Pathname(): "/" | "/auth" | "/auth/" | "/auth/login" | "/auth/login/" | "/auth/register" | "/auth/register/" | "/dashboard" | "/dashboard/" | "/dashboard/subscriptions" | "/dashboard/subscriptions/" | "/dashboard/subscriptions/active" | "/dashboard/subscriptions/active/" | `/dashboard/subscriptions/${string}` & {} | `/dashboard/subscriptions/${string}/` & {} | "/profile" | "/profile/";
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): string & {};
 	}

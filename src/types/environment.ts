@@ -20,6 +20,7 @@ export interface EnvironmentConfig {
   JWT_SECRET: string;
   JWT_EXPIRY: number;
   JWT_ALGORITHM: 'HS256' | 'RS256';
+  COOKIE_SECRET: string;
   SESSION_ENCRYPTION_KEY: string;
   SESSION_IV_LENGTH: number;
   MAX_SESSIONS_PER_USER: number;

@@ -44,7 +44,8 @@ export class SubscriptionService {
       API_ENDPOINTS.SUBSCRIPTIONS.MY_SUBSCRIPTIONS,
       { params: query }
     );
-    return response.data;
+    // Backend wraps response in a data property - unwrap to match other API methods
+    return response.data.data;
   }
 
   async getSubscriptionById(subscriptionId: string): Promise<SubscriptionResponse> {

@@ -56,12 +56,21 @@ export const load: PageLoad = async ({ fetch, parent }) => {
       const balanceResponse = await apiClient.get(`${API_ENDPOINTS.CREDITS.BALANCE}/${parentData.user.id}`);
 
       // CRITICAL: Extract the numeric balance, not the whole object
-      const balanceData = balanceResponse.data.data || balanceResponse.data;
-      userBalance = typeof balanceData.balance === 'number'
-        ? balanceData.balance
-        : (typeof balanceData === 'number' ? balanceData : 0);
+      const balanceData = balanceResponse.data;
+      console.log('🔍 [SUBSCRIPTIONS PAGE] Raw balance response:', JSON.stringify(balanceData, null, 2));
 
-      console.log('📦 [SUBSCRIPTIONS PAGE] User balance:', userBalance);
+      // New backend response has direct balance field
+      if (typeof balanceData.balance === 'number') {
+        userBalance = balanceData.balance;
+      } else if (typeof balanceData.availableBalance === 'number') {
+        userBalance = balanceData.availableBalance;
+      } else if (typeof balanceData.totalBalance === 'number') {
+        userBalance = balanceData.totalBalance;
+      } else {
+        userBalance = 0;
+      }
+
+      console.log('📦 [SUBSCRIPTIONS PAGE] Extracted balance:', userBalance);
     } catch (err) {
       console.warn('⚠️ [SUBSCRIPTIONS PAGE] Could not load user balance:', err);
       // Don't fail the page load if balance fetch fails

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import { Eye, EyeOff, UserPlus, Loader2, Check, X } from 'lucide-svelte';
   import { auth, authError, isLoading } from '$lib/stores/auth.js';
@@ -51,6 +51,9 @@
   async function handleSubmit(event: Event) {
     event.preventDefault();
 
+    // Prevent double submission
+    if ($isLoading) return;
+
     if (!validateForm()) {
       return;
     }
@@ -61,15 +64,24 @@
       const cleanData = {
         email: apiData.email,
         password: apiData.password,
-        ...(apiData.firstName && { firstName: apiData.firstName }),
-        ...(apiData.lastName && { lastName: apiData.lastName })
+        firstName: apiData.firstName || '',
+        lastName: apiData.lastName || ''
       };
 
+      console.log('🔄 [REGISTER] Starting registration process...');
+
+      // Call auth store register method
       await auth.register(cleanData);
-      // Navigation is handled by the auth store
+
+      console.log('✅ [REGISTER] Registration successful');
+
+      // Wait for store to update
+      await tick();
+
+      // Navigation is handled by the auth store automatically
     } catch (error) {
       // Error is handled by the auth store and displayed via authError
-      console.error('Registration failed:', error);
+      console.error('❌ [REGISTER] Registration failed:', error);
     }
   }
 

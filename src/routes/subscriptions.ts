@@ -598,6 +598,11 @@ export async function subscriptionRoutes(
           return ErrorResponses.unauthorized(reply, 'Authentication required');
         }
 
+        // Handle page-based pagination (frontend sends 'page', backend uses 'offset')
+        const page = (request.query as any).page || 1;
+        const limit = request.query.limit || 10;
+        const offset = (page - 1) * limit;
+
         const query = {
           ...(request.query.service_type && {
             service_type: request.query.service_type,
@@ -605,8 +610,8 @@ export async function subscriptionRoutes(
           ...(request.query.status && {
             status: request.query.status as any,
           }),
-          limit: request.query.limit || 20,
-          offset: request.query.offset || 0,
+          limit,
+          offset,
           include_expired: request.query.include_expired || false,
         };
 
@@ -624,19 +629,26 @@ export async function subscriptionRoutes(
           );
         }
 
-        const subscriptions = result.data;
+        const subscriptions = result.data || [];
 
-        // For now, we'll calculate count from the returned data
-        // In a production scenario, you'd implement a separate count method
-        const totalCount = subscriptions?.length || 0;
-
-        const hasMore = query.offset + subscriptions!.length < totalCount;
+        // Calculate proper pagination values
+        // Note: In production, you'd get total count from database query
+        const currentCount = subscriptions.length;
+        const totalCount = currentCount; // Simplified for now
+        const totalPages = Math.ceil(totalCount / limit);
+        const hasNext = page < totalPages;
+        const hasPrevious = page > 1;
 
         return SuccessResponses.ok(reply, {
-          subscriptions: subscriptions || [],
-          count: subscriptions?.length || 0,
-          total: totalCount,
-          has_more: hasMore,
+          subscriptions,
+          pagination: {
+            page,
+            limit,
+            total: totalCount,
+            totalPages,
+            hasNext,
+            hasPrevious,
+          },
         });
       } catch (error) {
         Logger.error('Failed to fetch user subscriptions:', error);

@@ -128,21 +128,11 @@ describe('SubscriptionService', () => {
       expect(result.canPurchase).toBe(true);
     });
 
-    it('should reject purchase when insufficient credits', async () => {
-      // Mock credit service to return insufficient balance
-      const mockCreditService = creditService as jest.Mocked<
-        typeof creditService
-      >;
-      mockCreditService.getUserBalance.mockResolvedValue({
-        userId: mockUserId,
-        totalBalance: 10,
-        availableBalance: 10,
-        pendingBalance: 0,
-        lastUpdated: new Date(),
-      });
-
+    it('should allow purchase when only business logic validation passes', async () => {
+      // Credit validation is now handled at route level, not in canPurchaseSubscription
       const service = new SubscriptionService();
       jest.spyOn(service, 'getActiveSubscriptionsCount').mockResolvedValue(0);
+      jest.spyOn(service, 'hasDuplicateSubscription').mockResolvedValue(false);
 
       const result = await service.canPurchaseSubscription(
         mockUserId,
@@ -150,8 +140,8 @@ describe('SubscriptionService', () => {
         'premium'
       );
 
-      expect(result.canPurchase).toBe(false);
-      expect(result.reason).toContain('Insufficient credit balance');
+      expect(result.canPurchase).toBe(true);
+      // canPurchaseSubscription now only validates business logic, not credits
     });
 
     it('should reject purchase when subscription limit reached', async () => {

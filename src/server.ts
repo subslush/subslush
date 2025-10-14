@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import cookie from '@fastify/cookie';
 // Removed global rate limit import - using custom rate limiting middleware instead
 import { env } from './config/environment';
 import {
@@ -47,6 +48,12 @@ async function buildServer(): Promise<typeof fastify> {
   await fastify.register(cors, {
     origin: env.NODE_ENV === 'development' ? true : ['http://localhost:3000'],
     credentials: true,
+  });
+
+  // Register cookie plugin BEFORE routes
+  await fastify.register(cookie, {
+    secret: env.COOKIE_SECRET || 'your-secret-key-change-in-production',
+    parseOptions: {},
   });
 
   // REMOVED: Global rate limiter that was conflicting with custom rate limiting

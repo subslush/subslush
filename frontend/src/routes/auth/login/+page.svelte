@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { enhance } from '$app/forms';
+  import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import { Eye, EyeOff, LogIn, Loader2 } from 'lucide-svelte';
-  import { page } from '$app/stores';
-  import { auth } from '$lib/stores/auth';
+  import { auth, authError, isLoading } from '$lib/stores/auth';
 
   let showPassword = false;
   let emailInput: HTMLInputElement;
-  let isSubmitting = false;
+  let email = '';
+  let password = '';
+  let rememberMe = false;
 
   onMount(() => {
     // Auto-focus email input
@@ -21,8 +21,47 @@
     showPassword = !showPassword;
   }
 
-  // Get form data and errors from page data
-  export let form;
+  async function handleSubmit(event: Event) {
+    event.preventDefault();
+
+    // Prevent double submission
+    if ($isLoading) return;
+
+    if (!email || !password) {
+      auth.setError('Email and password are required');
+      return;
+    }
+
+    try {
+      console.log('🔄 [LOGIN] Starting login process...');
+
+      // Clear any previous errors
+      auth.clearError();
+
+      // Call auth store login method
+      await auth.login({
+        email,
+        password,
+        rememberMe
+      });
+
+      console.log('✅ [LOGIN] Login successful');
+
+      // Wait for store to update
+      await tick();
+
+      // Navigation is handled by the auth store automatically
+    } catch (error) {
+      // Error is handled by the auth store and displayed via authError
+      console.error('❌ [LOGIN] Login failed:', error);
+    }
+  }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      handleSubmit(event);
+    }
+  }
 </script>
 
 <svelte:head>
@@ -42,50 +81,26 @@
   </div>
 
   <!-- Error Alert -->
-  {#if form?.error}
+  {#if $authError}
     <div class="alert variant-filled-error" role="alert">
       <div class="alert-message">
-        <p>{form.error}</p>
+        <p>{$authError}</p>
+      </div>
+      <div class="alert-actions">
+        <button
+          type="button"
+          class="btn-icon btn-icon-sm variant-filled"
+          on:click={() => auth.clearError()}
+          aria-label="Dismiss error"
+        >
+          <span>×</span>
+        </button>
       </div>
     </div>
   {/if}
 
   <!-- Login Form -->
-  <form method="POST" use:enhance={() => {
-    isSubmitting = true;
-    return async ({ result, update }) => {
-      isSubmitting = false;
-
-      console.log('✅ [LOGIN] Form submission result:', result);
-      console.log('✅ [LOGIN] Result type:', result.type);
-      console.log('✅ [LOGIN] Result data:', result.data);
-
-      if (result.type === 'success' && result.data?.success) {
-        console.log('✅ [LOGIN] Login successful, processing...');
-
-        // Update auth store with user data
-        if (result.data.user) {
-          console.log('✅ [LOGIN] Initializing auth store with user:', result.data.user);
-          auth.init(result.data.user);
-        } else {
-          console.warn('⚠️ [LOGIN] No user data in success response');
-        }
-
-        // CRITICAL: Use replace to prevent back button issues and force navigation
-        console.log('✅ [LOGIN] Redirecting to dashboard...');
-        await goto('/dashboard', { replaceState: true });
-        console.log('✅ [LOGIN] Redirect completed');
-      } else if (result.type === 'failure') {
-        console.error('❌ [LOGIN] Login failed:', result.data);
-        // Let SvelteKit handle the error display
-        await update();
-      } else {
-        console.log('📝 [LOGIN] Other result type:', result.type);
-        // Handle other result types
-        await update();
-      }
-    };
-  }} class="space-y-4" novalidate>
+  <form on:submit={handleSubmit} class="space-y-4" novalidate>
     <!-- Email Field -->
     <div>
       <label for="email" class="label">
@@ -93,13 +108,14 @@
       </label>
       <input
         bind:this={emailInput}
-        value={form?.email || ''}
+        bind:value={email}
+        on:keydown={handleKeydown}
         type="email"
         id="email"
         name="email"
         autocomplete="email"
         required
-        disabled={isSubmitting}
+        disabled={$isLoading}
         class="input"
         placeholder="Enter your email"
       />
@@ -111,21 +127,38 @@
         <span>Password</span>
       </label>
       <div class="input-group input-group-divider grid-cols-[1fr_auto]">
-        <input
-          type={showPassword ? 'text' : 'password'}
-          id="password"
-          name="password"
-          autocomplete="current-password"
-          required
-          disabled={isSubmitting}
-          class="input"
-          placeholder="Enter your password"
-        />
+        {#if showPassword}
+          <input
+            bind:value={password}
+            on:keydown={handleKeydown}
+            type="text"
+            id="password"
+            name="password"
+            autocomplete="current-password"
+            required
+            disabled={$isLoading}
+            class="input"
+            placeholder="Enter your password"
+          />
+        {:else}
+          <input
+            bind:value={password}
+            on:keydown={handleKeydown}
+            type="password"
+            id="password"
+            name="password"
+            autocomplete="current-password"
+            required
+            disabled={$isLoading}
+            class="input"
+            placeholder="Enter your password"
+          />
+        {/if}
         <button
           type="button"
           class="btn variant-filled-surface btn-icon"
           on:click={togglePasswordVisibility}
-          disabled={isSubmitting}
+          disabled={$isLoading}
           aria-label={showPassword ? 'Hide password' : 'Show password'}
         >
           {#if showPassword}
@@ -141,10 +174,11 @@
     <div class="flex items-center">
       <label class="flex items-center space-x-2">
         <input
+          bind:checked={rememberMe}
           type="checkbox"
           name="rememberMe"
           class="checkbox"
-          disabled={isSubmitting}
+          disabled={$isLoading}
         />
         <span class="text-sm text-surface-700 dark:text-surface-300">Remember me</span>
       </label>
@@ -153,10 +187,10 @@
     <!-- Submit Button -->
     <button
       type="submit"
-      disabled={isSubmitting}
+      disabled={$isLoading}
       class="btn variant-filled-primary w-full"
     >
-      {#if isSubmitting}
+      {#if $isLoading}
         <Loader2 class="w-4 h-4 mr-2 animate-spin" />
         Signing in...
       {:else}

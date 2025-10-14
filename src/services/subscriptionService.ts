@@ -19,7 +19,7 @@ import {
 import { createSuccessResult, createErrorResult } from '../types/service';
 import { Logger } from '../utils/logger';
 import { serviceHandlerRegistry } from './handlers';
-import { creditService } from './creditService';
+import { getSubscriptionStatus } from '../utils/subscriptionHelpers';
 
 export class SubscriptionService {
   private readonly CACHE_PREFIX = 'subscription:';
@@ -83,6 +83,13 @@ export class SubscriptionService {
       const subscriptionId = uuidv4();
       const pool = getDatabasePool();
 
+      // Calculate the correct initial status based on subscription dates
+      const initialStatus = getSubscriptionStatus(
+        input.start_date,
+        input.end_date,
+        'pending'
+      );
+
       const result = await pool.query(
         `INSERT INTO subscriptions (
           id, user_id, service_type, service_plan, start_date, end_date,
@@ -99,7 +106,7 @@ export class SubscriptionService {
           input.end_date,
           input.renewal_date,
           input.credentials_encrypted || null,
-          'pending',
+          initialStatus,
           input.metadata ? JSON.stringify(input.metadata) : null,
         ]
       );
@@ -560,7 +567,7 @@ export class SubscriptionService {
   async canPurchaseSubscription(
     userId: string,
     serviceType: ServiceType,
-    servicePlan: ServicePlan
+    _servicePlan: ServicePlan
   ): Promise<SubscriptionPurchaseValidation> {
     try {
       // Check if user has reached subscription limit for this service
@@ -596,20 +603,6 @@ export class SubscriptionService {
           existing_subscription: existingResult.success
             ? existingResult.data[0]
             : undefined,
-        };
-      }
-
-      // Get required credits for this plan
-      const handler = serviceHandlerRegistry.getHandler(serviceType);
-      const requiredCredits = handler ? handler.getPlanPricing(servicePlan) : 0;
-
-      // Check user credit balance
-      const balanceResult = await creditService.getUserBalance(userId);
-      if (!balanceResult || balanceResult.totalBalance < requiredCredits) {
-        return {
-          canPurchase: false,
-          reason: 'Insufficient credit balance',
-          required_credits: requiredCredits,
         };
       }
 

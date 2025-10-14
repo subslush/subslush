@@ -1,20 +1,56 @@
 {
-	"/": [],
+	"/": [
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts",
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
+	],
 	"/auth": [
-		"src/routes/auth/+layout.ts"
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
 	],
 	"/auth/login": [
-		"src/routes/auth/+layout.ts"
+		"src/routes/auth/login/+page.server.ts",
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
 	],
 	"/auth/register": [
-		"src/routes/auth/+layout.ts"
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
 	],
 	"/dashboard": [
 		"src/routes/dashboard/+layout.ts",
-		"src/routes/dashboard/+layout.ts"
+		"src/routes/dashboard/+layout.server.ts",
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts",
+		"src/routes/dashboard/+layout.ts",
+		"src/routes/dashboard/+layout.server.ts",
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/dashboard/subscriptions": [
+		"src/routes/dashboard/subscriptions/+page.ts",
+		"src/routes/dashboard/+layout.ts",
+		"src/routes/dashboard/+layout.server.ts",
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/dashboard/subscriptions/active": [
+		"src/routes/dashboard/subscriptions/active/+page.ts",
+		"src/routes/dashboard/+layout.ts",
+		"src/routes/dashboard/+layout.server.ts",
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/dashboard/subscriptions/[subscriptionId]": [
+		"src/routes/dashboard/subscriptions/[subscriptionId]/+page.ts",
+		"src/routes/dashboard/+layout.ts",
+		"src/routes/dashboard/+layout.server.ts",
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
 	],
 	"/profile": [
-		"src/routes/profile/+layout.ts",
-		"src/routes/profile/+layout.ts"
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
 	]
 }

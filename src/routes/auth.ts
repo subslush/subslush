@@ -341,17 +341,54 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
-          // The authPreHandler already populated firstName/lastName in request.user
+          // PERMANENT FIX: Always fetch complete user profile directly
+          // Don't rely on auth middleware population which can fail silently
+          const userResult = await authService.validateSession(
+            request.user.sessionId!
+          );
+
+          if (!userResult.success || !userResult.user) {
+            console.error(
+              '🔍 [PROFILE] Failed to get user profile:',
+              userResult.error
+            );
+            // Fallback to basic request.user data if profile fetch fails
+            return reply.send({
+              user: {
+                id: request.user.userId,
+                email: request.user.email,
+                firstName: request.user.firstName || null,
+                lastName: request.user.lastName || null,
+                role: request.user.role || 'user',
+              },
+            });
+          }
+
+          console.log('🔍 [PROFILE] Successfully retrieved user profile:', {
+            id: userResult.user.id,
+            email: userResult.user.email,
+            firstName: userResult.user.firstName,
+            lastName: userResult.user.lastName,
+            hasFirstName: !!userResult.user.firstName,
+            hasLastName: !!userResult.user.lastName,
+          });
+
           return reply.send({
             user: {
-              id: request.user.userId,
-              email: request.user.email,
-              firstName: request.user.firstName,
-              lastName: request.user.lastName,
-              role: request.user.role,
+              id: userResult.user.id,
+              email: userResult.user.email,
+              firstName: userResult.user.firstName,
+              lastName: userResult.user.lastName,
+              role: userResult.user.role,
+              displayName: userResult.user.displayName || null,
+              status: 'active',
+              createdAt: userResult.user.createdAt,
+              lastLoginAt: userResult.user.lastLoginAt,
+              profileUpdatedAt: userResult.user.createdAt,
             },
           });
-        } catch {
+        } catch (error) {
+          console.error('🔍 [PROFILE] Exception during profile fetch:', error);
           reply.statusCode = 500;
           return reply.send({
             error: 'Internal Server Error',

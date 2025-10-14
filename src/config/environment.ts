@@ -30,6 +30,10 @@ const environmentSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT secret must be at least 32 characters'),
   JWT_EXPIRY: z.coerce.number().default(86400),
   JWT_ALGORITHM: z.enum(['HS256', 'RS256']).default('HS256'),
+  COOKIE_SECRET: z
+    .string()
+    .min(16, 'Cookie secret must be at least 16 characters')
+    .default('your-secret-key-change-in-production'),
   SESSION_ENCRYPTION_KEY: z
     .string()
     .length(32, 'Session encryption key must be exactly 32 characters'),

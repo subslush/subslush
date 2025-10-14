@@ -1,5 +1,4 @@
 import type { LayoutLoad } from './$types';
-import { redirect } from '@sveltejs/kit';
 import { browser } from '$app/environment';
 
 export const load: LayoutLoad = async ({ parent, url }) => {
@@ -13,13 +12,11 @@ export const load: LayoutLoad = async ({ parent, url }) => {
     userEmail: data.user?.email,
   });
 
-  // If no user in server data, redirect to login
-  if (!data.user) {
-    console.log('❌ [DASHBOARD GUARD] No authenticated user, redirecting to login');
-    throw redirect(302, '/auth/login');
-  }
+  // Server-side protection is already handled in +layout.server.ts
+  // This client-side guard was causing race conditions after login
+  // The server-side layout redirects to /auth/login if no user cookie
 
-  console.log('✅ [DASHBOARD GUARD] User authenticated:', data.user.email);
+  console.log('✅ [DASHBOARD GUARD] Allowing access, server-side auth handles protection');
 
   // Pass user data through
   return {
