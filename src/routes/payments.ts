@@ -11,7 +11,6 @@ import {
   createPaymentRequestJsonSchema,
   paymentHistoryQueryJsonSchema,
   webhookPayloadJsonSchema,
-  estimateRequestJsonSchema,
 } from '../schemas/payment';
 import {
   CreatePaymentRequest,
@@ -180,22 +179,24 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   // Get payment amount estimate
-  fastify.post(
+  fastify.get(
     '/estimate',
     {
-      schema: {
-        body: estimateRequestJsonSchema,
-      },
       preHandler: [authPreHandler],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const { amount, currency_to } = request.body as {
-          amount: number;
+        const { amount, currency_to } = request.query as {
+          amount: string;
           currency_to: string;
         };
 
-        const estimate = await paymentService.getEstimate(amount, currency_to);
+        const numericAmount = parseFloat(amount);
+
+        const estimate = await paymentService.getEstimate(
+          numericAmount,
+          currency_to
+        );
 
         if (!estimate) {
           return ErrorResponses.badRequest(
@@ -360,7 +361,8 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           return ErrorResponses.notFound(reply, 'Payment not found');
         }
 
-        const success = await paymentMonitoringService.triggerPaymentCheck(paymentId);
+        const success =
+          await paymentMonitoringService.triggerPaymentCheck(paymentId);
 
         if (!success) {
           return ErrorResponses.internalError(
@@ -399,7 +401,10 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         });
       } catch (error) {
         Logger.error('Error getting monitoring status:', error);
-        return ErrorResponses.internalError(reply, 'Failed to get monitoring status');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to get monitoring status'
+        );
       }
     }
   );
@@ -417,7 +422,14 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             amount: { type: 'number', minimum: 0.01 },
             reason: {
               type: 'string',
-              enum: ['user_request', 'payment_error', 'service_issue', 'overpayment', 'admin_decision', 'dispute']
+              enum: [
+                'user_request',
+                'payment_error',
+                'service_issue',
+                'overpayment',
+                'admin_decision',
+                'dispute',
+              ],
             },
             description: { type: 'string', maxLength: 500 },
           },
@@ -566,7 +578,12 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         const failureHealthy = await paymentFailureService.healthCheck();
         const refundHealthy = await refundService.healthCheck();
 
-        const isHealthy = paymentHealthy && monitoringHealthy && allocationHealthy && failureHealthy && refundHealthy;
+        const isHealthy =
+          paymentHealthy &&
+          monitoringHealthy &&
+          allocationHealthy &&
+          failureHealthy &&
+          refundHealthy;
 
         if (!isHealthy) {
           return ErrorResponses.internalError(
