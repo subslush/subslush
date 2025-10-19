@@ -22,6 +22,13 @@ export const API_ENDPOINTS = {
   },
   CREDITS: {
     BALANCE: '/credits/balance'
+  },
+  PAYMENTS: {
+    CREATE: '/payments/create-invoice',
+    STATUS: '/payments/status',
+    CURRENCIES: '/payments/currencies',
+    ESTIMATE: '/payments/estimate',
+    HISTORY: '/payments/history'
   }
 } as const;
 

@@ -1,11 +1,24 @@
 <script lang="ts">
   import { CreditCard, Plus, TrendingUp, ArrowUp, ArrowDown, Calendar, AlertCircle, DollarSign, Wallet } from 'lucide-svelte';
+  import AddCreditsModal from '$lib/components/payment/AddCreditsModal.svelte';
   import type { PageData } from './$types';
 
   export let data: PageData;
 
   $: balance = data?.balance ?? 0;
   $: isLoading = balance === undefined;
+
+  let showPaymentModal = false;
+
+  function handleAddCredits() {
+    showPaymentModal = true;
+  }
+
+  function handlePaymentSuccess(newBalance: number) {
+    balance = newBalance;
+    showPaymentModal = false;
+    // You might want to show a success toast here
+  }
 
   // Mock transaction data for demonstration
   // In real implementation, this would come from the API
@@ -196,13 +209,12 @@
           </p>
         </div>
         <div class="flex flex-wrap gap-4">
-          <button class="inline-flex items-center bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg transition-colors font-medium">
+          <button
+            on:click={handleAddCredits}
+            class="inline-flex items-center bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg transition-colors font-medium"
+          >
             <Plus size={20} class="mr-2" />
             Add Credits
-          </button>
-          <button class="inline-flex items-center bg-surface-50 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300 border border-surface-300 dark:border-surface-600 px-6 py-3 rounded-lg transition-colors">
-            <DollarSign size={20} class="mr-2" />
-            Payment Methods
           </button>
         </div>
       </div>
@@ -265,7 +277,10 @@
             <p class="text-surface-600 dark:text-surface-300 mb-6">
               Your credit transactions will appear here once you start making purchases.
             </p>
-            <button class="inline-flex items-center bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg transition-colors">
+            <button
+              on:click={handleAddCredits}
+              class="inline-flex items-center bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg transition-colors"
+            >
               <Plus size={16} class="mr-2" />
               Add Your First Credits
             </button>
@@ -309,3 +324,10 @@
     </div>
   {/if}
 </div>
+
+<!-- Payment Modal -->
+<AddCreditsModal
+  bind:isOpen={showPaymentModal}
+  userBalance={balance}
+  onSuccess={handlePaymentSuccess}
+/>
