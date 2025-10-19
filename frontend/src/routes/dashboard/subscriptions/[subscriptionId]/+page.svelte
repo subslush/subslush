@@ -8,7 +8,8 @@
 
   let showCredentials = false;
 
-  $: subscription = data.subscription;
+  $: subscription = data?.subscription;
+  $: isLoading = !subscription;
 
   // Service icons and names mapping
   const serviceIcons = {
@@ -71,16 +72,16 @@
     showCredentials = !showCredentials;
   }
 
-  $: Icon = getServiceIcon(subscription.service_type);
-  $: statusBadge = getStatusBadge(subscription.status);
-  $: daysUntilExpiry = getDaysUntilExpiry(subscription.end_date);
-  $: isExpiringSoon = daysUntilExpiry <= 7 && subscription.status === 'active';
-  $: isExpired = subscription.status === 'expired';
+  $: Icon = subscription ? getServiceIcon(subscription.service_type) : Music;
+  $: statusBadge = subscription ? getStatusBadge(subscription.status) : { class: 'bg-surface-100 text-surface-800', icon: Clock, text: 'Loading...' };
+  $: daysUntilExpiry = subscription ? getDaysUntilExpiry(subscription.end_date) : 0;
+  $: isExpiringSoon = subscription ? daysUntilExpiry <= 7 && subscription.status === 'active' : false;
+  $: isExpired = subscription ? subscription.status === 'expired' : false;
 </script>
 
 <svelte:head>
-  <title>{getServiceName(subscription.service_type)} Subscription - Subscription Platform</title>
-  <meta name="description" content="View and manage your {getServiceName(subscription.service_type)} subscription details." />
+  <title>{subscription ? getServiceName(subscription.service_type) : 'Loading'} Subscription - Subscription Platform</title>
+  <meta name="description" content="View and manage your {subscription ? getServiceName(subscription.service_type) : ''} subscription details." />
 </svelte:head>
 
 <div class="container mx-auto p-6 max-w-4xl">
@@ -92,6 +93,47 @@
     <ArrowLeft size={20} class="mr-2" />
     Back to My Subscriptions
   </button>
+
+  {#if isLoading}
+    <!-- Loading State -->
+    <div class="space-y-8">
+      <!-- Header Skeleton -->
+      <div class="bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-600 rounded-lg p-6">
+        <div class="flex items-start justify-between">
+          <div class="flex items-center space-x-4">
+            <div class="p-4 bg-surface-200 dark:bg-surface-700 rounded-lg animate-pulse">
+              <div class="w-8 h-8"></div>
+            </div>
+            <div class="space-y-2">
+              <div class="h-6 bg-surface-200 dark:bg-surface-700 rounded animate-pulse w-32"></div>
+              <div class="h-4 bg-surface-200 dark:bg-surface-700 rounded animate-pulse w-24"></div>
+              <div class="h-3 bg-surface-200 dark:bg-surface-700 rounded animate-pulse w-40"></div>
+            </div>
+          </div>
+          <div class="h-8 w-20 bg-surface-200 dark:bg-surface-700 rounded-full animate-pulse"></div>
+        </div>
+      </div>
+
+      <!-- Content Skeleton -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-600 rounded-lg p-6">
+          <div class="h-6 bg-surface-200 dark:bg-surface-700 rounded animate-pulse w-48 mb-6"></div>
+          <div class="space-y-4">
+            {#each Array(4) as _}
+              <div class="flex justify-between py-3">
+                <div class="h-4 bg-surface-200 dark:bg-surface-700 rounded animate-pulse w-24"></div>
+                <div class="h-4 bg-surface-200 dark:bg-surface-700 rounded animate-pulse w-32"></div>
+              </div>
+            {/each}
+          </div>
+        </div>
+        <div class="bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-600 rounded-lg p-6">
+          <div class="h-6 bg-surface-200 dark:bg-surface-700 rounded animate-pulse w-40 mb-6"></div>
+          <div class="h-32 bg-surface-200 dark:bg-surface-700 rounded animate-pulse"></div>
+        </div>
+      </div>
+    </div>
+  {:else if subscription}
 
   <!-- Header Section -->
   <div class="bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-600 rounded-lg p-6 mb-8">
@@ -326,4 +368,26 @@
       </div>
     </div>
   </div>
+
+  {:else}
+    <!-- Error State -->
+    <div class="text-center py-12">
+      <div class="bg-surface-100 dark:bg-surface-800 rounded-lg p-8">
+        <AlertTriangle size={48} class="mx-auto text-error-500 mb-4" />
+        <h3 class="text-lg font-medium text-surface-900 dark:text-surface-100 mb-2">
+          Subscription not found
+        </h3>
+        <p class="text-surface-600 dark:text-surface-300 mb-6">
+          The subscription you're looking for doesn't exist or you don't have access to it.
+        </p>
+        <a
+          href="/dashboard/subscriptions/active"
+          class="inline-flex items-center bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg transition-colors"
+        >
+          <ArrowLeft size={16} class="mr-2" />
+          Back to My Subscriptions
+        </a>
+      </div>
+    </div>
+  {/if}
 </div>

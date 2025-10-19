@@ -36,7 +36,8 @@ export const ROUTES = {
   SUBSCRIPTIONS: {
     BROWSE: '/dashboard/subscriptions',
     MY_SUBSCRIPTIONS: '/dashboard/subscriptions/active'
-  }
+  },
+  CREDITS: '/dashboard/credits'
 } as const;
 
 export const ERROR_MESSAGES = {
