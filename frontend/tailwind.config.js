@@ -11,7 +11,21 @@ export default {
 		join(require.resolve('@skeletonlabs/skeleton'), '../**/*.{html,js,svelte,ts}')
 	],
 	theme: {
-		extend: {}
+		extend: {
+			colors: {
+				subslush: {
+					blue: '#4FC3F7',
+					'blue-light': '#81D4FA',
+					'blue-dark': '#0288D1',
+					pink: '#F06292',
+					'pink-light': '#F8BBD0',
+					'pink-dark': '#C2185B',
+					purple: '#9C27B0',
+					'purple-light': '#CE93D8',
+					'purple-dark': '#7B1FA2',
+				}
+			}
+		}
 	},
 	plugins: [
 		forms,
