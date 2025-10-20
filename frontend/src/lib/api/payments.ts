@@ -157,6 +157,42 @@ export class PaymentService {
     const response = await apiClient.get(`${API_ENDPOINTS.PAYMENTS.STATUS}/${paymentId}`);
     return response.data.data || response.data;
   }
+
+  async getPaymentHistory(limit: number = 20, offset: number = 0): Promise<any[]> {
+    try {
+      console.log('[PAYMENTS API] Making request to:', API_ENDPOINTS.PAYMENTS.HISTORY);
+      console.log('[PAYMENTS API] Request params:', { limit, offset });
+
+      const response = await apiClient.get(API_ENDPOINTS.PAYMENTS.HISTORY, {
+        params: { limit, offset }
+      });
+
+      console.log('[PAYMENTS API] Raw response:', response);
+      console.log('[PAYMENTS API] Response data:', response.data);
+      console.log('[PAYMENTS API] Response data type:', typeof response.data);
+      console.log('[PAYMENTS API] Response data keys:', Object.keys(response.data || {}));
+
+      if (response.data?.data) {
+        console.log('[PAYMENTS API] Found response.data.data:', response.data.data);
+        console.log('[PAYMENTS API] response.data.data keys:', Object.keys(response.data.data || {}));
+        if (response.data.data.transactions) {
+          console.log('[PAYMENTS API] Found transactions in response.data.data.transactions:', response.data.data.transactions);
+          return response.data.data.transactions;
+        }
+      }
+
+      if (response.data?.transactions) {
+        console.log('[PAYMENTS API] Found transactions in response.data.transactions:', response.data.transactions);
+        return response.data.transactions;
+      }
+
+      console.log('[PAYMENTS API] No transactions found, returning empty array');
+      return [];
+    } catch (error) {
+      console.error('[PAYMENTS API] Error in getPaymentHistory:', error);
+      throw error;
+    }
+  }
 }
 
 export const paymentService = new PaymentService();

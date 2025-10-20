@@ -178,6 +178,64 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  // Get user's payment/transaction history
+  fastify.get(
+    '/history',
+    {
+      preHandler: [authPreHandler],
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: { type: 'number', minimum: 1, maximum: 100, default: 20 },
+            offset: { type: 'number', minimum: 0, default: 0 },
+            status: {
+              type: 'string',
+              enum: ['all', 'waiting', 'finished', 'failed', 'expired'],
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const user = request.user;
+        if (!user || !user.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
+
+        const { limit = 20, offset = 0, status = 'all' } = request.query as any;
+
+        const history = await paymentService.getPaymentHistory({
+          userId: user.userId,
+          limit,
+          offset,
+          ...(status !== 'all' && { status }),
+        });
+
+        Logger.info(
+          `[PAYMENT HISTORY] Retrieved ${history.length} transactions for user ${user.userId}`
+        );
+        Logger.info('[PAYMENT HISTORY] First transaction:', history[0]);
+
+        return SuccessResponses.ok(reply, {
+          transactions: history,
+          pagination: {
+            limit,
+            offset,
+            total: history.length,
+          },
+        });
+      } catch (error) {
+        Logger.error('Error fetching payment history:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to fetch payment history'
+        );
+      }
+    }
+  );
+
   // Get payment amount estimate
   fastify.get(
     '/estimate',

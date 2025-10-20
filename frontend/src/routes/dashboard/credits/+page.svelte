@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { CreditCard, Plus, TrendingUp, ArrowUp, ArrowDown, Calendar, AlertCircle, DollarSign, Wallet } from 'lucide-svelte';
+  import { onMount } from 'svelte';
+  import { CreditCard, Plus, TrendingUp, ArrowUp, ArrowDown, Calendar, AlertCircle, DollarSign, Wallet, Loader2, CheckCircle, Clock, XCircle } from 'lucide-svelte';
   import AddCreditsModal from '$lib/components/payment/AddCreditsModal.svelte';
+  import { paymentService } from '$lib/api/payments.js';
   import type { PageData } from './$types';
 
   export let data: PageData;
@@ -9,6 +11,28 @@
   $: isLoading = balance === undefined;
 
   let showPaymentModal = false;
+  let transactions: any[] = [];
+  let loadingTransactions = false;
+
+  onMount(async () => {
+    await loadTransactions();
+  });
+
+  async function loadTransactions() {
+    try {
+      loadingTransactions = true;
+      console.log('[CREDITS] Starting to load transactions...');
+      transactions = await paymentService.getPaymentHistory(20, 0);
+      console.log('[CREDITS] Loaded transactions:', transactions.length);
+      console.log('[CREDITS] First transaction data:', transactions[0]);
+      console.log('[CREDITS] All transactions:', transactions);
+    } catch (error) {
+      console.error('[CREDITS] Failed to load transactions:', error);
+      transactions = [];
+    } finally {
+      loadingTransactions = false;
+    }
+  }
 
   function handleAddCredits() {
     showPaymentModal = true;
@@ -17,45 +41,20 @@
   function handlePaymentSuccess(newBalance: number) {
     balance = newBalance;
     showPaymentModal = false;
-    // You might want to show a success toast here
+    // Reload transactions to show the new payment
+    loadTransactions();
   }
 
-  // Mock transaction data for demonstration
-  // In real implementation, this would come from the API
-  const mockTransactions = [
-    {
-      id: 'tx_001',
-      type: 'purchase',
-      amount: 500,
-      description: 'Credit Purchase - PayPal',
-      date: new Date('2024-01-15T10:30:00Z').toISOString(),
-      status: 'completed'
-    },
-    {
-      id: 'tx_002',
-      type: 'subscription',
-      amount: -150,
-      description: 'Netflix Premium Plan - 1 Month',
-      date: new Date('2024-01-10T15:45:00Z').toISOString(),
-      status: 'completed'
-    },
-    {
-      id: 'tx_003',
-      type: 'subscription',
-      amount: -180,
-      description: 'Spotify Family Plan - 1 Month',
-      date: new Date('2024-01-05T09:20:00Z').toISOString(),
-      status: 'completed'
-    },
-    {
-      id: 'tx_004',
-      type: 'purchase',
-      amount: 300,
-      description: 'Credit Purchase - Cryptocurrency',
-      date: new Date('2024-01-02T14:15:00Z').toISOString(),
-      status: 'completed'
-    }
-  ];
+  function getTransactionStatus(status: string) {
+    const statusMap = {
+      finished: { color: 'success', text: 'Completed' },
+      waiting: { color: 'warning', text: 'Pending' },
+      confirming: { color: 'warning', text: 'Confirming' },
+      failed: { color: 'error', text: 'Failed' },
+      expired: { color: 'error', text: 'Expired' }
+    };
+    return statusMap[status] || { color: 'surface', text: status };
+  }
 
   function formatDate(dateString: string): string {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -234,48 +233,56 @@
       </div>
 
       <div class="p-6">
-        {#if mockTransactions.length > 0}
+        {#if loadingTransactions}
+          <div class="text-center py-8">
+            <Loader2 class="animate-spin mx-auto" size={32} />
+            <p class="text-sm text-gray-500 mt-2">Loading transactions...</p>
+          </div>
+        {:else if transactions.length > 0}
           <div class="space-y-4">
-            {#each mockTransactions as transaction (transaction.id)}
-              <div class="flex items-center justify-between py-4 border-b border-surface-200 dark:border-surface-600 last:border-b-0">
+            {#each transactions as transaction}
+              <div class="flex items-center justify-between py-4 border-b">
                 <div class="flex items-center space-x-4">
-                  <div class="p-2 bg-surface-100 dark:bg-surface-700 rounded-full">
-                    <svelte:component
-                      this={getTransactionIcon(transaction.type)}
-                      size={20}
-                      class={getTransactionColor(transaction.type)}
-                    />
+                  <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-full">
+                    {#if transaction.status === 'finished'}
+                      <CheckCircle size={20} class="text-success-600" />
+                    {:else if transaction.status === 'waiting'}
+                      <Clock size={20} class="text-warning-600" />
+                    {:else}
+                      <XCircle size={20} class="text-error-600" />
+                    {/if}
                   </div>
                   <div>
-                    <p class="font-medium text-surface-900 dark:text-surface-100">
-                      {transaction.description}
-                    </p>
-                    <div class="flex items-center space-x-2 text-sm text-surface-600 dark:text-surface-300">
+                    <p class="font-medium">{transaction.description || 'Credit Purchase'}</p>
+                    <div class="flex items-center space-x-2 text-sm text-gray-500">
                       <Calendar size={14} />
-                      <span>{formatDate(transaction.date)}</span>
-                      <span class="px-2 py-1 bg-success-100 dark:bg-success-800 text-success-700 dark:text-success-200 rounded-full text-xs">
-                        {transaction.status}
+                      <span>{formatDate(transaction.createdAt)}</span>
+                      <span class="px-2 py-1 rounded-full text-xs
+                        {transaction.status === 'finished' ? 'bg-success-100 text-success-700' : ''}
+                        {transaction.status === 'waiting' ? 'bg-warning-100 text-warning-700' : ''}
+                        {transaction.status === 'failed' ? 'bg-error-100 text-error-700' : ''}">
+                        {getTransactionStatus(transaction.status).text}
                       </span>
                     </div>
                   </div>
                 </div>
                 <div class="text-right">
-                  <span class="font-semibold {transaction.amount > 0 ? 'text-success-600 dark:text-success-400' : 'text-error-600 dark:text-error-400'}">
-                    {transaction.amount > 0 ? '+' : ''}{transaction.amount} credits
+                  <span class="font-semibold {transaction.creditAmount > 0 ? 'text-success-600' : 'text-error-600'}">
+                    {transaction.creditAmount > 0 ? '+' : ''}{transaction.creditAmount} credits
                   </span>
+                  {#if transaction.currency}
+                    <p class="text-xs text-gray-500">{transaction.currency.toUpperCase()}</p>
+                  {/if}
                 </div>
               </div>
             {/each}
           </div>
         {:else}
-          <!-- Empty State -->
           <div class="text-center py-12">
-            <CreditCard size={48} class="mx-auto text-surface-400 dark:text-surface-500 mb-4" />
-            <h3 class="text-lg font-medium text-surface-900 dark:text-surface-100 mb-2">
-              No transactions yet
-            </h3>
-            <p class="text-surface-600 dark:text-surface-300 mb-6">
-              Your credit transactions will appear here once you start making purchases.
+            <CreditCard size={48} class="mx-auto text-gray-400 mb-4" />
+            <h3 class="text-lg font-medium mb-2">No transaction history</h3>
+            <p class="text-gray-500 mb-6">
+              Your credit transactions will appear here once you make a purchase.
             </p>
             <button
               on:click={handleAddCredits}
