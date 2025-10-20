@@ -22,7 +22,7 @@ export const createPaymentRequestSchema = z.object({
     .max(10000, 'Credit amount cannot exceed 10,000'),
   currency: z
     .string()
-    .regex(/^[A-Z]{2,10}$/, 'Currency must be 2-10 uppercase letters')
+    .regex(/^[a-z]{2,10}$/, 'Currency must be 2-10 lowercase letters')
     .optional(),
   orderDescription: z
     .string()
@@ -103,7 +103,7 @@ export const createPaymentRequestJsonSchema = {
     },
     currency: {
       type: 'string',
-      pattern: '^[A-Z]{2,10}$',
+      pattern: '^[a-z]{2,10}$',
     },
     orderDescription: {
       type: 'string',

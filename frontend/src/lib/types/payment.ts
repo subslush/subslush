@@ -17,7 +17,6 @@ export interface CreatePaymentRequest {
 
 export interface CreatePaymentResponse {
   paymentId: string;
-  invoiceUrl: string;
   payAddress: string;
   payAmount: number;
   payCurrency: string;
@@ -35,6 +34,13 @@ export interface PaymentStatusResponse {
   blockchainHash?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Currency {
+  code: string;
+  name: string;
+  network?: string;
+  fullName?: string;
 }
 
 export interface PaymentEstimate {

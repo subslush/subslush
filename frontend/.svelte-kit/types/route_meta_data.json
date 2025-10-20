@@ -28,6 +28,13 @@
 		"src/routes/+layout.ts",
 		"src/routes/+layout.server.ts"
 	],
+	"/dashboard/credits": [
+		"src/routes/dashboard/credits/+page.ts",
+		"src/routes/dashboard/+layout.ts",
+		"src/routes/dashboard/+layout.server.ts",
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
+	],
 	"/dashboard/subscriptions": [
 		"src/routes/dashboard/subscriptions/+page.ts",
 		"src/routes/dashboard/+layout.ts",

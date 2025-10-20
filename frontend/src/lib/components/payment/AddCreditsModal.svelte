@@ -1,8 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
-  import { X, CreditCard, Copy, Check, AlertCircle, ArrowLeft, ArrowRight, Loader2, Clock } from 'lucide-svelte';
+  import { X, CreditCard, Copy, Check, AlertCircle, ArrowLeft, ArrowRight, Loader2, Clock, ChevronDown } from 'lucide-svelte';
   import { paymentService } from '$lib/api/payments.js';
-  import type { CreatePaymentResponse, PaymentStatus } from '$lib/types/payment.js';
+  import type { CreatePaymentResponse, PaymentStatus, Currency } from '$lib/types/payment.js';
   import QRCode from 'qrcode';
 
   export let isOpen: boolean = false;
@@ -14,9 +14,10 @@
   let currentStep = 1;
   let selectedAmount = 100;
   let customAmount = '';
-  let selectedCurrency = 'btc';
-  let currencies: string[] = [];
+  let selectedCurrency: Currency | null = null;
+  let currencies: Currency[] = [];
   let estimate: number | null = null;
+  let currencyDropdownOpen = false;
   let paymentData: CreatePaymentResponse | null = null;
   let paymentStatus: PaymentStatus = 'waiting';
   let qrCodeDataUrl = '';
@@ -34,6 +35,12 @@
 
   onMount(async () => {
     if (isOpen) {
+      try {
+        const debug = await paymentService.debugCurrenciesResponse();
+        console.log('[DEBUG] Full response structure:', debug);
+      } catch (error) {
+        console.log('[DEBUG] Error in debug call:', error);
+      }
       await loadCurrencies();
     }
   });
@@ -50,13 +57,23 @@
     try {
       loading = true;
       error = '';
+
+      console.log('[MODAL] Loading currencies...');
       currencies = await paymentService.getSupportedCurrencies();
-      if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
+      console.log('[MODAL] Loaded currencies:', currencies.length, 'total');
+      console.log('[MODAL] First 10 currencies:', currencies.slice(0, 10));
+
+      if (currencies.length > 0 && (!selectedCurrency || !currencies.find(c => c.code === selectedCurrency?.code))) {
         selectedCurrency = currencies[0];
+        console.log('[MODAL] Default currency set to:', selectedCurrency);
       }
-    } catch (err) {
-      error = 'Failed to load available currencies. Please try again.';
-      console.error('Error loading currencies:', err);
+
+      if (currencies.length === 0) {
+        throw new Error('Empty currency list received');
+      }
+    } catch (err: any) {
+      console.error('[MODAL] Error loading currencies:', err);
+      error = `Failed to load available currencies: ${err.message}`;
     } finally {
       loading = false;
     }
@@ -68,11 +85,13 @@
     try {
       loading = true;
       error = '';
-      const estimateData = await paymentService.getEstimate(actualAmount, selectedCurrency);
+      console.log('[MODAL] Getting estimate for:', actualAmount, 'USD in', selectedCurrency.code);
+      const estimateData = await paymentService.getEstimate(actualAmount, selectedCurrency.code);
       estimate = estimateData.estimatedAmount;
+      console.log('[MODAL] Estimate received:', estimate, selectedCurrency.code);
     } catch (err) {
       error = 'Failed to get price estimate. Please try again.';
-      console.error('Error getting estimate:', err);
+      console.error('[MODAL] Error getting estimate:', err);
     } finally {
       loading = false;
     }
@@ -87,7 +106,7 @@
 
       const response = await paymentService.createPayment({
         creditAmount: actualAmount,
-        currency: selectedCurrency,
+        currency: selectedCurrency?.code || 'btc',
         orderDescription: `Add ${actualAmount} credits`
       });
 
@@ -203,7 +222,7 @@
     currentStep = 1;
     selectedAmount = 100;
     customAmount = '';
-    selectedCurrency = 'btc';
+    selectedCurrency = null;
     estimate = null;
     paymentData = null;
     paymentStatus = 'waiting';
@@ -213,7 +232,21 @@
     error = '';
     expirationTime = null;
     timeRemaining = '';
+    currencyDropdownOpen = false;
     stopPolling();
+  }
+
+  function selectCurrency(currency: Currency) {
+    selectedCurrency = currency;
+    currencyDropdownOpen = false;
+    console.log('[MODAL] Currency selected:', currency);
+  }
+
+  function getCurrencyDisplayName(currency: Currency): string {
+    if (currency.network) {
+      return `${currency.name} (${currency.network})`;
+    }
+    return currency.fullName || currency.name;
   }
 
   function getStatusText(status: PaymentStatus): string {
@@ -363,21 +396,44 @@
                 <span class="text-gray-600 dark:text-gray-400">Loading currencies...</span>
               </div>
             {:else if currencies.length > 0}
-              <div class="space-y-2">
-                {#each currencies as currency}
-                  <button
-                    on:click={() => selectedCurrency = currency}
-                    class="w-full p-3 text-left border rounded-lg transition-colors flex items-center justify-between
-                      {selectedCurrency === currency
-                        ? 'border-primary-600 bg-primary-50 dark:bg-primary-900'
-                        : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}"
-                  >
-                    <span class="font-medium uppercase text-gray-900 dark:text-white">{currency}</span>
-                    {#if selectedCurrency === currency}
-                      <Check size={16} class="text-primary-600" />
+              <!-- Currency Dropdown -->
+              <div class="relative">
+                <button
+                  on:click={() => currencyDropdownOpen = !currencyDropdownOpen}
+                  class="w-full p-3 text-left border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700
+                         hover:border-gray-400 dark:hover:border-gray-500 transition-colors flex items-center justify-between"
+                >
+                  <div class="flex flex-col">
+                    <span class="font-medium text-gray-900 dark:text-white">
+                      {selectedCurrency ? getCurrencyDisplayName(selectedCurrency) : 'Select a cryptocurrency'}
+                    </span>
+                    {#if selectedCurrency}
+                      <span class="text-xs text-gray-500 dark:text-gray-400 uppercase">{selectedCurrency.code}</span>
                     {/if}
-                  </button>
-                {/each}
+                  </div>
+                  <ChevronDown size={16} class="text-gray-400 {currencyDropdownOpen ? 'rotate-180' : ''} transition-transform" />
+                </button>
+
+                {#if currencyDropdownOpen}
+                  <div class="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {#each currencies as currency}
+                      <button
+                        on:click={() => selectCurrency(currency)}
+                        class="w-full p-3 text-left hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors flex items-center justify-between"
+                      >
+                        <div class="flex flex-col">
+                          <span class="font-medium text-gray-900 dark:text-white">
+                            {getCurrencyDisplayName(currency)}
+                          </span>
+                          <span class="text-xs text-gray-500 dark:text-gray-400 uppercase">{currency.code}</span>
+                        </div>
+                        {#if selectedCurrency?.code === currency.code}
+                          <Check size={16} class="text-primary-600" />
+                        {/if}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
               </div>
             {:else}
               <p class="text-red-600 dark:text-red-400">No currencies available. Please try again later.</p>
@@ -402,7 +458,9 @@
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-600 dark:text-gray-400">Payment Currency:</span>
-                <span class="font-medium text-gray-900 dark:text-white uppercase">{selectedCurrency}</span>
+                <span class="font-medium text-gray-900 dark:text-white">
+                  {selectedCurrency ? getCurrencyDisplayName(selectedCurrency) : 'None selected'}
+                </span>
               </div>
 
               {#if loading}
@@ -413,7 +471,7 @@
               {:else if estimate}
                 <div class="border-t pt-3 border-gray-200 dark:border-gray-600">
                   <div class="flex justify-between">
-                    <span class="text-gray-600 dark:text-gray-400">Estimated {selectedCurrency.toUpperCase()} Amount:</span>
+                    <span class="text-gray-600 dark:text-gray-400">Estimated {selectedCurrency?.code?.toUpperCase() || 'CRYPTO'} Amount:</span>
                     <span class="font-medium text-gray-900 dark:text-white">{estimate}</span>
                   </div>
                   <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
