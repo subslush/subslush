@@ -1,111 +1,171 @@
 <script lang="ts">
-	// Removed non-existent Card components - using Tailwind CSS instead
-	import { CreditCard, Users, Shield, Zap } from 'lucide-svelte';
+  import { onMount } from 'svelte';
+  import { Search, Check } from 'lucide-svelte';
+  import HomeNav from '$lib/components/home/HomeNav.svelte';
+  import Hero from '$lib/components/home/Hero.svelte';
+  import SubscriptionGrid from '$lib/components/home/SubscriptionGrid.svelte';
+  import BundleCard from '$lib/components/home/BundleCard.svelte';
+  import TrustSignals from '$lib/components/home/TrustSignals.svelte';
+  import Statistics from '$lib/components/home/Statistics.svelte';
+  import Footer from '$lib/components/home/Footer.svelte';
+  import type { PageData } from './$types';
+
+  export let data: PageData;
+
+  let searchQuery = '';
+  let selectedCategory = 'all';
+  let sortBy = 'recommended';
+
+  // TODO: Replace with actual backend data when available
+  const bundles = [
+    {
+      title: 'Entertainment Bundle',
+      subtitle: 'Most Popular',
+      services: ['Netflix', 'Disney+', 'Spotify'],
+      price: 19.99,
+      originalPrice: 28.97,
+      savings: 31,
+      badge: 'Save €8.98'
+    },
+    {
+      title: 'Creator Bundle',
+      subtitle: 'Business',
+      services: ['Adobe CC', 'Canva Pro', 'Artlist'],
+      price: 39.99,
+      originalPrice: 52.98,
+      savings: 25
+    },
+    {
+      title: 'Productivity Bundle',
+      subtitle: 'Business',
+      services: ['Microsoft 365', 'NordVPN', 'Notion Pro'],
+      price: 27.99,
+      originalPrice: 44.97,
+      savings: 38
+    },
+    {
+      title: 'Student Bundle',
+      subtitle: 'Student Discount',
+      services: ['Spotify', 'Notion', 'YouTube Premium'],
+      price: 14.99,
+      originalPrice: 24.98,
+      savings: 40
+    }
+  ];
+
+  // Filter plans based on search and category
+  $: filteredPlans = data.plans.filter(plan => {
+    const matchesSearch = searchQuery === '' ||
+      plan.serviceName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      plan.plan.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesCategory = selectedCategory === 'all' ||
+      getCategoryForService(plan.serviceType) === selectedCategory;
+
+    return matchesSearch && matchesCategory;
+  });
+
+  function getCategoryForService(serviceType: string): string {
+    // Map service types to categories
+    const categoryMap: Record<string, string> = {
+      'netflix': 'streaming',
+      'disney': 'streaming',
+      'spotify': 'music',
+      'apple_music': 'music',
+      'adobe': 'design',
+      'figma': 'design',
+      'notion': 'productivity',
+      'microsoft': 'productivity',
+      'tradingview': 'productivity',
+    };
+    return categoryMap[serviceType.toLowerCase()] || 'other';
+  }
 </script>
 
 <svelte:head>
-	<title>Subscription Platform - Manage Your Subscriptions</title>
-	<meta name="description" content="Modern subscription platform with credit system" />
+  <title>SubSlush - Find Your Perfect Subscription</title>
+  <meta name="description" content="Browse by category, search for specific services, or discover new subscriptions. Save money on premium subscriptions with our marketplace." />
 </svelte:head>
 
-<div class="container mx-auto px-4 py-8">
-	<!-- Hero Section -->
-	<section class="text-center mb-16">
-		<h1 class="h1 mb-4">Welcome to Subscription Platform</h1>
-		<p class="text-xl text-surface-600-300-token mb-8 max-w-2xl mx-auto">
-			Manage your subscriptions with our modern platform featuring a flexible credit system,
-			secure authentication, and comprehensive analytics.
-		</p>
-		<div class="flex justify-center space-x-4">
-			<a href="/auth/register" class="btn variant-filled-primary">Get Started</a>
-			<a href="/auth/login" class="btn variant-ghost-surface">Sign In</a>
-		</div>
-	</section>
+<!-- Navigation -->
+<HomeNav />
 
-	<!-- Features Grid -->
-	<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg text-center p-6">
-			<div class="mb-4">
-				<div class="mx-auto mb-4 p-3 bg-primary-500 text-white rounded-full w-fit">
-					<CreditCard size={24} />
-				</div>
-				<h3 class="h3">Credit System</h3>
-			</div>
-			<div>
-				<p class="text-surface-600-300-token">
-					Flexible credit-based subscription management with real-time balance tracking.
-				</p>
-			</div>
-		</div>
+<!-- Hero Section -->
+<Hero bind:searchQuery bind:selectedCategory />
 
-		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg text-center p-6">
-			<div class="mb-4">
-				<div class="mx-auto mb-4 p-3 bg-secondary-500 text-white rounded-full w-fit">
-					<Shield size={24} />
-				</div>
-				<h3 class="h3">Secure Authentication</h3>
-			</div>
-			<div>
-				<p class="text-surface-600-300-token">
-					Enterprise-grade security with session management and Redis integration.
-				</p>
-			</div>
-		</div>
+<!-- Subscriptions Section -->
+<section class="py-12 bg-white">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Header with View All -->
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-2xl font-semibold text-gray-900">
+        All Subscription Plans
+      </h2>
+      <a href="/browse" class="text-sm font-medium text-blue-500 hover:text-blue-600 transition-colors">
+        View All →
+      </a>
+    </div>
 
-		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg text-center p-6">
-			<div class="mb-4">
-				<div class="mx-auto mb-4 p-3 bg-tertiary-500 text-white rounded-full w-fit">
-					<Users size={24} />
-				</div>
-				<h3 class="h3">User Management</h3>
-			</div>
-			<div>
-				<p class="text-surface-600-300-token">
-					Comprehensive user profiles with subscription history and preferences.
-				</p>
-			</div>
-		</div>
+    <!-- Sort & Filter Controls -->
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center space-x-2">
+        <span class="text-sm text-gray-600">Sort by:</span>
+        <select bind:value={sortBy} class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="recommended">Recommended</option>
+          <option value="price_low">Price: Low to High</option>
+          <option value="price_high">Price: High to Low</option>
+          <option value="popularity">Popularity</option>
+        </select>
+      </div>
 
-		<div class="bg-surface-50-900-token border border-surface-300-600-token rounded-lg shadow-lg text-center p-6">
-			<div class="mb-4">
-				<div class="mx-auto mb-4 p-3 bg-warning-500 text-white rounded-full w-fit">
-					<Zap size={24} />
-				</div>
-				<h3 class="h3">Real-time Updates</h3>
-			</div>
-			<div>
-				<p class="text-surface-600-300-token">
-					Live updates for subscriptions, credits, and account activities.
-				</p>
-			</div>
-		</div>
-	</section>
+      <div class="text-sm text-gray-500">
+        {filteredPlans.length} of {data.totalPlans} plans
+      </div>
+    </div>
 
-	<!-- Stats Section -->
-	<section class="bg-surface-100-800-token rounded-lg p-8 mb-16">
-		<h2 class="h2 text-center mb-8">Platform Statistics</h2>
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-			<div>
-				<div class="text-4xl font-bold text-primary-600 mb-2">10K+</div>
-				<div class="text-surface-600-300-token">Active Users</div>
-			</div>
-			<div>
-				<div class="text-4xl font-bold text-secondary-600 mb-2">50K+</div>
-				<div class="text-surface-600-300-token">Transactions</div>
-			</div>
-			<div>
-				<div class="text-4xl font-bold text-tertiary-600 mb-2">99.9%</div>
-				<div class="text-surface-600-300-token">Uptime</div>
-			</div>
-		</div>
-	</section>
+    <!-- Subscription Cards Grid -->
+    <SubscriptionGrid plans={filteredPlans} userBalance={0} />
+  </div>
+</section>
 
-	<!-- CTA Section -->
-	<section class="text-center">
-		<h2 class="h2 mb-4">Ready to Get Started?</h2>
-		<p class="text-xl text-surface-600-300-token mb-8">
-			Join thousands of users managing their subscriptions efficiently.
-		</p>
-		<a href="/auth/register" class="btn variant-filled-primary btn-lg">Create Your Account</a>
-	</section>
-</div>
+<!-- Bundles Section -->
+<section class="py-12 bg-gray-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h2 class="text-2xl font-semibold text-gray-900">
+          Featured Bundles & Exclusive Deals
+        </h2>
+        <p class="text-sm text-gray-600 mt-1">
+          Save more with curated packages
+        </p>
+      </div>
+      <span class="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
+        Combo Packages
+      </span>
+    </div>
+
+    <!-- Bundle Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {#each bundles as bundle}
+        <BundleCard {...bundle} />
+      {/each}
+    </div>
+  </div>
+</section>
+
+<!-- Trust Signals -->
+<TrustSignals />
+
+<!-- Statistics -->
+<Statistics />
+
+<!-- Footer -->
+<Footer />
+
+{#if data.error}
+  <div class="fixed bottom-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">
+    <p class="text-sm">{data.error}</p>
+  </div>
+{/if}

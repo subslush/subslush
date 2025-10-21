@@ -9,11 +9,13 @@
 /* Global styles */
 html,
 body {
-	@apply h-full overflow-hidden;
+	@apply h-full;
 }
 
 body {
 	background-color: rgb(var(--color-surface-50));
+	margin: 0;
+	padding: 0;
 }
 
 /* App layout */
@@ -33,4 +35,24 @@ body {
 /* Layer for custom component styles */
 @layer components {
 	/* Add any custom component styles here */
+}
+
+/* Custom scrollbar for modern look */
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+::-webkit-scrollbar-track {
+	background: #f1f1f1;
+	border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+	background: linear-gradient(180deg, #4FC3F7 0%, #F06292 100%);
+	border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: linear-gradient(180deg, #0288D1 0%, #C2185B 100%);
 }
