@@ -9,26 +9,21 @@
 /* Global styles */
 html,
 body {
-	@apply h-full;
+	@apply min-h-full;
 }
 
 body {
-	background-color: rgb(var(--color-surface-50));
+	background-color: #f9fafb; /* gray-50 for home page */
 	margin: 0;
 	padding: 0;
 }
 
-/* App layout */
-.app-shell {
-	@apply h-full overflow-hidden grid;
-	grid-template-rows: auto 1fr auto;
+/* Dashboard-specific layout (only used in dashboard routes) */
+.dashboard-shell {
+	@apply min-h-screen flex flex-col;
 }
 
-.app-bar {
-	@apply bg-surface-100-800-token border-b border-surface-300-600-token;
-}
-
-.page-container {
+.dashboard-content {
 	@apply flex-1 overflow-y-auto;
 }
 

@@ -87,85 +87,88 @@
   <meta name="description" content="Browse by category, search for specific services, or discover new subscriptions. Save money on premium subscriptions with our marketplace." />
 </svelte:head>
 
-<!-- Navigation -->
-<HomeNav />
+<!-- Home page wrapper with natural scroll -->
+<div class="min-h-screen bg-white">
+  <!-- Navigation -->
+  <HomeNav />
 
-<!-- Hero Section -->
-<Hero bind:searchQuery bind:selectedCategory />
+  <!-- Hero Section -->
+  <Hero bind:searchQuery bind:selectedCategory />
 
-<!-- Subscriptions Section -->
-<section class="py-12 bg-white">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <!-- Header with View All -->
-    <div class="flex items-center justify-between mb-6">
-      <h2 class="text-2xl font-semibold text-gray-900">
-        All Subscription Plans
-      </h2>
-      <a href="/browse" class="text-sm font-medium text-blue-500 hover:text-blue-600 transition-colors">
-        View All →
-      </a>
-    </div>
-
-    <!-- Sort & Filter Controls -->
-    <div class="flex items-center justify-between mb-6">
-      <div class="flex items-center space-x-2">
-        <span class="text-sm text-gray-600">Sort by:</span>
-        <select bind:value={sortBy} class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="recommended">Recommended</option>
-          <option value="price_low">Price: Low to High</option>
-          <option value="price_high">Price: High to Low</option>
-          <option value="popularity">Popularity</option>
-        </select>
-      </div>
-
-      <div class="text-sm text-gray-500">
-        {filteredPlans.length} of {data.totalPlans} plans
-      </div>
-    </div>
-
-    <!-- Subscription Cards Grid -->
-    <SubscriptionGrid plans={filteredPlans} userBalance={0} />
-  </div>
-</section>
-
-<!-- Bundles Section -->
-<section class="py-12 bg-gray-50">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
-      <div>
+  <!-- Subscriptions Section -->
+  <section class="py-12 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <!-- Header with View All -->
+      <div class="flex items-center justify-between mb-6">
         <h2 class="text-2xl font-semibold text-gray-900">
-          Featured Bundles & Exclusive Deals
+          All Subscription Plans
         </h2>
-        <p class="text-sm text-gray-600 mt-1">
-          Save more with curated packages
-        </p>
+        <a href="/browse" class="text-sm font-medium text-blue-500 hover:text-blue-600 transition-colors">
+          View All →
+        </a>
       </div>
-      <span class="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
-        Combo Packages
-      </span>
+
+      <!-- Sort & Filter Controls -->
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center space-x-2">
+          <span class="text-sm text-gray-600">Sort by:</span>
+          <select bind:value={sortBy} class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="recommended">Recommended</option>
+            <option value="price_low">Price: Low to High</option>
+            <option value="price_high">Price: High to Low</option>
+            <option value="popularity">Popularity</option>
+          </select>
+        </div>
+
+        <div class="text-sm text-gray-500">
+          {filteredPlans.length} of {data.totalPlans} plans
+        </div>
+      </div>
+
+      <!-- Subscription Cards Grid -->
+      <SubscriptionGrid plans={filteredPlans} userBalance={0} />
     </div>
+  </section>
 
-    <!-- Bundle Cards Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      {#each bundles as bundle}
-        <BundleCard {...bundle} />
-      {/each}
+  <!-- Bundles Section -->
+  <section class="py-12 bg-gray-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <!-- Header -->
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-2xl font-semibold text-gray-900">
+            Featured Bundles & Exclusive Deals
+          </h2>
+          <p class="text-sm text-gray-600 mt-1">
+            Save more with curated packages
+          </p>
+        </div>
+        <span class="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
+          Combo Packages
+        </span>
+      </div>
+
+      <!-- Bundle Cards Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {#each bundles as bundle}
+          <BundleCard {...bundle} />
+        {/each}
+      </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- Trust Signals -->
-<TrustSignals />
+  <!-- Trust Signals -->
+  <TrustSignals />
 
-<!-- Statistics -->
-<Statistics />
+  <!-- Statistics -->
+  <Statistics />
 
-<!-- Footer -->
-<Footer />
+  <!-- Footer -->
+  <Footer />
 
-{#if data.error}
-  <div class="fixed bottom-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">
-    <p class="text-sm">{data.error}</p>
-  </div>
-{/if}
+  {#if data.error}
+    <div class="fixed bottom-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">
+      <p class="text-sm">{data.error}</p>
+    </div>
+  {/if}
+</div>
