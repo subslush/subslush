@@ -7,17 +7,21 @@
 	export let icon: ComponentType;
 	export let iconColor: string = 'bg-blue-500';
 	export let valueColor: string = 'text-gray-900';
+
 </script>
 
-<div class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-200">
-	<div class="flex items-center justify-between">
+<!-- Card content -->
+<div class="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-lg transition-shadow duration-300">
+	<div class="flex items-start justify-between">
 		<div class="flex-1">
-			<p class="text-sm font-medium text-gray-500 mb-1">{title}</p>
-			<p class="text-3xl font-bold {valueColor} mb-1">{value}</p>
+			<p class="text-sm font-medium text-gray-500 mb-2">{title}</p>
+			<p class="text-2xl font-bold {valueColor} mb-1">{value}</p>
 			<p class="text-xs text-gray-500">{subtitle}</p>
 		</div>
-		<div class="w-12 h-12 {iconColor} rounded-full flex items-center justify-center text-white">
-			<svelte:component this={icon} size={24} />
+
+		<!-- Icon with solid background -->
+		<div class="w-10 h-10 {iconColor} rounded-lg flex items-center justify-center text-white">
+			<svelte:component this={icon} size={20} />
 		</div>
 	</div>
 </div>
