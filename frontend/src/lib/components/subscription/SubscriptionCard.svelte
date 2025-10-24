@@ -105,19 +105,28 @@
       </div>
     </div>
 
-    <button
-      on:click={() => onPurchase(plan)}
-      class="w-full py-3 px-4 rounded-lg font-semibold transition-colors duration-200 {canPurchase
-        ? 'bg-primary-600 hover:bg-primary-700 text-white'
-        : 'bg-surface-300 dark:bg-surface-600 text-surface-500 dark:text-surface-400 cursor-not-allowed'}"
-      disabled={!canPurchase}
-    >
-      {#if canPurchase}
-        Purchase Plan
-      {:else}
-        Insufficient Credits
-      {/if}
-    </button>
+    <div class="space-y-2">
+      <a
+        href="/browse/subscriptions/{plan.service_type}/{plan.service_type}-{plan.plan}"
+        class="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 bg-primary-600 hover:bg-primary-700 text-white text-center block hover:scale-105 shadow-lg hover:shadow-xl"
+      >
+        View Details
+      </a>
+
+      <button
+        on:click={() => onPurchase(plan)}
+        class="w-full py-2 px-4 rounded-lg font-medium transition-colors duration-200 {canPurchase
+          ? 'border border-primary-600 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20'
+          : 'bg-surface-300 dark:bg-surface-600 text-surface-500 dark:text-surface-400 cursor-not-allowed'}"
+        disabled={!canPurchase}
+      >
+        {#if canPurchase}
+          Quick Purchase
+        {:else}
+          Insufficient Credits
+        {/if}
+      </button>
+    </div>
 
     {#if !canPurchase}
       <p class="text-xs text-surface-500 dark:text-surface-400 mt-2 text-center">

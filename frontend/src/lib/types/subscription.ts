@@ -109,3 +109,61 @@ export interface PurchaseStep {
   isActive: boolean;
   isCompleted: boolean;
 }
+
+// Detailed subscription interfaces for detail pages
+export interface SubscriptionDetail {
+  id: string;
+  serviceType: ServiceType;
+  serviceName: string;
+  planName: string;
+  planType: ServicePlan;
+  description: string;
+  longDescription: string;
+  price: number;
+  originalPrice: number;
+  currency: string;
+  features: string[];
+  ratings: {
+    average: number;
+    count: number;
+  };
+  host: {
+    id: string;
+    name: string;
+    isVerified: boolean;
+    joinDate: string;
+  };
+  availability: {
+    totalSeats: number;
+    occupiedSeats: number;
+    availableSeats: number;
+  };
+  reviews: Review[];
+  durationOptions: DurationOption[];
+  relatedPlans: RelatedPlan[];
+  badges: string[]; // 'streaming', 'shared_plan', 'verified', 'popular'
+}
+
+export interface Review {
+  id: string;
+  author: string;
+  isVerified: boolean;
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
+
+export interface DurationOption {
+  months: number;
+  totalPrice: number;
+  discount?: number; // percentage
+  isRecommended?: boolean;
+}
+
+export interface RelatedPlan {
+  id: string;
+  serviceType: ServiceType;
+  serviceName: string;
+  planName: string;
+  price: number;
+}
