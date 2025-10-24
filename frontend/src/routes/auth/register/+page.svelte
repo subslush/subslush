@@ -13,7 +13,7 @@
     confirmPassword: '',
     firstName: '',
     lastName: '',
-    acceptTerms: false  // CRITICAL FIX: Add this field
+    acceptTerms: false
   };
 
   let formErrors: Partial<Record<keyof RegisterFormData, string>> = {};
@@ -138,18 +138,18 @@
 </script>
 
 <svelte:head>
-  <title>Sign Up - Subscription Platform</title>
-  <meta name="description" content="Create your Subscription Platform account to access premium subscriptions at discounted prices." />
+  <title>Sign Up - SubSlush</title>
+  <meta name="description" content="Create your SubSlush account to access premium subscriptions at unbeatable prices." />
 </svelte:head>
 
-<div class="space-y-6">
+<div class="space-y-8">
   <!-- Header -->
-  <div class="text-center">
+  <div class="text-center space-y-3">
     <h2 class="text-2xl font-bold text-surface-900 dark:text-surface-100">
-      Create your account
+      Join SubSlush Today
     </h2>
-    <p class="mt-2 text-sm text-surface-600 dark:text-surface-400">
-      Join thousands of users saving on premium subscriptions
+    <p class="text-sm text-surface-600 dark:text-surface-400">
+      Get premium subscriptions at unbeatable prices
     </p>
   </div>
 
@@ -173,66 +173,43 @@
   {/if}
 
   <!-- Registration Form -->
-  <form on:submit={handleSubmit} class="space-y-4" novalidate>
-    <!-- Name Fields -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <!-- First Name -->
-      <div>
-        <label for="firstName" class="label">
-          <span>First name (optional)</span>
-        </label>
-        <input
-          bind:value={formData.firstName}
-          on:input={() => clearFieldError('firstName')}
-          on:keydown={handleKeydown}
-          type="text"
-          id="firstName"
-          name="firstName"
-          autocomplete="given-name"
-          disabled={$isLoading}
-          class="input"
-          class:input-error={formErrors.firstName}
-          placeholder="Enter your first name"
-          aria-describedby={formErrors.firstName ? 'firstName-error' : undefined}
-        />
-        {#if formErrors.firstName}
-          <div id="firstName-error" class="text-sm text-error-500 mt-1" role="alert">
-            {formErrors.firstName}
-          </div>
-        {/if}
-      </div>
-
-      <!-- Last Name -->
-      <div>
-        <label for="lastName" class="label">
-          <span>Last name (optional)</span>
-        </label>
-        <input
-          bind:value={formData.lastName}
-          on:input={() => clearFieldError('lastName')}
-          on:keydown={handleKeydown}
-          type="text"
-          id="lastName"
-          name="lastName"
-          autocomplete="family-name"
-          disabled={$isLoading}
-          class="input"
-          class:input-error={formErrors.lastName}
-          placeholder="Enter your last name"
-          aria-describedby={formErrors.lastName ? 'lastName-error' : undefined}
-        />
-        {#if formErrors.lastName}
-          <div id="lastName-error" class="text-sm text-error-500 mt-1" role="alert">
-            {formErrors.lastName}
-          </div>
-        {/if}
-      </div>
+  <form on:submit={handleSubmit} class="space-y-6" novalidate>
+    <!-- Name Field -->
+    <div class="space-y-2">
+      <label for="firstName" class="block text-sm font-medium text-surface-700 dark:text-surface-300">
+        Full name
+      </label>
+      <input
+        bind:value={formData.firstName}
+        on:input={() => clearFieldError('firstName')}
+        on:keydown={handleKeydown}
+        type="text"
+        id="firstName"
+        name="firstName"
+        autocomplete="name"
+        disabled={$isLoading}
+        class="w-full px-4 py-3 bg-white dark:bg-surface-900 border rounded-lg text-base text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:ring-2 focus:ring-subslush-blue/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+        class:border-surface-200={!formErrors.firstName}
+        class:dark:border-surface-700={!formErrors.firstName}
+        class:focus:border-subslush-blue={!formErrors.firstName}
+        class:border-error-500={formErrors.firstName}
+        class:dark:border-error-400={formErrors.firstName}
+        class:focus:border-error-500={formErrors.firstName}
+        placeholder="John Doe"
+        aria-describedby={formErrors.firstName ? 'firstName-error' : undefined}
+        aria-label="Full name"
+      />
+      {#if formErrors.firstName}
+        <div id="firstName-error" class="text-sm text-error-500 dark:text-error-400" role="alert">
+          {formErrors.firstName}
+        </div>
+      {/if}
     </div>
 
     <!-- Email Field -->
-    <div>
-      <label for="email" class="label">
-        <span>Email address</span>
+    <div class="space-y-2">
+      <label for="email" class="block text-sm font-medium text-surface-700 dark:text-surface-300">
+        Email address
       </label>
       <input
         bind:this={emailInput}
@@ -245,24 +222,30 @@
         autocomplete="email"
         required
         disabled={$isLoading}
-        class="input"
-        class:input-error={formErrors.email}
-        placeholder="Enter your email"
+        class="w-full px-4 py-3 bg-white dark:bg-surface-900 border rounded-lg text-base text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:ring-2 focus:ring-subslush-blue/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+        class:border-surface-200={!formErrors.email}
+        class:dark:border-surface-700={!formErrors.email}
+        class:focus:border-subslush-blue={!formErrors.email}
+        class:border-error-500={formErrors.email}
+        class:dark:border-error-400={formErrors.email}
+        class:focus:border-error-500={formErrors.email}
+        placeholder="you@example.com"
         aria-describedby={formErrors.email ? 'email-error' : undefined}
+        aria-label="Email address"
       />
       {#if formErrors.email}
-        <div id="email-error" class="text-sm text-error-500 mt-1" role="alert">
+        <div id="email-error" class="text-sm text-error-500 dark:text-error-400" role="alert">
           {formErrors.email}
         </div>
       {/if}
     </div>
 
     <!-- Password Field -->
-    <div>
-      <label for="password" class="label">
-        <span>Password</span>
+    <div class="space-y-2">
+      <label for="password" class="block text-sm font-medium text-surface-700 dark:text-surface-300">
+        Password
       </label>
-      <div class="input-group input-group-divider grid-cols-[1fr_auto]">
+      <div class="relative">
         {#if showPassword}
           <input
             bind:value={formData.password}
@@ -274,8 +257,13 @@
             autocomplete="new-password"
             required
             disabled={$isLoading}
-            class="input"
-            class:input-error={formErrors.password}
+            class="w-full px-4 py-3 pr-12 bg-white dark:bg-surface-900 border rounded-lg text-base text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:ring-2 focus:ring-subslush-blue/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            class:border-surface-200={!formErrors.password}
+            class:dark:border-surface-700={!formErrors.password}
+            class:focus:border-subslush-blue={!formErrors.password}
+            class:border-error-500={formErrors.password}
+            class:dark:border-error-400={formErrors.password}
+            class:focus:border-error-500={formErrors.password}
             placeholder="Create a strong password"
             aria-describedby={formErrors.password ? 'password-error' : 'password-help'}
           />
@@ -290,23 +278,28 @@
             autocomplete="new-password"
             required
             disabled={$isLoading}
-            class="input"
-            class:input-error={formErrors.password}
+            class="w-full px-4 py-3 pr-12 bg-white dark:bg-surface-900 border rounded-lg text-base text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:ring-2 focus:ring-subslush-blue/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            class:border-surface-200={!formErrors.password}
+            class:dark:border-surface-700={!formErrors.password}
+            class:focus:border-subslush-blue={!formErrors.password}
+            class:border-error-500={formErrors.password}
+            class:dark:border-error-400={formErrors.password}
+            class:focus:border-error-500={formErrors.password}
             placeholder="Create a strong password"
             aria-describedby={formErrors.password ? 'password-error' : 'password-help'}
           />
         {/if}
         <button
           type="button"
-          class="btn variant-filled-surface btn-icon"
+          class="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center text-surface-400 hover:text-surface-600 dark:text-surface-500 dark:hover:text-surface-300 focus:outline-none focus:ring-2 focus:ring-subslush-blue/20 rounded-md transition-colors duration-200"
           on:click={togglePasswordVisibility}
           disabled={$isLoading}
           aria-label={showPassword ? 'Hide password' : 'Show password'}
         >
           {#if showPassword}
-            <EyeOff class="w-4 h-4" />
+            <Eye size={20} />
           {:else}
-            <Eye class="w-4 h-4" />
+            <EyeOff size={20} />
           {/if}
         </button>
       </div>
@@ -355,11 +348,11 @@
     </div>
 
     <!-- Confirm Password Field -->
-    <div>
-      <label for="confirmPassword" class="label">
-        <span>Confirm password</span>
+    <div class="space-y-2">
+      <label for="confirmPassword" class="block text-sm font-medium text-surface-700 dark:text-surface-300">
+        Confirm password
       </label>
-      <div class="input-group input-group-divider grid-cols-[1fr_auto]">
+      <div class="relative">
         {#if showConfirmPassword}
           <input
             bind:value={formData.confirmPassword}
@@ -371,8 +364,13 @@
             autocomplete="new-password"
             required
             disabled={$isLoading}
-            class="input"
-            class:input-error={formErrors.confirmPassword}
+            class="w-full px-4 py-3 pr-12 bg-white dark:bg-surface-900 border rounded-lg text-base text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:ring-2 focus:ring-subslush-blue/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            class:border-surface-200={!formErrors.confirmPassword}
+            class:dark:border-surface-700={!formErrors.confirmPassword}
+            class:focus:border-subslush-blue={!formErrors.confirmPassword}
+            class:border-error-500={formErrors.confirmPassword}
+            class:dark:border-error-400={formErrors.confirmPassword}
+            class:focus:border-error-500={formErrors.confirmPassword}
             placeholder="Confirm your password"
             aria-describedby={formErrors.confirmPassword ? 'confirmPassword-error' : undefined}
           />
@@ -387,78 +385,87 @@
             autocomplete="new-password"
             required
             disabled={$isLoading}
-            class="input"
-            class:input-error={formErrors.confirmPassword}
+            class="w-full px-4 py-3 pr-12 bg-white dark:bg-surface-900 border rounded-lg text-base text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:ring-2 focus:ring-subslush-blue/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            class:border-surface-200={!formErrors.confirmPassword}
+            class:dark:border-surface-700={!formErrors.confirmPassword}
+            class:focus:border-subslush-blue={!formErrors.confirmPassword}
+            class:border-error-500={formErrors.confirmPassword}
+            class:dark:border-error-400={formErrors.confirmPassword}
+            class:focus:border-error-500={formErrors.confirmPassword}
             placeholder="Confirm your password"
             aria-describedby={formErrors.confirmPassword ? 'confirmPassword-error' : undefined}
           />
         {/if}
         <button
           type="button"
-          class="btn variant-filled-surface btn-icon"
+          class="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center text-surface-400 hover:text-surface-600 dark:text-surface-500 dark:hover:text-surface-300 focus:outline-none focus:ring-2 focus:ring-subslush-blue/20 rounded-md transition-colors duration-200"
           on:click={toggleConfirmPasswordVisibility}
           disabled={$isLoading}
           aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
         >
           {#if showConfirmPassword}
-            <EyeOff class="w-4 h-4" />
+            <Eye size={20} />
           {:else}
-            <Eye class="w-4 h-4" />
+            <EyeOff size={20} />
           {/if}
         </button>
       </div>
       {#if formErrors.confirmPassword}
-        <div id="confirmPassword-error" class="text-sm text-error-500 mt-1" role="alert">
+        <div id="confirmPassword-error" class="text-sm text-error-500 dark:text-error-400" role="alert">
           {formErrors.confirmPassword}
         </div>
       {/if}
     </div>
 
     <!-- Terms and Conditions -->
-    <div class="space-y-2">
-      <div class="flex items-start space-x-2">
+    <div class="space-y-3">
+      <label class="flex items-start gap-3 cursor-pointer">
         <input
           bind:checked={formData.acceptTerms}
           on:change={() => clearFieldError('acceptTerms')}
           type="checkbox"
           id="terms"
           disabled={$isLoading}
-          class="checkbox mt-1"
-          class:input-error={formErrors.acceptTerms}
+          class="mt-1 h-4 w-4 rounded border-surface-300 text-subslush-blue focus:ring-subslush-blue focus:ring-offset-0 focus:ring-2 transition-colors duration-200"
+          class:border-error-500={formErrors.acceptTerms}
           aria-describedby={formErrors.acceptTerms ? 'terms-error' : undefined}
         />
-        <label for="terms" class="text-sm text-surface-700 dark:text-surface-300">
+        <span class="text-sm text-surface-600 dark:text-surface-400 leading-relaxed">
           I agree to the
-          <a href="/terms" class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors" target="_blank">
+          <a href="/terms" class="text-subslush-blue dark:text-subslush-blue-light hover:text-subslush-blue-dark dark:hover:text-subslush-blue transition-colors underline underline-offset-2" target="_blank">
             Terms of Service
           </a>
           and
-          <a href="/privacy" class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors" target="_blank">
+          <a href="/privacy" class="text-subslush-pink dark:text-subslush-pink-light hover:text-subslush-pink-dark dark:hover:text-subslush-pink transition-colors underline underline-offset-2" target="_blank">
             Privacy Policy
           </a>
-        </label>
-      </div>
+        </span>
+      </label>
       {#if formErrors.acceptTerms}
-        <div id="terms-error" class="text-sm text-error-500" role="alert">
+        <div id="terms-error" class="text-sm text-error-500 dark:text-error-400" role="alert">
           {formErrors.acceptTerms}
         </div>
       {/if}
     </div>
 
     <!-- Submit Button -->
-    <button
-      type="submit"
-      disabled={$isLoading}
-      class="btn variant-filled-primary w-full"
-    >
-      {#if $isLoading}
-        <Loader2 class="w-4 h-4 mr-2 animate-spin" />
-        Creating account...
-      {:else}
-        <UserPlus class="w-4 h-4 mr-2" />
-        Create account
-      {/if}
-    </button>
+    <div class="pt-4">
+      <button
+        type="submit"
+        disabled={$isLoading}
+        class="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-white font-medium rounded-lg transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-subslush-blue/20 focus:ring-offset-2 min-h-[52px] shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
+        style="background: linear-gradient(45deg, #4FC3F7, #F06292);"
+        aria-label="Create your SubSlush account"
+      >
+        {#if $isLoading}
+          <Loader2 class="w-5 h-5 animate-spin" aria-hidden="true" />
+          <span>Creating account...</span>
+        {:else}
+          <UserPlus class="w-5 h-5" aria-hidden="true" />
+          <span>Create account</span>
+        {/if}
+      </button>
+    </div>
   </form>
 
   <!-- Navigation Links -->
@@ -468,7 +475,7 @@
       <button
         type="button"
         on:click={navigateToLogin}
-        class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium transition-colors"
+        class="text-subslush-blue dark:text-subslush-blue-light hover:text-subslush-blue-dark dark:hover:text-subslush-blue font-medium transition-colors ml-1"
         disabled={$isLoading}
       >
         Sign in
