@@ -1,7 +1,6 @@
 <script lang="ts">
   import { Search } from 'lucide-svelte';
   import CategoryFilter from './CategoryFilter.svelte';
-  import logoPng from '$lib/assets/logo.png';
 
   export let searchQuery = '';
   export let selectedCategory = 'all';
@@ -10,14 +9,6 @@
 <section class="bg-gray-50 py-12 md:py-16">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-    <!-- LARGE LOGO - Prominently displayed -->
-    <div class="flex justify-center mb-8">
-      <img
-        src={logoPng}
-        alt="SubSlush Logo"
-        class="h-24 w-auto md:h-32 lg:h-40 object-contain"
-      />
-    </div>
 
     <!-- Heading -->
     <h1 class="text-3xl md:text-4xl font-bold text-gray-900 text-center mb-4">

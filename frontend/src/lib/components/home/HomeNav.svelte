@@ -1,6 +1,7 @@
 <script lang="ts">
   const navLinks = [
-    { label: 'Browse Subscriptions', href: '/browse' },
+    { label: 'Home', href: '/' },
+    { label: 'FAQ', href: '/faq' },
     { label: 'Contact Us', href: '/contact' }
   ];
 </script>
