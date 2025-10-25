@@ -107,7 +107,7 @@
 
     <div class="space-y-2">
       <a
-        href="/browse/subscriptions/{plan.service_type}/{plan.service_type}-{plan.plan}"
+        href="/browse/subscriptions/{plan.service_type}/{plan.plan}"
         class="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 bg-primary-600 hover:bg-primary-700 text-white text-center block hover:scale-105 shadow-lg hover:shadow-xl"
       >
         View Details

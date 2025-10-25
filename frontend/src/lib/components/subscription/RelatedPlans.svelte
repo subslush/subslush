@@ -38,7 +38,9 @@
   }
 
   function navigateToDetail(plan: RelatedPlan) {
-    window.location.href = `/browse/subscriptions/${plan.serviceType}/${plan.id}`;
+    // Extract plan type from ID if it contains service type prefix
+    const planType = plan.id.includes('-') ? plan.id.split('-')[1] : plan.id;
+    window.location.href = `/browse/subscriptions/${plan.serviceType}/${planType}`;
   }
 </script>
 
@@ -60,12 +62,10 @@
   <!-- Plans Grid -->
   <div class="flex space-x-4 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:gap-4 sm:space-x-0 sm:overflow-x-visible">
     {#each relatedPlans as plan}
-      <article
-        class="flex-shrink-0 w-64 sm:w-auto border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-gray-300 hover:scale-105 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 focus-within:ring-2 focus-within:ring-blue-500 focus-within:outline-none"
+      <button
+        type="button"
+        class="flex-shrink-0 w-64 sm:w-auto border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-gray-300 hover:scale-105 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 focus:ring-2 focus:ring-blue-500 focus:outline-none text-left"
         on:click={() => navigateToDetail(plan)}
-        on:keydown={(e) => e.key === 'Enter' && navigateToDetail(plan)}
-        role="button"
-        tabindex="0"
         aria-label="View details for {plan.serviceName} {plan.planName}"
       >
         <!-- Service Logo -->
@@ -106,15 +106,7 @@
           </div>
         </div>
 
-        <!-- Quick Join Button -->
-        <button
-          class="w-full mt-4 py-2 px-3 text-sm font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none transition-colors duration-200"
-          on:click|stopPropagation={() => navigateToDetail(plan)}
-          aria-label="View details for {plan.serviceName} {plan.planName}"
-        >
-          View Details
-        </button>
-      </article>
+      </button>
     {/each}
   </div>
 
