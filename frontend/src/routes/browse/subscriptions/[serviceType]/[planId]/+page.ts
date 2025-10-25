@@ -26,7 +26,15 @@ export const load: PageLoad = async ({ params, fetch }) => {
     }
 
     const data = await subscriptionResponse.json();
-    const subscription: SubscriptionDetail = data.subscriptionDetail;
+
+    // CRITICAL FIX: Backend wraps response in a 'data' property
+    const subscription: SubscriptionDetail = data.data;
+
+    // Validate that subscription was properly extracted
+    if (!subscription) {
+      console.error('Subscription data is undefined after extraction', { data });
+      throw error(500, 'Invalid subscription data received from server');
+    }
 
     // Fetch user credit balance if user is authenticated
     let userCredits = 0;
