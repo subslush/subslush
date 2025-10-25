@@ -13,7 +13,9 @@ export const nodes = [
 	() => import('./nodes/9'),
 	() => import('./nodes/10'),
 	() => import('./nodes/11'),
-	() => import('./nodes/12')
+	() => import('./nodes/12'),
+	() => import('./nodes/13'),
+	() => import('./nodes/14')
 ];
 
 export const server_loads = [0,3];
@@ -22,12 +24,14 @@ export const dictionary = {
 		"/": [4],
 		"/auth/login": [~5,[2]],
 		"/auth/register": [6,[2]],
-		"/dashboard": [7,[3]],
-		"/dashboard/credits": [8,[3]],
-		"/dashboard/subscriptions": [9,[3]],
-		"/dashboard/subscriptions/active": [11,[3]],
-		"/dashboard/subscriptions/[subscriptionId]": [10,[3]],
-		"/profile": [12]
+		"/browse": [7],
+		"/browse/subscriptions/[serviceType]/[planId]": [8],
+		"/dashboard": [9,[3]],
+		"/dashboard/credits": [10,[3]],
+		"/dashboard/subscriptions": [11,[3]],
+		"/dashboard/subscriptions/active": [13,[3]],
+		"/dashboard/subscriptions/[subscriptionId]": [12,[3]],
+		"/profile": [14]
 	};
 
 export const hooks = {

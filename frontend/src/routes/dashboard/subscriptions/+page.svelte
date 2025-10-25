@@ -311,6 +311,16 @@
         </div>
       {/if}
 
+      <!-- Header with View All -->
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-semibold text-gray-900">
+          All Subscription Plans
+        </h2>
+        <a href="/browse" class="text-sm font-medium text-blue-500 hover:text-blue-600 transition-colors">
+          View All →
+        </a>
+      </div>
+
       <!-- Sort & Filter Controls -->
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center space-x-2">

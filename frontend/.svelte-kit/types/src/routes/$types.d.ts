@@ -12,13 +12,15 @@ type EnsureDefined<T> = T extends null | undefined ? {} : T;
 type OptionalUnion<U extends Record<string, any>, A extends keyof U = U extends U ? keyof U : never> = U extends unknown ? { [P in Exclude<A, keyof U>]?: never } & U : never;
 export type Snapshot<T = any> = Kit.Snapshot<T>;
 type PageParentData = EnsureDefined<LayoutData>;
-type LayoutRouteId = RouteId | "/" | "/auth/login" | "/auth/register" | "/dashboard" | "/dashboard/credits" | "/dashboard/subscriptions" | "/dashboard/subscriptions/[subscriptionId]" | "/dashboard/subscriptions/active" | "/profile" | null
-type LayoutParams = RouteParams & { subscriptionId?: string }
+type LayoutRouteId = RouteId | "/" | "/auth/login" | "/auth/register" | "/browse" | "/browse/subscriptions/[serviceType]/[planId]" | "/dashboard" | "/dashboard/credits" | "/dashboard/subscriptions" | "/dashboard/subscriptions/[subscriptionId]" | "/dashboard/subscriptions/active" | "/profile" | null
+type LayoutParams = RouteParams & { serviceType?: string; planId?: string; subscriptionId?: string }
 type LayoutServerParentData = EnsureDefined<{}>;
 type LayoutParentData = EnsureDefined<{}>;
 
 export type PageServerData = null;
-export type PageData = Expand<PageParentData>;
+export type PageLoad<OutputData extends OutputDataShape<PageParentData> = OutputDataShape<PageParentData>> = Kit.Load<RouteParams, PageServerData, PageParentData, OutputData, RouteId>;
+export type PageLoadEvent = Parameters<PageLoad>[0];
+export type PageData = Expand<Omit<PageParentData, keyof Kit.LoadProperties<Awaited<ReturnType<typeof import('./proxy+page.js').load>>>> & OptionalUnion<EnsureDefined<Kit.LoadProperties<Awaited<ReturnType<typeof import('./proxy+page.js').load>>>>>>;
 export type PageProps = { params: RouteParams; data: PageData }
 export type LayoutServerLoad<OutputData extends Partial<App.PageData> & Record<string, any> | void = Partial<App.PageData> & Record<string, any> | void> = Kit.ServerLoad<LayoutParams, LayoutServerParentData, OutputData, LayoutRouteId>;
 export type LayoutServerLoadEvent = Parameters<LayoutServerLoad>[0];

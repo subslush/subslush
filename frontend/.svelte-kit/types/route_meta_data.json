@@ -1,5 +1,6 @@
 {
 	"/": [
+		"src/routes/+page.ts",
 		"src/routes/+layout.ts",
 		"src/routes/+layout.server.ts",
 		"src/routes/+layout.ts",
@@ -15,6 +16,16 @@
 		"src/routes/+layout.server.ts"
 	],
 	"/auth/register": [
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/browse": [
+		"src/routes/browse/+page.ts",
+		"src/routes/+layout.ts",
+		"src/routes/+layout.server.ts"
+	],
+	"/browse/subscriptions/[serviceType]/[planId]": [
+		"src/routes/browse/subscriptions/[serviceType]/[planId]/+page.ts",
 		"src/routes/+layout.ts",
 		"src/routes/+layout.server.ts"
 	],

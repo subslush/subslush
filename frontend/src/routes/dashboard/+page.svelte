@@ -184,7 +184,7 @@
 			<span>Add Subscription</span>
 		</a>
 		<a
-			href="/dashboard/credits/add"
+			href="/dashboard/credits"
 			class="px-6 py-2.5 text-white text-sm font-medium rounded-lg transition-all duration-300 focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 flex items-center space-x-2 hover:shadow-lg hover:shadow-pink-500/30 hover:scale-105"
 			style="background-color: #F06292;"
 			onmouseover="this.style.backgroundColor='#E91E63'"

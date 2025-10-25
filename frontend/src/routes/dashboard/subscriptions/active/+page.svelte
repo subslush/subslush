@@ -37,10 +37,10 @@
 
   function getStatusBadge(status: SubscriptionStatus) {
     const badges = {
-      active: { class: 'bg-success-100 text-success-800 dark:bg-success-900 dark:text-success-200', icon: CheckCircle2, text: 'Active' },
-      expired: { class: 'bg-error-100 text-error-800 dark:bg-error-900 dark:text-error-200', icon: XCircle, text: 'Expired' },
-      cancelled: { class: 'bg-surface-100 text-surface-800 dark:bg-surface-700 dark:text-surface-200', icon: XCircle, text: 'Cancelled' },
-      pending: { class: 'bg-warning-100 text-warning-800 dark:bg-warning-900 dark:text-warning-200', icon: Clock, text: 'Pending' }
+      active: { class: 'bg-green-100 text-green-800', icon: CheckCircle2, text: 'Active' },
+      expired: { class: 'bg-red-100 text-red-800', icon: XCircle, text: 'Expired' },
+      cancelled: { class: 'bg-gray-100 text-gray-800', icon: XCircle, text: 'Cancelled' },
+      pending: { class: 'bg-yellow-100 text-yellow-800', icon: Clock, text: 'Pending' }
     };
     return badges[status] || badges.pending;
   }
@@ -74,78 +74,84 @@
 </script>
 
 <svelte:head>
-  <title>My Subscriptions - Subscription Platform</title>
+  <title>My Subscriptions - SubSlush</title>
   <meta name="description" content="Manage your active subscriptions and view account details." />
 </svelte:head>
 
-<div class="container mx-auto p-6 max-w-7xl">
-  <!-- Header Section -->
-  <div class="mb-8">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-bold text-surface-900 dark:text-surface-100 mb-2">
-          My Subscriptions
-        </h1>
-        <p class="text-surface-600 dark:text-surface-300">
-          Manage your active subscriptions and view account details
-        </p>
-      </div>
+<!-- Header Section -->
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">
+      My Subscriptions
+      <span class="inline-block">📺</span>
+    </h1>
+    <p class="text-gray-600 mt-1 text-base">
+      Manage your active subscriptions and view account details
+    </p>
+  </div>
 
-      <a
-        href="/dashboard/subscriptions"
-        class="inline-flex items-center justify-center bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg transition-colors"
+  <div class="flex gap-3">
+    <a
+      href="/dashboard/subscriptions"
+      class="px-6 py-2.5 text-white text-sm font-medium rounded-lg transition-all duration-300 focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 flex items-center space-x-2 hover:shadow-lg hover:shadow-pink-500/30 hover:scale-105"
+      style="background-color: #F06292;"
+      onmouseover="this.style.backgroundColor='#E91E63'"
+      onmouseout="this.style.backgroundColor='#F06292'"
+    >
+      <Plus size={20} />
+      <span>Browse Plans</span>
+    </a>
+  </div>
+</div>
+
+<!-- Status Filters -->
+<div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+  <div class="flex items-center space-x-2 mb-4">
+    <Filter size={20} class="text-gray-600" />
+    <span class="text-sm font-medium text-gray-700">Filter by Status</span>
+  </div>
+  <div class="flex flex-wrap gap-3">
+    {#each statusFilters as filter}
+      <button
+        on:click={() => selectedFilter = filter.value}
+        class="flex items-center space-x-2 px-4 py-2 rounded-lg border transition-all duration-200 {selectedFilter === filter.value
+          ? 'bg-blue-500 text-white border-blue-500'
+          : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'}"
       >
-        <Plus size={16} class="mr-2" />
-        Browse Plans
-      </a>
-    </div>
+        <span class="font-medium">{filter.label}</span>
+        <span class="text-xs px-2 py-1 rounded-full {selectedFilter === filter.value
+          ? 'bg-white bg-opacity-20'
+          : 'bg-gray-200'}">{filter.count}</span>
+      </button>
+    {/each}
   </div>
+</div>
 
-  <!-- Status Filters -->
-  <div class="mb-6">
-    <div class="flex items-center space-x-2 mb-4">
-      <Filter size={20} class="text-surface-600 dark:text-surface-300" />
-      <span class="text-sm font-medium text-surface-700 dark:text-surface-300">Filter by Status</span>
+<!-- Subscriptions List -->
+{#if filteredSubscriptions.length === 0}
+  <div class="bg-white rounded-xl border border-gray-200 p-12 text-center">
+    <div class="mb-4 p-4 bg-gray-100 rounded-full inline-block">
+      <ShoppingBag class="w-10 h-10 text-gray-400" />
     </div>
-    <div class="flex flex-wrap gap-3">
-      {#each statusFilters as filter}
-        <button
-          on:click={() => selectedFilter = filter.value}
-          class="flex items-center space-x-2 px-4 py-2 rounded-lg border transition-all duration-200 {selectedFilter === filter.value
-            ? 'bg-primary-600 text-white border-primary-600'
-            : 'bg-surface-50 dark:bg-surface-800 text-surface-700 dark:text-surface-300 border-surface-300 dark:border-surface-600 hover:bg-surface-100 dark:hover:bg-surface-700'}"
-        >
-          <span class="font-medium">{filter.label}</span>
-          <span class="text-xs px-2 py-1 rounded-full {selectedFilter === filter.value
-            ? 'bg-white bg-opacity-20'
-            : 'bg-surface-200 dark:bg-surface-700'}">{filter.count}</span>
-        </button>
-      {/each}
-    </div>
+    <h3 class="text-lg font-medium text-gray-900 mb-2">
+      No subscriptions found
+    </h3>
+    <p class="text-gray-500 mb-6">
+      {selectedFilter === 'all'
+        ? "You don't have any subscriptions yet."
+        : `No ${selectedFilter} subscriptions found.`}
+    </p>
+    <a
+      href="/dashboard/subscriptions"
+      class="inline-flex items-center px-6 py-2.5 text-white text-sm font-medium rounded-lg transition-colors focus:ring-2 focus:ring-offset-2"
+      style="background-color: #4FC3F7; focus:ring-color: #4FC3F7;"
+      onmouseover="this.style.backgroundColor='#29B6F6'"
+      onmouseout="this.style.backgroundColor='#4FC3F7'"
+    >
+      <Plus size={16} class="mr-2" />
+      Browse Available Plans
+    </a>
   </div>
-
-  <!-- Subscriptions List -->
-  {#if filteredSubscriptions.length === 0}
-    <div class="text-center py-12">
-      <div class="bg-surface-100 dark:bg-surface-800 rounded-lg p-8">
-        <ShoppingBag size={48} class="mx-auto text-surface-400 dark:text-surface-500 mb-4" />
-        <h3 class="text-lg font-medium text-surface-900 dark:text-surface-100 mb-2">
-          No subscriptions found
-        </h3>
-        <p class="text-surface-600 dark:text-surface-300 mb-6">
-          {selectedFilter === 'all'
-            ? "You don't have any subscriptions yet."
-            : `No ${selectedFilter} subscriptions found.`}
-        </p>
-        <a
-          href="/dashboard/subscriptions"
-          class="inline-flex items-center bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus size={16} class="mr-2" />
-          Browse Available Plans
-        </a>
-      </div>
-    </div>
   {:else}
     <div class="space-y-4">
       {#each filteredSubscriptions as subscription (subscription.id)}
@@ -154,19 +160,19 @@
         {@const daysUntilExpiry = getDaysUntilExpiry(subscription.end_date)}
         {@const isExpiringSoon = daysUntilExpiry <= 7 && subscription.status === 'active'}
 
-        <div class="bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-600 rounded-lg p-6 hover:shadow-lg transition-shadow">
+        <div class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
           <!-- Subscription Header -->
           <div class="flex items-start justify-between mb-4">
             <div class="flex items-center space-x-4">
-              <div class="p-3 bg-primary-100 dark:bg-primary-900 rounded-lg">
-                <svelte:component this={Icon} size={24} class="text-primary-600 dark:text-primary-400" />
+              <div class="p-3 bg-blue-100 rounded-lg">
+                <svelte:component this={Icon} size={24} class="text-blue-600" />
               </div>
 
               <div>
-                <h3 class="text-lg font-semibold text-surface-900 dark:text-surface-100">
+                <h3 class="text-lg font-semibold text-gray-900">
                   {getServiceName(subscription.service_type)}
                 </h3>
-                <p class="text-surface-600 dark:text-surface-300 text-sm capitalize">
+                <p class="text-gray-600 text-sm capitalize">
                   {subscription.service_plan} Plan
                 </p>
               </div>
@@ -175,7 +181,7 @@
             <!-- Status Badge -->
             <div class="flex items-center space-x-2">
               {#if isExpiringSoon}
-                <span class="bg-warning-100 text-warning-800 dark:bg-warning-900 dark:text-warning-200 text-xs font-medium px-2 py-1 rounded-full">
+                <span class="bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-1 rounded-full">
                   Expires in {daysUntilExpiry} day{daysUntilExpiry === 1 ? '' : 's'}
                 </span>
               {/if}
@@ -189,26 +195,26 @@
           <!-- Subscription Details -->
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div class="flex items-center space-x-3 text-sm">
-              <Calendar size={16} class="text-surface-400 dark:text-surface-500" />
+              <Calendar size={16} class="text-gray-400" />
               <div>
-                <p class="text-surface-600 dark:text-surface-300">Start Date</p>
-                <p class="font-medium text-surface-900 dark:text-surface-100">{formatDate(subscription.start_date)}</p>
+                <p class="text-gray-600">Start Date</p>
+                <p class="font-medium text-gray-900">{formatDate(subscription.start_date)}</p>
               </div>
             </div>
 
             <div class="flex items-center space-x-3 text-sm">
-              <Clock size={16} class="text-surface-400 dark:text-surface-500" />
+              <Clock size={16} class="text-gray-400" />
               <div>
-                <p class="text-surface-600 dark:text-surface-300">End Date</p>
-                <p class="font-medium text-surface-900 dark:text-surface-100">{formatDate(subscription.end_date)}</p>
+                <p class="text-gray-600">End Date</p>
+                <p class="font-medium text-gray-900">{formatDate(subscription.end_date)}</p>
               </div>
             </div>
 
             <div class="flex items-center space-x-3 text-sm">
-              <CheckCircle2 size={16} class="text-surface-400 dark:text-surface-500" />
+              <CheckCircle2 size={16} class="text-gray-400" />
               <div>
-                <p class="text-surface-600 dark:text-surface-300">Auto Renew</p>
-                <p class="font-medium text-surface-900 dark:text-surface-100">
+                <p class="text-gray-600">Auto Renew</p>
+                <p class="font-medium text-gray-900">
                   {subscription.auto_renew ? 'Enabled' : 'Disabled'}
                 </p>
               </div>
@@ -216,12 +222,12 @@
           </div>
 
           <!-- Credentials Section (Placeholder) -->
-          <div class="border-t border-surface-200 dark:border-surface-600 pt-4">
+          <div class="border-t border-gray-200 pt-4">
             <div class="flex items-center justify-between">
-              <h4 class="text-sm font-medium text-surface-700 dark:text-surface-300">Account Credentials</h4>
+              <h4 class="text-sm font-medium text-gray-700">Account Credentials</h4>
               <button
                 on:click={() => toggleCredentials(subscription.id)}
-                class="inline-flex items-center text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+                class="inline-flex items-center text-sm text-blue-600 hover:text-blue-700 transition-colors"
               >
                 {#if showCredentials[subscription.id]}
                   <EyeOff size={16} class="mr-1" />
@@ -234,17 +240,17 @@
             </div>
 
             {#if showCredentials[subscription.id]}
-              <div class="mt-3 p-3 bg-surface-100 dark:bg-surface-700 rounded-lg">
+              <div class="mt-3 p-3 bg-gray-50 rounded-lg">
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
-                    <span class="text-surface-600 dark:text-surface-300">Email:</span>
-                    <span class="font-mono text-surface-900 dark:text-surface-100">account@example.com</span>
+                    <span class="text-gray-600">Email:</span>
+                    <span class="font-mono text-gray-900">account@example.com</span>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-surface-600 dark:text-surface-300">Password:</span>
-                    <span class="font-mono text-surface-900 dark:text-surface-100">••••••••••</span>
+                    <span class="text-gray-600">Password:</span>
+                    <span class="font-mono text-gray-900">••••••••••</span>
                   </div>
-                  <p class="text-xs text-surface-500 dark:text-surface-400 mt-2">
+                  <p class="text-xs text-gray-500 mt-2">
                     Account credentials will be provided via secure delivery after purchase processing.
                   </p>
                 </div>
@@ -256,12 +262,12 @@
           <div class="flex justify-end space-x-3 mt-4">
             <a
               href="/dashboard/subscriptions/{subscription.id}"
-              class="inline-flex items-center text-sm text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-surface-100 transition-colors"
+              class="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 transition-colors"
             >
               View Details
             </a>
             {#if subscription.status === 'active'}
-              <button class="text-sm text-error-600 hover:text-error-700 transition-colors">
+              <button class="text-sm text-red-600 hover:text-red-700 transition-colors">
                 Cancel Subscription
               </button>
             {/if}
@@ -270,50 +276,26 @@
       {/each}
     </div>
 
-    <!-- Pagination (if needed) -->
-    {#if data.pagination && data.pagination.totalPages > 1}
-      <div class="mt-8 flex justify-center">
-        <div class="flex items-center space-x-2">
-          <button
-            disabled={!data.pagination.hasPrevious}
-            class="px-3 py-1 text-sm border rounded disabled:opacity-50"
-          >
-            Previous
-          </button>
-          <span class="text-sm text-surface-600 dark:text-surface-300">
-            Page {data.pagination.page} of {data.pagination.totalPages}
-          </span>
-          <button
-            disabled={!data.pagination.hasNext}
-            class="px-3 py-1 text-sm border rounded disabled:opacity-50"
-          >
-            Next
-          </button>
-        </div>
+  <!-- Pagination (if needed) -->
+  {#if data.pagination && data.pagination.totalPages > 1}
+    <div class="mt-8 flex justify-center">
+      <div class="flex items-center space-x-2">
+        <button
+          disabled={!data.pagination.hasPrevious}
+          class="px-4 py-2 text-sm border border-gray-300 rounded-lg disabled:opacity-50 hover:bg-gray-50"
+        >
+          Previous
+        </button>
+        <span class="text-sm text-gray-600">
+          Page {data.pagination.page} of {data.pagination.totalPages}
+        </span>
+        <button
+          disabled={!data.pagination.hasNext}
+          class="px-4 py-2 text-sm border border-gray-300 rounded-lg disabled:opacity-50 hover:bg-gray-50"
+        >
+          Next
+        </button>
       </div>
-    {/if}
-  {/if}
-
-  <!-- Quick Actions -->
-  <div class="mt-12 bg-surface-100 dark:bg-surface-800 rounded-lg p-6">
-    <h2 class="text-xl font-semibold text-surface-900 dark:text-surface-100 mb-4">
-      Quick Actions
-    </h2>
-    <div class="flex flex-wrap gap-4">
-      <a
-        href="/dashboard/subscriptions"
-        class="inline-flex items-center bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg transition-colors"
-      >
-        <ShoppingBag size={16} class="mr-2" />
-        Browse More Plans
-      </a>
-      <a
-        href="/dashboard/credits"
-        class="inline-flex items-center bg-surface-50 dark:bg-surface-700 hover:bg-surface-200 dark:hover:bg-surface-600 text-surface-700 dark:text-surface-300 px-4 py-2 rounded-lg transition-colors"
-      >
-        <Plus size={16} class="mr-2" />
-        Add Credits
-      </a>
     </div>
-  </div>
-</div>
+  {/if}
+{/if}
