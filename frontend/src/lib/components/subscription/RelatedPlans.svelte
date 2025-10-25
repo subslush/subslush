@@ -2,19 +2,23 @@
   import { ArrowRight } from 'lucide-svelte';
   import type { RelatedPlan } from '$lib/types/subscription';
 
+  // Import SVG logos
+  import netflixLogo from '$lib/assets/netflixlogo.svg';
+  import spotifyLogo from '$lib/assets/spotifylogo.svg';
+  import tradingviewLogo from '$lib/assets/tradingviewlogo.svg';
+  import hboLogo from '$lib/assets/hbologo.svg';
+
   export let relatedPlans: RelatedPlan[];
   export let title: string = 'Users also joined these plans';
 
-  function getServiceLogo(serviceType: string) {
+  function getServiceLogo(serviceType: string): string {
     const logos: Record<string, string> = {
-      spotify: '🎵',
-      netflix: '🎬',
-      tradingview: '📈',
-      disney: '🏰',
-      adobe: '🎨',
-      microsoft: '📊',
+      spotify: spotifyLogo,
+      netflix: netflixLogo,
+      tradingview: tradingviewLogo,
+      hbo: hboLogo
     };
-    return logos[serviceType] || '📱';
+    return logos[serviceType] || '';
   }
 
   function getServiceColors(serviceType: string) {
@@ -56,17 +60,29 @@
   <!-- Plans Grid -->
   <div class="flex space-x-4 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:gap-4 sm:space-x-0 sm:overflow-x-visible">
     {#each relatedPlans as plan}
-      <div
-        class="flex-shrink-0 w-64 sm:w-auto border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-gray-300 hover:scale-105 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2"
+      <article
+        class="flex-shrink-0 w-64 sm:w-auto border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-gray-300 hover:scale-105 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 focus-within:ring-2 focus-within:ring-blue-500 focus-within:outline-none"
         on:click={() => navigateToDetail(plan)}
         on:keydown={(e) => e.key === 'Enter' && navigateToDetail(plan)}
         role="button"
         tabindex="0"
+        aria-label="View details for {plan.serviceName} {plan.planName}"
       >
         <!-- Service Logo -->
         <div class="flex items-center justify-center mb-3">
-          <div class="w-12 h-12 {getServiceColors(plan.serviceType).bg} {getServiceColors(plan.serviceType).border} border-2 rounded-lg flex items-center justify-center text-xl">
-            {getServiceLogo(plan.serviceType)}
+          <div class="w-12 h-12 {getServiceColors(plan.serviceType).bg} {getServiceColors(plan.serviceType).border} border-2 rounded-lg flex items-center justify-center">
+            {#if getServiceLogo(plan.serviceType)}
+              <img
+                src={getServiceLogo(plan.serviceType)}
+                alt="{plan.serviceName} logo"
+                class="w-8 h-8 object-contain"
+                loading="lazy"
+              />
+            {:else}
+              <div class="w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-gray-500 text-xs font-medium">
+                {plan.serviceName.charAt(0).toUpperCase()}
+              </div>
+            {/if}
           </div>
         </div>
 
@@ -92,12 +108,13 @@
 
         <!-- Quick Join Button -->
         <button
-          class="w-full mt-4 py-2 px-3 text-sm font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors duration-200"
+          class="w-full mt-4 py-2 px-3 text-sm font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none transition-colors duration-200"
           on:click|stopPropagation={() => navigateToDetail(plan)}
+          aria-label="View details for {plan.serviceName} {plan.planName}"
         >
           View Details
         </button>
-      </div>
+      </article>
     {/each}
   </div>
 

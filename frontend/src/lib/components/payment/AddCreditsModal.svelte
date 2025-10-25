@@ -128,24 +128,50 @@
     }
   }
 
-  function startStatusPolling(paymentId: string) {
-    pollInterval = setInterval(async () => {
-      try {
-        const status = await paymentService.getPaymentStatus(paymentId);
-        paymentStatus = status.status;
+  async function pollPaymentStatus() {
+    try {
+      const status = await paymentService.getPaymentStatus(paymentData!.paymentId);
 
-        if (status.status === 'finished' || status.status === 'confirmed') {
-          stopPolling();
-          onSuccess(userBalance + status.creditAmount);
-          closeModal();
-        } else if (status.status === 'failed' || status.status === 'expired') {
-          stopPolling();
-          error = status.status === 'expired' ? 'Payment expired. Please try again.' : 'Payment failed. Please try again.';
-        }
-      } catch (err) {
-        console.error('Error polling payment status:', err);
+      if (!status) {
+        console.warn('[PAYMENT] Status not found, payment may not be in database yet');
+        return;
       }
-    }, 10000);
+
+      console.log('[PAYMENT] Current status:', status.status);
+      paymentStatus = status.status;
+
+      // Handle successful payment
+      if (status.status === 'finished' || status.status === 'confirmed') {
+        console.log('[PAYMENT] 🎉 Payment completed!');
+        stopPolling();
+
+        // Wait a moment for backend to process credit allocation
+        setTimeout(async () => {
+          // Refresh user balance
+          const newBalance = userBalance + status.creditAmount;
+          onSuccess(newBalance);
+
+          // Show success message
+          alert(`Payment successful! ${status.creditAmount} credits have been added to your account.`);
+
+          // Close modal
+          isOpen = false;
+        }, 2000);
+      }
+
+      // Handle failed payment
+      if (['failed', 'expired', 'refunded'].includes(status.status)) {
+        console.error('[PAYMENT] Payment failed:', status.status);
+        stopPolling();
+        error = `Payment ${status.status}. Please try again or contact support.`;
+      }
+    } catch (err: any) {
+      console.error('[PAYMENT] Error polling payment status:', err);
+    }
+  }
+
+  function startStatusPolling(paymentId: string) {
+    pollInterval = setInterval(pollPaymentStatus, 10000);
   }
 
   function stopPolling() {

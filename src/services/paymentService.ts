@@ -202,68 +202,100 @@ export class PaymentService {
     userId?: string
   ): Promise<PaymentStatusResponse | null> {
     try {
-      // Try cache first
       const cacheKey = `${this.CACHE_PREFIX}status:${paymentId}`;
+
+      // Try cache first
       const cached = await redisClient.getClient().get(cacheKey);
-
       if (cached) {
-        const payment = JSON.parse(cached);
-        // Verify user access if userId provided
-        if (userId && payment.userId !== userId) {
-          return null;
-        }
-        return payment;
+        Logger.debug(`Payment status cache hit: ${paymentId}`);
+        return JSON.parse(cached);
       }
 
-      // Get from credit_transactions table using NOWPayments payment_id
       const pool = getDatabasePool();
-      let query = `
-        SELECT id, user_id, payment_id, payment_status, payment_currency, payment_amount,
-               blockchain_hash, created_at, updated_at, amount, description, metadata
-        FROM credit_transactions
-        WHERE payment_id = $1 AND payment_id IS NOT NULL
-      `;
-      const params: any[] = [paymentId];
 
-      if (userId) {
-        query += ' AND user_id = $2';
-        params.push(userId);
-      }
+      // Query with detailed logging
+      Logger.info(`Fetching payment status`, {
+        paymentId,
+        userId,
+        query:
+          'SELECT FROM credit_transactions WHERE payment_id = $1 AND user_id = $2',
+      });
 
-      const result = await pool.query(query, params);
+      const result = await pool.query(
+        `SELECT id, payment_id, user_id, payment_status, payment_currency,
+                payment_amount, blockchain_hash, amount, type, description,
+                created_at, updated_at, metadata
+         FROM credit_transactions
+         WHERE payment_id = $1 AND user_id = $2
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [paymentId, userId]
+      );
 
       if (result.rows.length === 0) {
-        return null;
+        Logger.warn(`Payment not found in database`, { paymentId, userId });
+
+        // Fallback: Try querying NOWPayments API directly
+        try {
+          Logger.info(`Attempting to fetch from NOWPayments API: ${paymentId}`);
+          const nowPaymentStatus =
+            await nowpaymentsClient.getPaymentStatus(paymentId);
+
+          Logger.info(`Retrieved from NOWPayments API`, {
+            paymentId,
+            status: nowPaymentStatus.payment_status,
+            actuallyPaid: nowPaymentStatus.actually_paid,
+          });
+
+          // If payment is finished in NOWPayments but not in our DB, trigger webhook processing manually
+          if (nowPaymentStatus.payment_status === 'finished') {
+            Logger.warn(
+              `Payment finished in NOWPayments but not in our DB - triggering manual sync`
+            );
+            await this.syncPaymentFromNOWPayments(nowPaymentStatus, userId!);
+          }
+
+          return {
+            paymentId: nowPaymentStatus.payment_id,
+            status: nowPaymentStatus.payment_status,
+            creditAmount: nowPaymentStatus.price_amount,
+            payAmount: nowPaymentStatus.pay_amount,
+            payCurrency: nowPaymentStatus.pay_currency,
+            actuallyPaid: nowPaymentStatus.actually_paid,
+            blockchainHash: nowPaymentStatus.payin_hash,
+            createdAt: new Date(nowPaymentStatus.created_at),
+            updatedAt: new Date(nowPaymentStatus.updated_at),
+          };
+        } catch (apiError) {
+          Logger.error(`Failed to fetch from NOWPayments API:`, apiError);
+          return null;
+        }
       }
 
       const row = result.rows[0];
-      // Safe metadata parsing with fallback for corrupted data
+
+      Logger.info(`Payment found in database`, {
+        paymentId: row.payment_id,
+        status: row.payment_status,
+        amount: row.amount,
+        userId: row.user_id,
+      });
+
+      // Parse metadata safely
       const metadata = row.metadata
         ? typeof row.metadata === 'string'
-          ? row.metadata === '[object Object]'
-            ? {}
-            : ((): any => {
-                try {
-                  return JSON.parse(row.metadata);
-                } catch {
-                  Logger.warn(
-                    'Failed to parse metadata JSON, using empty object:',
-                    row.metadata
-                  );
-                  return {};
-                }
-              })()
+          ? JSON.parse(row.metadata)
           : row.metadata
         : {};
+
       const response: PaymentStatusResponse = {
-        paymentId: row.payment_id, // Use NOWPayments payment_id, not local id
+        paymentId: row.payment_id,
         status: row.payment_status,
-        creditAmount: metadata.priceAmount || Math.abs(parseFloat(row.amount)),
+        creditAmount:
+          metadata.priceAmount || Math.abs(parseFloat(row.amount || '0')),
         payAmount: parseFloat(row.payment_amount || '0'),
-        payCurrency: row.payment_currency,
-        ...(row.actually_paid && {
-          actuallyPaid: parseFloat(row.actually_paid),
-        }),
+        payCurrency: row.payment_currency || 'btc',
+        actuallyPaid: metadata.actuallyPaid,
         blockchainHash: row.blockchain_hash,
         createdAt: new Date(row.created_at),
         updatedAt: new Date(row.updated_at),
@@ -281,6 +313,96 @@ export class PaymentService {
     } catch (error) {
       Logger.error('Error getting payment status:', error);
       return null;
+    }
+  }
+
+  // Add new method to manually sync payment from NOWPayments
+  private async syncPaymentFromNOWPayments(
+    nowPaymentStatus: any,
+    userId: string
+  ): Promise<void> {
+    const pool = getDatabasePool();
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Find the payment record
+      const result = await client.query(
+        'SELECT * FROM credit_transactions WHERE payment_id = $1',
+        [nowPaymentStatus.payment_id]
+      );
+
+      if (result.rows.length === 0) {
+        Logger.error(
+          `Cannot sync - payment not found: ${nowPaymentStatus.payment_id}`
+        );
+        await client.query('ROLLBACK');
+        return;
+      }
+
+      const payment = result.rows[0];
+      const metadata = payment.metadata
+        ? typeof payment.metadata === 'string'
+          ? JSON.parse(payment.metadata)
+          : payment.metadata
+        : {};
+      const creditAmount =
+        metadata.priceAmount || nowPaymentStatus.price_amount;
+
+      // Get current balance
+      const currentBalance = await creditService.getUserBalance(userId);
+      const balanceBefore = currentBalance?.totalBalance || 0;
+      const balanceAfter = balanceBefore + creditAmount;
+
+      // Update payment record with finished status and credit amount
+      await client.query(
+        `UPDATE credit_transactions
+         SET payment_status = $1,
+             blockchain_hash = $2,
+             amount = $3,
+             balance_before = $4,
+             balance_after = $5,
+             description = $6,
+             updated_at = NOW(),
+             metadata = $7
+         WHERE payment_id = $8`,
+        [
+          'finished',
+          nowPaymentStatus.payin_hash,
+          creditAmount,
+          balanceBefore,
+          balanceAfter,
+          `Cryptocurrency payment completed - ${nowPaymentStatus.pay_currency.toUpperCase()}`,
+          JSON.stringify({
+            ...metadata,
+            actuallyPaid: nowPaymentStatus.actually_paid,
+            paymentCompleted: true,
+            completedAt: new Date().toISOString(),
+            blockchainHash: nowPaymentStatus.payin_hash,
+            syncedManually: true,
+          }),
+          nowPaymentStatus.payment_id,
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      Logger.info(`Successfully synced payment from NOWPayments`, {
+        paymentId: nowPaymentStatus.payment_id,
+        userId,
+        creditAmount,
+        newBalance: balanceAfter,
+      });
+
+      // Clear cache
+      await this.clearUserBalanceCache(userId);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      Logger.error('Error syncing payment from NOWPayments:', error);
+      throw error;
+    } finally {
+      client.release();
     }
   }
 
@@ -306,8 +428,12 @@ export class PaymentService {
       const payment = paymentResult.rows[0];
       const previousStatus = payment.payment_status;
 
-      // Update payment status and blockchain hash
-      const metadata = payment.metadata ? JSON.parse(payment.metadata) : {};
+      // FIX: Handle metadata that might already be an object
+      const metadata = payment.metadata
+        ? typeof payment.metadata === 'string'
+          ? JSON.parse(payment.metadata)
+          : payment.metadata
+        : {};
       metadata.actuallyPaid = payload.actually_paid;
 
       await client.query(
@@ -357,7 +483,7 @@ export class PaymentService {
         );
 
         // Clear user's balance cache so it gets recalculated
-        await creditService.getUserBalance(payment.user_id);
+        await this.clearUserBalanceCache(payment.user_id);
 
         Logger.info(`Credits added for completed payment`, {
           paymentId: payment.id,
@@ -635,7 +761,9 @@ export class PaymentService {
       const localId = result.rows[0].id;
       const nowpaymentsId = result.rows[0].payment_id;
       const metadata = result.rows[0].metadata
-        ? JSON.parse(result.rows[0].metadata)
+        ? typeof result.rows[0].metadata === 'string'
+          ? JSON.parse(result.rows[0].metadata)
+          : result.rows[0].metadata
         : {};
 
       // Get latest status from NOWPayments
@@ -689,6 +817,17 @@ export class PaymentService {
       await redisClient.getClient().del(...keys);
     } catch (error) {
       Logger.error('Error clearing payment cache:', error);
+    }
+  }
+
+  // Clear user balance cache
+  private async clearUserBalanceCache(userId: string): Promise<void> {
+    try {
+      const cacheKey = `credit:balance:${userId}`;
+      await redisClient.getClient().del(cacheKey);
+      Logger.debug(`Cleared balance cache for user ${userId}`);
+    } catch (error) {
+      Logger.error('Error clearing user balance cache:', error);
     }
   }
 

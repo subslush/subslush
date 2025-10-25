@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { MessageCircle } from 'lucide-svelte';
+  import { Check } from 'lucide-svelte';
   import type { SubscriptionDetail, DurationOption } from '$lib/types/subscription';
 
   export let subscription: SubscriptionDetail;
   export let userCredits: number = 0;
   export let onJoinPlan: () => void;
-  export let onAskHost: () => void;
 
   let selectedDuration = 1; // Default to 1 month
 
@@ -24,7 +23,7 @@
 
 <div class="lg:sticky lg:top-8 space-y-4 lg:space-y-6">
   <!-- Price Card -->
-  <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow duration-300 animate-in slide-in-from-right-4 duration-500 lg:duration-1000">
+  <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow duration-300 animate-in slide-in-from-right-4 duration-300">
     <!-- Main Price Display -->
     <div class="text-center mb-6">
       <div class="text-4xl font-bold text-gray-900">
@@ -54,12 +53,14 @@
         <div class="grid grid-cols-2 gap-2">
           {#each subscription.durationOptions as option}
             <button
-              class="p-3 text-sm border rounded-lg transition-all duration-200 {
+              class="p-4 text-sm border rounded-lg transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:outline-none {
                 selectedDuration === option.months
                   ? 'border-blue-500 bg-blue-50 text-blue-700'
                   : 'border-gray-300 hover:border-gray-400'
               }"
               on:click={() => selectedDuration = option.months}
+              aria-pressed={selectedDuration === option.months}
+              aria-label="Select {option.months === 1 ? '1 month' : `${option.months} months`} duration"
             >
               <div class="font-medium">
                 {option.months === 1 ? '1 month' : `${option.months} months`}
@@ -81,16 +82,17 @@
     {/if}
 
     <!-- Action Buttons -->
-    <div class="space-y-3">
+    <div class="space-y-4">
       <button
         on:click={onJoinPlan}
         disabled={!canPurchase}
-        class="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 {
+        class="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 focus:ring-2 focus:ring-offset-2 focus:outline-none {
           canPurchase
-            ? 'text-white shadow-lg hover:shadow-xl'
-            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            ? 'text-white shadow-lg hover:shadow-xl focus:ring-blue-500'
+            : 'bg-gray-300 text-gray-500 cursor-not-allowed focus:ring-gray-300'
         }"
         style={canPurchase ? 'background: linear-gradient(45deg, #4FC3F7, #F06292)' : ''}
+        aria-describedby={!canPurchase ? 'insufficient-credits-message' : undefined}
       >
         {#if canPurchase}
           Join Plan
@@ -99,18 +101,27 @@
         {/if}
       </button>
 
-      <button
-        on:click={onAskHost}
-        class="w-full py-3 px-4 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-100 transition-colors duration-200 flex items-center justify-center space-x-2"
-      >
-        <MessageCircle size={16} />
-        <span>Ask Host</span>
-      </button>
+    </div>
+
+    <!-- Trust Signals -->
+    <div class="mt-4 space-y-2">
+      <div class="flex items-center space-x-2">
+        <Check size={16} class="text-green-600" />
+        <span class="text-sm text-gray-600">30-day money-back guarantee</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <Check size={16} class="text-green-600" />
+        <span class="text-sm text-gray-600">Instant access after purchase</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <Check size={16} class="text-green-600" />
+        <span class="text-sm text-gray-600">Cancel anytime</span>
+      </div>
     </div>
 
     {#if !canPurchase}
       <div class="mt-4 text-center">
-        <p class="text-xs text-gray-500">
+        <p class="text-xs text-gray-500" id="insufficient-credits-message">
           You need {formatCurrency(finalPrice - userCredits)} more credits
         </p>
       </div>

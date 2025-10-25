@@ -66,7 +66,7 @@
       <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
         <!-- Review Header -->
         <div class="flex items-start justify-between mb-3">
-          <div class="flex items-center space-x-3">
+          <div class="flex items-center space-x-4">
             <!-- Avatar -->
             <div class="w-10 h-10 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
               <span class="text-sm font-medium text-primary-700 dark:text-primary-300">

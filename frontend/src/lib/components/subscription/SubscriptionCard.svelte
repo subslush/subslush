@@ -45,7 +45,7 @@
 <div class="bg-surface-50 dark:bg-surface-800 shadow-lg rounded-lg p-6 hover:shadow-xl hover:bg-surface-100 dark:hover:bg-surface-700 transition-all duration-200 border border-surface-200 dark:border-surface-600">
   <!-- Header with icon and discount badge -->
   <div class="flex items-center justify-between mb-4">
-    <div class="flex items-center space-x-3">
+    <div class="flex items-center space-x-4">
       <svelte:component this={serviceIcon} size={32} class="text-primary-500" />
       <span class="text-lg font-semibold text-surface-900 dark:text-surface-100">
         {formatServiceName()}
