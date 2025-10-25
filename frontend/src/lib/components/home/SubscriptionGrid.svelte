@@ -2,6 +2,12 @@
   import { Check } from 'lucide-svelte';
   import type { ServicePlanDetails } from '$lib/types/subscription.js';
 
+  // Import SVG logos
+  import netflixLogo from '$lib/assets/netflixlogo.svg';
+  import spotifyLogo from '$lib/assets/spotifylogo.svg';
+  import tradingviewLogo from '$lib/assets/tradingviewlogo.svg';
+  import hboLogo from '$lib/assets/hbologo.svg';
+
   export let plans: Array<{
     serviceType: string;
     serviceName: string;
@@ -13,9 +19,10 @@
   export let userBalance = 0;
 
   const serviceStyles = {
-    netflix: { icon: '🎬', color: 'bg-red-500' },
-    spotify: { icon: '🎵', color: 'bg-green-500' },
-    tradingview: { icon: '📈', color: 'bg-blue-500' },
+    netflix: { logo: netflixLogo, color: 'bg-red-500' },
+    spotify: { logo: spotifyLogo, color: 'bg-green-500' },
+    tradingview: { logo: tradingviewLogo, color: 'bg-blue-500' },
+    hbo: { logo: hboLogo, color: 'bg-purple-600' },
     adobe: { icon: '🎨', color: 'bg-red-600' },
     disney: { icon: '🏰', color: 'bg-blue-600' }
   };
@@ -52,7 +59,11 @@
       <!-- Header -->
       <div class="flex items-start justify-between mb-3">
         <div class="flex items-center space-x-2">
-          <span class="text-2xl">{serviceStyle.icon}</span>
+          {#if serviceStyle.logo}
+            <img src={serviceStyle.logo} alt="{plan.serviceType} logo" class="w-8 h-8 object-contain" />
+          {:else}
+            <span class="text-2xl">{serviceStyle.icon}</span>
+          {/if}
           <div>
             <h3 class="font-semibold text-gray-900 text-base">{plan.serviceName}</h3>
             <p class="text-xs text-gray-500 capitalize">{plan.plan}</p>
@@ -60,7 +71,7 @@
         </div>
 
         {#if savings > 0}
-          <span class="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded">
+          <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
             Save {savings}%
           </span>
         {/if}

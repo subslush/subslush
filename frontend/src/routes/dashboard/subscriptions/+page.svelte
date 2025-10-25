@@ -2,7 +2,13 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { createMutation } from '@tanstack/svelte-query';
-  import { CreditCard, Plus, ShoppingBag, AlertCircle, Search } from 'lucide-svelte';
+  import { CreditCard, Plus, ShoppingBag, AlertCircle, Search, Check } from 'lucide-svelte';
+
+  // Import SVG logos
+  import netflixLogo from '$lib/assets/netflixlogo.svg';
+  import spotifyLogo from '$lib/assets/spotifylogo.svg';
+  import tradingviewLogo from '$lib/assets/tradingviewlogo.svg';
+  import hboLogo from '$lib/assets/hbologo.svg';
 
   import { subscriptionService } from '$lib/api/subscriptions.js';
   import { user } from '$lib/stores/auth.js';
@@ -17,7 +23,6 @@
   import Footer from '$lib/components/home/Footer.svelte';
 
   import SubscriptionCard from '$lib/components/subscription/SubscriptionCard.svelte';
-  import SubscriptionFilters from '$lib/components/subscription/SubscriptionFilters.svelte';
   import PurchaseModal from '$lib/components/subscription/PurchaseModal.svelte';
 
   import type { ServicePlanDetails, ServiceType } from '$lib/types/subscription.js';
@@ -27,7 +32,6 @@
 
   let searchQuery = '';
   let selectedCategory = 'all';
-  let selectedFilter: ServiceType | 'all' = 'all';
   let selectedPlan: ServicePlanDetails | null = null;
   let showPurchaseModal = false;
   let userBalance = data.userBalance || 0;
@@ -97,19 +101,16 @@
     description: plan.description
   }));
 
-  // Filter plans based on search, category, and filter
-  $: filteredPlans = transformedPlans.filter(plan => {
+  // Filter plans based on search and category
+  $: filteredPlans = data.plans.filter(plan => {
     const matchesSearch = searchQuery === '' ||
-      plan.serviceName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      plan.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       plan.plan.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesCategory = selectedCategory === 'all' ||
-      getCategoryForService(plan.serviceType) === selectedCategory;
+      getCategoryForService(plan.service_type) === selectedCategory;
 
-    const matchesFilter = selectedFilter === 'all' ||
-      plan.serviceType === selectedFilter;
-
-    return matchesSearch && matchesCategory && matchesFilter;
+    return matchesSearch && matchesCategory;
   });
 
   function getCategoryForService(serviceType: string): string {
@@ -208,6 +209,37 @@
     errorMessage = '';
     successMessage = '';
   }
+
+  // Helper functions for home page style cards
+  const serviceStyles = {
+    netflix: { logo: netflixLogo, color: 'bg-red-500' },
+    spotify: { logo: spotifyLogo, color: 'bg-green-500' },
+    tradingview: { logo: tradingviewLogo, color: 'bg-blue-500' },
+    hbo: { logo: hboLogo, color: 'bg-purple-600' },
+    adobe: { icon: '🎨', color: 'bg-red-600' },
+    disney: { icon: '🏰', color: 'bg-blue-600' }
+  };
+
+  function getServiceStyle(serviceType: string) {
+    return serviceStyles[serviceType as keyof typeof serviceStyles] || { icon: '📦', color: 'bg-gray-500' };
+  }
+
+  function calculateSavings(price: number, originalPrice?: number) {
+    if (!originalPrice || originalPrice <= price) return 0;
+    return Math.round(((originalPrice - price) / originalPrice) * 100);
+  }
+
+  function getOriginalPrice(price: number, serviceType: string) {
+    const markupRates = {
+      netflix: 1.2,
+      spotify: 1.15,
+      tradingview: 1.3,
+      adobe: 1.25,
+      disney: 1.2
+    };
+    const rate = markupRates[serviceType as keyof typeof markupRates] || 1.2;
+    return price * rate;
+  }
 </script>
 
 <svelte:head>
@@ -215,41 +247,38 @@
   <meta name="description" content="Browse and purchase premium subscription plans at discounted prices. Find your perfect subscription with instant delivery." />
 </svelte:head>
 
-<div class="min-h-screen bg-white">
+<style>
+  /* Break out of dashboard layout constraints - ONLY for subscriptions page */
+  :global(body:has([data-subscriptions-page]) .dashboard-content > div) {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Fallback for browsers that don't support :has() */
+  :global(.subscriptions-page-layout .dashboard-content > div) {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Title text truncation for consistent card heights */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+</style>
+
+<div class="min-h-screen bg-white subscriptions-page-layout" data-subscriptions-page>
 
   <!-- Hero Section -->
   <Hero bind:searchQuery bind:selectedCategory />
 
-  <!-- All Subscription Plans Section -->
+  <!-- Subscription Plans Section -->
   <section class="py-12 bg-white">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
-      <!-- Header with View All -->
-      <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-semibold text-gray-900">
-          All Subscription Plans
-        </h2>
-        <a href="/dashboard/subscriptions/active" class="text-sm font-medium text-blue-500 hover:text-blue-600 transition-colors">
-          View My Subscriptions →
-        </a>
-      </div>
-
-      <!-- User Balance Card -->
-      <div class="mb-6 bg-primary-50 border border-primary-200 rounded-lg p-4 inline-flex items-center space-x-4">
-        <div class="flex items-center space-x-2">
-          <CreditCard size={20} class="text-primary-600" />
-          <span class="text-sm font-medium text-primary-700">Your Balance:</span>
-          <span class="text-lg font-bold text-primary-900">{userBalance}</span>
-          <span class="text-primary-600">credits</span>
-        </div>
-        <a
-          href="/dashboard/credits"
-          class="inline-flex items-center bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors"
-        >
-          <Plus size={16} class="mr-2" />
-          Add Credits
-        </a>
-      </div>
 
       <!-- Success/Error Messages -->
       {#if successMessage}
@@ -284,19 +313,14 @@
 
       <!-- Sort & Filter Controls -->
       <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center space-x-4">
-          <div class="flex items-center space-x-2">
-            <span class="text-sm text-gray-600">Sort by:</span>
-            <select bind:value={sortBy} class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="recommended">Recommended</option>
-              <option value="price_low">Price: Low to High</option>
-              <option value="price_high">Price: High to Low</option>
-              <option value="popularity">Popularity</option>
-            </select>
-          </div>
-
-          <!-- Subscription Filters -->
-          <SubscriptionFilters bind:selected={selectedFilter} />
+        <div class="flex items-center space-x-2">
+          <span class="text-sm text-gray-600">Sort by:</span>
+          <select bind:value={sortBy} class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="recommended">Recommended</option>
+            <option value="price_low">Price: Low to High</option>
+            <option value="price_high">Price: High to Low</option>
+            <option value="popularity">Popularity</option>
+          </select>
         </div>
 
         <div class="text-sm text-gray-500">
@@ -304,23 +328,95 @@
         </div>
       </div>
 
-      <!-- Subscription Cards Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {#each data.plans.filter(plan => {
-          const matchesSearch = searchQuery === '' ||
-            plan.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            plan.plan.toLowerCase().includes(searchQuery.toLowerCase());
-          const matchesCategory = selectedCategory === 'all' ||
-            getCategoryForService(plan.service_type) === selectedCategory;
-          const matchesFilter = selectedFilter === 'all' ||
-            plan.service_type === selectedFilter;
-          return matchesSearch && matchesCategory && matchesFilter;
-        }) as plan (plan.service_type + plan.plan)}
-          <SubscriptionCard
-            {plan}
-            {userBalance}
-            onPurchase={handlePurchaseClick}
-          />
+      <!-- Subscription Cards Grid - Home Page Style -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {#each filteredPlans as plan}
+          {@const serviceStyle = getServiceStyle(plan.service_type)}
+          {@const originalPrice = getOriginalPrice(plan.price, plan.service_type)}
+          {@const savings = calculateSavings(plan.price, originalPrice)}
+          {@const canPurchase = userBalance >= plan.price}
+
+          <div class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow">
+            <!-- Header -->
+            <div class="flex items-start justify-between mb-3 h-12">
+              <div class="flex items-start space-x-2">
+                {#if serviceStyle.logo}
+                  <img src={serviceStyle.logo} alt="{plan.service_type} logo" class="w-8 h-8 object-contain flex-shrink-0" />
+                {:else}
+                  <span class="text-2xl flex-shrink-0">{serviceStyle.icon}</span>
+                {/if}
+                <div class="min-w-0 flex-1">
+                  <h3 class="font-semibold text-gray-900 text-sm leading-tight line-clamp-2">{plan.display_name}</h3>
+                  <p class="text-xs text-gray-500 capitalize leading-tight">{plan.plan}</p>
+                </div>
+              </div>
+
+              {#if savings > 0}
+                <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
+                  Save {savings}%
+                </span>
+              {/if}
+            </div>
+
+            <!-- Price -->
+            <div class="mb-3">
+              <div class="flex items-baseline space-x-2">
+                <span class="text-xl font-bold text-gray-900">€{plan.price.toFixed(2)}</span>
+                <span class="text-xs text-gray-500">/monthly</span>
+              </div>
+              {#if savings > 0}
+                <p class="text-xs text-gray-400 line-through">€{originalPrice.toFixed(2)}</p>
+              {/if}
+              <p class="text-xs text-gray-500 mt-1">
+                {#if savings > 0}
+                  Save €{(originalPrice - plan.price).toFixed(2)}
+                {:else}
+                  Regular price
+                {/if}
+              </p>
+            </div>
+
+            <!-- Features -->
+            <ul class="space-y-1.5 mb-4">
+              {#each plan.features.slice(0, 4) as feature}
+                <li class="flex items-start space-x-2 text-xs text-gray-600">
+                  <Check size={14} class="mt-0.5 flex-shrink-0" style="color: #4FC3F7;" />
+                  <span class="leading-tight">{feature}</span>
+                </li>
+              {/each}
+            </ul>
+
+            <!-- Action Buttons -->
+            <div class="space-y-2">
+              <!-- View Details Button -->
+              <a
+                href="/browse/subscriptions/{plan.service_type}/{plan.plan}"
+                class="w-full py-2.5 px-4 text-white text-sm font-medium rounded-lg transition-colors hover:opacity-90 text-center block"
+                style="background-color: #4FC3F7;"
+              >
+                View Details
+              </a>
+
+              <!-- Quick Purchase Button -->
+              <button
+                on:click={() => handlePurchaseClick(plan)}
+                class="w-full py-2 px-4 text-sm font-medium rounded-lg transition-colors border"
+                class:text-gray-700={canPurchase}
+                class:border-gray-300={canPurchase}
+                class:hover:bg-gray-50={canPurchase}
+                class:bg-gray-100={!canPurchase}
+                class:text-gray-400={!canPurchase}
+                class:cursor-not-allowed={!canPurchase}
+                disabled={!canPurchase}
+              >
+                {#if canPurchase}
+                  Quick Purchase
+                {:else}
+                  Insufficient Credits
+                {/if}
+              </button>
+            </div>
+          </div>
         {:else}
           <div class="col-span-full text-center py-12">
             <div class="bg-gray-100 rounded-lg p-8">
@@ -329,9 +425,7 @@
                 No plans available
               </h3>
               <p class="text-gray-600">
-                {selectedFilter === 'all'
-                  ? 'No subscription plans match your current search criteria.'
-                  : `No plans available for ${selectedFilter}. Try selecting a different service.`}
+                No subscription plans match your current search criteria.
               </p>
             </div>
           </div>

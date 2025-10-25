@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { Bell, ChevronDown } from 'lucide-svelte';
+	import { Bell, ChevronDown, CreditCard, Plus } from 'lucide-svelte';
 	import { page } from '$app/stores';
 	import UserMenu from './UserMenu.svelte';
 	import logoPng from '$lib/assets/logo.png';
 
 	export let user: any;
+	export let userBalance = 0;
 
 	const navItems = [
 		{ label: 'Browse Subscriptions', href: '/dashboard/subscriptions' },
@@ -18,38 +19,60 @@
 <nav class="sticky top-0 z-50 h-16 bg-white border-b border-gray-200">
 	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 		<div class="flex items-center justify-between h-16">
-			<!-- Left section: Logo and Navigation -->
-			<div class="flex items-center space-x-8">
-				<!-- Brand text only -->
-				<a href="/" class="flex items-center">
-					<span
-						class="text-3xl font-extrabold bg-gradient-to-r bg-clip-text text-transparent"
-						style="background-image: linear-gradient(45deg, #4FC3F7, #F06292);"
+
+			<!-- LEFT: SubSlush Text Branding -->
+			<a href="/" class="flex items-center">
+				<span
+					class="text-2xl font-extrabold bg-gradient-to-r bg-clip-text text-transparent"
+					style="background-image: linear-gradient(45deg, #4FC3F7, #F06292);"
+				>
+					SubSlush
+				</span>
+			</a>
+
+			<!-- CENTER: Navigation Links -->
+			<div class="hidden md:flex items-center space-x-1">
+				{#each navItems as item}
+					<a
+						href={item.href}
+						class="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+						class:text-white={currentPath === item.href}
+						class:text-gray-700={currentPath !== item.href}
+						class:hover:bg-gray-100={currentPath !== item.href}
+						style={currentPath === item.href ? 'background-color: #4FC3F7;' : ''}
 					>
-						SubSlush
-					</span>
-				</a>
-
-				<!-- Navigation Links with modern styling -->
-				<div class="hidden md:flex space-x-2">
-					{#each navItems as item}
-						<a
-							href={item.href}
-							class="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-							class:text-white={currentPath === item.href}
-							class:text-gray-700={currentPath !== item.href}
-							class:hover:bg-gray-100={currentPath !== item.href}
-							style={currentPath === item.href ? 'background-color: #4FC3F7;' : ''}
-						>
-							{item.label}
-
-						</a>
-					{/each}
-				</div>
+						{item.label}
+					</a>
+				{/each}
 			</div>
 
-			<!-- Right section: Notifications and User Menu -->
+			<!-- Right section: Balance, Notifications and User Menu -->
 			<div class="flex items-center space-x-4">
+				<!-- Balance Display with Add Credits -->
+				<div class="hidden md:flex items-center space-x-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+					<div class="flex items-center space-x-2">
+						<CreditCard size={16} class="text-gray-600" />
+						<span class="text-sm font-medium text-gray-700">{userBalance}</span>
+						<span class="text-xs text-gray-500">credits</span>
+					</div>
+					<a
+						href="/dashboard/credits"
+						class="inline-flex items-center text-white text-xs font-medium px-3 py-1.5 rounded-md transition-all hover:shadow-lg relative overflow-hidden group"
+					>
+						<!-- Gradient Background (same as Get Started button) -->
+						<span class="absolute inset-0 bg-gradient-to-r from-[#4FC3F7] to-[#F06292]"></span>
+
+						<!-- Hover Effect Layer -->
+						<span class="absolute inset-0 bg-gradient-to-r from-[#29B6F6] to-[#E91E63] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+
+						<!-- Button Content -->
+						<span class="relative z-10 flex items-center">
+							<Plus size={14} class="mr-1" />
+							Add Credits
+						</span>
+					</a>
+				</div>
+
 				<!-- Notifications with animated badge -->
 				<button
 					class="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"

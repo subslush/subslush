@@ -1,14 +1,25 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth.js';
 	import { onMount } from 'svelte';
+	import { subscriptionService } from '$lib/api/subscriptions.js';
 	import TopNav from '$lib/components/navigation/TopNav.svelte';
 
 	export let data; // Data from +layout.server.ts
 
+	let userBalance = data.userBalance || 0;
+
 	// Initialize auth store with server data
-	onMount(() => {
+	onMount(async () => {
 		if (data.user) {
 			auth.init(data.user);
+
+			// Load user balance
+			try {
+				const balanceResponse = await subscriptionService.getCreditBalance(data.user.id);
+				userBalance = balanceResponse.balance;
+			} catch (err) {
+				console.warn('Could not load user credit balance:', err);
+			}
 		}
 	});
 </script>
@@ -20,7 +31,7 @@
 	<div class="absolute top-1/2 left-1/2 w-96 h-96 bg-gradient-to-br from-subslush-purple/10 to-transparent rounded-full blur-3xl animate-blob animation-delay-4000"></div>
 
 	<!-- Top Navigation -->
-	<TopNav user={data.user} />
+	<TopNav user={data.user} {userBalance} />
 
 	<!-- Main Content with glass effect -->
 	<main class="dashboard-content">
