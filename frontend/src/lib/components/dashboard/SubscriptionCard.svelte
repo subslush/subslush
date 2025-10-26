@@ -32,14 +32,31 @@
 	$: serviceInitial = serviceName.charAt(0).toUpperCase();
 	$: sharedByInitials = sharedBy.split(' ').map(n => n.charAt(0)).join('').toUpperCase();
 
-	// Status badge styling
-	const statusStyles = {
-		Active: 'bg-green-500 text-white',
-		Expired: 'bg-gray-500 text-white',
-		Pending: 'bg-yellow-500 text-white',
-	};
+	// Enhanced status badge function
+	function getStatusBadge() {
+		const daysUntilRenewal = parseInt(renewsIn);
 
-	$: statusStyle = statusStyles[status];
+		if (daysUntilRenewal <= 3) {
+			return {
+				text: 'Renewing Soon',
+				class: 'bg-amber-100 text-amber-800 border border-amber-200',
+				icon: '⏰'
+			};
+		} else if (status === 'Active') {
+			return {
+				text: 'Active',
+				class: 'bg-green-100 text-green-800 border border-green-200',
+				icon: '✓'
+			};
+		}
+		return {
+			text: status,
+			class: 'bg-gray-100 text-gray-800 border border-gray-200',
+			icon: '○'
+		};
+	}
+
+	$: statusBadge = getStatusBadge();
 </script>
 
 <div class="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-300">
@@ -61,9 +78,10 @@
 					</div>
 				</div>
 
-				<!-- Status badge -->
-				<span class="px-2 py-1 rounded-full text-xs font-medium {statusStyle}">
-					{status}
+				<!-- Enhanced Status badge -->
+				<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium {statusBadge.class}">
+					<span class="mr-1">{statusBadge.icon}</span>
+					{statusBadge.text}
 				</span>
 			</div>
 
@@ -76,22 +94,47 @@
 		<!-- Card body -->
 		<div class="p-4 space-y-3">
 
-			<!-- Pricing and renewal info -->
-			<div class="flex items-center justify-between">
-				<div>
-					<p class="text-xs text-gray-500">Monthly cost</p>
-					<p class="text-lg font-bold text-gray-900">{monthlyCost}</p>
-				</div>
-				<div class="text-right">
-					<p class="text-xs text-gray-500">Renews in</p>
-					<p class="text-sm font-semibold text-blue-600">{renewsIn}</p>
-				</div>
+			<!-- Enhanced Price Display -->
+			<div class="mb-2">
+				<div class="text-2xl font-bold text-gray-900">{monthlyCost}</div>
+				<div class="text-sm text-gray-500">per month</div>
 			</div>
 
-			<!-- Auto-renew status -->
-			<div class="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-				<span class="text-xs text-gray-600">Auto-renew:</span>
-				<span class="text-xs font-semibold text-gray-900">{autoRenew}</span>
+			<!-- Renewal info -->
+			<div class="text-right">
+				<p class="text-xs text-gray-500">Renews in</p>
+				<p class="text-sm font-semibold text-blue-600">{renewsIn}</p>
+			</div>
+
+			<!-- Enhanced Auto-renewal Status -->
+			<div class="mt-3 pt-3 border-t border-gray-100">
+				<div class="flex items-center justify-between text-sm">
+					<span class="text-gray-600">Auto-renewal:</span>
+					<div class="flex items-center">
+						{#if autoRenew === 'Auto'}
+							<span class="text-green-600 font-medium flex items-center">
+								<svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+									<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+								</svg>
+								ON
+							</span>
+						{:else}
+							<span class="text-gray-500 font-medium flex items-center">
+								<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+								</svg>
+								OFF
+							</span>
+						{/if}
+					</div>
+				</div>
+				<p class="text-xs text-gray-500 mt-1">
+					{#if autoRenew === 'Auto'}
+						Renews automatically from your credit balance
+					{:else}
+						You'll be notified 3 days before renewal
+					{/if}
+				</p>
 			</div>
 
 			<!-- Action buttons -->
