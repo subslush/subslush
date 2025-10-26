@@ -1,10 +1,44 @@
 <script lang="ts">
+  // Import SVG logos
+  import netflixLogo from '$lib/assets/netflixlogo.svg';
+  import spotifyLogo from '$lib/assets/spotifylogo.svg';
+  import tradingviewLogo from '$lib/assets/tradingviewlogo.svg';
+  import hboLogo from '$lib/assets/hbologo.svg';
+
   export let title: string;
   export let subtitle: string;
   export let services: string[];
   export let price: number;
   export let originalPrice: number;
   export let badge: string = '';
+
+  // Logo mapping - add more as logos become available
+  const logoMap: Record<string, string> = {
+    'Netflix': netflixLogo,
+    'Spotify': spotifyLogo,
+    'TradingView': tradingviewLogo,
+    'HBO': hboLogo,
+    // Add aliases for common variations
+    'HBO Max': hboLogo,
+    'Spotify Premium': spotifyLogo,
+  };
+
+  /**
+   * Get display information for a service
+   * Returns logo path if available, otherwise returns first letter
+   */
+  function getServiceDisplay(serviceName: string) {
+    // Normalize service name (trim, handle case variations)
+    const normalizedName = serviceName.trim();
+    const logoPath = logoMap[normalizedName];
+
+    return {
+      hasLogo: !!logoPath,
+      logoPath: logoPath || '',
+      letter: normalizedName.charAt(0).toUpperCase(),
+      fullName: normalizedName
+    };
+  }
 
   function formatPrice(price: number): string {
     // Convert to .99 ending
@@ -48,48 +82,75 @@
 
   <h3 class="font-semibold text-gray-900 mb-4 mt-8 text-center text-lg">{title}</h3>
 
-  <!-- Service Icons -->
-  <div class="flex justify-center space-x-2 mb-4">
+  <!-- Service Icons/Logos -->
+  <div class="flex items-center justify-center space-x-3 mb-6">
     {#each services as service}
-      <div class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-        <!-- Service icons placeholder -->
-        <span class="text-lg font-bold text-gray-600">{service.charAt(0)}</span>
-      </div>
-    {/each}
-  </div>
+      {@const display = getServiceDisplay(service)}
 
-  <!-- Services List -->
-  <div class="mb-4 space-y-1">
-    {#each services as service}
-      <p class="text-sm text-gray-600 text-center">• {service}</p>
+      <div
+        class="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden border border-gray-200"
+        title={display.fullName}
+      >
+        {#if display.hasLogo}
+          <!-- Display actual logo -->
+          <img
+            src={display.logoPath}
+            alt="{display.fullName} logo"
+            class="w-12 h-12 object-contain p-1"
+          />
+        {:else}
+          <!-- Fallback to letter -->
+          <span class="text-2xl font-bold text-gray-700">
+            {display.letter}
+          </span>
+        {/if}
+      </div>
     {/each}
   </div>
 
   <!-- Pricing Section -->
-  <div class="bg-gray-50 rounded-lg p-4 mb-4">
-    <div class="text-center">
-      <div class="text-3xl font-bold text-gray-900 mb-2">€{formatPrice(price)}/month</div>
-      <div class="text-sm text-gray-400 line-through mb-2">€{separatePrice.toFixed(2)} if purchased separately</div>
-      <div class="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold inline-block">
-        YOU SAVE: €{youSave.toFixed(2)} ({savingsPercentage}%)
-      </div>
+  <div class="mb-4">
+    <div class="text-3xl font-bold text-gray-900 mb-2 text-center">
+      €{formatPrice(price)}/month
+    </div>
+    <div class="text-sm text-gray-500 line-through mb-3 text-center">
+      €{separatePrice.toFixed(2)} if purchased separately
+    </div>
+    <div class="bg-red-500 text-white text-center py-2.5 px-4 rounded-lg font-bold text-lg">
+      YOU SAVE: €{youSave.toFixed(2)} ({savingsPercentage}%)
     </div>
   </div>
 
   <!-- Social Proof -->
-  <div class="text-center mb-4">
-    <p class="text-xs text-gray-600">{getSocialProof()}</p>
-  </div>
+  {#if getSocialProof()}
+    <div class="text-center text-sm text-gray-600 mb-4">
+      {getSocialProof()}
+    </div>
+  {/if}
 
-  <!-- Button -->
-  <button
-    class="w-full px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold rounded-lg transition-colors mb-2"
-  >
+  <!-- Features -->
+  <ul class="space-y-2 mb-6 text-sm text-gray-700">
+    <li class="flex items-start">
+      <span class="text-green-500 mr-2 flex-shrink-0">✓</span>
+      <span>Instant access to all services</span>
+    </li>
+    <li class="flex items-start">
+      <span class="text-green-500 mr-2 flex-shrink-0">✓</span>
+      <span>One payment, manage all subscriptions</span>
+    </li>
+    <li class="flex items-start">
+      <span class="text-green-500 mr-2 flex-shrink-0">✓</span>
+      <span>Cancel individual items anytime</span>
+    </li>
+  </ul>
+
+  <!-- CTA Button -->
+  <button class="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-bold transition-colors">
     Get This Bundle →
   </button>
 
-  <!-- Fine Print -->
-  <p class="text-xs text-gray-400 text-center">
+  <!-- Trust line -->
+  <p class="text-center text-xs text-gray-500 mt-3">
     Instant access • Cancel anytime • 30-day money back
   </p>
 </div>

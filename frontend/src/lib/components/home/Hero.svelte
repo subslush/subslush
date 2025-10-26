@@ -1,11 +1,35 @@
 <script lang="ts">
+  import { Lock, Check, Users, Zap } from 'lucide-svelte';
   import CategoryFilter from './CategoryFilter.svelte';
 
   export let selectedCategory = 'all';
 </script>
 
-<section class="bg-gray-50 py-12 md:py-16">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<section class="bg-gray-50 py-12 md:py-16 relative overflow-hidden">
+
+  <!-- Background Decoration Layer -->
+  <div class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+    <!-- Top-right gradient blob -->
+    <div
+      class="absolute -top-40 -right-40 w-96 h-96 rounded-full blur-3xl opacity-20"
+      style="background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);"
+    ></div>
+
+    <!-- Bottom-left gradient blob -->
+    <div
+      class="absolute -bottom-40 -left-40 w-96 h-96 rounded-full blur-3xl opacity-20"
+      style="background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);"
+    ></div>
+
+    <!-- Middle accent blob -->
+    <div
+      class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl opacity-10"
+      style="background: linear-gradient(135deg, #06b6d4 0%, #ec4899 100%);"
+    ></div>
+  </div>
+
+  <!-- Content Layer (relative z-index to sit above background) -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
 
 
     <!-- Heading -->
@@ -35,20 +59,20 @@
 
       <!-- Mini Trust Badges -->
       <div class="flex flex-wrap items-center justify-center gap-4 mt-4 text-sm text-gray-600">
-        <div class="flex items-center space-x-1">
-          <span>🔒</span>
+        <div class="flex items-center space-x-1.5">
+          <Lock size={16} class="text-gray-500" />
           <span>Encrypted Payments</span>
         </div>
-        <div class="flex items-center space-x-1">
-          <span>✓</span>
+        <div class="flex items-center space-x-1.5">
+          <Check size={16} class="text-green-500" />
           <span>7-Day Guarantee</span>
         </div>
-        <div class="flex items-center space-x-1">
-          <span>👥</span>
+        <div class="flex items-center space-x-1.5">
+          <Users size={16} class="text-blue-500" />
           <span>250K+ Users</span>
         </div>
-        <div class="flex items-center space-x-1">
-          <span>⚡</span>
+        <div class="flex items-center space-x-1.5">
+          <Zap size={16} class="text-yellow-500" />
           <span>99.9% Uptime</span>
         </div>
       </div>
