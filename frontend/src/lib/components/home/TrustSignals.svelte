@@ -2,8 +2,8 @@
   const trustSignals = [
     {
       icon: '🔒',
-      title: 'Encrypted Payments',
-      description: 'Bank-level security with 256-bit SSL encryption. Your payment data is always protected.'
+      title: 'Bank-Level Security',
+      description: '256-bit SSL encryption. Your payment data is always protected with the same security banks use.'
     },
     {
       icon: '⚡',
@@ -12,13 +12,13 @@
     },
     {
       icon: '💰',
-      title: '7-Day Money Back',
-      description: 'Not satisfied? Get a full refund within 7 days, no questions asked. Your satisfaction guaranteed.'
+      title: 'Best Price Guaranteed',
+      description: 'Find a better price elsewhere? We\'ll match it plus give you an extra 5% off.'
     },
     {
-      icon: '🏷️',
-      title: 'Best Prices Guaranteed',
-      description: 'Find a better price elsewhere? We\'ll match it plus give you an extra 5% off.'
+      icon: '✓',
+      title: '7-Day Money Back',
+      description: 'Not satisfied? Get a full refund within 7 days, no questions asked. Your satisfaction guaranteed.'
     },
     {
       icon: '🌍',
@@ -26,17 +26,17 @@
       description: 'Our dedicated support team is available around the clock to help with any questions.'
     },
     {
-      icon: '✅',
+      icon: '🔐',
       title: 'Verified Licenses',
       description: 'All subscriptions are legitimate and verified. No pirated or shared accounts.'
     },
     {
-      icon: '🔄',
-      title: 'Trusted by 250K+',
+      icon: '👥',
+      title: '250K+ Happy Users',
       description: 'Join over 250,000 satisfied customers who save money on premium subscriptions.'
     },
     {
-      icon: '🔐',
+      icon: '🔄',
       title: 'Privacy Protected',
       description: 'We never share your personal data. Your privacy is our top priority.'
     }
@@ -48,11 +48,10 @@
     <!-- Heading -->
     <div class="text-center mb-12">
       <h2 class="text-2xl font-semibold text-gray-900 mb-2">
-        Why Choose Our Platform?
+        Why Choose SubSlush?
       </h2>
       <p class="text-sm text-gray-600 max-w-2xl mx-auto">
-        We're committed to providing the best subscription marketplace experience
-        with unmatched security, savings, and support.
+        Trusted by 250,000+ users for secure, instant access to premium subscriptions
       </p>
     </div>
 

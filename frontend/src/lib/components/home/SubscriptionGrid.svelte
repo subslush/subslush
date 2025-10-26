@@ -47,6 +47,25 @@
     const rate = markupRates[serviceType as keyof typeof markupRates] || 1.2;
     return price * rate;
   }
+
+  function formatPrice(price: number): string {
+    // Convert to .99 ending
+    const rounded = Math.floor(price);
+    return `${rounded}.99`;
+  }
+
+  function getUrgencyIndicator(): string {
+    const variants = [
+      "⚠️ Only 23 spots left today",
+      "🔥 47 people viewing this now",
+      "⏰ Special offer expires in 6h 23m"
+    ];
+    return variants[Math.floor(Math.random() * variants.length)];
+  }
+
+  function getSavingsAmount(price: number, originalPrice: number): string {
+    return (originalPrice - price).toFixed(2);
+  }
 </script>
 
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -55,51 +74,52 @@
     {@const originalPrice = getOriginalPrice(plan.price, plan.serviceType)}
     {@const savings = calculateSavings(plan.price, originalPrice)}
 
-    <div class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow">
-      <!-- Header -->
-      <div class="flex items-start justify-between mb-3">
-        <div class="flex items-center space-x-2">
-          {#if serviceStyle.logo}
-            <img src={serviceStyle.logo} alt="{plan.serviceType} logo" class="w-8 h-8 object-contain" />
-          {:else}
-            <span class="text-2xl">{serviceStyle.icon}</span>
-          {/if}
-          <div>
-            <h3 class="font-semibold text-gray-900 text-base">{plan.serviceName}</h3>
-            <p class="text-xs text-gray-500 capitalize">{plan.plan}</p>
-          </div>
-        </div>
+    <div class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 relative">
+      <!-- Discount Badge -->
+      {#if savings > 0}
+        <span class="absolute top-3 right-3 px-2 py-1 bg-red-500 text-white text-xs font-bold rounded shadow-md">
+          SAVE €{getSavingsAmount(plan.price, originalPrice)}
+        </span>
+      {/if}
 
-        {#if savings > 0}
-          <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
-            Save {savings}%
-          </span>
+      <!-- Header -->
+      <div class="text-center mb-3">
+        <h3 class="font-semibold text-gray-900 text-lg">{plan.serviceName}</h3>
+        <p class="text-sm text-gray-500 capitalize">{plan.plan}</p>
+      </div>
+
+      <!-- Service Logo (Larger) -->
+      <div class="flex justify-center mb-3">
+        {#if serviceStyle.logo}
+          <img src={serviceStyle.logo} alt="{plan.serviceType} logo" class="w-20 h-20 object-contain" />
+        {:else}
+          <span class="text-5xl">{serviceStyle.icon}</span>
         {/if}
       </div>
 
       <!-- Price -->
       <div class="mb-3">
-        <div class="flex items-baseline space-x-2">
-          <span class="text-2xl font-bold text-gray-900">€{plan.price.toFixed(2)}</span>
-          <span class="text-sm text-gray-500">/monthly</span>
+        <div class="flex items-baseline justify-center space-x-2">
+          <span class="text-4xl font-bold text-gray-900">€{formatPrice(plan.price)}</span>
+          <span class="text-sm text-gray-500">/month</span>
         </div>
         {#if savings > 0}
-          <p class="text-xs text-gray-400 line-through">€{originalPrice.toFixed(2)}</p>
+          <p class="text-center text-sm text-gray-400 line-through mt-1">€{originalPrice.toFixed(2)}</p>
         {/if}
-        <p class="text-xs text-gray-500 mt-1">
-          {#if savings > 0}
-            Save €{(originalPrice - plan.price).toFixed(2)}
-          {:else}
-            Regular price
-          {/if}
-        </p>
       </div>
 
-      <!-- Features -->
+      <!-- Urgency Indicator -->
+      <div class="mb-3 text-center">
+        <span class="inline-block px-3 py-1 bg-yellow-100 text-yellow-800 text-xs font-bold rounded-md">
+          {getUrgencyIndicator()}
+        </span>
+      </div>
+
+      <!-- Features (Max 3) -->
       <ul class="space-y-2 mb-4">
-        {#each plan.features.slice(0, 4) as feature}
+        {#each plan.features.slice(0, 3) as feature}
           <li class="flex items-start space-x-2 text-sm text-gray-600">
-            <Check size={16} class="text-green-500 mt-0.5 flex-shrink-0" />
+            <span class="text-green-500 mt-0.5 flex-shrink-0">✓</span>
             <span>{feature}</span>
           </li>
         {/each}
@@ -107,11 +127,15 @@
 
       <!-- CTA Button -->
       <button
-        class="w-full px-6 py-2.5 text-white text-sm font-medium rounded-lg transition-colors hover:opacity-90"
-        style="background-color: #4FC3F7;"
+        class="w-full px-6 py-3 text-white text-sm font-bold rounded-lg transition-colors hover:bg-orange-600 mb-2 bg-orange-500"
       >
-        Subscribe Now
+        Claim {savings}% Off
       </button>
+
+      <!-- Trust Line -->
+      <p class="text-xs text-gray-500 text-center">
+        ✓ Instant setup • Verified account
+      </p>
     </div>
   {/each}
 </div>

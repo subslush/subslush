@@ -1,9 +1,9 @@
 import type { PageLoad } from './$types';
-import { API_BASE_URL } from '$lib/utils/constants';
+import { API_CONFIG } from '$lib/utils/constants';
 
 export const load: PageLoad = async ({ fetch }) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/subscriptions`);
+    const response = await fetch(`${API_CONFIG.BASE_URL}/subscriptions`);
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);

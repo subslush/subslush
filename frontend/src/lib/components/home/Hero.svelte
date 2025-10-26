@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { Search } from 'lucide-svelte';
   import CategoryFilter from './CategoryFilter.svelte';
 
-  export let searchQuery = '';
   export let selectedCategory = 'all';
 </script>
 
@@ -12,30 +10,48 @@
 
     <!-- Heading -->
     <h1 class="text-3xl md:text-4xl font-bold text-gray-900 text-center mb-4">
-      Find Your Perfect Subscription
+      Save Up To <span class="bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">90%</span> On Premium Subscriptions
     </h1>
 
     <!-- Subtitle -->
     <p class="text-base text-gray-600 text-center mb-8 max-w-2xl mx-auto">
-      Browse by category, search for specific services, or discover new subscriptions
+      Join 250,000+ users getting Spotify, Netflix, and 500+ services at a fraction of retail price. Instant access. Verified accounts.
     </p>
 
-    <!-- Search Bar -->
-    <div class="max-w-2xl mx-auto mb-6">
-      <div class="relative">
-        <input
-          type="text"
-          placeholder="Search Netflix, Spotify, Adobe..."
-          class="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          bind:value={searchQuery}
-        />
-        <button class="absolute right-3 top-1/2 transform -translate-y-1/2">
-          <Search size={20} class="text-gray-400" />
-        </button>
-      </div>
-    </div>
 
     <!-- Category Filter Chips -->
     <CategoryFilter bind:selectedCategory />
+
+    <!-- Primary CTA Button -->
+    <div class="text-center mt-8">
+      <button class="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 text-lg font-semibold rounded-lg transition-colors mb-3">
+        Get 90% Off Now →
+      </button>
+
+      <!-- Secondary Text -->
+      <p class="text-sm text-gray-500">
+        No credit card required • Cancel anytime
+      </p>
+
+      <!-- Mini Trust Badges -->
+      <div class="flex flex-wrap items-center justify-center gap-4 mt-4 text-sm text-gray-600">
+        <div class="flex items-center space-x-1">
+          <span>🔒</span>
+          <span>Encrypted Payments</span>
+        </div>
+        <div class="flex items-center space-x-1">
+          <span>✓</span>
+          <span>7-Day Guarantee</span>
+        </div>
+        <div class="flex items-center space-x-1">
+          <span>👥</span>
+          <span>250K+ Users</span>
+        </div>
+        <div class="flex items-center space-x-1">
+          <span>⚡</span>
+          <span>99.9% Uptime</span>
+        </div>
+      </div>
+    </div>
   </div>
 </section>

@@ -7,6 +7,7 @@
   import BundleCard from '$lib/components/home/BundleCard.svelte';
   import TrustSignals from '$lib/components/home/TrustSignals.svelte';
   import Statistics from '$lib/components/home/Statistics.svelte';
+  import TestimonialsSection from '$lib/components/home/TestimonialsSection.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
   import type { PageData } from './$types';
 
@@ -83,8 +84,8 @@
 </script>
 
 <svelte:head>
-  <title>SubSlush - Find Your Perfect Subscription</title>
-  <meta name="description" content="Browse by category, search for specific services, or discover new subscriptions. Save money on premium subscriptions with our marketplace." />
+  <title>SubSlush - Save Up To 90% On Premium Subscriptions</title>
+  <meta name="description" content="Join 250,000+ users getting Spotify, Netflix, and 500+ services at a fraction of retail price. Instant access. Verified accounts." />
 </svelte:head>
 
 <!-- Home page wrapper with natural scroll -->
@@ -93,16 +94,40 @@
   <HomeNav />
 
   <!-- Hero Section -->
-  <Hero bind:searchQuery bind:selectedCategory />
+  <Hero bind:selectedCategory />
+
+  <!-- Search Bar Section -->
+  <section class="py-6 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="max-w-2xl mx-auto">
+        <div class="relative">
+          <input
+            type="text"
+            placeholder="Search Netflix, Spotify, Adobe... (or browse categories above)"
+            class="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            bind:value={searchQuery}
+          />
+          <button class="absolute right-3 top-1/2 transform -translate-y-1/2">
+            <Search size={20} class="text-gray-400" />
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!-- Subscriptions Section -->
   <section class="py-12 bg-white">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <!-- Header with View All -->
       <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-semibold text-gray-900">
-          All Subscription Plans
-        </h2>
+        <div>
+          <h2 class="text-2xl font-semibold text-gray-900">
+            All Subscription Plans
+          </h2>
+          <p class="text-sm text-gray-600 mt-1">
+            Browse 560+ premium services at unbeatable prices
+          </p>
+        </div>
         <a href="/browse" class="text-sm font-medium text-blue-500 hover:text-blue-600 transition-colors">
           View All →
         </a>
@@ -137,10 +162,10 @@
       <div class="flex items-center justify-between mb-6">
         <div>
           <h2 class="text-2xl font-semibold text-gray-900">
-            Featured Bundles & Exclusive Deals
+            Popular Combos - Save Even More
           </h2>
           <p class="text-sm text-gray-600 mt-1">
-            Save more with curated packages
+            Our most-purchased bundles, saving you an extra 15-30%
           </p>
         </div>
         <span class="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
@@ -162,6 +187,9 @@
 
   <!-- Statistics -->
   <Statistics />
+
+  <!-- Testimonials -->
+  <TestimonialsSection />
 
   <!-- Footer -->
   <Footer />

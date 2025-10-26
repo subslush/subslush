@@ -1,9 +1,9 @@
 <script lang="ts">
   // TODO: Replace with actual backend data when available
   const stats = [
-    { value: '250K+', label: 'Happy Customers' },
+    { value: '250,127', label: 'Happy Customers' },
     { value: '500+', label: 'Premium Services' },
-    { value: '€2.5M', label: 'Total Savings' },
+    { value: '€2.5M+', label: 'Total Savings' },
     { value: '99.9%', label: 'Uptime Guarantee' }
   ];
 </script>
