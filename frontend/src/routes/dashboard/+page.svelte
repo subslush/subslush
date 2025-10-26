@@ -162,28 +162,63 @@
   let activeTab = 'my-subscriptions';
   let sortBy = 'active';
 
-  // Add this function after mockSubscriptions
-  function getStatusBadge(subscription: any) {
-    const daysUntilRenewal = parseInt(subscription.renewsIn);
+  /**
+   * Determines the appropriate status badge for a subscription based on:
+   * - Days until renewal
+   * - User's current balance
+   * - Subscription cost
+   *
+   * @param subscription - The subscription object
+   * @param userBalance - User's current credit balance
+   * @returns Status badge configuration object
+   */
+  function getSubscriptionStatusBadge(subscription: any, userBalance: number) {
+    // Parse renewal days from string like "12 days" or "5 days"
+    const renewalMatch = subscription.renewsIn.match(/(\d+)/);
+    const daysUntilRenewal = renewalMatch ? parseInt(renewalMatch[0]) : 999;
 
+    // Parse monthly cost from string like "€6.99"
+    const costMatch = subscription.monthlyCost.match(/[\d.]+/);
+    const renewalCost = costMatch ? parseFloat(costMatch[0]) : 0;
+
+    // Determine status priority (highest priority first)
+
+    // CRITICAL: Low balance AND renewal soon
+    if (userBalance < renewalCost && daysUntilRenewal <= 7) {
+      return {
+        text: 'Low Balance',
+        class: 'bg-orange-100 text-orange-800 border border-orange-200',
+        icon: '⚠️',
+        priority: 'critical'
+      };
+    }
+
+    // URGENT: Renewal very soon (1-3 days)
     if (daysUntilRenewal <= 3) {
       return {
         text: 'Renewing Soon',
         class: 'bg-amber-100 text-amber-800 border border-amber-200',
-        icon: '⏰'
-      };
-    } else if (subscription.status === 'Active') {
-      return {
-        text: 'Active',
-        class: 'bg-green-100 text-green-800 border border-green-200',
-        icon: '✓'
+        icon: '⏰',
+        priority: 'urgent'
       };
     }
-    // Add more conditions as needed
+
+    // WARNING: Renewal coming up (4-7 days)
+    if (daysUntilRenewal <= 7) {
+      return {
+        text: 'Renewal Coming',
+        class: 'bg-yellow-100 text-yellow-800 border border-yellow-200',
+        icon: '🔄',
+        priority: 'warning'
+      };
+    }
+
+    // SUCCESS: All good
     return {
-      text: subscription.status,
-      class: 'bg-gray-100 text-gray-800 border border-gray-200',
-      icon: '○'
+      text: 'Active',
+      class: 'bg-green-100 text-green-800 border border-green-200',
+      icon: '✓',
+      priority: 'success'
     };
   }
 </script>
@@ -195,7 +230,7 @@
 <!-- Greeting Row -->
 <div class="flex items-center justify-between mb-6">
 	<div>
-		<h1 class="text-2xl font-bold text-gray-900">
+		<h1 class="text-xl sm:text-2xl font-bold text-gray-900">
 			Hey {userName}!
 			<span class="inline-block animate-wave">👋</span>
 		</h1>
@@ -209,6 +244,28 @@
 				You're saving up to <span class="font-semibold text-green-600">90%</span> on premium subscriptions 💰
 			{/if}
 		</p>
+
+		<!-- Subtle Trust Indicators -->
+		<div class="flex flex-wrap gap-3 mt-2">
+			<span class="inline-flex items-center gap-1.5 text-xs text-gray-500">
+				<svg class="w-3.5 h-3.5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+					<path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/>
+				</svg>
+				<span>Encrypted</span>
+			</span>
+			<span class="inline-flex items-center gap-1.5 text-xs text-gray-500">
+				<svg class="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+				</svg>
+				<span>99.9% Uptime</span>
+			</span>
+			<span class="inline-flex items-center gap-1.5 text-xs text-gray-500">
+				<svg class="w-3.5 h-3.5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+					<path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
+				</svg>
+				<span>2,847+ Users</span>
+			</span>
+		</div>
 	</div>
 
 	<div class="flex gap-3">
@@ -328,12 +385,12 @@
 			{/if}
 
 			<div class="flex items-center mb-2">
-				<div class="p-3 bg-green-100 rounded-lg">
+				<div class="p-3 bg-green-100 rounded-lg {balance > 0 && balance < 20 ? 'ring-2 ring-amber-400 ring-offset-2' : ''}">
 					<DollarSign class="w-6 h-6 text-green-600" />
 				</div>
 				<div class="ml-4">
 					<p class="text-sm font-medium text-gray-600">Credit Balance</p>
-					<p class="text-3xl font-bold text-green-600">€{balance.toFixed(2)}</p>
+					<p class="text-3xl font-bold {balance > 0 && balance < 20 ? 'text-amber-600' : 'text-green-600'}">€{balance.toFixed(2)}</p>
 				</div>
 			</div>
 
@@ -343,8 +400,11 @@
 					💡 <span class="font-medium">Enough for {servicesCount}+ subscriptions!</span>
 				</p>
 			{:else if balance > 0 && balance < 5}
-				<p class="text-sm text-amber-600 mt-3 font-medium">
-					⚠️ Add €{(5 - balance).toFixed(2)} more to unlock your first subscription
+				<p class="text-sm text-amber-600 mt-3 font-medium flex items-center gap-1">
+					<svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+					</svg>
+					<span>Add €{(5 - balance).toFixed(2)} more to unlock your first subscription</span>
 				</p>
 			{:else}
 				<p class="text-sm text-gray-600 mt-3">
@@ -352,8 +412,18 @@
 				</p>
 			{/if}
 
-			<!-- Quick Action -->
-			{#if balance < 20}
+			<!-- Enhanced Quick Action for Low Balance -->
+			{#if balance > 0 && balance < 20}
+				<a
+					href="/dashboard/credits"
+					class="mt-3 w-full inline-flex items-center justify-center px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors gap-2"
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+					</svg>
+					<span>Top Up Now</span>
+				</a>
+			{:else if balance < 50}
 				<a
 					href="/dashboard/credits"
 					class="mt-3 inline-flex items-center text-sm font-medium text-orange-600 hover:text-orange-700"
@@ -399,6 +469,8 @@
 	<!-- Subscription Cards Grid -->
 	<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 		{#each mockSubscriptions as subscription}
+			{@const userBalance = $balanceQuery.data ? extractAvailableBalance($balanceQuery.data) : 0}
+			{@const statusBadge = getSubscriptionStatusBadge(subscription, userBalance)}
 			<SubscriptionCard
 				serviceName={subscription.serviceName}
 				serviceCategory={subscription.serviceCategory}
@@ -410,6 +482,7 @@
 				renewsIn={subscription.renewsIn}
 				isPlanFull={subscription.isPlanFull}
 				autoRenew={subscription.autoRenew ? 'Auto' : 'Manual'}
+				enhancedStatusBadge={{...statusBadge, userBalance}}
 			/>
 		{/each}
 	</div>
@@ -533,9 +606,11 @@
 	@keyframes subtle-pulse {
 		0%, 100% {
 			opacity: 1;
+			transform: scale(1);
 		}
 		50% {
 			opacity: 0.85;
+			transform: scale(1.05);
 		}
 	}
 

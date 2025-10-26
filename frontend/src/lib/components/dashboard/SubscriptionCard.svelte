@@ -12,6 +12,7 @@
 	export let renewsIn: string;
 	export let autoRenew: 'Auto' | 'Manual' = 'Manual';
 	export let isPlanFull: boolean = false;
+	export let enhancedStatusBadge: any = null;
 
 	// Service icon mapping (you can expand this)
 	const serviceIcons: Record<string, string> = {
@@ -56,7 +57,31 @@
 		};
 	}
 
-	$: statusBadge = getStatusBadge();
+	$: statusBadge = enhancedStatusBadge || getStatusBadge();
+
+	/**
+	 * Handles toggling auto-renewal for a subscription
+	 * NOTE: This assumes backend endpoint exists. If not, this implements
+	 * optimistic UI update with local state.
+	 */
+	async function handleToggleAutoRenewal(subscriptionId: string, newStatus: boolean) {
+		try {
+			// TODO: Replace with actual API call when endpoint is ready
+			// await apiClient.patch(`/api/v1/subscriptions/${subscriptionId}/auto-renew`, {
+			//   autoRenew: newStatus
+			// });
+
+			// TEMPORARY: Optimistic UI update (update local state)
+			autoRenew = newStatus ? 'Auto' : 'Manual';
+
+			// TODO: Show success toast notification
+			console.log(`Auto-renewal ${newStatus ? 'enabled' : 'disabled'} for subscription:`, subscriptionId);
+
+		} catch (error) {
+			console.error('Failed to toggle auto-renewal:', error);
+			// TODO: Show error toast notification
+		}
+	}
 </script>
 
 <div class="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-300">
@@ -89,6 +114,13 @@
 			<div class="mt-3 inline-flex items-center px-2 py-1 rounded bg-blue-50 border border-blue-200">
 				<span class="text-xs font-medium text-blue-600">{planType} plan</span>
 			</div>
+
+			<!-- Critical Status Message for Low Balance -->
+			{#if enhancedStatusBadge?.priority === 'critical'}
+				<div class="mt-2 text-xs text-orange-700 bg-orange-50 rounded px-2 py-1 border border-orange-200">
+					<span class="font-medium">Action needed:</span> Top up €{(parseFloat(monthlyCost.replace('€', '')) - (enhancedStatusBadge.userBalance || 0)).toFixed(2)} to cover renewal
+				</div>
+			{/if}
 		</div>
 
 		<!-- Card body -->
@@ -106,35 +138,53 @@
 				<p class="text-sm font-semibold text-blue-600">{renewsIn}</p>
 			</div>
 
-			<!-- Enhanced Auto-renewal Status -->
+			<!-- Enhanced Auto-renewal Status with Toggle -->
 			<div class="mt-3 pt-3 border-t border-gray-100">
-				<div class="flex items-center justify-between text-sm">
-					<span class="text-gray-600">Auto-renewal:</span>
-					<div class="flex items-center">
-						{#if autoRenew === 'Auto'}
-							<span class="text-green-600 font-medium flex items-center">
-								<svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-									<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-								</svg>
-								ON
+				<div class="space-y-2">
+					<!-- Status Display with Professional Toggle -->
+					<div class="flex items-center justify-between text-sm">
+						<span class="text-gray-600 font-medium">Auto-renewal:</span>
+
+						<!-- Professional Toggle Slider -->
+						<button
+							type="button"
+							class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+								{autoRenew === 'Auto' ? 'bg-green-500' : 'bg-gray-300'}"
+							role="switch"
+							aria-checked={autoRenew === 'Auto'}
+							aria-label="Toggle auto-renewal"
+							on:click={() => handleToggleAutoRenewal(serviceName, autoRenew !== 'Auto')}
+						>
+							<!-- Sliding Circle -->
+							<span
+								class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform
+									{autoRenew === 'Auto' ? 'translate-x-6' : 'translate-x-1'}"
+								aria-hidden="true"
+							/>
+
+							<!-- ON/OFF Text Labels -->
+							<span
+								class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white pointer-events-none"
+								aria-hidden="true"
+							>
+								{#if autoRenew === 'Auto'}
+									<span class="ml-[-4px]">ON</span>
+								{:else}
+									<span class="mr-[-4px]">OFF</span>
+								{/if}
 							</span>
-						{:else}
-							<span class="text-gray-500 font-medium flex items-center">
-								<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
-								</svg>
-								OFF
-							</span>
-						{/if}
+						</button>
 					</div>
+
+					<!-- Explanation Text -->
+					<p class="text-xs text-gray-500">
+						{#if autoRenew === 'Auto'}
+							✓ We'll automatically renew this subscription using your credit balance. You can cancel anytime.
+						{:else}
+							📧 We'll notify you 3 days before renewal so you can manually top up your balance.
+						{/if}
+					</p>
 				</div>
-				<p class="text-xs text-gray-500 mt-1">
-					{#if autoRenew === 'Auto'}
-						Renews automatically from your credit balance
-					{:else}
-						You'll be notified 3 days before renewal
-					{/if}
-				</p>
 			</div>
 
 			<!-- Action buttons -->

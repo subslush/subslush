@@ -1,3 +1,10 @@
+<script lang="ts">
+  import TrustBar from '$lib/components/TrustBar.svelte';
+</script>
+
+<!-- Trust Bar -->
+<TrustBar />
+
 <footer class="bg-gray-900 text-gray-300 py-12">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <!-- Top Section -->
