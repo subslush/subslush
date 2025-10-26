@@ -304,107 +304,193 @@
   }
 </script>
 
+<style>
+  @keyframes blob {
+    0%, 100% {
+      transform: translate(0, 0) scale(1);
+    }
+    33% {
+      transform: translate(30px, -50px) scale(1.1);
+    }
+    66% {
+      transform: translate(-20px, 20px) scale(0.9);
+    }
+  }
+
+  .animate-blob {
+    animation: blob 20s infinite ease-in-out;
+  }
+
+  .animation-delay-2000 {
+    animation-delay: 2s;
+  }
+
+  /* Custom scrollbar for dropdown */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+
+  .scrollbar-thumb-surface-300 {
+    scrollbar-color: rgba(203, 213, 225, 0.5) transparent;
+  }
+
+  .dark .scrollbar-thumb-surface-600 {
+    scrollbar-color: rgba(75, 85, 99, 0.5) transparent;
+  }
+
+  /* Webkit scrollbar styling */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(203, 213, 225, 0.5);
+    border-radius: 3px;
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(75, 85, 99, 0.5);
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.7);
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(107, 114, 128, 0.7);
+  }
+</style>
+
 {#if isOpen}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-      <!-- Header -->
-      <div class="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-          <CreditCard class="mr-2" size={20} />
-          Add Credits
-        </h2>
-        <button
-          on:click={closeModal}
-          class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-        >
-          <X size={20} />
-        </button>
-      </div>
+  <!-- Modal backdrop with gradient overlay -->
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <!-- Animated background blobs -->
+    <div class="absolute inset-0 bg-gradient-to-br from-black/80 via-subslush-blue/5 to-subslush-pink/5 backdrop-blur-sm">
+      <div class="absolute top-1/4 right-1/4 w-64 h-64 bg-gradient-to-br from-subslush-blue/10 to-transparent rounded-full blur-3xl animate-blob"></div>
+      <div class="absolute bottom-1/3 left-1/3 w-64 h-64 bg-gradient-to-tr from-subslush-pink/10 to-transparent rounded-full blur-3xl animate-blob animation-delay-2000"></div>
+    </div>
 
-      <!-- Progress Steps -->
-      <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-        <div class="flex items-center justify-between">
-          {#each [1, 2, 3, 4] as step}
-            <div class="flex items-center">
-              <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium
-                {currentStep >= step ? 'bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}">
-                {step}
+    <!-- Glass modal container -->
+    <div class="relative bg-surface-50/95 dark:bg-surface-900/95 backdrop-blur-xl border border-surface-200/50 dark:border-surface-700/50 rounded-2xl shadow-2xl shadow-subslush-blue/10 w-full max-w-md max-h-[90vh] overflow-hidden">
+      <!-- Gradient border effect -->
+      <div class="absolute inset-0 bg-gradient-to-br from-subslush-blue/20 via-transparent to-subslush-pink/20 rounded-2xl opacity-50"></div>
+
+      <!-- Content container with proper overflow -->
+      <div class="relative bg-surface-50/90 dark:bg-surface-900/90 backdrop-blur-sm rounded-2xl overflow-y-auto max-h-[90vh]">
+        <!-- Header with glass effect -->
+        <div class="flex items-center justify-between p-6 border-b border-surface-200/50 dark:border-surface-700/50 bg-gradient-to-r from-surface-50/50 to-surface-100/30 dark:from-surface-900/50 dark:to-surface-800/30">
+          <h2 class="text-xl font-bold text-surface-900 dark:text-surface-50 flex items-center">
+            <div class="p-2 mr-3 bg-gradient-to-br from-subslush-blue to-subslush-pink rounded-lg shadow-glow-blue">
+              <CreditCard class="text-white" size={20} />
+            </div>
+            Add Credits
+          </h2>
+          <button
+            on:click={closeModal}
+            class="p-2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 hover:bg-surface-200/50 dark:hover:bg-surface-700/50 rounded-lg transition-all duration-200"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <!-- Progress Steps with modern design -->
+        <div class="px-6 py-4 border-b border-surface-200/30 dark:border-surface-700/30 bg-gradient-to-r from-surface-50/30 to-surface-100/20 dark:from-surface-900/30 dark:to-surface-800/20">
+          <div class="flex items-center justify-between">
+            {#each [1, 2, 3, 4] as step}
+              <div class="flex items-center">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-lg transition-all duration-300
+                  {currentStep >= step
+                    ? 'bg-gradient-to-br from-subslush-blue to-subslush-pink text-white shadow-glow-blue transform scale-110'
+                    : 'bg-surface-200/70 dark:bg-surface-600/70 text-surface-600 dark:text-surface-300 backdrop-blur-sm'}">
+                  {step}
+                </div>
+                {#if step < 4}
+                  <div class="w-8 h-0.5 mx-2 rounded-full transition-all duration-300 {currentStep > step
+                    ? 'bg-gradient-to-r from-subslush-blue to-subslush-pink shadow-glow-blue'
+                    : 'bg-surface-200/50 dark:bg-surface-600/50'}"></div>
+                {/if}
               </div>
-              {#if step < 4}
-                <div class="w-8 h-0.5 mx-2 {currentStep > step ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600'}"></div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-        <div class="flex justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
-          <span>Amount</span>
-          <span>Currency</span>
-          <span>Review</span>
-          <span>Payment</span>
-        </div>
-      </div>
-
-      <!-- Error Message -->
-      {#if error}
-        <div class="mx-6 mt-4 p-3 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded-md">
-          <div class="flex">
-            <AlertCircle class="h-5 w-5 text-red-400 dark:text-red-300" />
-            <div class="ml-3">
-              <p class="text-sm text-red-800 dark:text-red-200">{error}</p>
-            </div>
+            {/each}
+          </div>
+          <div class="flex justify-between mt-3 text-xs font-medium text-surface-600 dark:text-surface-400">
+            <span>Amount</span>
+            <span>Currency</span>
+            <span>Review</span>
+            <span>Payment</span>
           </div>
         </div>
-      {/if}
 
-      <!-- Step Content -->
-      <div class="p-6">
+        <!-- Error Message with glass effect -->
+        {#if error}
+          <div class="mx-6 mt-4 p-4 bg-red-50/80 dark:bg-red-900/30 backdrop-blur-sm border border-red-200/50 dark:border-red-700/50 rounded-xl shadow-lg">
+            <div class="flex items-start">
+              <div class="p-1 bg-red-100 dark:bg-red-800 rounded-lg mr-3">
+                <AlertCircle class="h-4 w-4 text-red-500 dark:text-red-300" />
+              </div>
+              <div class="flex-1">
+                <p class="text-sm font-medium text-red-800 dark:text-red-200">{error}</p>
+              </div>
+            </div>
+          </div>
+        {/if}
+
+        <!-- Step Content -->
+        <div class="p-6 bg-gradient-to-br from-surface-50/50 via-surface-50/30 to-surface-100/20 dark:from-surface-900/50 dark:via-surface-900/30 dark:to-surface-800/20">
         <!-- Step 1: Select Amount -->
         {#if currentStep === 1}
           <div class="space-y-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Select Credit Amount</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">Choose how many credits you'd like to add to your account.</p>
+            <div class="text-center">
+              <h3 class="text-lg font-bold text-surface-900 dark:text-surface-50 mb-2">Select Credit Amount</h3>
+              <p class="text-sm text-surface-600 dark:text-surface-400">Choose how many credits you'd like to add to your account.</p>
+            </div>
 
-            <!-- Predefined Amounts -->
+            <!-- Predefined Amounts with glass effect -->
             <div class="grid grid-cols-3 gap-3">
               {#each predefinedAmounts as amount}
                 <button
                   on:click={() => { selectedAmount = amount; customAmount = ''; }}
-                  class="p-3 text-center border rounded-lg transition-colors
+                  class="group p-4 text-center border rounded-xl transition-all duration-300 backdrop-blur-sm hover:scale-105
                     {selectedAmount === amount && !customAmount
-                      ? 'border-primary-600 bg-primary-50 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
-                      : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}"
+                      ? 'border-subslush-blue/50 bg-gradient-to-br from-subslush-blue/10 to-subslush-pink/10 text-subslush-blue dark:text-subslush-blue-light shadow-glow-blue'
+                      : 'border-surface-300/50 dark:border-surface-600/50 bg-surface-100/50 dark:bg-surface-800/50 hover:border-subslush-blue/30 hover:bg-gradient-to-br hover:from-subslush-blue/5 hover:to-subslush-pink/5'}"
                 >
-                  <div class="font-medium">${amount}</div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400">{amount} credits</div>
+                  <div class="font-bold text-lg">${amount}</div>
+                  <div class="text-xs font-medium opacity-70">{amount} credits</div>
                 </button>
               {/each}
             </div>
 
-            <!-- Custom Amount -->
+            <!-- Custom Amount with modern styling -->
             <div>
-              <label for="custom-amount" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label for="custom-amount" class="block text-sm font-bold text-surface-700 dark:text-surface-300 mb-2">
                 Custom Amount (USD)
               </label>
               <input
                 id="custom-amount"
                 type="number"
                 bind:value={customAmount}
-                min="1"
+                min="5"
                 max="10000"
                 placeholder="Enter custom amount"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md
-                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                       focus:ring-primary-500 focus:border-primary-500"
+                class="w-full px-4 py-3 border border-surface-300/50 dark:border-surface-600/50 rounded-xl
+                       bg-surface-50/50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-50
+                       backdrop-blur-sm transition-all duration-200
+                       focus:ring-2 focus:ring-subslush-blue/50 focus:border-subslush-blue
+                       hover:border-subslush-blue/30 placeholder:text-surface-400"
               />
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                1 USD = 1 Credit • Min: $1 • Max: $10,000
+              <p class="text-xs text-surface-500 dark:text-surface-400 mt-1 font-medium">
+                1 USD = 1 Credit • Min deposit: $5
               </p>
             </div>
 
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+            <div class="bg-gradient-to-r from-surface-100/70 to-surface-200/50 dark:from-surface-700/50 dark:to-surface-800/30 p-4 rounded-xl border border-surface-200/30 dark:border-surface-600/30 backdrop-blur-sm">
               <div class="flex justify-between items-center">
-                <span class="text-sm text-gray-600 dark:text-gray-400">Amount to add:</span>
-                <span class="font-medium text-gray-900 dark:text-white">${actualAmount} ({actualAmount} credits)</span>
+                <span class="text-sm font-medium text-surface-600 dark:text-surface-400">Amount to add:</span>
+                <span class="font-bold text-lg bg-gradient-to-r from-subslush-blue to-subslush-pink bg-clip-text text-transparent">{actualAmount} credits</span>
               </div>
             </div>
           </div>
@@ -413,56 +499,76 @@
         <!-- Step 2: Select Currency -->
         {#if currentStep === 2}
           <div class="space-y-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Choose Cryptocurrency</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">Select your preferred cryptocurrency for payment.</p>
+            <div class="text-center">
+              <h3 class="text-lg font-bold text-surface-900 dark:text-surface-50 mb-2">Choose Cryptocurrency</h3>
+              <p class="text-sm text-surface-600 dark:text-surface-400">Select your preferred cryptocurrency for payment.</p>
+            </div>
 
             {#if loading}
               <div class="flex items-center justify-center py-8">
-                <Loader2 class="animate-spin mr-2" size={20} />
-                <span class="text-gray-600 dark:text-gray-400">Loading currencies...</span>
+                <div class="p-3 bg-gradient-to-br from-subslush-blue/20 to-subslush-pink/20 rounded-xl">
+                  <Loader2 class="animate-spin text-subslush-blue" size={20} />
+                </div>
+                <span class="ml-3 text-surface-600 dark:text-surface-400 font-medium">Loading currencies...</span>
               </div>
             {:else if currencies.length > 0}
-              <!-- Currency Dropdown -->
+              <!-- Modern Currency Dropdown -->
               <div class="relative">
                 <button
                   on:click={() => currencyDropdownOpen = !currencyDropdownOpen}
-                  class="w-full p-3 text-left border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700
-                         hover:border-gray-400 dark:hover:border-gray-500 transition-colors flex items-center justify-between"
+                  class="w-full p-4 text-left border border-surface-300/50 dark:border-surface-600/50 rounded-xl
+                         bg-surface-50/50 dark:bg-surface-800/50 backdrop-blur-sm
+                         hover:border-subslush-blue/50 hover:bg-gradient-to-r hover:from-subslush-blue/5 hover:to-subslush-pink/5
+                         transition-all duration-200 flex items-center justify-between group"
                 >
                   <div class="flex flex-col">
-                    <span class="font-medium text-gray-900 dark:text-white">
+                    <span class="font-bold text-surface-900 dark:text-surface-50">
                       {selectedCurrency ? getCurrencyDisplayName(selectedCurrency) : 'Select a cryptocurrency'}
                     </span>
                     {#if selectedCurrency}
-                      <span class="text-xs text-gray-500 dark:text-gray-400 uppercase">{selectedCurrency.code}</span>
+                      <span class="text-xs text-surface-500 dark:text-surface-400 uppercase font-medium mt-1">{selectedCurrency.code}</span>
                     {/if}
                   </div>
-                  <ChevronDown size={16} class="text-gray-400 {currencyDropdownOpen ? 'rotate-180' : ''} transition-transform" />
+                  <ChevronDown size={16} class="text-surface-400 group-hover:text-subslush-blue {currencyDropdownOpen ? 'rotate-180' : ''} transition-all duration-200" />
                 </button>
 
                 {#if currencyDropdownOpen}
-                  <div class="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {#each currencies as currency}
-                      <button
-                        on:click={() => selectCurrency(currency)}
-                        class="w-full p-3 text-left hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors flex items-center justify-between"
-                      >
-                        <div class="flex flex-col">
-                          <span class="font-medium text-gray-900 dark:text-white">
-                            {getCurrencyDisplayName(currency)}
-                          </span>
-                          <span class="text-xs text-gray-500 dark:text-gray-400 uppercase">{currency.code}</span>
-                        </div>
-                        {#if selectedCurrency?.code === currency.code}
-                          <Check size={16} class="text-primary-600" />
-                        {/if}
-                      </button>
-                    {/each}
+                  <!-- Improved dropdown with better UX -->
+                  <div class="absolute z-20 w-full mt-2 bg-surface-50/95 dark:bg-surface-800/95 backdrop-blur-xl border border-surface-200/50 dark:border-surface-600/50 rounded-xl shadow-2xl shadow-subslush-blue/10 overflow-hidden">
+                    <!-- Search/Filter header -->
+                    <div class="p-3 border-b border-surface-200/30 dark:border-surface-600/30 bg-gradient-to-r from-surface-100/50 to-surface-200/30 dark:from-surface-700/50 dark:to-surface-800/30">
+                      <p class="text-xs font-bold text-surface-600 dark:text-surface-400 uppercase tracking-wide">Choose Currency</p>
+                    </div>
+                    <!-- Scrollable currency list with better height -->
+                    <div class="max-h-72 overflow-y-auto scrollbar-thin scrollbar-thumb-surface-300 dark:scrollbar-thumb-surface-600">
+                      {#each currencies as currency}
+                        <button
+                          on:click={() => selectCurrency(currency)}
+                          class="w-full p-4 text-left hover:bg-gradient-to-r hover:from-subslush-blue/10 hover:to-subslush-pink/5
+                                 transition-all duration-150 flex items-center justify-between group
+                                 {selectedCurrency?.code === currency.code ? 'bg-gradient-to-r from-subslush-blue/15 to-subslush-pink/10' : ''}"
+                        >
+                          <div class="flex flex-col">
+                            <span class="font-bold text-surface-900 dark:text-surface-50 group-hover:text-subslush-blue transition-colors">
+                              {getCurrencyDisplayName(currency)}
+                            </span>
+                            <span class="text-xs text-surface-500 dark:text-surface-400 uppercase font-medium mt-1">{currency.code}</span>
+                          </div>
+                          {#if selectedCurrency?.code === currency.code}
+                            <div class="p-1 bg-gradient-to-br from-subslush-blue to-subslush-pink rounded-lg">
+                              <Check size={14} class="text-white" />
+                            </div>
+                          {/if}
+                        </button>
+                      {/each}
+                    </div>
                   </div>
                 {/if}
               </div>
             {:else}
-              <p class="text-red-600 dark:text-red-400">No currencies available. Please try again later.</p>
+              <div class="text-center p-6 bg-surface-100/50 dark:bg-surface-800/50 rounded-xl border border-surface-200/50 dark:border-surface-700/50">
+                <p class="text-red-500 dark:text-red-400 font-medium">No currencies available. Please try again later.</p>
+              </div>
             {/if}
           </div>
         {/if}
@@ -470,37 +576,41 @@
         <!-- Step 3: Review -->
         {#if currentStep === 3}
           <div class="space-y-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Review Payment</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">Please review your payment details before proceeding.</p>
+            <div class="text-center">
+              <h3 class="text-lg font-bold text-surface-900 dark:text-surface-50 mb-2">Review Payment</h3>
+              <p class="text-sm text-surface-600 dark:text-surface-400">Please review your payment details before proceeding.</p>
+            </div>
 
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg space-y-3">
-              <div class="flex justify-between">
-                <span class="text-gray-600 dark:text-gray-400">Credits to add:</span>
-                <span class="font-medium text-gray-900 dark:text-white">{actualAmount} credits</span>
+            <div class="bg-gradient-to-br from-surface-100/70 to-surface-200/50 dark:from-surface-700/50 dark:to-surface-800/30 p-5 rounded-xl border border-surface-200/30 dark:border-surface-600/30 backdrop-blur-sm space-y-4">
+              <div class="flex justify-between items-center">
+                <span class="text-sm font-medium text-surface-600 dark:text-surface-400">Credits to add:</span>
+                <span class="font-bold text-lg bg-gradient-to-r from-subslush-blue to-subslush-pink bg-clip-text text-transparent">{actualAmount} credits</span>
               </div>
-              <div class="flex justify-between">
-                <span class="text-gray-600 dark:text-gray-400">USD Amount:</span>
-                <span class="font-medium text-gray-900 dark:text-white">${actualAmount}</span>
+              <div class="flex justify-between items-center">
+                <span class="text-sm font-medium text-surface-600 dark:text-surface-400">USD Amount:</span>
+                <span class="font-bold text-surface-900 dark:text-surface-50">${actualAmount}</span>
               </div>
-              <div class="flex justify-between">
-                <span class="text-gray-600 dark:text-gray-400">Payment Currency:</span>
-                <span class="font-medium text-gray-900 dark:text-white">
+              <div class="flex justify-between items-center">
+                <span class="text-sm font-medium text-surface-600 dark:text-surface-400">Payment Currency:</span>
+                <span class="font-bold text-surface-900 dark:text-surface-50">
                   {selectedCurrency ? getCurrencyDisplayName(selectedCurrency) : 'None selected'}
                 </span>
               </div>
 
               {#if loading}
-                <div class="flex items-center justify-center py-2">
-                  <Loader2 class="animate-spin mr-2" size={16} />
-                  <span class="text-sm text-gray-600 dark:text-gray-400">Getting estimate...</span>
+                <div class="flex items-center justify-center py-3">
+                  <div class="p-2 bg-gradient-to-br from-subslush-blue/20 to-subslush-pink/20 rounded-lg mr-3">
+                    <Loader2 class="animate-spin text-subslush-blue" size={16} />
+                  </div>
+                  <span class="text-sm text-surface-600 dark:text-surface-400 font-medium">Getting estimate...</span>
                 </div>
               {:else if estimate}
-                <div class="border-t pt-3 border-gray-200 dark:border-gray-600">
-                  <div class="flex justify-between">
-                    <span class="text-gray-600 dark:text-gray-400">Estimated {selectedCurrency?.code?.toUpperCase() || 'CRYPTO'} Amount:</span>
-                    <span class="font-medium text-gray-900 dark:text-white">{estimate}</span>
+                <div class="border-t pt-4 border-surface-200/50 dark:border-surface-600/50">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm font-medium text-surface-600 dark:text-surface-400">Estimated {selectedCurrency?.code?.toUpperCase() || 'CRYPTO'} Amount:</span>
+                    <span class="font-bold text-surface-900 dark:text-surface-50">{estimate}</span>
                   </div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <p class="text-xs text-surface-500 dark:text-surface-400 mt-2 font-medium">
                     Exchange rate is approximate and may change slightly
                   </p>
                 </div>
@@ -513,132 +623,150 @@
         {#if currentStep === 4 && paymentData}
           <div class="space-y-4">
             <div class="text-center">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Payment Details</h3>
-              <p class="text-sm text-gray-600 dark:text-gray-400">Send exactly {paymentData.payAmount} {paymentData.payCurrency.toUpperCase()}</p>
+              <h3 class="text-lg font-bold text-surface-900 dark:text-surface-50 mb-2">Payment Details</h3>
+              <div class="inline-block bg-gradient-to-r from-subslush-blue/10 to-subslush-pink/10 px-4 py-2 rounded-xl border border-subslush-blue/20">
+                <p class="text-sm font-bold text-surface-700 dark:text-surface-300">Send exactly <span class="text-subslush-blue">{paymentData.payAmount} {paymentData.payCurrency.toUpperCase()}</span></p>
+              </div>
             </div>
 
-            <!-- Status -->
+            <!-- Status with modern design -->
             <div class="text-center">
-              <div class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
-                {paymentStatus === 'waiting' ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200' :
-                 paymentStatus === 'confirming' ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' :
-                 ['confirmed', 'finished'].includes(paymentStatus) ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
-                 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'}">
+              <div class="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold backdrop-blur-sm border
+                {paymentStatus === 'waiting' ? 'bg-yellow-50/80 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-200/50 dark:border-yellow-700/50' :
+                 paymentStatus === 'confirming' ? 'bg-blue-50/80 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200/50 dark:border-blue-700/50' :
+                 ['confirmed', 'finished'].includes(paymentStatus) ? 'bg-green-50/80 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200/50 dark:border-green-700/50' :
+                 'bg-red-50/80 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200/50 dark:border-red-700/50'}">
                 {getStatusText(paymentStatus)}
               </div>
 
               {#if timeRemaining && paymentStatus === 'waiting'}
-                <div class="flex items-center justify-center mt-2 text-sm text-gray-600 dark:text-gray-400">
-                  <Clock size={16} class="mr-1" />
-                  Expires in: {timeRemaining}
+                <div class="flex items-center justify-center mt-3 text-sm font-medium text-surface-600 dark:text-surface-400 bg-surface-100/50 dark:bg-surface-800/50 px-3 py-2 rounded-lg">
+                  <Clock size={16} class="mr-2 text-subslush-blue" />
+                  Expires in: <span class="text-subslush-blue font-bold ml-1">{timeRemaining}</span>
                 </div>
               {/if}
             </div>
 
-            <!-- QR Code -->
+            <!-- QR Code with modern frame -->
             {#if qrCodeDataUrl}
               <div class="text-center">
-                <img src={qrCodeDataUrl} alt="Payment QR Code" class="mx-auto border rounded-lg" />
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Scan with your crypto wallet</p>
+                <div class="inline-block p-4 bg-white rounded-2xl shadow-2xl shadow-subslush-blue/20 border-2 border-surface-200 dark:border-surface-600">
+                  <img src={qrCodeDataUrl} alt="Payment QR Code" class="mx-auto rounded-lg" />
+                </div>
+                <p class="text-xs text-surface-500 dark:text-surface-400 mt-3 font-medium">Scan with your crypto wallet</p>
               </div>
             {/if}
 
-            <!-- Payment Address -->
+            <!-- Payment Address with modern styling -->
             <div>
-              <label for="payment-address" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label for="payment-address" class="block text-sm font-bold text-surface-700 dark:text-surface-300 mb-3">
                 Payment Address
               </label>
-              <div class="flex">
+              <div class="flex overflow-hidden rounded-xl border border-surface-300/50 dark:border-surface-600/50 backdrop-blur-sm">
                 <input
                   id="payment-address"
                   type="text"
                   value={paymentData.payAddress}
                   readonly
-                  class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-l-md
-                         bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                  class="flex-1 px-4 py-3 bg-surface-50/50 dark:bg-surface-800/50 text-surface-900 dark:text-surface-50 text-sm font-mono
+                         focus:outline-none focus:ring-2 focus:ring-subslush-blue/50 border-0"
                 />
                 <button
                   on:click={copyAddress}
-                  class="px-3 py-2 border border-l-0 border-gray-300 dark:border-gray-600 rounded-r-md
-                         bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 transition-colors"
+                  class="px-4 py-3 bg-gradient-to-r from-subslush-blue to-subslush-pink hover:from-subslush-blue-dark hover:to-subslush-pink-dark
+                         transition-all duration-200 transform hover:scale-105 active:scale-95"
                 >
                   {#if addressCopied}
-                    <Check size={16} class="text-green-600" />
+                    <Check size={16} class="text-white" />
                   {:else}
-                    <Copy size={16} class="text-gray-600 dark:text-gray-300" />
+                    <Copy size={16} class="text-white" />
                   {/if}
                 </button>
               </div>
               {#if addressCopied}
-                <p class="text-xs text-green-600 dark:text-green-400 mt-1">Address copied to clipboard!</p>
+                <p class="text-xs text-green-500 dark:text-green-400 mt-2 font-medium flex items-center">
+                  <Check size={14} class="mr-1" />
+                  Address copied to clipboard!
+                </p>
               {/if}
             </div>
 
-            <!-- Payment Amount -->
-            <div class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+            <!-- Payment Amount with emphasis -->
+            <div class="bg-gradient-to-r from-surface-100/70 to-surface-200/50 dark:from-surface-700/50 dark:to-surface-800/30 p-4 rounded-xl border border-surface-200/30 dark:border-surface-600/30 backdrop-blur-sm">
               <div class="flex justify-between items-center">
-                <span class="text-sm text-gray-600 dark:text-gray-400">Amount to send:</span>
-                <span class="font-mono font-medium text-gray-900 dark:text-white">
+                <span class="text-sm font-medium text-surface-600 dark:text-surface-400">Amount to send:</span>
+                <span class="font-mono font-bold text-lg bg-gradient-to-r from-subslush-blue to-subslush-pink bg-clip-text text-transparent">
                   {paymentData.payAmount} {paymentData.payCurrency.toUpperCase()}
                 </span>
               </div>
             </div>
 
-            <div class="text-center text-sm text-gray-600 dark:text-gray-400">
-              <p>Your payment will be automatically detected.</p>
-              <p>Credits will be added once confirmed on the blockchain.</p>
+            <div class="text-center text-sm text-surface-600 dark:text-surface-400 bg-surface-100/30 dark:bg-surface-800/30 p-4 rounded-xl">
+              <p class="font-medium mb-1">Your payment will be automatically detected.</p>
+              <p class="font-medium">Credits will be added once confirmed on the blockchain.</p>
             </div>
           </div>
         {/if}
-      </div>
+        </div>
 
-      <!-- Footer -->
-      <div class="flex justify-between items-center p-6 border-t border-gray-200 dark:border-gray-700">
-        {#if currentStep > 1 && currentStep < 4}
-          <button
-            on:click={prevStep}
-            class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md
-                   text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          >
-            <ArrowLeft size={16} class="mr-2" />
-            Back
-          </button>
-        {:else}
-          <div></div>
-        {/if}
+        <!-- Footer with glass effect -->
+        <div class="flex justify-between items-center p-6 border-t border-surface-200/30 dark:border-surface-700/30 bg-gradient-to-r from-surface-50/50 to-surface-100/30 dark:from-surface-900/50 dark:to-surface-800/30 backdrop-blur-sm">
+          {#if currentStep > 1 && currentStep < 4}
+            <button
+              on:click={prevStep}
+              class="inline-flex items-center px-4 py-2 border border-surface-300/50 dark:border-surface-600/50 rounded-xl
+                     text-surface-700 dark:text-surface-300 bg-surface-50/50 dark:bg-surface-800/50 backdrop-blur-sm
+                     hover:bg-surface-100 dark:hover:bg-surface-700 hover:border-surface-400 dark:hover:border-surface-500
+                     transition-all duration-200 font-medium"
+            >
+              <ArrowLeft size={16} class="mr-2" />
+              Back
+            </button>
+          {:else}
+            <div></div>
+          {/if}
 
-        {#if currentStep < 3}
-          <button
-            on:click={nextStep}
-            disabled={!isValidAmount || (currentStep === 2 && !selectedCurrency)}
-            class="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-md
-                   hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Next
-            <ArrowRight size={16} class="ml-2" />
-          </button>
-        {:else if currentStep === 3}
-          <button
-            on:click={handleCreatePayment}
-            disabled={loading || !isValidAmount}
-            class="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-md
-                   hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {#if loading}
-              <Loader2 class="animate-spin mr-2" size={16} />
-              Creating Payment...
-            {:else}
-              Create Payment
-            {/if}
-          </button>
-        {:else}
-          <button
-            on:click={closeModal}
-            class="px-4 py-2 bg-gray-600 dark:bg-gray-500 text-white rounded-md hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
-          >
-            Close
-          </button>
-        {/if}
+          {#if currentStep < 3}
+            <button
+              on:click={nextStep}
+              disabled={!isValidAmount || (currentStep === 2 && !selectedCurrency)}
+              class="inline-flex items-center px-6 py-3 bg-gradient-to-r from-subslush-blue to-subslush-pink text-white rounded-xl
+                     hover:from-subslush-blue-dark hover:to-subslush-pink-dark
+                     disabled:opacity-50 disabled:cursor-not-allowed disabled:from-surface-400 disabled:to-surface-500
+                     transition-all duration-200 font-bold shadow-glow-blue transform hover:scale-105 active:scale-95
+                     disabled:transform-none disabled:shadow-none"
+            >
+              Next
+              <ArrowRight size={16} class="ml-2" />
+            </button>
+          {:else if currentStep === 3}
+            <button
+              on:click={handleCreatePayment}
+              disabled={loading || !isValidAmount}
+              class="inline-flex items-center px-6 py-3 bg-gradient-to-r from-subslush-blue to-subslush-pink text-white rounded-xl
+                     hover:from-subslush-blue-dark hover:to-subslush-pink-dark
+                     disabled:opacity-50 disabled:cursor-not-allowed disabled:from-surface-400 disabled:to-surface-500
+                     transition-all duration-200 font-bold shadow-glow-blue transform hover:scale-105 active:scale-95
+                     disabled:transform-none disabled:shadow-none"
+            >
+              {#if loading}
+                <Loader2 class="animate-spin mr-2" size={16} />
+                Creating Payment...
+              {:else}
+                Create Payment
+              {/if}
+            </button>
+          {:else}
+            <button
+              on:click={closeModal}
+              class="px-6 py-3 bg-surface-600 dark:bg-surface-500 text-white rounded-xl
+                     hover:bg-surface-700 dark:hover:bg-surface-600 transition-all duration-200 font-bold
+                     transform hover:scale-105 active:scale-95"
+            >
+              Close
+            </button>
+          {/if}
+        </div>
       </div>
     </div>
   </div>
