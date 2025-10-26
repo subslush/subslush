@@ -22,10 +22,7 @@
 
 			<!-- LEFT: SubSlush Text Branding -->
 			<a href="/" class="flex items-center">
-				<span
-					class="text-2xl font-extrabold bg-gradient-to-r bg-clip-text text-transparent"
-					style="background-image: linear-gradient(45deg, #4FC3F7, #F06292);"
-				>
+				<span class="text-2xl font-extrabold bg-gradient-to-r from-cyan-500 to-pink-500 bg-clip-text text-transparent">
 					SubSlush
 				</span>
 			</a>
@@ -36,11 +33,9 @@
 				{#each navItems as item}
 					<a
 						href={item.href}
-						class="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
-						class:text-white={currentPath === item.href}
-						class:text-gray-700={currentPath !== item.href}
-						class:hover:bg-gray-100={currentPath !== item.href}
-						style={currentPath === item.href ? 'background-color: #4FC3F7;' : ''}
+						class="px-4 py-2 text-sm font-medium rounded-lg transition-colors {currentPath === item.href
+							? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900'
+							: 'text-gray-600 hover:bg-gray-100'}"
 					>
 						{item.label}
 					</a>
@@ -58,19 +53,10 @@
 					</div>
 					<a
 						href="/dashboard/credits"
-						class="inline-flex items-center text-white text-xs font-medium px-3 py-1.5 rounded-md transition-all hover:shadow-lg relative overflow-hidden group"
+						class="bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-white font-semibold py-2 px-4 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 inline-flex items-center text-xs"
 					>
-						<!-- Orange Background -->
-						<span class="absolute inset-0 bg-orange-500"></span>
-
-						<!-- Hover Effect Layer -->
-						<span class="absolute inset-0 bg-orange-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
-
-						<!-- Button Content -->
-						<span class="relative z-10 flex items-center">
-							<Plus size={14} class="mr-1" />
-							Top Up
-						</span>
+						<Plus size={14} class="mr-1" />
+						Top Up
 					</a>
 				</div>
 
@@ -98,11 +84,9 @@
 				{#each navItems as item}
 					<a
 						href={item.href}
-						class="px-4 py-3 rounded-lg text-sm font-medium transition-colors"
-						class:text-white={currentPath === item.href}
-						class:text-gray-700={currentPath !== item.href}
-						class:hover:bg-gray-50={currentPath !== item.href}
-						style={currentPath === item.href ? 'background-color: #4FC3F7;' : ''}
+						class="px-4 py-3 rounded-lg text-sm font-medium transition-colors {currentPath === item.href
+							? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900'
+							: 'text-gray-600 hover:bg-gray-50'}"
 					>
 						{item.label}
 					</a>

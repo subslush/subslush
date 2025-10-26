@@ -5,23 +5,21 @@
 	export let value: string | number;
 	export let subtitle: string;
 	export let icon: ComponentType;
-	export let iconColor: string = 'bg-blue-500';
+	export let iconColor: string = 'bg-cyan-50';
+	export let iconTextColor: string = 'text-cyan-600';
 	export let valueColor: string = 'text-gray-900';
-
 </script>
 
 <!-- Card content -->
-<div class="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-lg transition-shadow duration-300">
-	<div class="flex items-start justify-between">
-		<div class="flex-1">
-			<p class="text-sm font-medium text-gray-500 mb-2">{title}</p>
-			<p class="text-2xl font-bold {valueColor} mb-1">{value}</p>
-			<p class="text-xs text-gray-500">{subtitle}</p>
+<div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow duration-200">
+	<div class="flex items-center mb-4">
+		<div class="p-3 {iconColor} rounded-lg">
+			<svelte:component this={icon} size={24} class={iconTextColor} />
 		</div>
-
-		<!-- Icon with solid background -->
-		<div class="w-10 h-10 {iconColor} rounded-lg flex items-center justify-center text-white">
-			<svelte:component this={icon} size={20} />
+		<div class="ml-4">
+			<p class="text-sm font-medium text-gray-600">{title}</p>
+			<p class="text-3xl font-bold {valueColor}">{value}</p>
 		</div>
 	</div>
+	<p class="text-sm text-gray-500">{subtitle}</p>
 </div>

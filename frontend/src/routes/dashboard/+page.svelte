@@ -207,7 +207,7 @@
     if (daysUntilRenewal <= 7) {
       return {
         text: 'Renewal Coming',
-        class: 'bg-yellow-100 text-yellow-800 border border-yellow-200',
+        class: 'bg-amber-100 text-amber-800 border border-amber-200',
         icon: '🔄',
         priority: 'warning'
       };
@@ -230,7 +230,7 @@
 <!-- Greeting Row -->
 <div class="flex items-center justify-between mb-6">
 	<div>
-		<h1 class="text-xl sm:text-2xl font-bold text-gray-900">
+		<h1 class="text-3xl font-bold text-gray-900">
 			Hey {userName}!
 			<span class="inline-block animate-wave">👋</span>
 		</h1>
@@ -260,7 +260,7 @@
 				<span>99.9% Uptime</span>
 			</span>
 			<span class="inline-flex items-center gap-1.5 text-xs text-gray-500">
-				<svg class="w-3.5 h-3.5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+				<svg class="w-3.5 h-3.5 text-cyan-600" fill="currentColor" viewBox="0 0 20 20">
 					<path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
 				</svg>
 				<span>2,847+ Users</span>
@@ -269,46 +269,43 @@
 	</div>
 
 	<div class="flex gap-3">
-		<a
-			href="/dashboard/subscriptions"
-			class="px-6 py-2.5 border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium rounded-lg transition-colors flex items-center space-x-2"
+		<button
+			class="bg-cyan-500 hover:bg-cyan-600 text-white font-medium py-2.5 px-5 rounded-lg transition-colors duration-150 flex items-center space-x-2"
 		>
 			<span>➕</span>
 			<span>Add Subscription</span>
-		</a>
+		</button>
 		<a
 			href="/dashboard/credits"
-			class="px-6 py-2.5 text-white text-sm font-medium rounded-lg transition-all duration-300 focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 flex items-center space-x-2 hover:shadow-lg hover:shadow-orange-500/30 hover:scale-105"
-			style="background-color: #FF6B35;"
-			onmouseover="this.style.backgroundColor='#FF5520'"
-			onmouseout="this.style.backgroundColor='#FF6B35'"
+			class="bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 flex items-center space-x-2"
 		>
 			<span>⚡</span>
-			<span>Top Up</span>
+			<span>Top Up Credits</span>
 		</a>
 	</div>
 </div>
 
 <!-- Stats Cards Row -->
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
 	<!-- Active Subscribed Plans -->
 	<StatCard
 		title="Active Subscribed Plans"
 		value={activeSubscriptionsCount}
 		subtitle="active all subscriptions"
 		icon={Users}
-		iconColor="bg-blue-500"
+		iconColor="bg-cyan-50"
+		iconTextColor="text-cyan-600"
 	/>
 
 	<!-- Enhanced Upcoming Renewals -->
 	<div class="bg-white rounded-xl border border-gray-200 p-6">
 		<div class="flex items-center mb-4">
-			<div class="p-3 bg-yellow-100 rounded-lg">
-				<Calendar class="w-6 h-6 text-yellow-600" />
+			<div class="p-3 bg-amber-50 rounded-lg">
+				<Calendar class="w-6 h-6 text-amber-600" />
 			</div>
 			<div class="ml-4">
 				<p class="text-sm font-medium text-gray-600">Upcoming Renewals</p>
-				<p class="text-3xl font-bold text-yellow-600">{upcomingRenewalsCount}</p>
+				<p class="text-3xl font-bold text-amber-600">{upcomingRenewalsCount}</p>
 			</div>
 		</div>
 
@@ -337,7 +334,7 @@
 						</svg>
 						<span class="font-medium">Add €{(estimatedCost - userBalance).toFixed(2)} to cover renewals</span>
 					</div>
-					<a href="/dashboard/credits" class="inline-flex items-center mt-2 text-sm font-medium text-orange-600 hover:text-orange-700">
+					<a href="/dashboard/credits" class="inline-flex items-center mt-2 text-sm font-medium text-cyan-600 hover:text-cyan-700">
 						<span>Top Up Now</span>
 						<ChevronRight size={16} class="ml-1" />
 					</a>
@@ -355,7 +352,7 @@
 		<div class="bg-white rounded-xl border border-gray-200 p-6">
 			<div class="flex items-center justify-center h-24">
 				<div class="flex items-center space-x-3">
-					<Loader2 class="w-6 h-6 animate-spin text-subslush-blue" />
+					<Loader2 class="w-6 h-6 animate-spin text-cyan-500" />
 					<span class="text-gray-600">Loading balance...</span>
 				</div>
 			</div>
@@ -416,7 +413,7 @@
 			{#if balance > 0 && balance < 20}
 				<a
 					href="/dashboard/credits"
-					class="mt-3 w-full inline-flex items-center justify-center px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors gap-2"
+					class="mt-3 w-full bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 inline-flex items-center justify-center gap-2"
 				>
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
@@ -426,7 +423,7 @@
 			{:else if balance < 50}
 				<a
 					href="/dashboard/credits"
-					class="mt-3 inline-flex items-center text-sm font-medium text-orange-600 hover:text-orange-700"
+					class="mt-3 inline-flex items-center text-sm font-medium text-cyan-600 hover:text-cyan-700"
 				>
 					<span>⚡ Top Up Now</span>
 					<ChevronRight size={16} class="ml-1" />
@@ -437,13 +434,12 @@
 </div>
 
 <!-- Subscription Cards Section -->
-<div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+<div class="bg-white rounded-xl border border-gray-200 p-6 mb-8">
 	<!-- Section Header -->
 	<div class="flex items-center justify-between mb-4">
 		<div>
 			<button
-				class="px-4 py-2 text-sm font-medium text-pink-600 border-b-2 border-pink-600"
-				style="color: #F06292; border-bottom-color: #F06292;"
+				class="px-4 py-2 text-sm font-medium bg-gradient-to-br from-cyan-500/[0.08] to-pink-500/[0.08] border border-cyan-200/50 text-gray-900 rounded-lg"
 				on:click={() => activeTab = 'my-subscriptions'}
 			>
 				My Subscriptions ({mockSubscriptions.length})
@@ -467,7 +463,7 @@
 	</div>
 
 	<!-- Subscription Cards Grid -->
-	<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+	<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
 		{#each mockSubscriptions as subscription}
 			{@const userBalance = $balanceQuery.data ? extractAvailableBalance($balanceQuery.data) : 0}
 			{@const statusBadge = getSubscriptionStatusBadge(subscription, userBalance)}
@@ -489,30 +485,30 @@
 </div>
 
 <!-- Social Proof Section -->
-<div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-6 mt-6">
+<div class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
 	<div class="flex items-start space-x-3 mb-4">
 		<div class="flex-shrink-0">
-			<div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
-				<svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+			<div class="w-10 h-10 bg-cyan-50 rounded-full flex items-center justify-center">
+				<svg class="w-6 h-6 text-cyan-600" fill="currentColor" viewBox="0 0 20 20">
 					<path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
 				</svg>
 			</div>
 		</div>
 		<div class="flex-1">
-			<h3 class="text-lg font-bold text-gray-900 mb-2">
+			<h3 class="text-xl font-semibold text-gray-900 mb-2">
 				⭐ What SubSlush Users Are Saving
 			</h3>
 			<div class="space-y-3">
-				<blockquote class="bg-white rounded-lg p-4 border border-blue-100">
+				<blockquote class="bg-gray-50 rounded-lg p-4 border border-gray-200">
 					<p class="text-sm text-gray-700 mb-2">"Saved <span class="font-bold text-green-600">€1,680</span> on Netflix this year! This platform is incredible."</p>
 					<cite class="text-xs text-gray-500 not-italic">— Maria K., Premium User</cite>
 				</blockquote>
-				<blockquote class="bg-white rounded-lg p-4 border border-blue-100">
-					<p class="text-sm text-gray-700 mb-2">"TradingView Pro for <span class="font-bold text-orange-600">€12.99</span>? Absolute no-brainer for day traders!"</p>
+				<blockquote class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+					<p class="text-sm text-gray-700 mb-2">"TradingView Pro for <span class="font-bold text-green-600">€12.99</span>? Absolute no-brainer for day traders!"</p>
 					<cite class="text-xs text-gray-500 not-italic">— Alex R., Day Trader</cite>
 				</blockquote>
 			</div>
-			<a href="/browse" class="inline-flex items-center mt-4 text-sm font-medium text-blue-600 hover:text-blue-700">
+			<a href="/browse" class="inline-flex items-center mt-4 text-sm font-medium text-cyan-600 hover:text-cyan-700">
 				See all success stories
 				<ChevronRight size={16} class="ml-1" />
 			</a>
@@ -523,17 +519,17 @@
 <!-- Enhanced Quick Actions Section -->
 <div class="mt-8 bg-white rounded-xl border border-gray-200 p-6">
 	<div class="flex items-center mb-4">
-		<svg class="w-5 h-5 text-purple-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+		<svg class="w-5 h-5 text-cyan-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
 			<path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
 		</svg>
-		<h2 class="text-lg font-bold text-gray-900">Quick Actions</h2>
+		<h2 class="text-2xl font-bold text-gray-900">Quick Actions</h2>
 	</div>
 
 	<div class="space-y-3">
 		<!-- PRIMARY ACTION -->
 		<a
 			href="/browse/subscriptions"
-			class="block w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-lg p-4 transition-all duration-200 hover:shadow-lg hover:shadow-orange-500/30 hover:scale-[1.02] group"
+			class="block w-full bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-white rounded-lg p-4 transition-all duration-200 hover:shadow-lg hover:shadow-xl hover:scale-[1.02] group"
 		>
 			<div class="flex items-center justify-between">
 				<div class="flex items-center space-x-3">
@@ -552,7 +548,7 @@
 		</a>
 
 		<!-- SECONDARY ACTIONS -->
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+		<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 			<a
 				href="/dashboard/subscriptions"
 				class="bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg p-4 transition-colors group"
