@@ -14,6 +14,22 @@
 	];
 
 	$: currentPath = $page.url.pathname;
+
+	// Proper reactive function that generates CSS classes based on current path
+	$: getNavClass = (itemHref: string) => {
+		const isActive = currentPath === itemHref;
+		return isActive
+			? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900'
+			: 'text-gray-600 hover:bg-gray-100';
+	};
+
+	// Mobile navigation class function
+	$: getMobileNavClass = (itemHref: string) => {
+		const isActive = currentPath === itemHref;
+		return isActive
+			? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900'
+			: 'text-gray-600 hover:bg-gray-50';
+	};
 </script>
 
 <nav class="sticky top-0 z-50 h-16 bg-white border-b border-gray-200">
@@ -33,9 +49,7 @@
 				{#each navItems as item}
 					<a
 						href={item.href}
-						class="px-4 py-2 text-sm font-medium rounded-lg transition-colors {currentPath === item.href
-							? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900'
-							: 'text-gray-600 hover:bg-gray-100'}"
+						class="px-4 py-2 text-sm font-medium rounded-lg transition-colors {getNavClass(item.href)}"
 					>
 						{item.label}
 					</a>
@@ -84,9 +98,7 @@
 				{#each navItems as item}
 					<a
 						href={item.href}
-						class="px-4 py-3 rounded-lg text-sm font-medium transition-colors {currentPath === item.href
-							? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900'
-							: 'text-gray-600 hover:bg-gray-50'}"
+						class="px-4 py-3 rounded-lg text-sm font-medium transition-colors {getMobileNavClass(item.href)}"
 					>
 						{item.label}
 					</a>

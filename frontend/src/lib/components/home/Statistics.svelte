@@ -73,6 +73,7 @@
                 duration={2000}
                 formatNumber={stat.formatNumber}
                 decimals={stat.decimals || 0}
+                location={`statistics_${stat.label.toLowerCase().replace(/\s+/g, '_')}`}
               />
             {:else}
               {stat.prefix || ''}{stat.value}{stat.suffix || ''}

@@ -91,8 +91,8 @@
     }
   ];
 
-  // Transform data.plans to match home page format
-  $: transformedPlans = data.plans.map(plan => ({
+  // Transform data.plans to match home page format - with safety check
+  $: transformedPlans = (data.plans || []).map(plan => ({
     serviceType: plan.service_type,
     serviceName: plan.display_name,
     plan: plan.plan,
@@ -101,8 +101,8 @@
     description: plan.description
   }));
 
-  // Filter plans based on search and category
-  $: filteredPlans = data.plans.filter(plan => {
+  // Filter plans based on search and category - with safety check
+  $: filteredPlans = (data.plans || []).filter(plan => {
     const matchesSearch = searchQuery === '' ||
       plan.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       plan.plan.toLowerCase().includes(searchQuery.toLowerCase());
