@@ -550,7 +550,7 @@
 		<!-- SECONDARY ACTIONS -->
 		<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 			<a
-				href="/dashboard/subscriptions"
+				href="/dashboard/subscriptions/active"
 				class="bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg p-4 transition-colors group"
 			>
 				<div class="flex items-center space-x-2 text-gray-700">

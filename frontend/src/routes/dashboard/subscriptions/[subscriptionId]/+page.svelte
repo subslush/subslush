@@ -326,7 +326,7 @@
       {/if}
 
       <a
-        href="/dashboard/subscriptions"
+        href="/browse"
         class="inline-flex items-center bg-surface-50 dark:bg-surface-700 hover:bg-surface-200 dark:hover:bg-surface-600 text-surface-700 dark:text-surface-300 border border-surface-300 dark:border-surface-600 px-4 py-2 rounded-lg transition-colors"
       >
         Browse Other Plans

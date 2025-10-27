@@ -8,7 +8,6 @@
 	export let userBalance = 0;
 
 	const navItems = [
-		{ label: 'Browse Subscriptions', href: '/dashboard/subscriptions' },
 		{ label: 'Dashboard', href: '/dashboard' },
 		{ label: 'My Subscriptions', href: '/dashboard/subscriptions/active' }
 	];
@@ -25,11 +24,6 @@
 		// Exact match for My Subscriptions (specific child route)
 		if (itemHref === '/dashboard/subscriptions/active') {
 			return currentPath === '/dashboard/subscriptions/active';
-		}
-
-		// Exact match for Browse Subscriptions (not including child routes)
-		if (itemHref === '/dashboard/subscriptions') {
-			return currentPath === '/dashboard/subscriptions';
 		}
 
 		// Fallback to exact match for any other routes

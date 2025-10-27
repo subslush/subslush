@@ -93,7 +93,7 @@
 
       <div class="flex gap-4">
         <a
-          href="/dashboard/subscriptions"
+          href="/browse"
           class="bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 inline-flex items-center gap-2"
         >
           <Plus size={20} />
@@ -139,7 +139,7 @@
             ? "You haven't added any subscriptions yet."
             : `No ${selectedFilter} subscriptions found.`}
         </p>
-        <a href="/dashboard/subscriptions"
+        <a href="/browse"
            class="inline-flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105">
           <Plus size={20} />
           <span>Browse Subscriptions</span>

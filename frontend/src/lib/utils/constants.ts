@@ -41,7 +41,6 @@ export const ROUTES = {
   DASHBOARD: '/dashboard',
   PROFILE: '/profile',
   SUBSCRIPTIONS: {
-    BROWSE: '/dashboard/subscriptions',
     MY_SUBSCRIPTIONS: '/dashboard/subscriptions/active'
   },
   CREDITS: '/dashboard/credits'
