@@ -48,13 +48,13 @@
 
   function getBadgeVariant(subtitle: string) {
     if (subtitle.toLowerCase().includes('popular')) {
-      return { text: 'MOST POPULAR', color: 'bg-green-500 text-white' };
+      return { text: 'MOST POPULAR', color: 'bg-green-100 text-green-800 border border-green-200' };
     } else if (subtitle.toLowerCase().includes('business')) {
-      return { text: 'BUSINESS', color: 'bg-blue-500 text-white' };
+      return { text: 'BUSINESS', color: 'bg-cyan-100 text-cyan-800 border border-cyan-200' };
     } else if (subtitle.toLowerCase().includes('student')) {
-      return { text: 'STUDENT', color: 'bg-orange-500 text-white' };
+      return { text: 'STUDENT', color: 'bg-amber-100 text-amber-800 border border-amber-200' };
     }
-    return { text: 'FEATURED', color: 'bg-gray-500 text-white' };
+    return { text: 'FEATURED', color: 'bg-cyan-100 text-cyan-800 border border-cyan-200' };
   }
 
   function getSocialProof(): string {
@@ -72,85 +72,45 @@
   $: savingsPercentage = Math.round((youSave / originalPrice) * 100);
 </script>
 
-<div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 relative">
-  <!-- Badge at top -->
-  <div class="absolute top-4 left-1/2 transform -translate-x-1/2">
-    <span class="px-3 py-1 {badgeInfo.color} text-xs font-bold rounded-full shadow-md">
+<div class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md
+            transition-shadow duration-200">
+
+  <!-- Badge (if has special status) -->
+  {#if subtitle}
+    <span class="inline-block px-2 py-1 {badgeInfo.color} text-xs font-medium rounded mb-3">
       {badgeInfo.text}
+    </span>
+  {/if}
+
+  <!-- Title -->
+  <h3 class="text-lg font-semibold text-gray-900 mb-2">
+    {title}
+  </h3>
+
+  <!-- Services List -->
+  <ul class="space-y-1 mb-4">
+    {#each services as service}
+      <li class="flex items-center gap-2 text-sm text-gray-600">
+        <span class="text-cyan-500 text-sm">✓</span>
+        <span>{service}</span>
+      </li>
+    {/each}
+  </ul>
+
+  <!-- Price -->
+  <div class="mb-4">
+    <div class="flex items-baseline gap-2">
+      <span class="text-2xl font-bold text-gray-900">€{formatPrice(price)}</span>
+      <span class="text-sm text-gray-500 line-through">€{separatePrice.toFixed(2)}</span>
+    </div>
+    <span class="inline-block mt-2 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded border border-green-200">
+      Save {savingsPercentage}%
     </span>
   </div>
 
-  <h3 class="font-semibold text-gray-900 mb-4 mt-8 text-center text-lg">{title}</h3>
-
-  <!-- Service Icons/Logos -->
-  <div class="flex items-center justify-center space-x-3 mb-6">
-    {#each services as service}
-      {@const display = getServiceDisplay(service)}
-
-      <div
-        class="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden border border-gray-200"
-        title={display.fullName}
-      >
-        {#if display.hasLogo}
-          <!-- Display actual logo -->
-          <img
-            src={display.logoPath}
-            alt="{display.fullName} logo"
-            class="w-12 h-12 object-contain p-1"
-          />
-        {:else}
-          <!-- Fallback to letter -->
-          <span class="text-2xl font-bold text-gray-700">
-            {display.letter}
-          </span>
-        {/if}
-      </div>
-    {/each}
-  </div>
-
-  <!-- Pricing Section -->
-  <div class="mb-4">
-    <div class="text-3xl font-bold text-gray-900 mb-2 text-center">
-      €{formatPrice(price)}/month
-    </div>
-    <div class="text-sm text-gray-500 line-through mb-3 text-center">
-      €{separatePrice.toFixed(2)} if purchased separately
-    </div>
-    <div class="bg-red-500 text-white text-center py-2.5 px-4 rounded-lg font-bold text-lg">
-      YOU SAVE: €{youSave.toFixed(2)} ({savingsPercentage}%)
-    </div>
-  </div>
-
-  <!-- Social Proof -->
-  {#if getSocialProof()}
-    <div class="text-center text-sm text-gray-600 mb-4">
-      {getSocialProof()}
-    </div>
-  {/if}
-
-  <!-- Features -->
-  <ul class="space-y-2 mb-6 text-sm text-gray-700">
-    <li class="flex items-start">
-      <span class="text-green-500 mr-2 flex-shrink-0">✓</span>
-      <span>Instant access to all services</span>
-    </li>
-    <li class="flex items-start">
-      <span class="text-green-500 mr-2 flex-shrink-0">✓</span>
-      <span>One payment, manage all subscriptions</span>
-    </li>
-    <li class="flex items-start">
-      <span class="text-green-500 mr-2 flex-shrink-0">✓</span>
-      <span>Cancel individual items anytime</span>
-    </li>
-  </ul>
-
-  <!-- CTA Button -->
-  <button class="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-lg font-bold transition-colors">
-    Get This Bundle →
+  <!-- CTA -->
+  <button class="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-medium py-2.5 px-4
+                 rounded-lg transition-colors">
+    Get Bundle
   </button>
-
-  <!-- Trust line -->
-  <p class="text-center text-xs text-gray-500 mt-3">
-    Instant access • Cancel anytime • 30-day money back
-  </p>
 </div>

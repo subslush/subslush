@@ -22,58 +22,30 @@
     {
       icon: Lock,
       title: 'Bank-Level Security',
-      description: '256-bit SSL encryption. Your payment data is always protected with the same security banks use.',
-      iconColor: 'text-blue-600',
-      bgColor: 'bg-blue-100'
+      description: '256-bit SSL encryption protects your payment data.',
+      iconColor: 'text-cyan-600',
+      bgColor: 'bg-cyan-50'
     },
     {
       icon: Zap,
       title: 'Instant Access',
-      description: 'Get immediate access to your subscriptions. No waiting, no delays - start using right away.',
-      iconColor: 'text-yellow-600',
-      bgColor: 'bg-yellow-100'
-    },
-    {
-      icon: BadgeDollarSign,
-      title: 'Best Price Guaranteed',
-      description: "Find a better price elsewhere? We'll match it plus give you an extra 5% off.",
-      iconColor: 'text-green-600',
-      bgColor: 'bg-green-100'
+      description: 'Start using your subscriptions immediately, no waiting.',
+      iconColor: 'text-amber-600',
+      bgColor: 'bg-amber-50'
     },
     {
       icon: CheckCircle,
       title: '7-Day Money Back',
-      description: 'Not satisfied? Get a full refund within 7 days, no questions asked. Your satisfaction guaranteed.',
-      iconColor: 'text-emerald-600',
-      bgColor: 'bg-emerald-100'
+      description: 'Full refund within 7 days, no questions asked.',
+      iconColor: 'text-green-600',
+      bgColor: 'bg-green-50'
     },
     {
       icon: Globe,
       title: '24/7 Support',
-      description: 'Our dedicated support team is available around the clock to help with any questions.',
+      description: 'Our team is always available to help you.',
       iconColor: 'text-cyan-600',
-      bgColor: 'bg-cyan-100'
-    },
-    {
-      icon: ShieldCheck,
-      title: 'Verified Licenses',
-      description: 'All subscriptions are legitimate and verified. No pirated or shared accounts.',
-      iconColor: 'text-purple-600',
-      bgColor: 'bg-purple-100'
-    },
-    {
-      icon: Users,
-      title: '250K+ Happy Users',
-      description: 'Join over 250,000 satisfied customers who save money on premium subscriptions.',
-      iconColor: 'text-indigo-600',
-      bgColor: 'bg-indigo-100'
-    },
-    {
-      icon: Shield,
-      title: 'Privacy Protected',
-      description: 'We never share your personal data. Your privacy is our top priority.',
-      iconColor: 'text-gray-600',
-      bgColor: 'bg-gray-100'
+      bgColor: 'bg-cyan-50'
     }
   ];
 </script>
@@ -82,38 +54,23 @@
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <!-- Heading -->
     <div class="text-center mb-12">
-      <h2 class="text-2xl font-semibold text-gray-900 mb-2">
+      <h2 class="text-2xl font-bold text-gray-900 mb-2">
         Why Choose SubSlush?
       </h2>
-      <p class="text-sm text-gray-600 max-w-2xl mx-auto">
-        Trusted by 250,000+ users for secure, instant access to premium subscriptions
+      <p class="text-base text-gray-600">
+        Join thousands of satisfied customers saving money every month
       </p>
     </div>
 
-    <!-- Trust Signal Grid -->
+    <!-- Trust Signal Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       {#each trustSignals as signal}
-        <div class="text-center">
-
-          <!-- Icon Circle with colored background -->
-          <div class="w-16 h-16 {signal.bgColor} rounded-full flex items-center justify-center mx-auto mb-4 transition-transform hover:scale-110">
-            <svelte:component
-              this={signal.icon}
-              size={28}
-              class={signal.iconColor}
-              strokeWidth={2}
-            />
+        <div class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
+          <div class="p-3 {signal.bgColor} rounded-lg w-12 h-12 flex items-center justify-center mb-4">
+            <svelte:component this={signal.icon} size={24} class={signal.iconColor} />
           </div>
-
-          <!-- Title -->
-          <h3 class="font-semibold text-gray-900 mb-2 text-base">
-            {signal.title}
-          </h3>
-
-          <!-- Description -->
-          <p class="text-sm text-gray-600 leading-relaxed">
-            {signal.description}
-          </p>
+          <h3 class="text-lg font-semibold text-gray-900 mb-2">{signal.title}</h3>
+          <p class="text-sm text-gray-600">{signal.description}</p>
         </div>
       {/each}
     </div>

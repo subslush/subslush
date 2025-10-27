@@ -15,20 +15,13 @@
   ];
 </script>
 
-<div class="flex items-center space-x-2 overflow-x-auto pb-2 scroll-smooth">
+<div class="flex flex-wrap gap-2 justify-center">
   {#each categories as category}
-    <button
-      class="px-4 py-3 text-sm font-medium rounded-full whitespace-nowrap transition-colors border-2 min-h-[44px] flex items-center"
-      class:bg-black={selectedCategory === category.id}
-      class:text-white={selectedCategory === category.id}
-      class:border-black={selectedCategory === category.id}
-      class:bg-white={selectedCategory !== category.id}
-      class:text-gray-700={selectedCategory !== category.id}
-      class:border-gray-300={selectedCategory !== category.id}
-      class:hover:bg-gray-50={selectedCategory !== category.id}
-      class:hover:border-gray-400={selectedCategory !== category.id}
-      on:click={() => selectedCategory = category.id}
-    >
+    <button on:click={() => selectedCategory = category.id}
+            class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                   {selectedCategory === category.id
+                     ? 'bg-gradient-to-br from-cyan-500/[0.08] to-pink-500/[0.08] border border-cyan-200/50 text-gray-900'
+                     : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 hover:text-gray-900'}">
       {#if category.icon}
         <span class="mr-2">{category.icon}</span>
       {/if}

@@ -210,18 +210,18 @@
     successMessage = '';
   }
 
-  // Helper functions for home page style cards
+  // Helper functions for service display
   const serviceStyles = {
-    netflix: { logo: netflixLogo, color: 'bg-red-500' },
-    spotify: { logo: spotifyLogo, color: 'bg-green-500' },
-    tradingview: { logo: tradingviewLogo, color: 'bg-blue-500' },
-    hbo: { logo: hboLogo, color: 'bg-purple-600' },
-    adobe: { icon: '🎨', color: 'bg-red-600' },
-    disney: { icon: '🏰', color: 'bg-blue-600' }
+    netflix: { logo: netflixLogo },
+    spotify: { logo: spotifyLogo },
+    tradingview: { logo: tradingviewLogo },
+    hbo: { logo: hboLogo },
+    adobe: { icon: '🎨' },
+    disney: { icon: '🏰' }
   };
 
   function getServiceStyle(serviceType: string) {
-    return serviceStyles[serviceType as keyof typeof serviceStyles] || { icon: '📦', color: 'bg-gray-500' };
+    return serviceStyles[serviceType as keyof typeof serviceStyles] || { icon: '📦' };
   }
 
   function calculateSavings(price: number, originalPrice?: number) {
@@ -262,13 +262,6 @@
     padding: 0 !important;
   }
 
-  /* Title text truncation for consistent card heights */
-  .line-clamp-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
 </style>
 
 <div class="min-h-screen bg-white subscriptions-page-layout" data-subscriptions-page>
@@ -282,13 +275,14 @@
 
       <!-- Success/Error Messages -->
       {#if successMessage}
-        <div class="mb-6 bg-success-50 border border-success-200 rounded-lg p-4">
+        <div class="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
           <div class="flex items-center justify-between">
-            <div class="flex items-center">
-              <ShoppingBag size={20} class="text-success-600 mr-3" />
-              <p class="text-success-700 font-medium">{successMessage}</p>
+            <div class="flex items-center gap-3">
+              <Check size={20} class="text-green-600" />
+              <p class="text-sm font-medium text-green-800">{successMessage}</p>
             </div>
-            <button on:click={clearMessages} class="text-success-600 hover:text-success-700">
+            <button on:click={clearMessages}
+                    class="text-green-600 hover:text-green-700 transition-colors">
               <span class="sr-only">Close</span>
               ×
             </button>
@@ -297,13 +291,14 @@
       {/if}
 
       {#if errorMessage}
-        <div class="mb-6 bg-error-50 border border-error-200 rounded-lg p-4">
+        <div class="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
           <div class="flex items-center justify-between">
-            <div class="flex items-center">
-              <AlertCircle size={20} class="text-error-600 mr-3" />
-              <p class="text-error-700 font-medium">{errorMessage}</p>
+            <div class="flex items-center gap-3">
+              <AlertCircle size={20} class="text-red-600" />
+              <p class="text-sm font-medium text-red-800">{errorMessage}</p>
             </div>
-            <button on:click={clearMessages} class="text-error-600 hover:text-error-700">
+            <button on:click={clearMessages}
+                    class="text-red-600 hover:text-red-700 transition-colors">
               <span class="sr-only">Close</span>
               ×
             </button>
@@ -313,19 +308,31 @@
 
       <!-- Header with View All -->
       <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-semibold text-gray-900">
-          All Subscription Plans
-        </h2>
-        <a href="/browse" class="text-sm font-medium text-blue-500 hover:text-blue-600 transition-colors">
-          View All →
+        <div>
+          <h2 class="text-2xl font-bold text-gray-900">
+            All Subscription Plans
+          </h2>
+          <p class="text-sm text-gray-600 mt-1">
+            Browse 560+ premium services at unbeatable prices
+          </p>
+        </div>
+        <a href="/browse"
+           class="text-sm font-medium text-cyan-600 hover:text-cyan-700 transition-colors inline-flex items-center gap-1">
+          <span>View All</span>
+          <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" />
+          </svg>
         </a>
       </div>
 
       <!-- Sort & Filter Controls -->
       <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center space-x-2">
-          <span class="text-sm text-gray-600">Sort by:</span>
-          <select bind:value={sortBy} class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-medium text-gray-600">Sort by:</span>
+          <select bind:value={sortBy}
+                  class="bg-white border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium text-gray-900
+                         focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500
+                         transition-colors">
             <option value="recommended">Recommended</option>
             <option value="price_low">Price: Low to High</option>
             <option value="price_high">Price: High to Low</option>
@@ -346,51 +353,46 @@
           {@const savings = calculateSavings(plan.price, originalPrice)}
           {@const canPurchase = userBalance >= plan.price}
 
-          <div class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow">
-            <!-- Header -->
-            <div class="flex items-start justify-between mb-3 h-12">
-              <div class="flex items-start space-x-2">
-                {#if serviceStyle.logo}
-                  <img src={serviceStyle.logo} alt="{plan.service_type} logo" class="w-8 h-8 object-contain flex-shrink-0" />
-                {:else}
-                  <span class="text-2xl flex-shrink-0">{serviceStyle.icon}</span>
-                {/if}
-                <div class="min-w-0 flex-1">
-                  <h3 class="font-semibold text-gray-900 text-sm leading-tight line-clamp-2">{plan.display_name}</h3>
-                  <p class="text-xs text-gray-500 capitalize leading-tight">{plan.plan}</p>
-                </div>
-              </div>
+          <div class="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md
+                      transition-shadow duration-200 flex flex-col h-full">
 
+            <!-- Header -->
+            <div class="flex items-center gap-3 mb-4">
+              <div class="p-3 bg-cyan-50 rounded-lg flex-shrink-0">
+                {#if serviceStyle.logo}
+                  <img src={serviceStyle.logo} alt="{plan.service_type} logo" class="w-8 h-8 object-contain" />
+                {:else}
+                  <span class="text-2xl">{serviceStyle.icon}</span>
+                {/if}
+              </div>
+              <div class="min-w-0 flex-1">
+                <h3 class="text-lg font-semibold text-gray-900 truncate">
+                  {plan.display_name}
+                </h3>
+                <p class="text-sm text-gray-500 capitalize">{plan.plan} Plan</p>
+              </div>
+            </div>
+
+            <!-- Price Section -->
+            <div class="mb-4">
+              <div class="flex items-baseline gap-2">
+                <span class="text-3xl font-bold text-gray-900">€{plan.price.toFixed(2)}</span>
+                {#if originalPrice && originalPrice > plan.price}
+                  <span class="text-sm text-gray-500 line-through">€{originalPrice.toFixed(2)}</span>
+                {/if}
+              </div>
               {#if savings > 0}
-                <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
+                <span class="inline-block mt-2 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded border border-green-200">
                   Save {savings}%
                 </span>
               {/if}
             </div>
 
-            <!-- Price -->
-            <div class="mb-3">
-              <div class="flex items-baseline space-x-2">
-                <span class="text-xl font-bold text-gray-900">€{plan.price.toFixed(2)}</span>
-                <span class="text-xs text-gray-500">/monthly</span>
-              </div>
-              {#if savings > 0}
-                <p class="text-xs text-gray-400 line-through">€{originalPrice.toFixed(2)}</p>
-              {/if}
-              <p class="text-xs text-gray-500 mt-1">
-                {#if savings > 0}
-                  Save €{(originalPrice - plan.price).toFixed(2)}
-                {:else}
-                  Regular price
-                {/if}
-              </p>
-            </div>
-
-            <!-- Features -->
-            <ul class="space-y-1.5 mb-4">
+            <!-- Features List -->
+            <ul class="space-y-2 mb-6 flex-1">
               {#each plan.features.slice(0, 4) as feature}
-                <li class="flex items-start space-x-2 text-xs text-gray-600">
-                  <Check size={14} class="mt-0.5 flex-shrink-0" style="color: #4FC3F7;" />
+                <li class="flex items-start gap-2 text-sm text-gray-600">
+                  <Check size={16} class="text-cyan-500 flex-shrink-0 mt-0.5" />
                   <span class="leading-tight">{feature}</span>
                 </li>
               {/each}
@@ -398,45 +400,46 @@
 
             <!-- Action Buttons -->
             <div class="space-y-2">
-              <!-- View Details Button -->
-              <a
-                href="/browse/subscriptions/{plan.service_type}/{plan.plan}"
-                class="w-full py-2.5 px-4 text-white text-sm font-medium rounded-lg transition-colors hover:opacity-90 text-center block"
-                style="background-color: #4FC3F7;"
-              >
+              <!-- Primary Action - Cyan (NOT gradient, gradient is for highest priority only) -->
+              <a href="/browse/subscriptions/{plan.service_type}/{plan.plan}"
+                 class="w-full py-2.5 px-4 bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium
+                        rounded-lg transition-colors text-center block">
                 View Details
               </a>
 
-              <!-- Quick Purchase Button -->
-              <button
-                on:click={() => handlePurchaseClick(plan)}
-                class="w-full py-2 px-4 text-sm font-medium rounded-lg transition-colors border"
-                class:text-gray-700={canPurchase}
-                class:border-gray-300={canPurchase}
-                class:hover:bg-gray-50={canPurchase}
-                class:bg-gray-100={!canPurchase}
-                class:text-gray-400={!canPurchase}
-                class:cursor-not-allowed={!canPurchase}
-                disabled={!canPurchase}
-              >
-                {#if canPurchase}
+              <!-- Secondary Action -->
+              {#if canPurchase}
+                <button on:click={() => handlePurchaseClick(plan)}
+                        class="w-full py-2 px-4 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300
+                               text-sm font-medium rounded-lg transition-colors">
                   Quick Purchase
-                {:else}
+                </button>
+              {:else}
+                <button disabled
+                        class="w-full py-2 px-4 bg-gray-100 text-gray-400 text-sm font-medium rounded-lg
+                               cursor-not-allowed">
                   Insufficient Credits
-                {/if}
-              </button>
+                </button>
+              {/if}
             </div>
           </div>
         {:else}
           <div class="col-span-full text-center py-12">
-            <div class="bg-gray-100 rounded-lg p-8">
-              <ShoppingBag size={48} class="mx-auto text-gray-400 mb-4" />
-              <h3 class="text-lg font-medium text-gray-900 mb-2">
+            <div class="bg-white rounded-xl border border-gray-200 p-8">
+              <div class="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <ShoppingBag size={32} class="text-gray-400" />
+              </div>
+              <h3 class="text-lg font-semibold text-gray-900 mb-2">
                 No plans available
               </h3>
-              <p class="text-gray-600">
+              <p class="text-base text-gray-600 mb-6">
                 No subscription plans match your current search criteria.
               </p>
+              <button on:click={() => { searchQuery = ''; selectedCategory = 'all'; }}
+                      class="bg-cyan-500 hover:bg-cyan-600 text-white font-medium py-2.5 px-6 rounded-lg
+                             transition-colors inline-flex items-center gap-2">
+                <span>Clear Filters</span>
+              </button>
             </div>
           </div>
         {/each}
@@ -450,14 +453,14 @@
       <!-- Header -->
       <div class="flex items-center justify-between mb-6">
         <div>
-          <h2 class="text-2xl font-semibold text-gray-900">
+          <h2 class="text-2xl font-bold text-gray-900">
             Featured Bundles & Exclusive Deals
           </h2>
           <p class="text-sm text-gray-600 mt-1">
             Save more with curated packages
           </p>
         </div>
-        <span class="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
+        <span class="px-3 py-1 bg-cyan-100 text-cyan-800 text-xs font-medium rounded border border-cyan-200">
           Combo Packages
         </span>
       </div>
