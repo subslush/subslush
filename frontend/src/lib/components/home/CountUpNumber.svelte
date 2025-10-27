@@ -38,6 +38,17 @@
     count.set(value, { duration: 0 });
   }
 
+  // Ensure final value is always shown after a reasonable delay (prevents stuck at 0)
+  $: if (browser && element && $count === 0 && value > 0) {
+    setTimeout(() => {
+      if ($count === 0) {
+        console.log('🎯 [CountUpNumber] Emergency fallback - setting final value:', { animationId, value });
+        count.set(value, { duration: 0 });
+        markAnimationCompleted(animationId);
+      }
+    }, 5000);
+  }
+
   function startAnimation() {
     if (animationTriggered || hasGloballyAnimated) return;
 
@@ -54,9 +65,10 @@
   function setupIntersectionObserver() {
     if (!browser || !element || observer) return;
 
-    // Check if already visible
+    // Check if already visible with more generous bounds
     const rect = element.getBoundingClientRect();
-    const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+    const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+    const isVisible = rect.top < (windowHeight + 100) && rect.bottom > -100;
 
     if (isVisible) {
       console.log('🎯 [CountUpNumber] Element immediately visible:', animationId);
@@ -67,12 +79,21 @@
       return;
     }
 
-    // Setup intersection observer
+    // Setup intersection observer with more aggressive settings
     observer = new IntersectionObserver(
       (entries) => {
         entries.forEach(entry => {
           const wasIntersecting = isIntersecting;
           isIntersecting = entry.isIntersecting;
+
+          console.log('🎯 [CountUpNumber] Intersection change:', {
+            animationId,
+            isIntersecting,
+            wasIntersecting,
+            hasGloballyAnimated,
+            boundingRect: entry.boundingClientRect,
+            intersectionRatio: entry.intersectionRatio
+          });
 
           if (isIntersecting && !wasIntersecting && !hasGloballyAnimated) {
             console.log('🎯 [CountUpNumber] Element entered viewport:', animationId);
@@ -81,8 +102,8 @@
         });
       },
       {
-        threshold: 0.1,
-        rootMargin: '50px'
+        threshold: [0, 0.1, 0.25, 0.5], // Multiple thresholds for better detection
+        rootMargin: '100px 0px' // More generous margin
       }
     );
 
@@ -109,7 +130,18 @@
     // Small delay to ensure DOM is ready
     setTimeout(setupIntersectionObserver, 100);
 
-    return cleanup;
+    // Fallback: If animation hasn't triggered within 3 seconds, trigger it anyway
+    const fallbackTimer = setTimeout(() => {
+      if (!animationTriggered && !hasGloballyAnimated) {
+        console.log('🎯 [CountUpNumber] Fallback animation trigger:', animationId);
+        startAnimation();
+      }
+    }, 3000);
+
+    return () => {
+      clearTimeout(fallbackTimer);
+      cleanup();
+    };
   });
 
   afterUpdate(() => {

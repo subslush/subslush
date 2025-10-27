@@ -15,9 +15,30 @@
 
 	$: currentPath = $page.url.pathname;
 
+	// Intelligent route matching function that handles navigation hierarchy properly
+	function isActivePath(itemHref: string, currentPath: string): boolean {
+		// Exact match for dashboard root
+		if (itemHref === '/dashboard') {
+			return currentPath === '/dashboard';
+		}
+
+		// Exact match for My Subscriptions (specific child route)
+		if (itemHref === '/dashboard/subscriptions/active') {
+			return currentPath === '/dashboard/subscriptions/active';
+		}
+
+		// Exact match for Browse Subscriptions (not including child routes)
+		if (itemHref === '/dashboard/subscriptions') {
+			return currentPath === '/dashboard/subscriptions';
+		}
+
+		// Fallback to exact match for any other routes
+		return currentPath === itemHref;
+	}
+
 	// Proper reactive function that generates CSS classes based on current path
 	$: getNavClass = (itemHref: string) => {
-		const isActive = currentPath === itemHref;
+		const isActive = isActivePath(itemHref, currentPath);
 		return isActive
 			? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900'
 			: 'text-gray-600 hover:bg-gray-100';
@@ -25,7 +46,7 @@
 
 	// Mobile navigation class function
 	$: getMobileNavClass = (itemHref: string) => {
-		const isActive = currentPath === itemHref;
+		const isActive = isActivePath(itemHref, currentPath);
 		return isActive
 			? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900'
 			: 'text-gray-600 hover:bg-gray-50';
