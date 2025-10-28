@@ -9,6 +9,7 @@
 
 	const navItems = [
 		{ label: 'Dashboard', href: '/dashboard' },
+		{ label: 'Browse Subscriptions', href: '/dashboard/browse' },
 		{ label: 'My Subscriptions', href: '/dashboard/subscriptions/active' }
 	];
 
@@ -19,6 +20,11 @@
 		// Exact match for dashboard root
 		if (itemHref === '/dashboard') {
 			return currentPath === '/dashboard';
+		}
+
+		// Match for Browse Subscriptions (includes all browse routes)
+		if (itemHref === '/dashboard/browse') {
+			return currentPath.startsWith('/dashboard/browse');
 		}
 
 		// Exact match for My Subscriptions (specific child route)
