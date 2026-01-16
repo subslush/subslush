@@ -28,7 +28,7 @@
 	const navItems = [
 		{ label: 'Dashboard', href: '/dashboard' },
 		{ label: 'Order history', href: '/dashboard/orders' },
-		{ label: 'Your subscriptions', href: '/dashboard/subscriptions' },
+		{ label: 'My subscriptions', href: '/dashboard/subscriptions' },
 		{ label: 'Pre-launch rewards', href: '/dashboard/prelaunch-rewards' }
 	];
 
