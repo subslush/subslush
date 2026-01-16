@@ -31,74 +31,69 @@ export const load: PageServerLoad = async ({ url, fetch, parent, cookies }) => {
     params.set('include_expired', 'true');
   }
 
-  let creditBalance: number | null = null;
-  try {
-    const balanceResponse = await fetch(
-      `${API_CONFIG.BASE_URL}${API_ENDPOINTS.CREDITS.BALANCE}/${parentData.user.id}`,
-      cookieHeader ? { headers: { cookie: cookieHeader } } : undefined
-    );
-    if (balanceResponse.ok) {
+  const paginationFallback = {
+    page,
+    limit,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
+  };
+  const filters = { status, page, limit };
+
+  const creditBalancePromise = (async () => {
+    try {
+      const balanceResponse = await fetch(
+        `${API_CONFIG.BASE_URL}${API_ENDPOINTS.CREDITS.BALANCE}/${parentData.user.id}`,
+        cookieHeader ? { headers: { cookie: cookieHeader } } : undefined
+      );
+      if (!balanceResponse.ok) return null;
       const balancePayload = await balanceResponse.json();
-      creditBalance =
-        balancePayload?.balance ?? balancePayload?.data?.balance ?? null;
+      return balancePayload?.balance ?? balancePayload?.data?.balance ?? null;
+    } catch {
+      return null;
     }
-  } catch {
-    creditBalance = null;
-  }
+  })();
 
-  try {
-    const response = await fetch(
-      `${API_CONFIG.BASE_URL}${API_ENDPOINTS.SUBSCRIPTIONS.MY_SUBSCRIPTIONS}?${params.toString()}`,
-      cookieHeader ? { headers: { cookie: cookieHeader } } : undefined
-    );
+  const subscriptionsPromise = (async () => {
+    try {
+      const response = await fetch(
+        `${API_CONFIG.BASE_URL}${API_ENDPOINTS.SUBSCRIPTIONS.MY_SUBSCRIPTIONS}?${params.toString()}`,
+        cookieHeader ? { headers: { cookie: cookieHeader } } : undefined
+      );
 
-    if (!response.ok) {
+      if (!response.ok) {
+        return {
+          subscriptions: [],
+          pagination: paginationFallback,
+          error: 'Failed to load subscriptions.',
+        };
+      }
+
+      const payload = await response.json();
+      const data = payload?.data || {};
+
+      return {
+        subscriptions: data.subscriptions || [],
+        pagination: data.pagination || paginationFallback,
+      };
+    } catch {
       return {
         subscriptions: [],
-        pagination: {
-          page,
-          limit,
-          total: 0,
-          totalPages: 0,
-          hasNext: false,
-          hasPrevious: false,
-        },
-        filters: { status, page, limit },
+        pagination: paginationFallback,
         error: 'Failed to load subscriptions.',
-        creditBalance,
       };
     }
+  })();
 
-    const payload = await response.json();
-    const data = payload?.data || {};
+  const [creditBalance, subscriptionsResult] = await Promise.all([
+    creditBalancePromise,
+    subscriptionsPromise,
+  ]);
 
-    return {
-      subscriptions: data.subscriptions || [],
-      pagination: data.pagination || {
-        page,
-        limit,
-        total: 0,
-        totalPages: 0,
-        hasNext: false,
-        hasPrevious: false,
-      },
-      filters: { status, page, limit },
-      creditBalance,
-    };
-  } catch {
-    return {
-      subscriptions: [],
-      pagination: {
-        page,
-        limit,
-        total: 0,
-        totalPages: 0,
-        hasNext: false,
-        hasPrevious: false,
-      },
-      filters: { status, page, limit },
-      error: 'Failed to load subscriptions.',
-      creditBalance,
-    };
-  }
+  return {
+    ...subscriptionsResult,
+    filters,
+    creditBalance,
+  };
 };

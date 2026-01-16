@@ -224,6 +224,7 @@
 				{#each navItems as item}
 					<a
 						href={item.href}
+						data-sveltekit-preload-data="hover"
 						class="px-4 py-2 text-sm font-medium rounded-lg transition-colors {getNavClass(item.href)}"
 					>
 						{item.label}
@@ -242,6 +243,7 @@
 					</div>
 					<a
 						href="/dashboard/credits"
+						data-sveltekit-preload-data="hover"
 						class="bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-white font-semibold py-2 px-4 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 inline-flex items-center text-xs"
 					>
 						<Plus size={14} class="mr-1" />
@@ -406,6 +408,7 @@
 						{#each navItems as item}
 							<a
 								href={item.href}
+								data-sveltekit-preload-data="hover"
 								class="flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors {getMobileNavClass(item.href)}"
 								on:click={() => (isMobileMenuOpen = false)}
 							>
@@ -423,6 +426,7 @@
 							</div>
 							<a
 								href="/dashboard/credits"
+								data-sveltekit-preload-data="hover"
 								class="bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-white font-semibold px-2.5 py-1.5 rounded-lg text-xs shadow-lg hover:shadow-xl transition-all duration-200"
 								on:click={() => (isMobileMenuOpen = false)}
 							>

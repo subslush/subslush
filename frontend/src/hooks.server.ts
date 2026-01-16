@@ -15,9 +15,16 @@ interface JWTPayload {
 const PROTECTED_ROUTES = ['/dashboard', '/profile', '/admin'];
 const AUTH_ROUTES = ['/auth/login', '/auth/register'];
 const PROFILE_URL = `${API_CONFIG.BASE_URL}/auth/profile`;
+const PROFILE_CACHE_COOKIE = 'profile_cache';
 
 const clearAuthCookie = (event: Parameters<Handle>[0]['event']) => {
   event.cookies.delete('auth_token', {
+    path: '/',
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
+  });
+  event.cookies.delete(PROFILE_CACHE_COOKIE, {
     path: '/',
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
