@@ -16,6 +16,7 @@ ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS last_monitored_at TIMES
 ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0;
 
 -- Add constraints for monitoring columns
+ALTER TABLE credit_transactions DROP CONSTRAINT IF EXISTS credit_transactions_monitoring_status_check;
 ALTER TABLE credit_transactions ADD CONSTRAINT credit_transactions_monitoring_status_check
     CHECK (monitoring_status IN ('pending', 'monitoring', 'completed', 'failed', 'skipped'));
 
@@ -36,9 +37,11 @@ CREATE TABLE IF NOT EXISTS payment_refunds (
 );
 
 -- Add constraints for payment_refunds
+ALTER TABLE payment_refunds DROP CONSTRAINT IF EXISTS payment_refunds_reason_check;
 ALTER TABLE payment_refunds ADD CONSTRAINT payment_refunds_reason_check
     CHECK (reason IN ('user_request', 'payment_error', 'service_issue', 'overpayment', 'admin_decision', 'dispute'));
 
+ALTER TABLE payment_refunds DROP CONSTRAINT IF EXISTS payment_refunds_status_check;
 ALTER TABLE payment_refunds ADD CONSTRAINT payment_refunds_status_check
     CHECK (status IN ('pending', 'approved', 'processing', 'completed', 'failed', 'rejected'));
 

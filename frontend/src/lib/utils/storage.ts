@@ -43,5 +43,7 @@ export const STORAGE_KEYS = {
   AUTH_TOKEN: 'auth_token',
   SESSION_ID: 'session_id',
   USER_DATA: 'user_data',
-  REMEMBER_ME: 'remember_me'
+  REMEMBER_ME: 'remember_me',
+  PREFERRED_CURRENCY: 'preferred_currency',
+  PAYMENT_CURRENCIES: 'payment_currencies_cache'
 } as const;

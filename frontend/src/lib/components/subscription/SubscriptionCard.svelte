@@ -7,33 +7,20 @@
   export let userBalance: number;
 
   // Map service types to icons
-  const serviceIcons = {
+  const serviceIcons: Record<string, typeof Music> = {
     spotify: Music,
     netflix: Film,
     tradingview: TrendingUp
   };
 
-  $: serviceIcon = serviceIcons[plan.service_type];
+  $: serviceIcon = serviceIcons[plan.service_type] || Music;
   $: canPurchase = userBalance >= plan.price;
-  $: isDiscounted = plan.price < getOriginalPrice(plan.service_type, plan.plan);
-
-  function getOriginalPrice(serviceType: string, planType: string): number {
-    // This would normally come from the API, but for demo purposes:
-    const originalPrices = {
-      spotify: { premium: 120, family: 180 },
-      netflix: { basic: 96, standard: 144, premium: 216 },
-      tradingview: { pro: 360, premium: 600 }
-    };
-    return originalPrices[serviceType as keyof typeof originalPrices]?.[planType as keyof any] || plan.price;
-  }
-
-  function getDiscountPercentage(): number {
-    const original = getOriginalPrice(plan.service_type, plan.plan);
-    return Math.round(((original - plan.price) / original) * 100);
-  }
+  $: detailHref = plan.productSlug || plan.product_slug
+    ? `/browse/products/${plan.productSlug || plan.product_slug}`
+    : '';
 
   function formatServiceName(): string {
-    const names = {
+    const names: Record<string, string> = {
       spotify: 'Spotify',
       netflix: 'Netflix',
       tradingview: 'TradingView'
@@ -51,11 +38,6 @@
         {formatServiceName()}
       </span>
     </div>
-    {#if isDiscounted}
-      <span class="bg-success-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-        Save {getDiscountPercentage()}%
-      </span>
-    {/if}
   </div>
 
   <!-- Plan details -->
@@ -87,31 +69,28 @@
   <div class="border-t border-surface-200 dark:border-surface-600 pt-4">
     <div class="flex items-end justify-between mb-4">
       <div>
-        {#if isDiscounted}
-          <div class="flex items-center space-x-2">
-            <span class="text-lg text-surface-500 dark:text-surface-400 line-through">
-              {getOriginalPrice(plan.service_type, plan.plan)}
-            </span>
-            <span class="text-2xl font-bold text-surface-900 dark:text-surface-100">
-              {plan.price}
-            </span>
-          </div>
-        {:else}
-          <span class="text-2xl font-bold text-surface-900 dark:text-surface-100">
-            {plan.price}
-          </span>
-        {/if}
+        <span class="text-2xl font-bold text-surface-900 dark:text-surface-100">
+          {plan.price}
+        </span>
         <span class="text-surface-600 dark:text-surface-300 text-sm ml-1">credits</span>
       </div>
     </div>
 
     <div class="space-y-2">
-      <a
-        href="/browse/subscriptions/{plan.service_type}/{plan.plan}"
-        class="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 bg-primary-600 hover:bg-primary-700 text-white text-center block hover:scale-105 shadow-lg hover:shadow-xl"
-      >
-        View Details
-      </a>
+      {#if detailHref}
+        <a
+          href={detailHref}
+          class="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 bg-primary-600 hover:bg-primary-700 text-white text-center block hover:scale-105 shadow-lg hover:shadow-xl"
+        >
+          View Details
+        </a>
+      {:else}
+        <span
+          class="w-full py-3 px-4 rounded-lg font-semibold bg-surface-200 dark:bg-surface-600 text-surface-500 dark:text-surface-400 text-center block cursor-not-allowed"
+        >
+          View Details
+        </span>
+      {/if}
 
       <button
         on:click={() => onPurchase(plan)}

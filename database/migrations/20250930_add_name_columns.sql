@@ -4,8 +4,8 @@
 
 -- Add first_name and last_name columns to users table
 ALTER TABLE users
-ADD COLUMN IF NOT EXISTS first_name VARCHAR(100),
-ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);
+ADD COLUMN IF NOT EXISTS first_name TEXT,
+ADD COLUMN IF NOT EXISTS last_name TEXT;
 
 -- Create an index for faster name-based queries (optional but recommended)
 CREATE INDEX IF NOT EXISTS idx_users_name ON users(first_name, last_name);

@@ -1,0 +1,242 @@
+import { getDatabasePool } from '../config/database';
+import { Logger } from '../utils/logger';
+import { UserPerk, PerkSourceType } from '../types/perk';
+import {
+  ServiceResult,
+  createSuccessResult,
+  createErrorResult,
+} from '../types/service';
+
+function parseMetadata(value: any): Record<string, any> | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  return value;
+}
+
+function mapPerk(row: any): UserPerk {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    source_type: row.source_type,
+    source_id: row.source_id,
+    reward_type: row.reward_type,
+    tier: row.tier,
+    applies_to: row.applies_to,
+    free_months: row.free_months,
+    founder_status: row.founder_status,
+    prize_won: row.prize_won,
+    notes: row.notes,
+    awarded_at: row.awarded_at,
+    metadata: parseMetadata(row.metadata),
+    created_at: row.created_at,
+  };
+}
+
+function addMonths(date: Date, months: number): Date {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
+}
+
+export class PerkService {
+  async listUserPerks(
+    userId: string,
+    options?: {
+      source_type?: PerkSourceType;
+      reward_type?: string;
+      include_redeemed?: boolean;
+    }
+  ): Promise<ServiceResult<UserPerk[]>> {
+    try {
+      const pool = getDatabasePool();
+      const params: any[] = [userId];
+      let paramCount = 1;
+      let sql = 'SELECT * FROM user_perks WHERE user_id = $1';
+
+      if (options?.source_type) {
+        sql += ` AND source_type = $${++paramCount}`;
+        params.push(options.source_type);
+      }
+
+      if (options?.reward_type) {
+        sql += ` AND reward_type = $${++paramCount}`;
+        params.push(options.reward_type);
+      }
+
+      if (!options?.include_redeemed) {
+        sql += ` AND (metadata->>'redeemed_at' IS NULL)`;
+      }
+
+      sql += ' ORDER BY created_at DESC';
+
+      const result = await pool.query(sql, params);
+      return createSuccessResult(result.rows.map(mapPerk));
+    } catch (error) {
+      Logger.error('Failed to list user perks:', error);
+      return createErrorResult('Failed to list user perks');
+    }
+  }
+
+  async applyPerkToSubscription(
+    perkId: string,
+    subscriptionId: string,
+    appliedByUserId?: string,
+    appliedValueCents?: number
+  ): Promise<
+    ServiceResult<{
+      perk: UserPerk;
+      subscription_id: string;
+      new_end_date: Date;
+      new_renewal_date: Date;
+    }>
+  > {
+    const pool = getDatabasePool();
+    const client = await pool.connect();
+    let transactionOpen = false;
+
+    try {
+      await client.query('BEGIN');
+      transactionOpen = true;
+
+      const perkResult = await client.query(
+        'SELECT * FROM user_perks WHERE id = $1 FOR UPDATE',
+        [perkId]
+      );
+
+      if (perkResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult('Perk not found');
+      }
+
+      const perk = mapPerk(perkResult.rows[0]);
+      if (!perk.free_months || perk.free_months <= 0) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult('Perk has no free months to apply');
+      }
+
+      const subscriptionResult = await client.query(
+        `SELECT id, user_id, end_date, renewal_date, auto_renew, price_cents
+         FROM subscriptions
+         WHERE id = $1
+         FOR UPDATE`,
+        [subscriptionId]
+      );
+
+      if (subscriptionResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult('Subscription not found');
+      }
+
+      const subscription = subscriptionResult.rows[0];
+      if (subscription.user_id !== perk.user_id) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult('Perk does not belong to subscription owner');
+      }
+
+      const endDate = new Date(subscription.end_date);
+      const renewalDate = new Date(subscription.renewal_date);
+      const newEndDate = addMonths(endDate, perk.free_months);
+      const newRenewalDate = addMonths(renewalDate, perk.free_months);
+      const nextBillingAt = subscription.auto_renew ? newRenewalDate : null;
+
+      const rewardColumn =
+        perk.source_type === 'referral_reward'
+          ? 'referral_reward_id'
+          : 'pre_launch_reward_id';
+
+      await client.query(
+        `UPDATE subscriptions
+         SET end_date = $1,
+             renewal_date = $2,
+             next_billing_at = $3,
+             status_reason = $4,
+             ${rewardColumn} = $5
+         WHERE id = $6`,
+        [
+          newEndDate,
+          newRenewalDate,
+          nextBillingAt,
+          'perk_redeemed',
+          perk.source_id,
+          subscriptionId,
+        ]
+      );
+
+      const redemptionMetadata = {
+        redeemed_at: new Date().toISOString(),
+        redeemed_by: appliedByUserId || null,
+        subscription_id: subscriptionId,
+        redemption_type: 'subscription_extension',
+        free_months: perk.free_months,
+      };
+
+      await client.query(
+        `UPDATE user_perks
+         SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+         WHERE id = $2`,
+        [JSON.stringify(redemptionMetadata), perkId]
+      );
+
+      if (perk.source_type === 'referral_reward') {
+        await client.query(
+          `UPDATE referral_rewards
+           SET redeemed_by_user_id = $1,
+               redeemed_at = NOW(),
+               applied_value_cents = COALESCE($2, applied_value_cents)
+           WHERE id = $3`,
+          [perk.user_id, appliedValueCents ?? null, perk.source_id]
+        );
+      } else {
+        await client.query(
+          `UPDATE pre_launch_rewards
+           SET redeemed_by_user_id = $1,
+               redeemed_at = NOW(),
+               applied_value_cents = COALESCE($2, applied_value_cents)
+           WHERE user_id = $3`,
+          [perk.user_id, appliedValueCents ?? null, perk.source_id]
+        );
+      }
+
+      await client.query('COMMIT');
+      transactionOpen = false;
+
+      return createSuccessResult({
+        perk,
+        subscription_id: subscriptionId,
+        new_end_date: newEndDate,
+        new_renewal_date: newRenewalDate,
+      });
+    } catch (error) {
+      if (transactionOpen) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+      }
+      Logger.error('Failed to apply perk to subscription:', error);
+      return createErrorResult('Failed to apply perk to subscription');
+    } finally {
+      if (transactionOpen) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          Logger.error(
+            'Failed to rollback perk redemption transaction',
+            rollbackError
+          );
+        }
+      }
+      client.release();
+    }
+  }
+}
+
+export const perkService = new PerkService();

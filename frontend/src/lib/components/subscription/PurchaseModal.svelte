@@ -14,24 +14,24 @@
   }>();
 
   let selectedDuration = 1;
-  let autoRenew = false;
+  let autoRenew = true;
   let termsAccepted = false;
 
   // Service icons mapping
-  const serviceIcons = {
+  const serviceIcons: Record<string, typeof Music> = {
     spotify: Music,
     netflix: Film,
     tradingview: TrendingUp
   };
 
-  $: serviceIcon = plan ? serviceIcons[plan.service_type] : null;
+  $: serviceIcon = plan ? serviceIcons[plan.service_type] || Music : null;
   $: totalCost = plan ? plan.price * selectedDuration : 0;
   $: balanceAfter = userBalance - totalCost;
   $: canPurchase = termsAccepted && totalCost <= userBalance;
 
   function formatServiceName(): string {
     if (!plan) return '';
-    const names = {
+    const names: Record<string, string> = {
       spotify: 'Spotify',
       netflix: 'Netflix',
       tradingview: 'TradingView'
@@ -56,24 +56,26 @@
   // Reset form when modal opens/closes
   $: if (isOpen) {
     selectedDuration = 1;
-    autoRenew = false;
+    autoRenew = true;
     termsAccepted = false;
   }
 </script>
 
 {#if isOpen && plan}
   <!-- Modal backdrop -->
-  <div
-    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
-    on:click={handleCancel}
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="modal-title"
-  >
+  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 relative">
+    <button
+      type="button"
+      class="absolute inset-0 w-full h-full cursor-default"
+      aria-label="Close modal"
+      on:click={handleCancel}
+    ></button>
     <!-- Modal content -->
     <div
-      class="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
-      on:click|stopPropagation
+      class="relative z-10 bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
     >
       <!-- Header -->
       <div class="flex items-center justify-between p-6 border-b border-gray-200">
@@ -111,11 +113,12 @@
 
         <!-- Duration selector -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-3">
+          <label for="duration-select" class="block text-sm font-medium text-gray-700 mb-3">
             <Calendar size={16} class="inline mr-2" />
             Subscription Duration
           </label>
           <select
+            id="duration-select"
             bind:value={selectedDuration}
             class="w-full p-3 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
           >
@@ -191,7 +194,7 @@
               class="w-4 h-4 mt-0.5 text-cyan-600 bg-white border-gray-300 rounded focus:ring-cyan-500 focus:ring-2"
             />
             <span class="text-xs text-gray-600">
-              I agree to the <a href="/terms" class="text-cyan-600 hover:text-cyan-700 underline">Terms of Service</a> and understand that this purchase is non-refundable. The subscription will start immediately after purchase.
+              I agree to the <a href="/terms" class="text-cyan-600 hover:text-cyan-700 underline">Terms of Service</a> and understand that this purchase is non-refundable. Your subscription will activate after the order is processed.
             </span>
           </label>
         </div>

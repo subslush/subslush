@@ -1,9 +1,5 @@
 <script lang="ts">
-  // Import SVG logos
-  import netflixLogo from '$lib/assets/netflixlogo.svg';
-  import spotifyLogo from '$lib/assets/spotifylogo.svg';
-  import tradingviewLogo from '$lib/assets/tradingviewlogo.svg';
-  import hboLogo from '$lib/assets/hbologo.svg';
+  import { resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
 
   export let title: string;
   export let subtitle: string;
@@ -12,17 +8,6 @@
   export let originalPrice: number;
   export let badge: string = '';
 
-  // Logo mapping - add more as logos become available
-  const logoMap: Record<string, string> = {
-    'Netflix': netflixLogo,
-    'Spotify': spotifyLogo,
-    'TradingView': tradingviewLogo,
-    'HBO': hboLogo,
-    // Add aliases for common variations
-    'HBO Max': hboLogo,
-    'Spotify Premium': spotifyLogo,
-  };
-
   /**
    * Get display information for a service
    * Returns logo path if available, otherwise returns first letter
@@ -30,7 +15,7 @@
   function getServiceDisplay(serviceName: string) {
     // Normalize service name (trim, handle case variations)
     const normalizedName = serviceName.trim();
-    const logoPath = logoMap[normalizedName];
+    const logoPath = resolveLogoKeyFromName(normalizedName);
 
     return {
       hasLogo: !!logoPath,
@@ -46,7 +31,10 @@
     return `${rounded}.99`;
   }
 
-  function getBadgeVariant(subtitle: string) {
+  function getBadgeVariant(subtitle: string, badgeOverride?: string) {
+    if (badgeOverride) {
+      return { text: badgeOverride, color: 'bg-cyan-100 text-cyan-800 border border-cyan-200' };
+    }
     if (subtitle.toLowerCase().includes('popular')) {
       return { text: 'MOST POPULAR', color: 'bg-green-100 text-green-800 border border-green-200' };
     } else if (subtitle.toLowerCase().includes('business')) {
@@ -66,7 +54,7 @@
     return proofVariants[Math.floor(Math.random() * proofVariants.length)];
   }
 
-  $: badgeInfo = getBadgeVariant(subtitle);
+  $: badgeInfo = getBadgeVariant(subtitle, badge.trim() || undefined);
   $: separatePrice = originalPrice;
   $: youSave = originalPrice - price;
   $: savingsPercentage = Math.round((youSave / originalPrice) * 100);
@@ -76,7 +64,7 @@
             transition-shadow duration-200">
 
   <!-- Badge (if has special status) -->
-  {#if subtitle}
+  {#if subtitle || badge.trim()}
     <span class="inline-block px-2 py-1 {badgeInfo.color} text-xs font-medium rounded mb-3">
       {badgeInfo.text}
     </span>

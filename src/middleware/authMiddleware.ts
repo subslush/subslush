@@ -1,13 +1,77 @@
 import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
 import { jwtService } from '../services/jwtService';
 import { sessionService } from '../services/sessionService';
+import { getDatabasePool } from '../config/database';
+import { Logger } from '../utils/logger';
 import { HttpStatus, sendError } from '../utils/response';
+import { CSRF_COOKIE_NAME, setCsrfCookie } from '../utils/csrf';
 
 export interface AuthMiddlewareOptions {
   roles?: string[];
   permissions?: string[];
   allowExpired?: boolean;
 }
+
+const statusMessages: Record<string, string> = {
+  suspended: 'Account is suspended. Please contact support.',
+  inactive: 'Account is inactive. Please contact support.',
+  deleted: 'Account is deleted. Please contact support.',
+};
+
+const resolveStatusMessage = (status: string | null): string => {
+  if (!status) {
+    return 'Account status could not be verified. Please contact support.';
+  }
+  return (
+    statusMessages[status] || 'Account is not active. Please contact support.'
+  );
+};
+
+const ensureActiveUser = async (
+  userId: string,
+  sessionId: string | undefined,
+  reply: FastifyReply
+): Promise<boolean> => {
+  try {
+    const pool = getDatabasePool();
+    const result = await pool.query('SELECT status FROM users WHERE id = $1', [
+      userId,
+    ]);
+    const status = result.rows[0]?.status as string | undefined;
+
+    if (status !== 'active') {
+      if (sessionId) {
+        try {
+          await sessionService.deleteSession(sessionId);
+        } catch (error) {
+          Logger.warn('Failed to revoke session for inactive user', error);
+        }
+      }
+
+      sendError(
+        reply,
+        HttpStatus.FORBIDDEN,
+        'Forbidden',
+        resolveStatusMessage(status || null),
+        'ACCOUNT_INACTIVE',
+        { status }
+      );
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    Logger.error('Failed to verify account status:', error);
+    sendError(
+      reply,
+      HttpStatus.SERVICE_UNAVAILABLE,
+      'Service Unavailable',
+      'Account status verification failed',
+      'ACCOUNT_STATUS_UNAVAILABLE'
+    );
+    return false;
+  }
+};
 
 export const authMiddleware = (
   options: AuthMiddlewareOptions = {}
@@ -20,7 +84,12 @@ export const authMiddleware = (
       async (request: FastifyRequest, reply: FastifyReply) => {
         try {
           const authHeader = request.headers.authorization;
-          const token = jwtService.extractBearerToken(authHeader);
+          const bearerToken = jwtService.extractBearerToken(authHeader);
+          const cookieToken =
+            typeof request.cookies?.['auth_token'] === 'string'
+              ? request.cookies['auth_token']
+              : undefined;
+          const token = bearerToken || cookieToken;
 
           if (!token) {
             return sendError(
@@ -80,6 +149,15 @@ export const authMiddleware = (
             sessionId: payload.sessionId,
             isAdmin: payload.role === 'admin',
           };
+
+          const activeStatus = await ensureActiveUser(
+            payload.userId,
+            payload.sessionId,
+            reply
+          );
+          if (!activeStatus) {
+            return;
+          }
 
           if (roles.length > 0 && payload.role) {
             if (!roles.includes(payload.role)) {
@@ -155,19 +233,19 @@ export const authPreHandler = async (
       token = bearerToken || undefined;
     }
 
-    console.log(
-      '🔐 [AUTH MIDDLEWARE] Token source:',
-      token ? (request.cookies['auth_token'] ? 'cookie' : 'header') : 'none'
-    );
-    console.log(
-      '🔐 [AUTH MIDDLEWARE] Cookie token:',
-      request.cookies['auth_token'] ? 'exists' : 'missing'
-    );
+    Logger.debug('Auth token source', {
+      source: token
+        ? request.cookies['auth_token']
+          ? 'cookie'
+          : 'header'
+        : 'none',
+    });
+    Logger.debug('Auth cookie presence', {
+      present: !!request.cookies['auth_token'],
+    });
 
     if (!token) {
-      console.warn(
-        '🔐 [AUTH MIDDLEWARE] No auth token found in cookies or headers'
-      );
+      Logger.warn('No auth token found in cookies or headers');
       return sendError(
         reply,
         HttpStatus.UNAUTHORIZED,
@@ -180,10 +258,7 @@ export const authPreHandler = async (
     const tokenValidation = jwtService.verifyToken(token);
 
     if (!tokenValidation.isValid) {
-      console.warn(
-        '🔐 [AUTH MIDDLEWARE] Invalid token:',
-        tokenValidation.error
-      );
+      Logger.warn('Invalid auth token', { error: tokenValidation.error });
       return sendError(
         reply,
         HttpStatus.UNAUTHORIZED,
@@ -233,7 +308,7 @@ export const authPreHandler = async (
           userWithProfile = userResult.user;
         }
       } catch (error) {
-        console.warn(
+        Logger.warn(
           'Failed to get full user profile in authMiddleware:',
           error
         );
@@ -250,11 +325,24 @@ export const authPreHandler = async (
       isAdmin: payload.role === 'admin',
     };
 
-    console.log(
-      '✅ [AUTH MIDDLEWARE] User authenticated:',
-      request.user.userId,
-      request.user.email
+    const activeStatus = await ensureActiveUser(
+      payload.userId,
+      payload.sessionId,
+      reply
     );
+    if (!activeStatus) {
+      return;
+    }
+
+    const cookies = request.cookies || {};
+    if (cookies['auth_token'] && !cookies[CSRF_COOKIE_NAME]) {
+      setCsrfCookie(reply);
+    }
+
+    Logger.debug('User authenticated', {
+      userId: request.user.userId,
+      email: request.user.email,
+    });
   } catch {
     return sendError(
       reply,

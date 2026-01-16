@@ -149,11 +149,36 @@
     }
   }
 
-  function highlightMatch(text: string, query: string): string {
-    if (!query.trim()) return text;
+  type HighlightPart = { text: string; match: boolean };
 
-    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    return text.replace(regex, '<mark class="bg-yellow-200 text-yellow-900 px-0.5 rounded">$1</mark>');
+  function getHighlightParts(text: string, query: string): HighlightPart[] {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      return [{ text, match: false }];
+    }
+
+    const escapedQuery = trimmedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedQuery, 'gi');
+    const parts: HighlightPart[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({ text: text.slice(lastIndex, match.index), match: false });
+      }
+      parts.push({
+        text: text.slice(match.index, match.index + match[0].length),
+        match: true
+      });
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push({ text: text.slice(lastIndex), match: false });
+    }
+
+    return parts.length ? parts : [{ text, match: false }];
   }
 
   // Cleanup on component destroy
@@ -182,7 +207,13 @@
   $: displayedSuggestions = suggestions.slice(0, maxSuggestions);
 </script>
 
-<div class="search-container relative w-full max-w-2xl" role="combobox" aria-expanded={isOpen}>
+<div
+  class="search-container relative w-full max-w-2xl"
+  role="combobox"
+  aria-expanded={isOpen}
+  aria-controls="search-suggestions"
+  aria-haspopup="listbox"
+>
   <!-- Search input -->
   <div class="relative">
     <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -281,10 +312,22 @@
             <!-- Service info -->
             <div class="flex-1 min-w-0">
               <div class="text-sm font-medium text-gray-900">
-                {@html highlightMatch(suggestion.serviceName, query)}
+                {#each getHighlightParts(suggestion.serviceName, query) as part, partIndex (partIndex)}
+                  {#if part.match}
+                    <mark class="bg-yellow-200 text-yellow-900 px-0.5 rounded">{part.text}</mark>
+                  {:else}
+                    {part.text}
+                  {/if}
+                {/each}
               </div>
               <div class="text-sm text-gray-600">
-                {@html highlightMatch(suggestion.planName, query)}
+                {#each getHighlightParts(suggestion.planName, query) as part, partIndex (partIndex)}
+                  {#if part.match}
+                    <mark class="bg-yellow-200 text-yellow-900 px-0.5 rounded">{part.text}</mark>
+                  {:else}
+                    {part.text}
+                  {/if}
+                {/each}
               </div>
             </div>
 

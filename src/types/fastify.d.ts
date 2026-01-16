@@ -15,6 +15,7 @@ declare module 'fastify' {
           email: string;
           firstName?: string | undefined;
           lastName?: string | undefined;
+          displayName?: string | undefined;
           role?: string | undefined;
           sessionId: string;
           isAdmin: boolean;

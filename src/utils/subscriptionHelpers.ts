@@ -51,13 +51,13 @@ export function formatSubscriptionName(
   serviceType: ServiceType,
   servicePlan: ServicePlan
 ): string {
-  const serviceNames: Record<ServiceType, string> = {
+  const serviceNames: Record<string, string> = {
     spotify: 'Spotify',
     netflix: 'Netflix',
     tradingview: 'TradingView',
   };
 
-  const planNames: Record<ServicePlan, string> = {
+  const planNames: Record<string, string> = {
     premium: 'Premium',
     family: 'Family',
     basic: 'Basic',
@@ -66,7 +66,26 @@ export function formatSubscriptionName(
     individual: 'Individual',
   };
 
-  return `${serviceNames[serviceType]} ${planNames[servicePlan]}`;
+  const normalizeLabel = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    return trimmed
+      .split(/[-_\s]+/)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
+
+  const serviceLabel = serviceNames[serviceType] || normalizeLabel(serviceType);
+  const planLabel = planNames[servicePlan] || normalizeLabel(servicePlan);
+
+  if (planLabel && serviceLabel) {
+    const normalizedService = serviceLabel.toLowerCase();
+    if (planLabel.toLowerCase().startsWith(normalizedService)) {
+      return planLabel.trim();
+    }
+  }
+
+  return [serviceLabel, planLabel].filter(Boolean).join(' ').trim();
 }
 
 /**
@@ -148,11 +167,55 @@ export function formatDuration(durationMonths: number): string {
   if (durationMonths === 1) {
     return '1 month';
   }
-  if (durationMonths === 12) {
-    return '1 year';
-  }
   return `${durationMonths} months`;
 }
+
+export function formatSubscriptionDisplayName(params: {
+  productName?: string | null;
+  variantName?: string | null;
+  serviceType?: ServiceType | null;
+  servicePlan?: ServicePlan | null;
+  termMonths?: number | null;
+}): string {
+  const productName = params.productName?.trim() || '';
+  const variantName = params.variantName?.trim() || '';
+  let baseLabel = '';
+
+  if (productName && variantName) {
+    baseLabel = variantName.toLowerCase().startsWith(productName.toLowerCase())
+      ? variantName
+      : `${productName} ${variantName}`;
+  } else if (productName || variantName) {
+    baseLabel = productName || variantName;
+  } else if (params.serviceType || params.servicePlan) {
+    baseLabel = formatSubscriptionName(
+      (params.serviceType || '') as ServiceType,
+      (params.servicePlan || '') as ServicePlan
+    );
+  } else {
+    baseLabel = 'subscription';
+  }
+
+  const durationLabel =
+    params.termMonths &&
+    Number.isFinite(params.termMonths) &&
+    params.termMonths > 0
+      ? formatDuration(Math.floor(params.termMonths))
+      : null;
+
+  return durationLabel ? `${baseLabel} (${durationLabel})` : baseLabel;
+}
+
+export const formatSubscriptionShortId = (
+  subscriptionId?: string | null,
+  length = 8
+): string => {
+  if (!subscriptionId) return 'Subscription';
+  const trimmed = subscriptionId.trim();
+  if (!trimmed) return 'Subscription';
+  const safeLength = Number.isFinite(length) && length > 0 ? length : 8;
+  return `Subscription ${trimmed.slice(0, safeLength)}`;
+};
 
 /**
  * Get renewal reminder date (7 days before end)
@@ -161,6 +224,114 @@ export function getRenewalReminderDate(endDate: Date): Date {
   const reminderDate = new Date(endDate);
   reminderDate.setDate(reminderDate.getDate() - 7);
   return reminderDate;
+}
+
+export type RenewalState =
+  | 'scheduled'
+  | 'due_soon'
+  | 'overdue'
+  | 'manual'
+  | 'unknown';
+
+export function resolveBillingDate(
+  nextBillingAt?: Date | string | null,
+  renewalDate?: Date | string | null
+): Date | null {
+  const toDate = (value?: Date | string | null): Date | null => {
+    if (!value) return null;
+    return value instanceof Date ? value : new Date(value);
+  };
+
+  return toDate(nextBillingAt) || toDate(renewalDate);
+}
+
+export function calculateDaysUntil(date: Date, now: Date = new Date()): number {
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const diffMs = date.getTime() - now.getTime();
+  if (diffMs < 0) {
+    return Math.floor(diffMs / msPerDay);
+  }
+  return Math.ceil(diffMs / msPerDay);
+}
+
+export function getRenewalState(options: {
+  autoRenew?: boolean | null;
+  nextBillingAt?: Date | string | null;
+  renewalDate?: Date | string | null;
+  now?: Date;
+}): { state: RenewalState; daysUntil: number | null } {
+  const { autoRenew, nextBillingAt, renewalDate, now = new Date() } = options;
+
+  if (autoRenew === false) {
+    return { state: 'manual', daysUntil: null };
+  }
+
+  const billingDate = resolveBillingDate(nextBillingAt, renewalDate);
+  if (!billingDate) {
+    return { state: 'unknown', daysUntil: null };
+  }
+
+  const daysUntil = calculateDaysUntil(billingDate, now);
+  if (daysUntil < 0) {
+    return { state: 'overdue', daysUntil };
+  }
+
+  if (daysUntil <= 7) {
+    return { state: 'due_soon', daysUntil };
+  }
+
+  return { state: 'scheduled', daysUntil };
+}
+
+export function computeNextRenewalDates(options: {
+  endDate: Date;
+  termMonths: number;
+  autoRenew: boolean;
+  now?: Date;
+}): { endDate: Date; renewalDate: Date; nextBillingAt: Date | null } {
+  const now = options.now ?? new Date();
+  const baseDate = options.endDate > now ? options.endDate : now;
+  const nextEndDate = new Date(baseDate);
+  nextEndDate.setMonth(nextEndDate.getMonth() + options.termMonths);
+  const nextRenewalDate = new Date(nextEndDate);
+  nextRenewalDate.setDate(nextRenewalDate.getDate() - 7);
+
+  return {
+    endDate: nextEndDate,
+    renewalDate: nextRenewalDate,
+    nextBillingAt: options.autoRenew ? nextRenewalDate : null,
+  };
+}
+
+const STRIPE_RENEWAL_ATTEMPT_OFFSETS_DAYS = [7, 3, 1, 0];
+
+export function getStripeRenewalSchedule(endDate: Date): Date[] {
+  return STRIPE_RENEWAL_ATTEMPT_OFFSETS_DAYS.map(offset => {
+    const date = new Date(endDate);
+    date.setDate(date.getDate() - offset);
+    return date;
+  });
+}
+
+export function getNextStripeRenewalAttemptDate(
+  endDate: Date,
+  currentAttemptAt?: Date | string | null
+): Date | null {
+  const schedule = getStripeRenewalSchedule(endDate).sort(
+    (a, b) => a.getTime() - b.getTime()
+  );
+  if (!currentAttemptAt) {
+    return schedule[0] ?? null;
+  }
+
+  const current =
+    currentAttemptAt instanceof Date
+      ? currentAttemptAt
+      : new Date(currentAttemptAt);
+  const currentTime = current.getTime();
+
+  const next = schedule.find(date => date.getTime() > currentTime);
+  return next || null;
 }
 
 /**

@@ -12,7 +12,7 @@ const mockPaymentMonitoringService = {
 
   removePendingPayment: jest.fn().mockResolvedValue(undefined),
 
-  processPaymentUpdate: jest.fn().mockImplementation((paymentData) => {
+  processPaymentUpdate: jest.fn().mockImplementation(paymentData => {
     // Handle graceful error scenarios - don't throw, return error result
     if (paymentData && paymentData.payment_id === 'payment-db-error') {
       return Promise.resolve({
@@ -30,35 +30,35 @@ const mockPaymentMonitoringService = {
     });
   }),
 
-  monitorPayment: jest.fn().mockImplementation(async (paymentId) => {
+  monitorPayment: jest.fn().mockImplementation(async paymentId => {
     // Simulate calling NOWPayments API for retry logic test
     // Call the API 3 times to simulate retry behavior
-    const nowpaymentsClient = require('../../utils/nowpaymentsClient').nowpaymentsClient;
+    const nowpaymentsClient =
+      require('../../utils/nowpaymentsClient').nowpaymentsClient;
     if (nowpaymentsClient.getPaymentStatus) {
       // First call - fails
       try {
         await nowpaymentsClient.getPaymentStatus(paymentId);
-      } catch (error) { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
 
       // Second call - fails
       try {
         await nowpaymentsClient.getPaymentStatus(paymentId);
-      } catch (error) { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
 
       // Third call - succeeds
       try {
         await nowpaymentsClient.getPaymentStatus(paymentId);
-      } catch (error) { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
 
-    return Promise.resolve({
-      success: true,
-      data: {
-        paymentId,
-        status: 'finished',
-        lastChecked: new Date(),
-      },
-    });
+    return Promise.resolve(true);
   }),
 
   triggerPaymentCheck: jest.fn().mockResolvedValue(true),
@@ -85,7 +85,9 @@ const mockPaymentMonitoringService = {
     },
   }),
 
-  getMetrics: jest.fn().mockImplementation(() => mockPaymentMonitoringService._metrics),
+  getMetrics: jest
+    .fn()
+    .mockImplementation(() => mockPaymentMonitoringService._metrics),
 
   resetMetrics: jest.fn(),
 
@@ -117,7 +119,7 @@ const mockPaymentMonitoringService = {
       // Try calling ping to see if it throws
       await pingMock();
       return true;
-    } catch (error) {
+    } catch {
       // If ping throws an error (like 'Redis connection failed'), return false
       return false;
     }

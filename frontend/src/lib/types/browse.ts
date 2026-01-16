@@ -60,6 +60,8 @@ export interface BrowseSubscription {
   };
   badges: string[]; // 'verified', 'popular', 'new', 'filling_fast'
   category: string;
+  logo_key?: string | null;
+  logoKey?: string | null;
   logoUrl?: string;
   monthlySavings: number;
   savingsPercentage: number;

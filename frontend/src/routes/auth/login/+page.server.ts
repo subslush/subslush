@@ -3,9 +3,9 @@ import { redirect, fail } from '@sveltejs/kit';
 import { API_CONFIG } from '$lib/utils/constants';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  // If already authenticated, redirect to dashboard
+  // If already authenticated, redirect to home
   if (locals.user) {
-    throw redirect(303, '/dashboard');
+    throw redirect(303, '/');
   }
 
   // Return empty object to show login form

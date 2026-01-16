@@ -7,17 +7,43 @@
 
 const http = require('http');
 
-const baseUrl = 'http://localhost:3000';
-let accessToken = '';
+const baseUrl = 'http://localhost:3001';
 let sessionId = '';
+
+const cookieJar = new Map();
+
+function updateCookies(setCookieHeaders) {
+  if (!setCookieHeaders) return;
+  const headers = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
+  headers.forEach((header) => {
+    const [cookiePair] = header.split(';');
+    if (!cookiePair) return;
+    const [name, value] = cookiePair.split('=');
+    if (name && value) {
+      cookieJar.set(name, value);
+    }
+  });
+}
+
+function getCookieHeader() {
+  return Array.from(cookieJar.entries())
+    .map(([name, value]) => `${name}=${value}`)
+    .join('; ');
+}
 
 // Helper function to make HTTP requests
 function makeRequest(options, data = null) {
   return new Promise((resolve, reject) => {
+    const cookieHeader = getCookieHeader();
+    if (cookieHeader) {
+      options.headers = { ...(options.headers || {}), Cookie: cookieHeader };
+    }
+
     const req = http.request(options, (res) => {
       let body = '';
       res.on('data', (chunk) => body += chunk);
       res.on('end', () => {
+        updateCookies(res.headers['set-cookie']);
         try {
           const parsedBody = JSON.parse(body);
           resolve({ status: res.statusCode, body: parsedBody, headers: res.headers });
@@ -42,7 +68,7 @@ async function testLogin() {
 
   const options = {
     hostname: 'localhost',
-    port: 3000,
+    port: 3001,
     path: '/api/v1/auth/login',
     method: 'POST',
     headers: {
@@ -59,7 +85,6 @@ async function testLogin() {
     const response = await makeRequest(options, loginData);
 
     if (response.status === 201 || response.status === 200) {
-      accessToken = response.body.accessToken;
       sessionId = response.body.sessionId;
       console.log('✅ Login successful');
       console.log(`   Session ID: ${sessionId}`);
@@ -77,8 +102,8 @@ async function testLogin() {
 }
 
 async function testSessionRefresh() {
-  if (!accessToken) {
-    console.log('⏭️  Skipping session refresh test (no access token)');
+  if (!getCookieHeader()) {
+    console.log('⏭️  Skipping session refresh test (no auth cookie)');
     return;
   }
 
@@ -86,12 +111,11 @@ async function testSessionRefresh() {
 
   const options = {
     hostname: 'localhost',
-    port: 3000,
+    port: 3001,
     path: '/api/v1/auth/refresh',
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`
+      'Content-Type': 'application/json'
     }
   };
 
@@ -109,8 +133,8 @@ async function testSessionRefresh() {
 }
 
 async function testLogout() {
-  if (!accessToken) {
-    console.log('⏭️  Skipping logout test (no access token)');
+  if (!getCookieHeader()) {
+    console.log('⏭️  Skipping logout test (no auth cookie)');
     return;
   }
 
@@ -118,12 +142,11 @@ async function testLogout() {
 
   const options = {
     hostname: 'localhost',
-    port: 3000,
+    port: 3001,
     path: '/api/v1/auth/logout',
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`
+      'Content-Type': 'application/json'
     }
   };
 
@@ -141,8 +164,8 @@ async function testLogout() {
 }
 
 async function testRefreshAfterLogout() {
-  if (!accessToken) {
-    console.log('⏭️  Skipping post-logout refresh test (no access token)');
+  if (!getCookieHeader()) {
+    console.log('⏭️  Skipping post-logout refresh test (no auth cookie)');
     return;
   }
 
@@ -150,12 +173,11 @@ async function testRefreshAfterLogout() {
 
   const options = {
     hostname: 'localhost',
-    port: 3000,
+    port: 3001,
     path: '/api/v1/auth/refresh',
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`
+      'Content-Type': 'application/json'
     }
   };
 
@@ -186,18 +208,18 @@ async function runTests() {
   try {
     const healthCheck = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: 3001,
       path: '/health',
       method: 'GET'
     });
 
     if (healthCheck.status !== 200) {
-      console.log('❌ Server not available at localhost:3000');
+      console.log('❌ Server not available at localhost:3001');
       console.log('   Please start the server with: npm run dev');
       process.exit(1);
     }
   } catch (error) {
-    console.log('❌ Cannot connect to server at localhost:3000');
+    console.log('❌ Cannot connect to server at localhost:3001');
     console.log('   Please start the server with: npm run dev');
     process.exit(1);
   }

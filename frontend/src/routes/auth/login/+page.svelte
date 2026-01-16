@@ -1,19 +1,28 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { goto } from '$app/navigation';
   import { Eye, EyeOff, LogIn, Loader2 } from 'lucide-svelte';
+  import { page } from '$app/stores';
   import { auth, authError, isLoading } from '$lib/stores/auth';
 
   let showPassword = false;
   let emailInput: HTMLInputElement;
   let email = '';
   let password = '';
-  let rememberMe = false;
+  let sessionExpired = false;
+  let verificationEmail = '';
+  let verificationPending = false;
+  $: sessionExpired = $page.url.searchParams.get('reason') === 'session-expired';
+  $: verificationPending = $page.url.searchParams.get('verify') === 'pending';
 
   onMount(() => {
     // Auto-focus email input
     if (emailInput) {
       emailInput.focus();
+    }
+    const emailParam = $page.url.searchParams.get('email');
+    if (emailParam && !email) {
+      email = emailParam;
+      verificationEmail = emailParam;
     }
   });
 
@@ -41,8 +50,7 @@
       // Call auth store login method
       await auth.login({
         email,
-        password,
-        rememberMe
+        password
       });
 
       console.log('✅ [LOGIN] Login successful');
@@ -81,6 +89,34 @@
   </div>
 
   <!-- Error Alert -->
+  {#if sessionExpired}
+    <div
+      class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-100"
+      role="status"
+      aria-live="polite"
+    >
+      <p class="font-semibold">Session expired</p>
+      <p class="text-amber-800 dark:text-amber-100/90">Please sign in again to continue.</p>
+    </div>
+  {/if}
+  {#if verificationPending}
+    <div
+      class="rounded-2xl border border-cyan-200/70 bg-gradient-to-r from-cyan-50 via-white to-pink-50 px-4 py-4 text-slate-900 shadow-sm dark:border-cyan-500/20 dark:bg-slate-900/60 dark:text-slate-100"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="space-y-1">
+        <p class="text-sm font-semibold">Confirm your email to finish sign-up</p>
+        <p class="text-sm text-slate-600 dark:text-slate-300">
+          We sent a confirmation link{verificationEmail ? ` to ${verificationEmail}` : ''}.
+        </p>
+        <p class="text-xs text-slate-500 dark:text-slate-400">
+          If you don’t see it, check your spam or promotions folder.
+        </p>
+      </div>
+    </div>
+  {/if}
+
   {#if $authError}
     <div class="alert variant-filled-error" role="alert">
       <div class="alert-message">
@@ -171,21 +207,6 @@
           {/if}
         </button>
       </div>
-    </div>
-
-    <!-- Remember Me -->
-    <div class="flex items-center pt-2">
-      <label class="flex items-center gap-3 cursor-pointer">
-        <input
-          bind:checked={rememberMe}
-          type="checkbox"
-          name="rememberMe"
-          class="h-4 w-4 rounded border-surface-300 text-subslush-blue focus:ring-subslush-blue focus:ring-offset-0 focus:ring-2 transition-colors duration-200"
-          disabled={$isLoading}
-          aria-label="Remember me for future logins"
-        />
-        <span class="text-sm text-surface-600 dark:text-surface-400 select-none">Remember me for 30 days</span>
-      </label>
     </div>
 
     <!-- Submit Button -->

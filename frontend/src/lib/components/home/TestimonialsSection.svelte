@@ -8,11 +8,8 @@
     <!-- Section Header -->
     <div class="text-center mb-12">
       <h2 class="text-2xl font-semibold text-gray-900 mb-2">
-        What Our Customers Say
+        Feedback from users
       </h2>
-      <p class="text-sm text-gray-600">
-        Real reviews from real users
-      </p>
     </div>
 
     <!-- Testimonials Grid -->

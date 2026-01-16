@@ -12,7 +12,15 @@
 	export let renewsIn: string;
 	export let autoRenew: 'Auto' | 'Manual' = 'Manual';
 	export let isPlanFull: boolean = false;
-	export let enhancedStatusBadge: any = null;
+	interface EnhancedStatusBadge {
+		text: string;
+		class: string;
+		icon: string;
+		priority?: string;
+		userBalance?: number;
+	}
+
+	export let enhancedStatusBadge: EnhancedStatusBadge | null = null;
 
 	// Service icon mapping (you can expand this)
 	const serviceIcons: Record<string, string> = {
@@ -125,6 +133,28 @@
 
 		<!-- Card body -->
 		<div class="p-4 space-y-3">
+			<div class="flex items-center justify-between text-xs text-gray-500">
+				<div class="flex items-center gap-2">
+					{#if sharedByAvatar}
+						<img
+							src={sharedByAvatar}
+							alt="{sharedBy} avatar"
+							class="h-6 w-6 rounded-full object-cover"
+							loading="lazy"
+						/>
+					{:else}
+						<div class="h-6 w-6 rounded-full bg-gray-200 text-gray-700 text-[10px] font-semibold flex items-center justify-center">
+							{sharedByInitials}
+						</div>
+					{/if}
+					<span>Shared by {sharedBy}</span>
+				</div>
+				{#if isPlanFull}
+					<span class="inline-flex items-center rounded-full bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 font-medium">
+						Plan full
+					</span>
+				{/if}
+			</div>
 
 			<!-- Enhanced Price Display -->
 			<div class="mb-2">
@@ -160,7 +190,7 @@
 								class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform
 									{autoRenew === 'Auto' ? 'translate-x-6' : 'translate-x-1'}"
 								aria-hidden="true"
-							/>
+							></span>
 
 							<!-- ON/OFF Text Labels -->
 							<span

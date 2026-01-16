@@ -5,6 +5,31 @@
 -- Up Migration
 BEGIN;
 
+-- Ensure credit_transactions exists for clean-slate installs
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+CREATE TABLE IF NOT EXISTS credit_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type VARCHAR(20) NOT NULL,
+    amount DECIMAL(18,8) NOT NULL,
+    balance_before DECIMAL(18,8) DEFAULT 0,
+    balance_after DECIMAL(18,8) DEFAULT 0,
+    description TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    payment_id VARCHAR(100),
+    payment_provider VARCHAR(20) DEFAULT 'nowpayments',
+    payment_status VARCHAR(20),
+    payment_currency VARCHAR(10),
+    payment_amount DECIMAL(18,8),
+    blockchain_hash VARCHAR(100),
+    monitoring_status VARCHAR(20) DEFAULT 'pending',
+    last_monitored_at TIMESTAMP,
+    retry_count INTEGER DEFAULT 0
+);
+
 -- Add payment tracking columns to existing credit_transactions table
 ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS payment_id VARCHAR(100);
 ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS payment_provider VARCHAR(20) DEFAULT 'nowpayments';

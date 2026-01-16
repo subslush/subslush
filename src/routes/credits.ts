@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { creditService } from '../services/creditService';
+import { validate as uuidValidate } from 'uuid';
 import { CreditTransactionQuery } from '../types/credit';
 import {
   HttpStatus,
@@ -9,14 +10,12 @@ import {
 } from '../utils/response';
 import {
   creditQueryMiddleware,
-  creditOperationMiddleware,
   heavyCreditOperationMiddleware,
   adminCreditOperationMiddleware,
 } from '../middleware/creditMiddleware';
 import {
   AddCreditsInput,
   SpendCreditsInput,
-  RefundCreditsInput,
   GetTransactionHistoryInput,
   UserIdParam,
   TransactionIdParam,
@@ -71,35 +70,14 @@ const FastifySchemas = {
     required: ['userId', 'amount', 'type', 'description'],
   } as const,
 
-  addCreditsDepositOnly: {
-    type: 'object',
-    properties: {
-      userId: { type: 'string', format: 'uuid' },
-      amount: { type: 'number', minimum: 0.01, maximum: 10000 },
-      type: { type: 'string', enum: ['deposit'] },
-      description: { type: 'string', minLength: 1, maxLength: 500 },
-      metadata: {
-        type: 'object',
-        additionalProperties: true,
-      },
-    },
-    required: ['userId', 'amount', 'type', 'description'],
-  } as const,
+  // Deposit/refund inputs removed from public API (admin-only credit changes).
+};
 
-  refundCreditsInput: {
-    type: 'object',
-    properties: {
-      userId: { type: 'string', format: 'uuid' },
-      amount: { type: 'number', minimum: 0.01, maximum: 10000 },
-      description: { type: 'string', minLength: 1, maxLength: 500 },
-      originalTransactionId: { type: 'string', format: 'uuid' },
-      metadata: {
-        type: 'object',
-        additionalProperties: true,
-      },
-    },
-    required: ['userId', 'amount', 'description'],
-  } as const,
+const isValidUuid = (value: string): boolean => {
+  if (typeof uuidValidate === 'function') {
+    return uuidValidate(value);
+  }
+  return /^[0-9a-f-]{36}$/i.test(value);
 };
 
 export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
@@ -114,8 +92,6 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
         'GET /credits/history/:userId',
         'GET /credits/transactions/:transactionId',
         'POST /credits/spend',
-        'POST /credits/deposit',
-        'POST /credits/refund',
         'GET /credits/admin/balances',
         'POST /credits/admin/add',
         'POST /credits/admin/withdraw',
@@ -125,7 +101,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Get user balance
   fastify.register(async fastify => {
-    await fastify.register(creditQueryMiddleware);
+    await creditQueryMiddleware(fastify);
 
     fastify.get<{
       Params: UserIdParam;
@@ -170,7 +146,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Get balance summary with recent transactions
   fastify.register(async fastify => {
-    await fastify.register(creditQueryMiddleware);
+    await creditQueryMiddleware(fastify);
 
     fastify.get<{
       Params: UserIdParam;
@@ -208,7 +184,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Get transaction history
   fastify.register(async fastify => {
-    await fastify.register(creditQueryMiddleware);
+    await creditQueryMiddleware(fastify);
 
     fastify.get<{
       Params: UserIdParam;
@@ -272,7 +248,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Get specific transaction
   fastify.register(async fastify => {
-    await fastify.register(creditQueryMiddleware);
+    await creditQueryMiddleware(fastify);
 
     fastify.get<{
       Params: TransactionIdParam;
@@ -289,8 +265,24 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
       ) => {
         try {
           const { transactionId } = request.params;
-          const userId =
-            request.user?.role === 'admin' ? undefined : request.user?.userId;
+          if (!isValidUuid(transactionId)) {
+            return ErrorResponses.badRequest(
+              reply,
+              'Invalid transaction ID format'
+            );
+          }
+
+          if (!request.user?.userId) {
+            return ErrorResponses.unauthorized(
+              reply,
+              'Authentication required'
+            );
+          }
+
+          const isAdmin = ['admin', 'super_admin'].includes(
+            request.user?.role || ''
+          );
+          const userId = isAdmin ? undefined : request.user.userId;
 
           const transaction = await creditService.getTransaction(
             transactionId,
@@ -314,7 +306,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Spend credits
   fastify.register(async fastify => {
-    await fastify.register(heavyCreditOperationMiddleware);
+    await heavyCreditOperationMiddleware(fastify);
 
     fastify.post<{
       Body: SpendCreditsInput;
@@ -363,127 +355,13 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
     );
   });
 
-  // Deposit credits (user self-deposit)
-  fastify.register(async fastify => {
-    await fastify.register(creditOperationMiddleware);
-
-    fastify.post<{
-      Body: AddCreditsInput;
-    }>(
-      '/deposit',
-      {
-        schema: {
-          body: FastifySchemas.addCreditsDepositOnly,
-        },
-      },
-      async (
-        request: FastifyRequest<{ Body: AddCreditsInput }>,
-        reply: FastifyReply
-      ) => {
-        try {
-          const { userId, amount, description, metadata } = request.body;
-
-          const result = await creditService.addCredits(
-            userId,
-            amount,
-            'deposit',
-            description,
-            metadata
-          );
-
-          if (!result.success) {
-            return sendError(
-              reply,
-              HttpStatus.BAD_REQUEST,
-              'Credit Operation Failed',
-              result.error || 'Unknown error'
-            );
-          }
-
-          return SuccessResponses.created(
-            reply,
-            {
-              transaction: result.transaction,
-              newBalance: result.balance,
-            },
-            'Credits deposited successfully'
-          );
-        } catch {
-          return ErrorResponses.internalError(
-            reply,
-            'Failed to deposit credits'
-          );
-        }
-      }
-    );
-  });
-
-  // Refund credits
-  fastify.register(async fastify => {
-    await fastify.register(heavyCreditOperationMiddleware);
-
-    fastify.post<{
-      Body: RefundCreditsInput;
-    }>(
-      '/refund',
-      {
-        schema: {
-          body: FastifySchemas.refundCreditsInput,
-        },
-      },
-      async (
-        request: FastifyRequest<{ Body: RefundCreditsInput }>,
-        reply: FastifyReply
-      ) => {
-        try {
-          const {
-            userId,
-            amount,
-            description,
-            originalTransactionId,
-            metadata,
-          } = request.body;
-
-          const result = await creditService.refundCredits(
-            userId,
-            amount,
-            description,
-            originalTransactionId,
-            metadata
-          );
-
-          if (!result.success) {
-            return sendError(
-              reply,
-              HttpStatus.BAD_REQUEST,
-              'Credit Operation Failed',
-              result.error || 'Unknown error'
-            );
-          }
-
-          return SuccessResponses.created(
-            reply,
-            {
-              transaction: result.transaction,
-              newBalance: result.balance,
-            },
-            'Credits refunded successfully'
-          );
-        } catch {
-          return ErrorResponses.internalError(
-            reply,
-            'Failed to refund credits'
-          );
-        }
-      }
-    );
-  });
+  // Note: Public credit deposits/refunds are intentionally removed.
 
   // Admin endpoints
   fastify.register(async fastify => {
     // Get all user balances (admin only)
     fastify.register(async fastify => {
-      await fastify.register(adminCreditOperationMiddleware);
+      await adminCreditOperationMiddleware(fastify);
 
       fastify.get<{
         Querystring: { limit?: number; offset?: number };
@@ -524,7 +402,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
 
     // Admin add credits (bonus)
     fastify.register(async fastify => {
-      await fastify.register(adminCreditOperationMiddleware);
+      await adminCreditOperationMiddleware(fastify);
 
       fastify.post<{
         Body: AddCreditsInput;
@@ -580,7 +458,7 @@ export async function creditRoutes(fastify: FastifyInstance): Promise<void> {
 
     // Admin withdraw credits
     fastify.register(async fastify => {
-      await fastify.register(adminCreditOperationMiddleware);
+      await adminCreditOperationMiddleware(fastify);
 
       fastify.post<{
         Body: {

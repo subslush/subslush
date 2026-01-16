@@ -2,18 +2,9 @@ import { ServiceResult } from './service';
 
 export type SubscriptionStatus = 'active' | 'expired' | 'cancelled' | 'pending';
 
-export type ServiceType = 'spotify' | 'netflix' | 'tradingview';
+export type ServiceType = string;
 
-export type ServicePlan =
-  // Spotify plans
-  | 'premium'
-  | 'family'
-  // Netflix plans
-  | 'basic'
-  | 'standard'
-  // TradingView plans
-  | 'pro'
-  | 'individual';
+export type ServicePlan = string;
 
 export interface SpotifyMetadata {
   region: string;
@@ -37,7 +28,12 @@ export interface TradingViewMetadata {
 export type SubscriptionMetadata =
   | SpotifyMetadata
   | NetflixMetadata
-  | TradingViewMetadata;
+  | TradingViewMetadata
+  | {
+      provider?: string;
+      payment_id?: string;
+      [key: string]: any;
+    };
 
 export interface Subscription {
   id: string;
@@ -45,35 +41,93 @@ export interface Subscription {
   service_type: ServiceType;
   service_plan: ServicePlan;
   start_date: Date;
+  term_start_at?: Date | null;
   end_date: Date;
   renewal_date: Date;
   credentials_encrypted?: string;
   status: SubscriptionStatus;
   metadata?: SubscriptionMetadata;
+  order_id?: string | null;
+  product_variant_id?: string | null;
+  price_cents?: number | null;
+  base_price_cents?: number | null;
+  discount_percent?: number | null;
+  term_months?: number | null;
+  currency?: string | null;
+  display_price_cents?: number | null;
+  display_currency?: string | null;
+  product_name?: string | null;
+  variant_name?: string | null;
+  auto_renew?: boolean;
+  next_billing_at?: Date | null;
+  renewal_method?: string | null;
+  billing_payment_method_id?: string | null;
+  auto_renew_enabled_at?: Date | null;
+  auto_renew_disabled_at?: Date | null;
+  status_reason?: string | null;
+  referral_reward_id?: string | null;
+  pre_launch_reward_id?: string | null;
   created_at: Date;
 }
 
 export interface SubscriptionWithUserInfo extends Subscription {
   user_email: string;
   user_full_name?: string;
+  has_credentials?: boolean;
 }
 
 export interface CreateSubscriptionInput {
   service_type: ServiceType;
   service_plan: ServicePlan;
   start_date: Date;
+  term_start_at?: Date | null;
   end_date: Date;
   renewal_date: Date;
   credentials_encrypted?: string;
+  status?: SubscriptionStatus;
   metadata?: SubscriptionMetadata;
+  auto_renew?: boolean;
+  order_id?: string;
+  product_variant_id?: string | null;
+  price_cents?: number | null;
+  base_price_cents?: number | null;
+  discount_percent?: number | null;
+  term_months?: number | null;
+  currency?: string | null;
+  next_billing_at?: Date | null;
+  renewal_method?: string | null;
+  billing_payment_method_id?: string | null;
+  auto_renew_enabled_at?: Date | null;
+  auto_renew_disabled_at?: Date | null;
+  status_reason?: string | null;
+  upgrade_options_snapshot?: UpgradeOptionsSnapshot | null;
+  referral_reward_id?: string | null;
+  pre_launch_reward_id?: string | null;
 }
 
 export interface UpdateSubscriptionInput {
   service_plan?: ServicePlan;
+  term_start_at?: Date | null;
   end_date?: Date;
   renewal_date?: Date;
-  credentials_encrypted?: string;
+  credentials_encrypted?: string | null;
   metadata?: SubscriptionMetadata;
+  auto_renew?: boolean;
+  next_billing_at?: Date | null;
+  renewal_method?: string | null;
+  billing_payment_method_id?: string | null;
+  auto_renew_enabled_at?: Date | null;
+  auto_renew_disabled_at?: Date | null;
+  status_reason?: string | null;
+  price_cents?: number | null;
+  base_price_cents?: number | null;
+  discount_percent?: number | null;
+  term_months?: number | null;
+  currency?: string | null;
+  order_id?: string | null;
+  product_variant_id?: string | null;
+  referral_reward_id?: string | null;
+  pre_launch_reward_id?: string | null;
 }
 
 export interface SubscriptionQuery {
@@ -95,6 +149,7 @@ export interface ServicePlanDetails {
   name: string;
   description: string;
   price: number;
+  currency?: string;
   features: string[];
   limitations?: string[];
 }
@@ -111,6 +166,16 @@ export interface SubscriptionStats {
   total_expired: number;
   total_cancelled: number;
   by_service: Record<ServiceType, number>;
+}
+
+export type UpgradeSelectionType =
+  | 'upgrade_new_account'
+  | 'upgrade_own_account';
+
+export interface UpgradeOptionsSnapshot {
+  allow_new_account: boolean;
+  allow_own_account: boolean;
+  manual_monthly_upgrade: boolean;
 }
 
 export interface SubscriptionOperationResult {

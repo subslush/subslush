@@ -1,27 +1,110 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authPreHandler } from '../../middleware/authMiddleware';
+import { adminPreHandler } from '../../middleware/adminMiddleware';
 import { paymentMonitoringService } from '../../services/paymentMonitoringService';
 import { creditAllocationService } from '../../services/creditAllocationService';
 import { paymentFailureService } from '../../services/paymentFailureService';
 import { refundService } from '../../services/refundService';
+import { logAdminAction } from '../../services/auditLogService';
 import { SuccessResponses, ErrorResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
+import { getDatabasePool } from '../../config/database';
 
-// Middleware to check admin permissions
-const adminPreHandler = async (
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> => {
-  const user = request.user;
-
-  if (!user || !user.isAdmin) {
-    return ErrorResponses.forbidden(reply, 'Admin access required');
-  }
-};
+const mapPaymentRow = (row: any): Record<string, unknown> => ({
+  ...row,
+  payment_id: row.provider_payment_id,
+  amount_cents: row.amount ? Math.round(parseFloat(row.amount) * 100) : null,
+});
 
 export async function adminPaymentRoutes(
   fastify: FastifyInstance
 ): Promise<void> {
+  // List payments (admin)
+  fastify.get(
+    '/',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: {
+            provider: { type: 'string' },
+            status: { type: 'string' },
+            user_id: { type: 'string' },
+            order_id: { type: 'string' },
+            search: { type: 'string' },
+            limit: { type: 'number', minimum: 1, maximum: 200, default: 50 },
+            offset: { type: 'number', minimum: 0, default: 0 },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const {
+          provider,
+          status,
+          user_id,
+          order_id,
+          search,
+          limit = 50,
+          offset = 0,
+        } = request.query as {
+          provider?: string;
+          status?: string;
+          user_id?: string;
+          order_id?: string;
+          search?: string;
+          limit?: number;
+          offset?: number;
+        };
+
+        const pool = getDatabasePool();
+        const params: any[] = [];
+        let paramCount = 0;
+        let sql = 'SELECT * FROM payments WHERE 1=1';
+
+        if (provider) {
+          sql += ` AND provider = $${++paramCount}`;
+          params.push(provider);
+        }
+
+        if (status) {
+          sql += ` AND status = $${++paramCount}`;
+          params.push(status);
+        }
+
+        if (user_id) {
+          sql += ` AND user_id = $${++paramCount}`;
+          params.push(user_id);
+        }
+
+        if (order_id) {
+          sql += ` AND order_id = $${++paramCount}`;
+          params.push(order_id);
+        }
+
+        if (search) {
+          const searchValue = `%${search}%`;
+          sql += ` AND (provider_payment_id ILIKE $${++paramCount} OR CAST(id AS TEXT) ILIKE $${++paramCount})`;
+          params.push(searchValue, searchValue);
+        }
+
+        sql += ' ORDER BY created_at DESC';
+        sql += ` LIMIT $${++paramCount} OFFSET $${++paramCount}`;
+        params.push(limit, offset);
+
+        const result = await pool.query(sql, params);
+        const payments = result.rows.map(mapPaymentRow);
+
+        return SuccessResponses.ok(reply, { payments });
+      } catch (error) {
+        Logger.error('Error listing payments:', error);
+        return ErrorResponses.internalError(reply, 'Failed to list payments');
+      }
+    }
+  );
+
   // Start payment monitoring service
   fastify.post(
     '/monitoring/start',
@@ -31,6 +114,13 @@ export async function adminPaymentRoutes(
     async (_request: FastifyRequest, reply: FastifyReply) => {
       try {
         await paymentMonitoringService.startMonitoring();
+
+        await logAdminAction(_request, {
+          action: 'payments.monitoring.start',
+          entityType: 'payment_monitoring',
+          entityId: null,
+          after: { status: 'started' },
+        });
 
         return SuccessResponses.ok(
           reply,
@@ -59,6 +149,13 @@ export async function adminPaymentRoutes(
     async (_request: FastifyRequest, reply: FastifyReply) => {
       try {
         await paymentMonitoringService.stopMonitoring();
+
+        await logAdminAction(_request, {
+          action: 'payments.monitoring.stop',
+          entityType: 'payment_monitoring',
+          entityId: null,
+          after: { status: 'stopped' },
+        });
 
         return SuccessResponses.ok(
           reply,
@@ -200,6 +297,20 @@ export async function adminPaymentRoutes(
           );
         }
 
+        await logAdminAction(request, {
+          action: 'payments.manual_allocate',
+          entityType: 'payment',
+          entityId: paymentId,
+          after: {
+            paymentId,
+            creditAmount,
+          },
+          metadata: {
+            targetUserId: userId,
+            reason,
+          },
+        });
+
         return SuccessResponses.ok(
           reply,
           result,
@@ -246,6 +357,13 @@ export async function adminPaymentRoutes(
             result.error || 'Manual retry failed'
           );
         }
+
+        await logAdminAction(request, {
+          action: 'payments.retry',
+          entityType: 'payment',
+          entityId: paymentId,
+          after: result,
+        });
 
         return SuccessResponses.ok(
           reply,
@@ -395,6 +513,16 @@ export async function adminPaymentRoutes(
           );
         }
 
+        await logAdminAction(request, {
+          action: 'refunds.approve',
+          entityType: 'refund',
+          entityId: refundId,
+          after: result.refund || null,
+          metadata: {
+            note: note || null,
+          },
+        });
+
         return SuccessResponses.ok(
           reply,
           result.refund,
@@ -448,6 +576,16 @@ export async function adminPaymentRoutes(
           );
         }
 
+        await logAdminAction(request, {
+          action: 'refunds.reject',
+          entityType: 'refund',
+          entityId: refundId,
+          after: result.refund || null,
+          metadata: {
+            reason,
+          },
+        });
+
         return SuccessResponses.ok(reply, result.refund, 'Refund rejected');
       } catch (error) {
         Logger.error('Error rejecting refund:', error);
@@ -498,6 +636,21 @@ export async function adminPaymentRoutes(
             result.error || 'Manual refund failed'
           );
         }
+
+        await logAdminAction(request, {
+          action: 'refunds.manual',
+          entityType: 'refund',
+          entityId: result.transactionId || null,
+          after: {
+            transactionId: result.transactionId,
+            userId,
+            amount,
+            paymentId: paymentId || null,
+          },
+          metadata: {
+            reason,
+          },
+        });
 
         return SuccessResponses.ok(
           reply,
@@ -561,6 +714,13 @@ export async function adminPaymentRoutes(
         paymentFailureService.resetMetrics();
         refundService.resetMetrics();
 
+        await logAdminAction(_request, {
+          action: 'payments.metrics.reset',
+          entityType: 'payment_monitoring',
+          entityId: null,
+          after: { reset: true },
+        });
+
         return SuccessResponses.ok(
           reply,
           {
@@ -586,6 +746,16 @@ export async function adminPaymentRoutes(
       try {
         const failureCleanup = await paymentFailureService.cleanupOldFailures();
         const refundCleanup = await refundService.cleanupOldRefunds();
+
+        await logAdminAction(_request, {
+          action: 'payments.cleanup',
+          entityType: 'payment_monitoring',
+          entityId: null,
+          after: {
+            cleanedFailures: failureCleanup,
+            cleanedRefunds: refundCleanup,
+          },
+        });
 
         return SuccessResponses.ok(
           reply,

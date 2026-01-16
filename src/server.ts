@@ -9,11 +9,14 @@ import {
   testDatabaseConnection,
   closeDatabasePool,
 } from './config/database';
-import { redisClient } from './config/redis';
+import { redisClient, rateLimitRedisClient } from './config/redis';
 import { errorHandler } from './middleware/errorHandler';
 import { healthRoutes } from './routes/health';
 import { apiRoutes } from './routes/api';
 import { nowpaymentsClient } from './utils/nowpaymentsClient';
+import { paymentService } from './services/paymentService';
+import fastifyRawBody from 'fastify-raw-body';
+import { startJobs, stopJobs } from './services/jobs';
 
 const fastify = Fastify({
   logger:
@@ -34,6 +37,15 @@ const fastify = Fastify({
 });
 
 async function buildServer(): Promise<typeof fastify> {
+  // Raw body for Stripe webhook verification
+  await fastify.register(fastifyRawBody, {
+    global: false,
+    field: 'rawBody',
+    encoding: false,
+    runFirst: true,
+    routes: ['/api/v1/payments/stripe/webhook', '/api/v1/payments/webhook'],
+  });
+
   await fastify.register(helmet, {
     contentSecurityPolicy: {
       directives: {
@@ -48,6 +60,7 @@ async function buildServer(): Promise<typeof fastify> {
   await fastify.register(cors, {
     origin: env.NODE_ENV === 'development' ? true : ['http://localhost:3000'],
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   });
 
   // Register cookie plugin BEFORE routes
@@ -88,6 +101,17 @@ async function startServer(): Promise<void> {
       server.log.warn(redisError);
     }
 
+    // Attempt rate limit Redis connection (fail closed if used)
+    try {
+      await rateLimitRedisClient.connect();
+      server.log.info('Rate limit Redis connection established');
+    } catch (redisError) {
+      server.log.warn(
+        'Rate limit Redis connection failed - rate limited routes will return 503'
+      );
+      server.log.warn(redisError);
+    }
+
     // Validate NOWPayments integration
     server.log.info('Validating NOWPayments configuration...');
     try {
@@ -123,6 +147,14 @@ async function startServer(): Promise<void> {
       }
     }
 
+    try {
+      await paymentService.refreshSupportedCurrencies();
+      server.log.info('NOWPayments currency cache warmed');
+    } catch (error) {
+      server.log.warn('Failed to warm NOWPayments currency cache');
+      server.log.warn(error);
+    }
+
     await server.listen({
       port: env.PORT,
       host: '0.0.0.0',
@@ -130,6 +162,8 @@ async function startServer(): Promise<void> {
 
     server.log.info(`Server listening on port ${env.PORT}`);
     server.log.info(`Environment: ${env.NODE_ENV}`);
+
+    await startJobs();
   } catch (error) {
     fastify.log.error(error);
     process.exit(1);
@@ -137,7 +171,7 @@ async function startServer(): Promise<void> {
 }
 
 function setupGracefulShutdown(): void {
-  const signals = ['SIGINT', 'SIGTERM'];
+  const signals = ['SIGINT', 'SIGTERM', 'SIGUSR2'];
   let isShuttingDown = false;
 
   signals.forEach(signal => {
@@ -159,6 +193,16 @@ function setupGracefulShutdown(): void {
           fastify.log.warn('Redis disconnect error (ignoring)');
           fastify.log.warn(redisError);
         }
+
+        // Close rate limit Redis connection if it exists
+        try {
+          await rateLimitRedisClient.disconnect();
+        } catch (redisError) {
+          fastify.log.warn('Rate limit Redis disconnect error (ignoring)');
+          fastify.log.warn(redisError);
+        }
+
+        await stopJobs();
         fastify.log.info('Server closed successfully');
         process.exit(0);
       } catch (error) {

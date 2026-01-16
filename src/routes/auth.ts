@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authService } from '../services/auth';
+import { userService } from '../services/userService';
 import { createRateLimitHandler } from '../middleware/rateLimitMiddleware';
 import { authPreHandler } from '../middleware/authMiddleware';
 import {
@@ -7,6 +8,8 @@ import {
   RegisterRequestInput,
   LogoutRequestInput,
 } from '../schemas/session';
+import { setCsrfCookie, clearCsrfCookie } from '../utils/csrf';
+import { Logger } from '../utils/logger';
 
 // Rate limiting handlers (fixes plugin encapsulation issues)
 const authRateLimit = createRateLimitHandler({
@@ -49,6 +52,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         'POST /auth/login',
         'POST /auth/logout',
         'POST /auth/refresh',
+        'POST /auth/confirm',
         'GET /auth/profile',
         'GET /auth/sessions',
         'DELETE /auth/sessions/:sessionId',
@@ -95,10 +99,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           });
         }
 
-        // Set HTTP-only cookie with access token
-        if (result.tokens?.accessToken) {
-          console.log('🍪 [AUTH] Setting cookie for user:', result.user?.id);
-
+        // Set HTTP-only cookie with access token (skip when email verification required)
+        if (result.tokens?.accessToken && !result.requiresEmailVerification) {
           reply.setCookie('auth_token', result.tokens.accessToken, {
             httpOnly: true,
             secure: process.env['NODE_ENV'] === 'production',
@@ -107,24 +109,94 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             path: '/',
             maxAge: 60 * 60 * 24, // 24 hours
           });
-
-          console.log(
-            '🍪 [AUTH] Cookie set, token preview:',
-            result.tokens.accessToken.substring(0, 20) + '...'
-          );
+          setCsrfCookie(reply, { domain: 'localhost' });
         }
 
-        reply.statusCode = 201;
+        reply.statusCode = result.requiresEmailVerification ? 202 : 201;
         return reply.send({
-          message: 'Registration successful',
+          message: result.requiresEmailVerification
+            ? 'Registration successful. Please verify your email before logging in.'
+            : 'Registration successful',
           user: result.user,
           sessionId: result.sessionId,
+          requiresEmailVerification: result.requiresEmailVerification ?? false,
         });
       } catch {
         reply.statusCode = 500;
         return reply.send({
           error: 'Internal Server Error',
           message: 'Registration failed',
+        });
+      }
+    }
+  );
+
+  fastify.post<{
+    Body: { accessToken: string; refreshToken?: string | null };
+  }>(
+    '/confirm',
+    async (
+      request: FastifyRequest<{
+        Body: { accessToken: string; refreshToken?: string | null };
+      }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { accessToken, refreshToken } = request.body;
+        if (!accessToken) {
+          reply.statusCode = 400;
+          return reply.send({
+            error: 'Bad Request',
+            message: 'Confirmation token is required',
+          });
+        }
+
+        const sessionOptions = {
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'],
+        };
+
+        const tokenPayload = {
+          accessToken,
+          ...(refreshToken !== undefined ? { refreshToken } : {}),
+        };
+
+        const result = await authService.confirmEmail(
+          tokenPayload,
+          sessionOptions
+        );
+
+        if (!result.success) {
+          reply.statusCode = 400;
+          return reply.send({
+            error: 'Email Confirmation Failed',
+            message: result.error,
+          });
+        }
+
+        if (result.tokens?.accessToken) {
+          reply.setCookie('auth_token', result.tokens.accessToken, {
+            httpOnly: true,
+            secure: process.env['NODE_ENV'] === 'production',
+            sameSite: 'lax',
+            domain: 'localhost',
+            path: '/',
+            maxAge: 60 * 60 * 24,
+          });
+          setCsrfCookie(reply, { domain: 'localhost' });
+        }
+
+        return reply.send({
+          message: 'Email confirmed successfully',
+          user: result.user,
+          sessionId: result.sessionId,
+        });
+      } catch (error) {
+        Logger.error('Email confirmation failed:', error);
+        reply.statusCode = 500;
+        return reply.send({
+          error: 'Internal Server Error',
+          message: 'Email confirmation failed',
         });
       }
     }
@@ -164,19 +236,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           });
         }
 
-        // Debug logging for firstName/lastName issue
-        console.log('🔍 [LOGIN DEBUG] Login result user:', {
-          id: result.user?.id,
-          email: result.user?.email,
-          firstName: result.user?.firstName,
-          lastName: result.user?.lastName,
-          role: result.user?.role,
-        });
-
         // Set HTTP-only cookie with access token
         if (result.tokens?.accessToken) {
-          console.log('🍪 [AUTH] Setting cookie for user:', result.user?.id);
-
           reply.setCookie('auth_token', result.tokens.accessToken, {
             httpOnly: true,
             secure: process.env['NODE_ENV'] === 'production',
@@ -185,11 +246,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             path: '/',
             maxAge: 60 * 60 * 24, // 24 hours
           });
-
-          console.log(
-            '🍪 [AUTH] Cookie set, token preview:',
-            result.tokens.accessToken.substring(0, 20) + '...'
-          );
+          setCsrfCookie(reply, { domain: 'localhost' });
         }
 
         return reply.send({
@@ -221,10 +278,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         reply: FastifyReply
       ) => {
         try {
-          const { allDevices = false } = request.body;
-          const sessionId = request.user?.sessionId;
-
-          if (!sessionId) {
+          const { allDevices = false } = request.body ?? {};
+          const user = request.user;
+          if (!user?.sessionId) {
             reply.statusCode = 400;
             return reply.send({
               error: 'Bad Request',
@@ -232,7 +288,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
-          const result = await authService.logout(sessionId, allDevices);
+          const result = await authService.logout(user.sessionId, allDevices);
 
           if (!result.success) {
             reply.statusCode = 500;
@@ -249,6 +305,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             sameSite: 'lax', // CHANGE: 'strict' blocks cookies in cross-origin dev scenarios
             path: '/',
           });
+          clearCsrfCookie(reply);
 
           return reply.send({
             message: allDevices
@@ -275,9 +332,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       },
       async (request: FastifyRequest, reply: FastifyReply) => {
         try {
-          const sessionId = request.user?.sessionId;
-
-          if (!sessionId) {
+          const user = request.user;
+          if (!user?.sessionId) {
             reply.statusCode = 400;
             return reply.send({
               error: 'Bad Request',
@@ -285,7 +341,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
-          const result = await authService.refreshSession(sessionId);
+          const result = await authService.refreshSession(user.sessionId);
 
           if (!result.success) {
             reply.statusCode = 401;
@@ -304,6 +360,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
               path: '/',
               maxAge: 60 * 60 * 24, // 24 hours
             });
+            setCsrfCookie(reply);
           }
 
           return reply.send({
@@ -331,9 +388,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       },
       async (request: FastifyRequest, reply: FastifyReply) => {
         try {
-          const userId = request.user?.userId;
-
-          if (!userId) {
+          const user = request.user;
+          if (!user?.userId) {
             reply.statusCode = 400;
             return reply.send({
               error: 'Bad Request',
@@ -341,54 +397,72 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
-          // PERMANENT FIX: Always fetch complete user profile directly
-          // Don't rely on auth middleware population which can fail silently
-          const userResult = await authService.validateSession(
-            request.user.sessionId!
-          );
+          const profileResult = await userService.getUserProfile(user.userId, {
+            includeMetadata: true,
+            includeSessions: false,
+          });
 
-          if (!userResult.success || !userResult.user) {
-            console.error(
-              '🔍 [PROFILE] Failed to get user profile:',
-              userResult.error
-            );
-            // Fallback to basic request.user data if profile fetch fails
+          if (profileResult.success && profileResult.data) {
             return reply.send({
               user: {
-                id: request.user.userId,
-                email: request.user.email,
-                firstName: request.user.firstName || null,
-                lastName: request.user.lastName || null,
-                role: request.user.role || 'user',
+                id: profileResult.data.id,
+                email: profileResult.data.email,
+                firstName: profileResult.data.firstName || null,
+                lastName: profileResult.data.lastName || null,
+                role: profileResult.data.role,
+                displayName: profileResult.data.displayName || null,
+                status: profileResult.data.status,
+                pinSetAt: profileResult.data.pinSetAt || null,
+                createdAt: profileResult.data.createdAt,
+                lastLoginAt: profileResult.data.lastLoginAt,
+                profileUpdatedAt: profileResult.data.profileUpdatedAt,
               },
             });
           }
 
-          console.log('🔍 [PROFILE] Successfully retrieved user profile:', {
-            id: userResult.user.id,
-            email: userResult.user.email,
-            firstName: userResult.user.firstName,
-            lastName: userResult.user.lastName,
-            hasFirstName: !!userResult.user.firstName,
-            hasLastName: !!userResult.user.lastName,
-          });
+          Logger.error(
+            'Profile lookup failed while fetching profile:',
+            profileResult.error
+          );
 
+          // Fallback to auth service session lookup without assuming status
+          const userResult = await authService.validateSession(user.sessionId);
+          if (userResult.success && userResult.user) {
+            return reply.send({
+              user: {
+                id: userResult.user.id,
+                email: userResult.user.email,
+                firstName: userResult.user.firstName || null,
+                lastName: userResult.user.lastName || null,
+                role: userResult.user.role,
+                displayName: userResult.user.displayName || null,
+                status: null,
+                pinSetAt: null,
+                createdAt: userResult.user.createdAt,
+                lastLoginAt: userResult.user.lastLoginAt,
+                profileUpdatedAt: userResult.user.createdAt,
+              },
+            });
+          }
+
+          // Final fallback to request.user data
           return reply.send({
             user: {
-              id: userResult.user.id,
-              email: userResult.user.email,
-              firstName: userResult.user.firstName,
-              lastName: userResult.user.lastName,
-              role: userResult.user.role,
-              displayName: userResult.user.displayName || null,
-              status: 'active',
-              createdAt: userResult.user.createdAt,
-              lastLoginAt: userResult.user.lastLoginAt,
-              profileUpdatedAt: userResult.user.createdAt,
+              id: user.userId,
+              email: user.email,
+              firstName: user.firstName || null,
+              lastName: user.lastName || null,
+              role: user.role || 'user',
+              displayName: null,
+              status: null,
+              pinSetAt: null,
+              createdAt: null,
+              lastLoginAt: null,
+              profileUpdatedAt: null,
             },
           });
         } catch (error) {
-          console.error('🔍 [PROFILE] Exception during profile fetch:', error);
+          Logger.error('Profile fetch failed:', error);
           reply.statusCode = 500;
           return reply.send({
             error: 'Internal Server Error',
@@ -408,10 +482,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       },
       async (request: FastifyRequest, reply: FastifyReply) => {
         try {
-          const userId = request.user?.userId;
-          const currentSessionId = request.user?.sessionId;
-
-          if (!userId) {
+          const user = request.user;
+          if (!user?.userId) {
             reply.statusCode = 400;
             return reply.send({
               error: 'Bad Request',
@@ -419,7 +491,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
-          const sessions = await authService.getUserSessions(userId);
+          const currentSessionId = user.sessionId;
+
+          const sessions = await authService.getUserSessions(user.userId);
           const sessionsWithCurrent = sessions.map((session: any) => ({
             ...session,
             isCurrent: session.sessionId === currentSessionId,

@@ -4,7 +4,17 @@
 # This script tests the critical rate limiting vulnerability fix
 # Tests multiple endpoints to ensure all rate limits are properly enforced
 
-set -e
+set +e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+if [[ -f "${ROOT_DIR}/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "${ROOT_DIR}/.env"
+    set +a
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -14,10 +24,16 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-API_BASE="http://localhost:3001/api/v1"
+API_PORT="${API_PORT:-${PORT:-3001}}"
+API_BASE="${API_BASE:-http://localhost:${API_PORT}/api/v1}"
+REDIS_RATE_LIMIT_DB="${REDIS_RATE_LIMIT_DB:-${REDIS_DB:-0}}"
 TEST_EMAIL="test+ratelimit@example.com"
 TEST_PASSWORD="password123"
-TOKEN=""
+SUBSCRIPTION_SERVICE_TYPE="${SUBSCRIPTION_SERVICE_TYPE:-netflix}"
+SUBSCRIPTION_SERVICE_PLAN="${SUBSCRIPTION_SERVICE_PLAN:-basic}"
+SUBSCRIPTION_PAYLOAD="{\"service_type\":\"${SUBSCRIPTION_SERVICE_TYPE}\",\"service_plan\":\"${SUBSCRIPTION_SERVICE_PLAN}\"}"
+COOKIE_JAR="$(mktemp)"
+CSRF_TOKEN=""
 
 # Counters
 TOTAL_TESTS=0
@@ -35,12 +51,12 @@ log_info() {
 
 log_success() {
     echo -e "${GREEN}✅ $1${NC}"
-    ((PASSED_TESTS++))
+    ((PASSED_TESTS+=1))
 }
 
 log_error() {
     echo -e "${RED}❌ $1${NC}"
-    ((FAILED_TESTS++))
+    ((FAILED_TESTS+=1))
 }
 
 log_warning() {
@@ -48,9 +64,16 @@ log_warning() {
 }
 
 start_test() {
-    ((TOTAL_TESTS++))
+    ((TOTAL_TESTS+=1))
     echo -e "${YELLOW}🧪 Test $TOTAL_TESTS: $1${NC}"
 }
+
+# Cleanup temp files
+cleanup() {
+    rm -f "$COOKIE_JAR"
+}
+
+trap cleanup EXIT
 
 # Function to test rate limiting on specific endpoint
 test_rate_limit() {
@@ -63,8 +86,9 @@ test_rate_limit() {
 
     start_test "$description"
 
-    local success_count=0
+    local allowed_count=0
     local rate_limited_count=0
+    local error_count=0
     local headers_cmd=""
 
     if [[ -n "$extra_headers" ]]; then
@@ -89,24 +113,28 @@ test_rate_limit() {
 
         http_code=$(echo "$response" | tail -n1)
 
-        if [[ "$http_code" == "200" ]]; then
-            ((success_count++))
-        elif [[ "$http_code" == "429" ]]; then
-            ((rate_limited_count++))
+        if [[ "$http_code" == "429" ]]; then
+            ((rate_limited_count+=1))
+        elif [[ "$http_code" == "000" || "$http_code" == "503" || "$http_code" =~ ^5 ]]; then
+            ((error_count+=1))
+        else
+            ((allowed_count+=1))
         fi
 
         # Small delay to avoid overwhelming the server
         sleep 0.1
     done
 
-    echo "   📊 Results: $success_count successful, $rate_limited_count rate-limited"
+    echo "   📊 Results: $allowed_count allowed, $rate_limited_count rate-limited, $error_count errors"
 
     # Verify results
-    if [[ $success_count -eq $expected_limit ]] && [[ $rate_limited_count -eq 5 ]]; then
-        log_success "Rate limit correctly enforced: $success_count/$expected_limit allowed, $rate_limited_count blocked"
+    if [[ $allowed_count -eq $expected_limit ]] && \
+       [[ $rate_limited_count -eq 5 ]] && \
+       [[ $error_count -eq 0 ]]; then
+        log_success "Rate limit correctly enforced: $allowed_count/$expected_limit allowed, $rate_limited_count blocked"
         return 0
     else
-        log_error "Rate limit FAILED: Expected $expected_limit allowed + 5 blocked, got $success_count allowed + $rate_limited_count blocked"
+        log_error "Rate limit FAILED: Expected $expected_limit allowed + 5 blocked, got $allowed_count allowed + $rate_limited_count blocked"
         return 1
     fi
 }
@@ -129,13 +157,13 @@ test_concurrent_rate_limit() {
     for i in $(seq 1 $total_requests); do
         (
             if [[ "$method" == "POST" ]]; then
-                curl -s -w "%{http_code}\n" -X POST \
+                curl -s -o /dev/null -w "%{http_code}\n" -X POST \
                     "$API_BASE$endpoint" \
                     -H "Content-Type: application/json" \
                     $extra_headers \
                     -d "$payload" > "$temp_dir/response_$i.txt" 2>/dev/null
             else
-                curl -s -w "%{http_code}\n" -X GET \
+                curl -s -o /dev/null -w "%{http_code}\n" -X GET \
                     "$API_BASE$endpoint" \
                     $extra_headers > "$temp_dir/response_$i.txt" 2>/dev/null
             fi
@@ -146,16 +174,19 @@ test_concurrent_rate_limit() {
     wait
 
     # Count results
-    local success_count=0
+    local allowed_count=0
     local rate_limited_count=0
+    local error_count=0
 
     for i in $(seq 1 $total_requests); do
         if [[ -f "$temp_dir/response_$i.txt" ]]; then
             local http_code=$(tail -n1 "$temp_dir/response_$i.txt")
-            if [[ "$http_code" == "200" ]]; then
-                ((success_count++))
-            elif [[ "$http_code" == "429" ]]; then
-                ((rate_limited_count++))
+            if [[ "$http_code" == "429" ]]; then
+                ((rate_limited_count+=1))
+            elif [[ "$http_code" == "000" || "$http_code" == "503" || "$http_code" =~ ^5 ]]; then
+                ((error_count+=1))
+            else
+                ((allowed_count+=1))
             fi
         fi
     done
@@ -163,17 +194,18 @@ test_concurrent_rate_limit() {
     # Cleanup
     rm -rf "$temp_dir"
 
-    echo "   📊 Concurrent Results: $success_count successful, $rate_limited_count rate-limited"
+    echo "   📊 Concurrent Results: $allowed_count allowed, $rate_limited_count rate-limited, $error_count errors"
 
     # Verify results (allow some tolerance for race conditions)
     local allowed_variance=2
-    if [[ $success_count -ge $((expected_limit - allowed_variance)) ]] && \
-       [[ $success_count -le $((expected_limit + allowed_variance)) ]] && \
-       [[ $rate_limited_count -ge $((total_requests - expected_limit - allowed_variance)) ]]; then
+    if [[ $allowed_count -ge $((expected_limit - allowed_variance)) ]] && \
+       [[ $allowed_count -le $((expected_limit + allowed_variance)) ]] && \
+       [[ $rate_limited_count -ge $((total_requests - expected_limit - allowed_variance)) ]] && \
+       [[ $error_count -eq 0 ]]; then
         log_success "Concurrent rate limit correctly enforced (±$allowed_variance tolerance)"
         return 0
     else
-        log_error "Concurrent rate limit FAILED: Expected ~$expected_limit allowed, got $success_count allowed + $rate_limited_count blocked"
+        log_error "Concurrent rate limit FAILED: Expected ~$expected_limit allowed, got $allowed_count allowed + $rate_limited_count blocked"
         return 1
     fi
 }
@@ -185,20 +217,21 @@ get_auth_token() {
     # First, try to register the user (may fail if already exists)
     curl -s -X POST "$API_BASE/auth/register" \
         -H "Content-Type: application/json" \
-        -d "{\"email\":\"$TEST_EMAIL\",\"password\":\"$TEST_PASSWORD\",\"name\":\"Rate Limit Test User\"}" > /dev/null || true
+        -d "{\"email\":\"$TEST_EMAIL\",\"password\":\"$TEST_PASSWORD\",\"firstName\":\"Rate\",\"lastName\":\"Limit\"}" > /dev/null || true
 
     # Login to get token
-    local response=$(curl -s -X POST "$API_BASE/auth/login" \
+    curl -s -X POST "$API_BASE/auth/login" \
         -H "Content-Type: application/json" \
-        -d "{\"email\":\"$TEST_EMAIL\",\"password\":\"$TEST_PASSWORD\"}")
+        -c "$COOKIE_JAR" \
+        -b "$COOKIE_JAR" \
+        -d "{\"email\":\"$TEST_EMAIL\",\"password\":\"$TEST_PASSWORD\"}" > /dev/null
 
-    TOKEN=$(echo "$response" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-
-    if [[ -n "$TOKEN" ]]; then
-        log_success "Authentication token obtained"
+    if grep -q "auth_token" "$COOKIE_JAR"; then
+        CSRF_TOKEN=$(awk '$6 == "csrf_token" {print $7}' "$COOKIE_JAR" | tail -n1)
+        log_success "Authentication cookie obtained"
         return 0
     else
-        log_error "Failed to get authentication token"
+        log_error "Failed to get authentication cookie"
         return 1
     fi
 }
@@ -207,7 +240,17 @@ get_auth_token() {
 clear_rate_limits() {
     log_info "Clearing rate limit counters..."
     # This requires Redis CLI access - optional
-    redis-cli -n 1 FLUSHDB > /dev/null 2>&1 || log_warning "Could not clear Redis (redis-cli not available)"
+    if ! command -v redis-cli >/dev/null 2>&1; then
+        log_warning "Could not clear Redis (redis-cli not available)"
+        return
+    fi
+
+    local keys
+    keys=$(redis-cli -n "$REDIS_RATE_LIMIT_DB" --scan --pattern 'rate_limit:*' 2>/dev/null)
+
+    if [[ -n "$keys" ]]; then
+        echo "$keys" | xargs -r redis-cli -n "$REDIS_RATE_LIMIT_DB" del > /dev/null 2>&1
+    fi
 }
 
 # Main test execution
@@ -219,8 +262,14 @@ clear_rate_limits
 
 # Get authentication token
 if ! get_auth_token; then
-    log_error "Cannot proceed without authentication token"
+    log_error "Cannot proceed without authentication cookie"
     exit 1
+fi
+
+# Build auth args for cookie + CSRF if available
+AUTH_ARGS="-b $COOKIE_JAR"
+if [[ -n "$CSRF_TOKEN" ]]; then
+    AUTH_ARGS="$AUTH_ARGS -H X-CSRF-Token:$CSRF_TOKEN"
 fi
 
 echo ""
@@ -230,20 +279,20 @@ echo "========================================"
 # Test 1: Subscription Validation Rate Limit (20/min)
 clear_rate_limits
 test_rate_limit "/subscriptions/validate-purchase" "POST" \
-    '{"service_type":"spotify","service_plan":"premium"}' \
+    "$SUBSCRIPTION_PAYLOAD" \
     20 \
     "Subscription Validation Rate Limit (20/min)" \
-    "-H \"Authorization: Bearer $TOKEN\""
+    "$AUTH_ARGS"
 
 sleep 2
 
 # Test 2: Subscription Purchase Rate Limit (10/5min)
 clear_rate_limits
 test_rate_limit "/subscriptions/purchase" "POST" \
-    '{"service_type":"netflix","service_plan":"standard"}' \
+    "$SUBSCRIPTION_PAYLOAD" \
     10 \
     "Subscription Purchase Rate Limit (10/5min)" \
-    "-H \"Authorization: Bearer $TOKEN\""
+    "$AUTH_ARGS"
 
 sleep 2
 
@@ -267,10 +316,10 @@ echo "==================================="
 # Test 4: Concurrent Rate Limiting (Critical Security Test)
 clear_rate_limits
 test_concurrent_rate_limit "/subscriptions/validate-purchase" "POST" \
-    '{"service_type":"spotify","service_plan":"premium"}' \
+    "$SUBSCRIPTION_PAYLOAD" \
     20 \
     "Concurrent Subscription Validation (Race Condition Test)" \
-    "-H \"Authorization: Bearer $TOKEN\""
+    "$AUTH_ARGS"
 
 sleep 2
 
@@ -281,13 +330,14 @@ echo "==================================="
 # Test 5: Rate Limit Headers
 start_test "Rate Limit Headers Verification"
 response=$(curl -s -i -X POST "$API_BASE/subscriptions/validate-purchase" \
-    -H "Authorization: Bearer $TOKEN" \
+    -b "$COOKIE_JAR" \
+    ${CSRF_TOKEN:+-H X-CSRF-Token:$CSRF_TOKEN} \
     -H "Content-Type: application/json" \
-    -d '{"service_type":"spotify","service_plan":"premium"}')
+    -d "$SUBSCRIPTION_PAYLOAD")
 
-if echo "$response" | grep -q "X-RateLimit-Limit" && \
-   echo "$response" | grep -q "X-RateLimit-Remaining" && \
-   echo "$response" | grep -q "X-RateLimit-Reset"; then
+if echo "$response" | grep -qi "x-ratelimit-limit" && \
+   echo "$response" | grep -qi "x-ratelimit-remaining" && \
+   echo "$response" | grep -qi "x-ratelimit-reset"; then
     log_success "Rate limit headers present"
 else
     log_error "Rate limit headers missing"
@@ -300,16 +350,18 @@ clear_rate_limits
 # Use up the limit first
 for i in {1..20}; do
     curl -s -X POST "$API_BASE/subscriptions/validate-purchase" \
-        -H "Authorization: Bearer $TOKEN" \
+        -b "$COOKIE_JAR" \
+        ${CSRF_TOKEN:+-H X-CSRF-Token:$CSRF_TOKEN} \
         -H "Content-Type: application/json" \
-        -d '{"service_type":"spotify","service_plan":"premium"}' > /dev/null
+        -d "$SUBSCRIPTION_PAYLOAD" > /dev/null
 done
 
 # This should return 429
 response=$(curl -s -X POST "$API_BASE/subscriptions/validate-purchase" \
-    -H "Authorization: Bearer $TOKEN" \
+    -b "$COOKIE_JAR" \
+    ${CSRF_TOKEN:+-H X-CSRF-Token:$CSRF_TOKEN} \
     -H "Content-Type: application/json" \
-    -d '{"service_type":"spotify","service_plan":"premium"}')
+    -d "$SUBSCRIPTION_PAYLOAD")
 
 if echo "$response" | grep -q '"error":"Too Many Requests"' && \
    echo "$response" | grep -q '"message":"Rate limit exceeded"' && \

@@ -98,18 +98,11 @@
       {#each categories as category (category.id)}
         <button
           type="button"
-          class="flex-shrink-0 flex items-center space-x-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 min-w-fit"
-          class:bg-gradient-to-br={selectedCategory === category.id}
-          class:from-cyan-500/5={selectedCategory === category.id}
-          class:to-pink-500/5={selectedCategory === category.id}
-          class:border-cyan-200={selectedCategory === category.id}
-          class:text-gray-900={selectedCategory === category.id}
-          class:font-semibold={selectedCategory === category.id}
-          class:bg-white={selectedCategory !== category.id}
-          class:border-gray-200={selectedCategory !== category.id}
-          class:text-gray-600={selectedCategory !== category.id}
-          class:hover:bg-gray-50={selectedCategory !== category.id}
-          class:hover:text-gray-800={selectedCategory !== category.id}
+          class={`flex-shrink-0 flex items-center space-x-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 min-w-fit ${
+            selectedCategory === category.id
+              ? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900 font-semibold'
+              : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+          }`}
           style="scroll-snap-align: start; min-height: 44px;"
           on:click={() => handleCategorySelect(category.id)}
           on:keydown={(e) => handleKeydown(e, category.id)}

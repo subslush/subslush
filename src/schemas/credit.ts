@@ -7,6 +7,7 @@ export const CreditTransactionTypeSchema = z.enum([
   'refund',
   'bonus',
   'withdrawal',
+  'refund_reversal',
 ]);
 
 // Credit Transaction Schema

@@ -130,7 +130,10 @@ export class TradingViewHandler extends BaseServiceHandler {
   }
 
   override getAvailablePlans(): ServicePlanDetails[] {
-    return [this.planDetails.pro, this.planDetails.individual];
+    const plans = ['pro', 'individual']
+      .map(plan => this.planDetails[plan])
+      .filter(Boolean) as ServicePlanDetails[];
+    return plans;
   }
 
   override async validatePurchase(

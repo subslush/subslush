@@ -18,11 +18,29 @@ export const paymentProviderSchema = z.enum(['nowpayments', 'manual', 'admin']);
 export const createPaymentRequestSchema = z.object({
   creditAmount: z
     .number()
+    .int('Credit amount must be a whole number')
     .min(1, 'Credit amount must be at least 1')
     .max(10000, 'Credit amount cannot exceed 10,000'),
+  price_currency: z
+    .string()
+    .regex(
+      /^[a-z0-9]{2,15}$/,
+      'Currency must be 2-15 lowercase letters or digits'
+    )
+    .optional(),
+  pay_currency: z
+    .string()
+    .regex(
+      /^[a-z0-9]{2,15}$/,
+      'Currency must be 2-15 lowercase letters or digits'
+    )
+    .optional(),
   currency: z
     .string()
-    .regex(/^[a-z]{2,10}$/, 'Currency must be 2-10 lowercase letters')
+    .regex(
+      /^[a-z0-9]{2,15}$/,
+      'Currency must be 2-15 lowercase letters or digits'
+    )
     .optional(),
   orderDescription: z
     .string()
@@ -88,7 +106,19 @@ export const estimateRequestSchema = z.object({
   currency_from: z.string().default('usd'),
   currency_to: z
     .string()
-    .regex(/^[a-z]{2,10}$/, 'Currency must be 2-10 lowercase letters'),
+    .regex(
+      /^[a-z0-9]{2,15}$/,
+      'Currency must be 2-15 lowercase letters or digits'
+    ),
+});
+
+export const minAmountRequestSchema = z.object({
+  currency: z
+    .string()
+    .regex(
+      /^[a-z0-9]{2,15}$/,
+      'Currency must be 2-15 lowercase letters or digits'
+    ),
 });
 
 // Fastify v5 native JSON schemas for route validation
@@ -97,13 +127,21 @@ export const createPaymentRequestJsonSchema = {
   required: ['creditAmount'],
   properties: {
     creditAmount: {
-      type: 'number',
+      type: 'integer',
       minimum: 1,
       maximum: 10000,
     },
+    price_currency: {
+      type: 'string',
+      pattern: '^[a-z0-9]{2,15}$',
+    },
+    pay_currency: {
+      type: 'string',
+      pattern: '^[a-z0-9]{2,15}$',
+    },
     currency: {
       type: 'string',
-      pattern: '^[a-z]{2,10}$',
+      pattern: '^[a-z0-9]{2,15}$',
     },
     orderDescription: {
       type: 'string',
@@ -232,7 +270,19 @@ export const estimateRequestJsonSchema = {
     },
     currency_to: {
       type: 'string',
-      pattern: '^[a-z]{2,10}$',
+      pattern: '^[a-z0-9]{2,15}$',
+    },
+  },
+  additionalProperties: false,
+} as const;
+
+export const minAmountRequestJsonSchema = {
+  type: 'object',
+  required: ['currency'],
+  properties: {
+    currency: {
+      type: 'string',
+      pattern: '^[a-z0-9]{2,15}$',
     },
   },
   additionalProperties: false,
@@ -242,5 +292,6 @@ export const estimateRequestJsonSchema = {
 export type CreatePaymentRequest = z.infer<typeof createPaymentRequestSchema>;
 export type PaymentStatusRequest = z.infer<typeof paymentStatusRequestSchema>;
 export type PaymentHistoryQuery = z.infer<typeof paymentHistoryQuerySchema>;
+export type MinAmountRequest = z.infer<typeof minAmountRequestSchema>;
 export type WebhookPayload = z.infer<typeof webhookPayloadSchema>;
 export type EstimateRequest = z.infer<typeof estimateRequestSchema>;

@@ -9,21 +9,14 @@ import {
   SERVICE_PLAN_COMPATIBILITY,
 } from '../types/subscription';
 
-const serviceTypeSchema = z.enum(['spotify', 'netflix', 'tradingview']);
+const serviceTypeSchema = z.string().min(1);
 const subscriptionStatusSchema = z.enum([
   'active',
   'expired',
   'cancelled',
   'pending',
 ]);
-const servicePlanSchema = z.enum([
-  'premium',
-  'family',
-  'basic',
-  'standard',
-  'pro',
-  'individual',
-]);
+const servicePlanSchema = z.string().min(1);
 
 const spotifyMetadataSchema = z.object({
   region: z.string().min(2).max(10),
@@ -44,11 +37,7 @@ const tradingViewMetadataSchema = z.object({
   region: z.string().min(2).max(10),
 });
 
-const subscriptionMetadataSchema = z.union([
-  spotifyMetadataSchema,
-  netflixMetadataSchema,
-  tradingViewMetadataSchema,
-]);
+const subscriptionMetadataSchema = z.record(z.string(), z.any());
 
 const uuidSchema = z.string().uuid('Invalid UUID format');
 
@@ -78,36 +67,6 @@ export const createSubscriptionSchema = z
     {
       message:
         'Invalid date order: start_date must be before end_date, and renewal_date must be after start_date',
-    }
-  )
-  .refine(
-    data => {
-      // Validate service plan compatibility
-      const validPlans = SERVICE_PLAN_COMPATIBILITY[data.service_type];
-      return validPlans.includes(data.service_plan);
-    },
-    {
-      message: 'Invalid service plan for the specified service type',
-    }
-  )
-  .refine(
-    data => {
-      // Validate metadata matches service type
-      if (!data.metadata) return true;
-
-      switch (data.service_type) {
-        case 'spotify':
-          return spotifyMetadataSchema.safeParse(data.metadata).success;
-        case 'netflix':
-          return netflixMetadataSchema.safeParse(data.metadata).success;
-        case 'tradingview':
-          return tradingViewMetadataSchema.safeParse(data.metadata).success;
-        default:
-          return false;
-      }
-    },
-    {
-      message: 'Metadata schema does not match the service type',
     }
   );
 
@@ -303,6 +262,9 @@ export function validateServicePlanForType(
   servicePlan: ServicePlan
 ): boolean {
   const validPlans = SERVICE_PLAN_COMPATIBILITY[serviceType];
+  if (!validPlans) {
+    return Boolean(serviceType) && Boolean(servicePlan);
+  }
   return validPlans.includes(servicePlan);
 }
 
@@ -330,27 +292,22 @@ export function validateMetadataForService(
     case 'tradingview':
       return tradingViewMetadataSchema.safeParse(metadata).success;
     default:
-      return false;
+      return true;
   }
 }
 
 // Fastify JSON Schema for purchase request
 export const purchaseSubscriptionJsonSchema = {
   type: 'object',
-  required: ['service_type', 'service_plan'],
+  required: ['variant_id', 'duration_months'],
   properties: {
-    service_type: {
+    variant_id: {
       type: 'string',
-      enum: ['spotify', 'netflix', 'tradingview'],
-    },
-    service_plan: {
-      type: 'string',
-      enum: ['premium', 'family', 'basic', 'standard', 'pro', 'individual'],
+      minLength: 1,
     },
     duration_months: {
       type: 'number',
       minimum: 1,
-      maximum: 12,
       default: 1,
     },
     metadata: {
@@ -367,20 +324,15 @@ export const purchaseSubscriptionJsonSchema = {
 // Validation request schema
 export const validatePurchaseJsonSchema = {
   type: 'object',
-  required: ['service_type', 'service_plan'],
+  required: ['variant_id', 'duration_months'],
   properties: {
-    service_type: {
+    variant_id: {
       type: 'string',
-      enum: ['spotify', 'netflix', 'tradingview'],
-    },
-    service_plan: {
-      type: 'string',
-      enum: ['premium', 'family', 'basic', 'standard', 'pro', 'individual'],
+      minLength: 1,
     },
     duration_months: {
       type: 'number',
       minimum: 1,
-      maximum: 12,
       default: 1,
     },
   },
@@ -392,7 +344,7 @@ export const mySubscriptionsQuerySchema = {
   properties: {
     service_type: {
       type: 'string',
-      enum: ['spotify', 'netflix', 'tradingview'],
+      minLength: 1,
     },
     status: {
       type: 'string',

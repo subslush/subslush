@@ -1,13 +1,13 @@
 <script lang="ts">
   import type { DurationOption } from '$lib/types/subscription';
+  import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
 
   export let durationOptions: DurationOption[];
   export let onSelectDuration: (months: number) => void;
   export let selectedDuration: number = 1;
+  export let currency: string = 'USD';
 
-  function formatCurrency(amount: number) {
-    return `€${amount.toFixed(2)}`;
-  }
+  $: resolvedCurrency = normalizeCurrencyCode(currency) || 'USD';
 
   function getMonthlyPrice(option: DurationOption) {
     return option.totalPrice / option.months;
@@ -47,14 +47,14 @@
         <!-- Pricing -->
         <div class="text-center mb-3">
           <div class="text-2xl font-bold text-gray-900">
-            {formatCurrency(option.totalPrice)}
+            {formatCurrency(option.totalPrice, resolvedCurrency)}
           </div>
           <div class="text-sm text-gray-600">
             total cost
           </div>
           {#if option.months > 1}
             <div class="text-sm text-gray-500 mt-1">
-              {formatCurrency(getMonthlyPrice(option))}/month
+              {formatCurrency(getMonthlyPrice(option), resolvedCurrency)}/month
             </div>
           {/if}
         </div>

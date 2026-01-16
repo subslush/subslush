@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
-  import { Eye, EyeOff, UserPlus, Loader2, Check, X } from 'lucide-svelte';
+  import { Eye, EyeOff, UserPlus, Loader2, Check, X, Info } from 'lucide-svelte';
   import { auth, authError, isLoading } from '$lib/stores/auth.js';
   import { registerSchema, type RegisterFormData } from '$lib/validation/auth.js';
   import { getPasswordStrength, validatePasswordRequirements } from '$lib/utils/validators.js';
   import { ROUTES } from '$lib/utils/constants.js';
+  import { ZodError } from 'zod';
 
   let formData: RegisterFormData = {
     email: '',
@@ -38,10 +39,13 @@
     try {
       registerSchema.parse(formData);
       return true;
-    } catch (error: any) {
-      if (error.errors) {
-        error.errors.forEach((err: any) => {
-          formErrors[err.path[0] as keyof RegisterFormData] = err.message;
+    } catch (error) {
+      if (error instanceof ZodError) {
+        error.errors.forEach(err => {
+          const field = err.path[0];
+          if (typeof field === 'string') {
+            formErrors[field as keyof RegisterFormData] = err.message;
+          }
         });
       }
       return false;
@@ -71,7 +75,18 @@
       console.log('🔄 [REGISTER] Starting registration process...');
 
       // Call auth store register method
-      await auth.register(cleanData);
+      const result = await auth.register(cleanData);
+
+      if (result?.requiresEmailVerification) {
+        auth.clearError();
+        console.log('✅ [REGISTER] Verification required');
+        const params = new URLSearchParams({
+          verify: 'pending',
+          email: cleanData.email,
+        });
+        goto(`${ROUTES.AUTH.LOGIN}?${params.toString()}`);
+        return;
+      }
 
       console.log('✅ [REGISTER] Registration successful');
 
@@ -146,10 +161,10 @@
   <!-- Header -->
   <div class="text-center space-y-3">
     <h2 class="text-2xl font-bold text-surface-900 dark:text-surface-100">
-      Join SubSlush Today
+      Create an account
     </h2>
     <p class="text-sm text-surface-600 dark:text-surface-400">
-      Get premium subscriptions at unbeatable prices
+      See order history, claim rewards and check out faster!
     </p>
   </div>
 
@@ -174,38 +189,6 @@
 
   <!-- Registration Form -->
   <form on:submit={handleSubmit} class="space-y-6" novalidate>
-    <!-- Name Field -->
-    <div class="space-y-2">
-      <label for="firstName" class="block text-sm font-medium text-surface-700 dark:text-surface-300">
-        Full name
-      </label>
-      <input
-        bind:value={formData.firstName}
-        on:input={() => clearFieldError('firstName')}
-        on:keydown={handleKeydown}
-        type="text"
-        id="firstName"
-        name="firstName"
-        autocomplete="name"
-        disabled={$isLoading}
-        class="w-full px-4 py-3 bg-white dark:bg-surface-900 border rounded-lg text-base text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:ring-2 focus:ring-subslush-blue/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-        class:border-surface-200={!formErrors.firstName}
-        class:dark:border-surface-700={!formErrors.firstName}
-        class:focus:border-subslush-blue={!formErrors.firstName}
-        class:border-error-500={formErrors.firstName}
-        class:dark:border-error-400={formErrors.firstName}
-        class:focus:border-error-500={formErrors.firstName}
-        placeholder="John Doe"
-        aria-describedby={formErrors.firstName ? 'firstName-error' : undefined}
-        aria-label="Full name"
-      />
-      {#if formErrors.firstName}
-        <div id="firstName-error" class="text-sm text-error-500 dark:text-error-400" role="alert">
-          {formErrors.firstName}
-        </div>
-      {/if}
-    </div>
-
     <!-- Email Field -->
     <div class="space-y-2">
       <label for="email" class="block text-sm font-medium text-surface-700 dark:text-surface-300">
@@ -229,7 +212,7 @@
         class:border-error-500={formErrors.email}
         class:dark:border-error-400={formErrors.email}
         class:focus:border-error-500={formErrors.email}
-        placeholder="you@example.com"
+        placeholder="Email@example.com"
         aria-describedby={formErrors.email ? 'email-error' : undefined}
         aria-label="Email address"
       />
@@ -242,9 +225,28 @@
 
     <!-- Password Field -->
     <div class="space-y-2">
-      <label for="password" class="block text-sm font-medium text-surface-700 dark:text-surface-300">
-        Password
-      </label>
+      <div class="flex items-center gap-2">
+        <label for="password" class="block text-sm font-medium text-surface-700 dark:text-surface-300">
+          Password
+        </label>
+        <button
+          type="button"
+          class="relative group inline-flex items-center"
+          aria-label="Password rules"
+          aria-describedby="password-rules"
+        >
+          <Info size={16} class="text-surface-400 group-hover:text-surface-600 dark:text-surface-500 dark:group-hover:text-surface-300" aria-hidden="true" />
+          <div
+            id="password-rules"
+            class="absolute left-1/2 top-full mt-2 -translate-x-1/2 w-64 rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 p-3 shadow-lg text-xs text-surface-700 dark:text-surface-200 opacity-0 pointer-events-none group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200 z-20"
+          >
+            <p>At least 8 characters</p>
+            <p>Special character or a digit</p>
+            <p>At least 1 small letter</p>
+            <p>At least 1 capital letter</p>
+          </div>
+        </button>
+      </div>
       <div class="relative">
         {#if showPassword}
           <input
@@ -433,11 +435,11 @@
         <span class="text-sm text-surface-600 dark:text-surface-400 leading-relaxed">
           I agree to the
           <a href="/terms" class="text-subslush-blue dark:text-subslush-blue-light hover:text-subslush-blue-dark dark:hover:text-subslush-blue transition-colors underline underline-offset-2" target="_blank">
-            Terms of Service
+            Terms of use
           </a>
           and
           <a href="/privacy" class="text-subslush-pink dark:text-subslush-pink-light hover:text-subslush-pink-dark dark:hover:text-subslush-pink transition-colors underline underline-offset-2" target="_blank">
-            Privacy Policy
+            Privacy policy
           </a>
         </span>
       </label>

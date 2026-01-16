@@ -129,7 +129,8 @@ describe('Payment Workflow Integration Tests', () => {
 
       const createResult = await paymentService.createPayment(userId, {
         creditAmount,
-        currency: 'btc',
+        price_currency: 'usd',
+        pay_currency: 'btc',
         orderDescription: 'Test payment',
       });
 
@@ -212,6 +213,8 @@ describe('Payment Workflow Integration Tests', () => {
       // Mock atomic allocation transaction
       mockDbClient.query
         .mockResolvedValueOnce({ rows: [] }) // BEGIN allocation
+        .mockResolvedValueOnce({ rows: [] }) // advisory lock
+        .mockResolvedValueOnce({ rows: [{ total_balance: '50' }] }) // balance
         .mockResolvedValueOnce({
           // Find original transaction
           rows: [
@@ -356,13 +359,13 @@ describe('Payment Workflow Integration Tests', () => {
         ],
       });
 
-      // Mock credit deduction for refund
-      jest.spyOn(creditService, 'refundCredits').mockResolvedValue({
+      // Mock credit reversal for refund
+      jest.spyOn(creditService, 'reverseCredits').mockResolvedValue({
         success: true,
         transaction: {
           id: 'refund-tx-123',
           userId,
-          type: 'refund',
+          type: 'refund_reversal',
           amount: refundAmount,
           balanceBefore: 100,
           balanceAfter: 50,

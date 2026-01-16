@@ -19,6 +19,7 @@ declare global {
         lastName?: string;
         role?: string;
       };
+      currency?: string | null;
     }
 
     interface Error {

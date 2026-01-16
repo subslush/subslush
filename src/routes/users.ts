@@ -1,8 +1,18 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { userService } from '../services/userService';
+import { pinService } from '../services/pinService';
 import { authPreHandler } from '../middleware/authMiddleware';
-import { rateLimitMiddleware } from '../middleware/rateLimitMiddleware';
-import { ErrorResponses, SuccessResponses, sendError } from '../utils/response';
+import {
+  rateLimitMiddleware,
+  createRateLimitHandler,
+} from '../middleware/rateLimitMiddleware';
+import { enforceCsrfForCookieAuth } from '../middleware/csrfMiddleware';
+import {
+  ErrorResponses,
+  SuccessResponses,
+  sendError,
+  HttpStatus,
+} from '../utils/response';
 import {
   validateUpdateProfileInput,
   validateUpdateUserStatusInput,
@@ -11,7 +21,36 @@ import {
   UpdateUserStatusInput,
   ProfileQueryInput,
 } from '../schemas/user';
+import { validatePinInput } from '../schemas/pin';
 import { Logger } from '../utils/logger';
+import { logAdminAction } from '../services/auditLogService';
+
+const pinSetRateLimit = createRateLimitHandler({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 5,
+  keyGenerator: (request: FastifyRequest) => {
+    const userId = request.user?.userId || request.ip;
+    return `pin_set:${userId}`;
+  },
+});
+
+const pinVerifyRateLimit = createRateLimitHandler({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 20,
+  keyGenerator: (request: FastifyRequest) => {
+    const userId = request.user?.userId || request.ip;
+    return `pin_verify:${userId}`;
+  },
+});
+
+const pinResetRateLimit = createRateLimitHandler({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 3,
+  keyGenerator: (request: FastifyRequest) => {
+    const userId = request.user?.userId || request.ip;
+    return `pin_reset:${userId}`;
+  },
+});
 
 export async function userRoutes(fastify: FastifyInstance): Promise<void> {
   // API info endpoint
@@ -25,6 +64,10 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
         'PATCH /users/status',
         'GET /users/sessions',
         'DELETE /users/account',
+        'GET /users/pin/status',
+        'POST /users/pin/set',
+        'POST /users/pin/verify',
+        'POST /users/pin/reset-request',
       ],
     });
   });
@@ -133,11 +176,10 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
 
           const updates = validation.data;
 
-          // Check if user is trying to update their own profile
-          if (updates.email && updates.email !== userEmail) {
-            // Additional validation could be added here for email change confirmations
-            Logger.info(
-              `User ${userId} attempting to change email from ${userEmail} to ${updates.email}`
+          if (updates.email || updates.displayName) {
+            return ErrorResponses.badRequest(
+              reply,
+              'Email and username updates are disabled. Contact support if you need to make changes.'
             );
           }
 
@@ -179,6 +221,241 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
     );
   });
 
+  // Set user PIN (requires first paid order)
+  fastify.get(
+    '/pin/status',
+    {
+      preHandler: [authPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const userId = request.user?.userId;
+        if (!userId) {
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
+        }
+
+        const result = await pinService.getPinStatus(userId);
+        if (!result.success || !result.data) {
+          return ErrorResponses.notFound(reply, 'User not found');
+        }
+
+        reply.header('Cache-Control', 'no-store, max-age=0');
+        return SuccessResponses.ok(reply, {
+          has_pin: result.data.hasPin,
+          pin_set_at: result.data.pinSetAt,
+        });
+      } catch (error) {
+        Logger.error('PIN status endpoint error:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to fetch PIN status'
+        );
+      }
+    }
+  );
+
+  // Set user PIN (requires first paid order)
+  fastify.post<{
+    Body: { pin: string };
+  }>(
+    '/pin/set',
+    {
+      preHandler: [pinSetRateLimit, authPreHandler],
+    },
+    async (
+      request: FastifyRequest<{ Body: { pin: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const userId = request.user?.userId;
+        if (!userId) {
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
+        }
+
+        const validation = validatePinInput(request.body);
+        if (!validation.success) {
+          return sendError(
+            reply,
+            HttpStatus.BAD_REQUEST,
+            'Invalid PIN',
+            validation.error,
+            'INVALID_PIN',
+            validation.details
+          );
+        }
+
+        const result = await pinService.setPin(userId, validation.data.pin);
+        if (!result.success) {
+          if (result.reason === 'pin_already_set') {
+            return sendError(
+              reply,
+              HttpStatus.CONFLICT,
+              'PIN Already Set',
+              'PIN is already configured for this account',
+              'PIN_ALREADY_SET'
+            );
+          }
+
+          if (result.reason === 'no_paid_order') {
+            return ErrorResponses.forbidden(
+              reply,
+              'PIN setup requires a completed paid order'
+            );
+          }
+
+          if (result.reason === 'user_not_found') {
+            return ErrorResponses.notFound(reply, 'User not found');
+          }
+
+          return ErrorResponses.internalError(reply, 'Failed to set PIN');
+        }
+
+        await logAdminAction(request, {
+          action: 'pin_set',
+          entityType: 'user',
+          entityId: userId,
+          after: { pin_set_at: result.pinSetAt },
+          metadata: { source: 'self_service' },
+        });
+
+        return SuccessResponses.ok(
+          reply,
+          { pin_set_at: result.pinSetAt },
+          'PIN set successfully'
+        );
+      } catch (error) {
+        Logger.error('Set PIN endpoint error:', error);
+        return ErrorResponses.internalError(reply, 'Failed to set PIN');
+      }
+    }
+  );
+
+  // Verify PIN and issue short-lived token
+  fastify.post<{
+    Body: { pin: string };
+  }>(
+    '/pin/verify',
+    {
+      preHandler: [pinVerifyRateLimit, authPreHandler],
+    },
+    async (
+      request: FastifyRequest<{ Body: { pin: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const userId = request.user?.userId;
+        if (!userId) {
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
+        }
+
+        const validation = validatePinInput(request.body);
+        if (!validation.success) {
+          return sendError(
+            reply,
+            HttpStatus.BAD_REQUEST,
+            'Invalid PIN',
+            validation.error,
+            'INVALID_PIN',
+            validation.details
+          );
+        }
+
+        const verifyResult = await pinService.verifyPin(
+          userId,
+          validation.data.pin
+        );
+
+        if (!verifyResult.success) {
+          if (verifyResult.reason === 'not_set') {
+            return ErrorResponses.badRequest(reply, 'PIN has not been set');
+          }
+
+          if (verifyResult.reason === 'locked') {
+            if (verifyResult.lockoutTriggered) {
+              await logAdminAction(request, {
+                action: 'pin_lockout',
+                entityType: 'user',
+                entityId: userId,
+                metadata: {
+                  locked_until: verifyResult.lockedUntil
+                    ? verifyResult.lockedUntil.toISOString()
+                    : undefined,
+                  failed_attempts: verifyResult.failedAttempts,
+                },
+              });
+            }
+            return sendError(
+              reply,
+              HttpStatus.TOO_MANY_REQUESTS,
+              'PIN Locked',
+              'Too many failed PIN attempts. Try again later.',
+              'PIN_LOCKED',
+              {
+                locked_until: verifyResult.lockedUntil
+                  ? verifyResult.lockedUntil.toISOString()
+                  : undefined,
+              }
+            );
+          }
+
+          if (verifyResult.reason === 'invalid') {
+            return sendError(
+              reply,
+              HttpStatus.UNAUTHORIZED,
+              'Invalid PIN',
+              'The PIN you entered is incorrect',
+              'PIN_INVALID',
+              {
+                attempts_remaining: verifyResult.attemptsRemaining,
+              }
+            );
+          }
+
+          if (verifyResult.reason === 'user_not_found') {
+            return ErrorResponses.notFound(reply, 'User not found');
+          }
+
+          return ErrorResponses.internalError(reply, 'Failed to verify PIN');
+        }
+
+        const tokenResult = await pinService.issuePinToken(userId);
+        if (!tokenResult.success) {
+          return sendError(
+            reply,
+            HttpStatus.SERVICE_UNAVAILABLE,
+            'Service Unavailable',
+            tokenResult.error || 'PIN verification unavailable',
+            'PIN_TOKEN_UNAVAILABLE'
+          );
+        }
+
+        return SuccessResponses.ok(reply, {
+          pin_token: tokenResult.data.token,
+          expires_at: tokenResult.data.expiresAt.toISOString(),
+          expires_in_seconds: tokenResult.data.expiresInSeconds,
+        });
+      } catch (error) {
+        Logger.error('Verify PIN endpoint error:', error);
+        return ErrorResponses.internalError(reply, 'Failed to verify PIN');
+      }
+    }
+  );
+
+  // PIN reset request (support flow)
+  fastify.post(
+    '/pin/reset-request',
+    {
+      preHandler: [pinResetRateLimit, authPreHandler],
+    },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      return SuccessResponses.ok(
+        reply,
+        { support_url: '/help' },
+        'PIN reset requires support assistance'
+      );
+    }
+  );
+
   // Update user status (admin only)
   fastify.register(async fastify => {
     await fastify.register(
@@ -194,7 +471,7 @@ export async function userRoutes(fastify: FastifyInstance): Promise<void> {
     }>(
       '/status/:userId',
       {
-        preHandler: [authPreHandler],
+        preHandler: [authPreHandler, enforceCsrfForCookieAuth],
       },
       async (
         request: FastifyRequest<{

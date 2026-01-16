@@ -135,6 +135,15 @@ export const ErrorResponses = {
       'INTERNAL_ERROR'
     ),
 
+  serviceUnavailable: (reply: FastifyReply, message = 'Service unavailable') =>
+    sendError(
+      reply,
+      HttpStatus.SERVICE_UNAVAILABLE,
+      'Service Unavailable',
+      message,
+      'SERVICE_UNAVAILABLE'
+    ),
+
   tooManyRequests: (reply: FastifyReply, message = 'Rate limit exceeded') =>
     sendError(
       reply,

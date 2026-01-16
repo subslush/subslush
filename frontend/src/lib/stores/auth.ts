@@ -6,10 +6,11 @@ import { authService } from '$lib/api/auth.js';
 export interface User {
   id: string;
   email: string;
-  firstName: string;
-  lastName: string;
-  role: string;
+  firstName?: string;
+  lastName?: string;
+  role?: string;
   displayName?: string | null;
+  pinSetAt?: string | null;
 }
 
 interface AuthState {
@@ -27,6 +28,9 @@ const initialState: AuthState = {
   isAuthenticated: false,
   initialized: false
 };
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
 
 function createAuthStore(initialUser: User | null = null) {
   const { subscribe, set, update } = writable<AuthState>({
@@ -72,7 +76,7 @@ function createAuthStore(initialUser: User | null = null) {
           initialized: true,
           error: null
         }));
-      } catch (error: any) {
+      } catch (error) {
         console.error('🔐 [AUTH STORE] Session refresh failed:', error);
 
         // If refresh fails, user is not authenticated
@@ -181,6 +185,18 @@ function createAuthStore(initialUser: User | null = null) {
 
         console.log('🔐 [AUTH STORE] Registration successful:', response.user);
 
+        if (response.requiresEmailVerification) {
+          update(state => ({
+            ...state,
+            user: null,
+            isAuthenticated: false,
+            isLoading: false,
+            initialized: true,
+            error: null
+          }));
+          return response;
+        }
+
         // Update auth store with user data
         update(state => ({
           ...state,
@@ -192,16 +208,19 @@ function createAuthStore(initialUser: User | null = null) {
         }));
 
         // Force a complete page refresh to ensure server gets the cookie
-        console.log('🔐 [AUTH STORE] Redirecting to dashboard with refresh...');
+        console.log('🔐 [AUTH STORE] Redirecting to home with refresh...');
         if (browser) {
-          window.location.href = '/dashboard';
+          window.location.href = '/';
         }
 
         return response;
-      } catch (error: any) {
+      } catch (error) {
         console.error('🔐 [AUTH STORE] Registration error:', error);
 
-        const errorMessage = error.message || 'Registration failed. Please try again.';
+        const errorMessage = getErrorMessage(
+          error,
+          'Registration failed. Please try again.'
+        );
 
         update(state => ({
           ...state,
@@ -241,16 +260,19 @@ function createAuthStore(initialUser: User | null = null) {
         }));
 
         // Force a complete page refresh to ensure server gets the cookie
-        console.log('🔐 [AUTH STORE] Redirecting to dashboard with refresh...');
+        console.log('🔐 [AUTH STORE] Redirecting to home with refresh...');
         if (browser) {
-          window.location.href = '/dashboard';
+          window.location.href = '/';
         }
 
         return response;
-      } catch (error: any) {
+      } catch (error) {
         console.error('🔐 [AUTH STORE] Login error:', error);
 
-        const errorMessage = error.message || 'Login failed. Please try again.';
+        const errorMessage = getErrorMessage(
+          error,
+          'Login failed. Please try again.'
+        );
 
         update(state => ({
           ...state,

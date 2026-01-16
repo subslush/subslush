@@ -15,10 +15,13 @@ import {
 } from '../types/user';
 
 class UserService {
-  private supabase: SupabaseClient;
+  private supabaseAdmin: SupabaseClient;
 
   constructor() {
-    this.supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+    this.supabaseAdmin = createClient(
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
   }
 
   private get pool(): any {
@@ -35,7 +38,7 @@ class UserService {
       // Get user from PostgreSQL database (including new profile columns)
       const dbResult = await this.pool.query(
         `SELECT id, email, created_at, last_login, status,
-                display_name, user_timezone, language_preference,
+                display_name, pin_set_at, user_timezone, language_preference,
                 notification_preferences, profile_updated_at
          FROM users WHERE id = $1 AND status != $2`,
         [userId, 'deleted']
@@ -55,7 +58,7 @@ class UserService {
       if (includeMetadata) {
         try {
           const { data: supabaseUser } =
-            await this.supabase.auth.admin.getUserById(userId);
+            await this.supabaseAdmin.auth.admin.getUserById(userId);
           if (supabaseUser?.user?.user_metadata) {
             metadata = supabaseUser.user.user_metadata;
           }
@@ -77,6 +80,7 @@ class UserService {
         displayName: dbUser.display_name,
         role: metadata.role || 'user',
         status: dbUser.status,
+        pinSetAt: dbUser.pin_set_at ?? undefined,
         timezone: dbUser.user_timezone,
         languagePreference: dbUser.language_preference,
         notificationPreferences: dbUser.notification_preferences,
@@ -115,9 +119,11 @@ class UserService {
   ): Promise<UserServiceResponse<UserProfile>> {
     try {
       const client = await this.pool.connect();
+      let transactionOpen = false;
 
       try {
         await client.query('BEGIN');
+        transactionOpen = true;
 
         // Update email in database if provided
         if (updates.email) {
@@ -129,6 +135,7 @@ class UserService {
 
           if (emailCheck.rows.length > 0) {
             await client.query('ROLLBACK');
+            transactionOpen = false;
             return {
               success: false,
               error: 'Email already in use',
@@ -200,13 +207,14 @@ class UserService {
 
           // Update Supabase
           const { error: supabaseError } =
-            await this.supabase.auth.admin.updateUserById(
+            await this.supabaseAdmin.auth.admin.updateUserById(
               userId,
               supabaseUpdates
             );
 
           if (supabaseError) {
             await client.query('ROLLBACK');
+            transactionOpen = false;
             return {
               success: false,
               error: 'Failed to update authentication data',
@@ -216,6 +224,7 @@ class UserService {
         }
 
         await client.query('COMMIT');
+        transactionOpen = false;
 
         // Log the update
         Logger.info(`User profile updated: ${userId} by ${updatedBy}`);
@@ -223,9 +232,22 @@ class UserService {
         // Return updated profile
         return await this.getUserProfile(userId);
       } catch (error) {
-        await client.query('ROLLBACK');
+        if (transactionOpen) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+        }
         throw error;
       } finally {
+        if (transactionOpen) {
+          try {
+            await client.query('ROLLBACK');
+          } catch (rollbackError) {
+            Logger.error(
+              'Failed to rollback user profile update transaction',
+              rollbackError
+            );
+          }
+        }
         client.release();
       }
     } catch (error) {
@@ -245,9 +267,11 @@ class UserService {
   ): Promise<UserServiceResponse<UserProfile>> {
     try {
       const client = await this.pool.connect();
+      let transactionOpen = false;
 
       try {
         await client.query('BEGIN');
+        transactionOpen = true;
 
         // Get current user status
         const currentUserResult = await client.query(
@@ -257,6 +281,7 @@ class UserService {
 
         if (currentUserResult.rows.length === 0) {
           await client.query('ROLLBACK');
+          transactionOpen = false;
           return {
             success: false,
             error: 'User not found',
@@ -268,6 +293,7 @@ class UserService {
         // Validate status transition
         if (!this.isValidStatusTransition(oldStatus, statusData.status)) {
           await client.query('ROLLBACK');
+          transactionOpen = false;
           return {
             success: false,
             error: `Invalid status transition from ${oldStatus} to ${statusData.status}`,
@@ -275,12 +301,20 @@ class UserService {
         }
 
         // Update user status
-        await client.query('UPDATE users SET status = $1 WHERE id = $2', [
-          statusData.status,
-          userId,
-        ]);
-
-        // Create audit log entry (we'll create this table in a migration if needed)
+        const updateResult = await client.query(
+          'UPDATE users SET status = $1 WHERE id = $2',
+          [statusData.status, userId]
+        );
+        if (!updateResult.rowCount) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return {
+            success: false,
+            error: 'Failed to update user status',
+          };
+        }
+        // Create audit log entry without poisoning the transaction on failure
+        await client.query('SAVEPOINT user_status_audit');
         try {
           await client.query(
             `INSERT INTO user_status_audit (user_id, old_status, new_status, reason, changed_by, changed_at, ip_address)
@@ -295,14 +329,17 @@ class UserService {
             ]
           );
         } catch (auditError) {
-          // If audit table doesn't exist, just log the change
+          await client.query('ROLLBACK TO SAVEPOINT user_status_audit');
           Logger.info(
             `User status audit log: ${userId} changed from ${oldStatus} to ${statusData.status} by ${updatedBy}. Reason: ${statusData.reason}`,
             auditError
           );
+        } finally {
+          await client.query('RELEASE SAVEPOINT user_status_audit');
         }
 
         await client.query('COMMIT');
+        transactionOpen = false;
 
         // If user is being deactivated, invalidate all sessions
         if (['inactive', 'suspended', 'deleted'].includes(statusData.status)) {
@@ -324,9 +361,22 @@ class UserService {
         // Return updated profile
         return await this.getUserProfile(userId);
       } catch (error) {
-        await client.query('ROLLBACK');
+        if (transactionOpen) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+        }
         throw error;
       } finally {
+        if (transactionOpen) {
+          try {
+            await client.query('ROLLBACK');
+          } catch (rollbackError) {
+            Logger.error(
+              'Failed to rollback user status transaction',
+              rollbackError
+            );
+          }
+        }
         client.release();
       }
     } catch (error) {

@@ -7,6 +7,7 @@ import {
   NOWPaymentsCreatePaymentResponse,
   NOWPaymentsPaymentStatus,
   NOWPaymentsCurrenciesResponse,
+  NOWPaymentsCurrency,
   PaymentEstimate,
 } from '../types/payment';
 
@@ -27,18 +28,35 @@ export class NOWPaymentsClient {
   private readonly sandboxMode: boolean;
 
   constructor() {
-    this.baseURL = env.NOWPAYMENTS_BASE_URL;
-    this.apiKey = env.NOWPAYMENTS_API_KEY;
     this.sandboxMode = env.NOWPAYMENTS_SANDBOX_MODE;
+    const sandboxApiKey = env.NOWPAYMENTS_SANDBOX_API_KEY?.trim();
+    this.apiKey =
+      this.sandboxMode && sandboxApiKey
+        ? sandboxApiKey
+        : env.NOWPAYMENTS_API_KEY;
+    const defaultBaseUrl = 'https://api.nowpayments.io/v1';
+    const sandboxBaseUrl = 'https://api-sandbox.nowpayments.io/v1';
+    const configuredBaseUrl = env.NOWPAYMENTS_BASE_URL;
+
+    this.baseURL =
+      this.sandboxMode && configuredBaseUrl === defaultBaseUrl
+        ? sandboxBaseUrl
+        : configuredBaseUrl;
 
     // Enhanced logging for debugging
     Logger.info('NOWPayments client initialized', {
       baseURL: this.baseURL,
       sandboxMode: this.sandboxMode,
+      apiKeySource: this.sandboxMode && sandboxApiKey ? 'sandbox' : 'primary',
       apiKeyPrefix: this.apiKey.substring(0, 8) + '...',
     });
 
     if (this.sandboxMode) {
+      if (!sandboxApiKey) {
+        Logger.warn(
+          'NOWPayments sandbox mode enabled without NOWPAYMENTS_SANDBOX_API_KEY; sandbox calls may fail.'
+        );
+      }
       Logger.warn(
         'NOWPayments client running in SANDBOX mode - not suitable for production!'
       );
@@ -117,6 +135,17 @@ export class NOWPaymentsClient {
   // Get available currencies (returns string array)
   async getCurrencies(): Promise<string[]> {
     try {
+      try {
+        const fullCurrencies = await this.getCurrenciesFull();
+        if (fullCurrencies.length > 0) {
+          return fullCurrencies.map(currency => currency.ticker);
+        }
+      } catch (error) {
+        Logger.warn('Falling back to basic currencies endpoint', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
       const response =
         await this.makeRequest<NOWPaymentsCurrenciesResponse>('/currencies');
 
@@ -139,6 +168,44 @@ export class NOWPaymentsClient {
     }
   }
 
+  async getCurrenciesFull(): Promise<NOWPaymentsCurrency[]> {
+    try {
+      const response = await this.makeRequest<
+        NOWPaymentsCurrency[] | { currencies: NOWPaymentsCurrency[] }
+      >('/currencies-full');
+
+      Logger.debug('NOWPayments currencies-full API response:', response);
+
+      if (Array.isArray(response)) {
+        return response;
+      }
+
+      if (
+        (response as { currencies?: NOWPaymentsCurrency[] }).currencies &&
+        Array.isArray(
+          (response as { currencies?: NOWPaymentsCurrency[] }).currencies
+        )
+      ) {
+        return (response as { currencies: NOWPaymentsCurrency[] }).currencies;
+      }
+
+      Logger.error('Unexpected currencies-full API response format:', response);
+      throw new NOWPaymentsError('Invalid currencies-full response format');
+    } catch (error) {
+      if (error instanceof NOWPaymentsError && error.statusCode === 404) {
+        Logger.warn(
+          'NOWPayments currencies-full endpoint not available; falling back to basic currencies',
+          {
+            statusCode: error.statusCode,
+          }
+        );
+        return [];
+      }
+      Logger.error('Error fetching currencies-full:', error);
+      throw error;
+    }
+  }
+
   // Get estimate for cryptocurrency conversion
   async getEstimate(params: {
     amount: number;
@@ -157,12 +224,35 @@ export class NOWPaymentsClient {
   // Get minimum payment amount
   async getMinAmount(params: {
     currency_from: string;
-    currency_to: string;
-  }): Promise<{ min_amount: number }> {
+    currency_to?: string;
+    fiat_equivalent?: string;
+    is_fixed_rate?: boolean;
+    is_fee_paid_by_user?: boolean;
+  }): Promise<{
+    min_amount: number;
+    fiat_equivalent?: number;
+    currency_from?: string;
+    currency_to?: string;
+  }> {
     const query = new globalThis.URLSearchParams({
       currency_from: params.currency_from,
-      currency_to: params.currency_to,
     });
+
+    if (params.currency_to) {
+      query.append('currency_to', params.currency_to);
+    }
+    if (params.fiat_equivalent) {
+      query.append('fiat_equivalent', params.fiat_equivalent);
+    }
+    if (typeof params.is_fixed_rate === 'boolean') {
+      query.append('is_fixed_rate', params.is_fixed_rate.toString());
+    }
+    if (typeof params.is_fee_paid_by_user === 'boolean') {
+      query.append(
+        'is_fee_paid_by_user',
+        params.is_fee_paid_by_user.toString()
+      );
+    }
 
     return this.makeRequest(`/min-amount?${query}`);
   }
@@ -393,13 +483,8 @@ export class NOWPaymentsClient {
 
   // Check if currency is supported
   async isCurrencySupported(currency: string): Promise<boolean> {
-    try {
-      const currencies = await this.getCurrencies();
-      return currencies.some(c => c.toLowerCase() === currency.toLowerCase());
-    } catch (error) {
-      Logger.error('Error checking currency support:', error);
-      return false;
-    }
+    const currencies = await this.getCurrencies();
+    return currencies.some(c => c.toLowerCase() === currency.toLowerCase());
   }
 
   // Get currency info (basic info from ticker)

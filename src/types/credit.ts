@@ -1,12 +1,33 @@
 export interface CreditTransaction {
   id: string;
   userId: string;
-  type: 'deposit' | 'purchase' | 'refund' | 'bonus' | 'withdrawal';
+  type:
+    | 'deposit'
+    | 'purchase'
+    | 'refund'
+    | 'bonus'
+    | 'withdrawal'
+    | 'refund_reversal';
   amount: number;
   balanceBefore: number;
   balanceAfter: number;
   description: string;
   metadata?: Record<string, any>;
+  paymentId?: string | null;
+  paymentStatus?: string | null;
+  paymentProvider?: string | null;
+  paymentCurrency?: string | null;
+  paymentAmount?: number | null;
+  orderId?: string;
+  productVariantId?: string;
+  priceCents?: number;
+  currency?: string;
+  autoRenew?: boolean;
+  nextBillingAt?: Date;
+  renewalMethod?: string;
+  statusReason?: string;
+  referralRewardId?: string;
+  preLaunchRewardId?: string;
   createdAt: Date;
   updatedAt: Date;
 }

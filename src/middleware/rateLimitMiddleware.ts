@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
-import { redisClient } from '../config/redis';
+import { rateLimitRedisClient } from '../config/redis';
 import { Logger } from '../utils/logger';
 
 export interface RateLimitOptions {
@@ -10,6 +10,76 @@ export interface RateLimitOptions {
   skipSuccessfulRequests?: boolean;
   onLimitReached?: (request: FastifyRequest, reply?: FastifyReply) => void;
 }
+
+type RateLimitState = {
+  count: number;
+  ttl: number;
+  limited: boolean;
+};
+
+const RATE_LIMIT_SCRIPT = `
+local key = KEYS[1]
+local window = tonumber(ARGV[1])
+local max = tonumber(ARGV[2])
+
+local current = redis.call('GET', key)
+if not current then
+  redis.call('SET', key, 1, 'EX', window)
+  return {1, window, 0}
+end
+
+current = tonumber(current)
+if current >= max then
+  local ttl = redis.call('TTL', key)
+  if ttl < 0 then
+    redis.call('EXPIRE', key, window)
+    ttl = window
+  end
+  return {current, ttl, 1}
+end
+
+local newCount = redis.call('INCR', key)
+local ttl = redis.call('TTL', key)
+if ttl < 0 then
+  redis.call('EXPIRE', key, window)
+  ttl = window
+end
+return {newCount, ttl, 0}
+`;
+
+const parseNumber = (value: unknown): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  const parsed = parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const evaluateRateLimit = async (
+  key: string,
+  windowMs: number,
+  maxRequests: number
+): Promise<RateLimitState> => {
+  const client = rateLimitRedisClient.getClient();
+  const windowSeconds = Math.ceil(windowMs / 1000);
+  const result = (await client.eval(
+    RATE_LIMIT_SCRIPT,
+    1,
+    key,
+    windowSeconds,
+    maxRequests
+  )) as unknown as [unknown, unknown, unknown];
+
+  const count = parseNumber(result?.[0]);
+  let ttl = parseNumber(result?.[1]);
+  const limited = parseNumber(result?.[2]) === 1;
+
+  if (ttl <= 0) {
+    ttl = windowSeconds;
+  }
+
+  return { count, ttl, limited };
+};
 
 export const rateLimitMiddleware = (
   options: RateLimitOptions = {}
@@ -36,7 +106,7 @@ export const rateLimitMiddleware = (
           Logger.debug(`Rate limit check for key: ${key}`);
 
           // Verify Redis client is available and ready
-          if (!redisClient.isConnected()) {
+          if (!rateLimitRedisClient.isConnected()) {
             Logger.error('Redis client not ready for rate limiting');
             // FAIL CLOSED - block request if Redis unavailable
             return reply.code(503).send({
@@ -45,22 +115,27 @@ export const rateLimitMiddleware = (
             });
           }
 
-          const client = redisClient.getClient();
+          const { count, ttl, limited } = await evaluateRateLimit(
+            key,
+            windowMs,
+            maxRequests
+          );
 
-          // CRITICAL: Check current count BEFORE incrementing
-          const currentValue = await client.get(key);
-          const currentCount = currentValue ? parseInt(currentValue, 10) : 0;
-
-          // Block BEFORE incrementing if limit exceeded
-          if (currentCount >= maxRequests) {
+          if (limited) {
             if (onLimitReached) {
               onLimitReached(request, reply);
             }
 
-            const ttl = await client.ttl(key);
             const resetTime = new Date(
               Date.now() + (ttl > 0 ? ttl * 1000 : windowMs)
             );
+
+            reply.headers({
+              'X-RateLimit-Limit': maxRequests.toString(),
+              'X-RateLimit-Remaining': '0',
+              'X-RateLimit-Reset': resetTime.toISOString(),
+              'X-RateLimit-Window': windowMs.toString(),
+            });
 
             // CRITICAL: Use return reply.code().send() pattern to halt execution
             return reply.code(429).send({
@@ -72,17 +147,6 @@ export const rateLimitMiddleware = (
               windowMs,
             });
           }
-
-          // Only increment AFTER checking limit
-          const newCount = await client.incr(key);
-
-          // Set expiry only on first request
-          if (newCount === 1) {
-            await client.expire(key, Math.ceil(windowMs / 1000));
-          }
-
-          // Get TTL for response headers
-          const ttl = await client.ttl(key);
           const resetTime = new Date(
             Date.now() + (ttl > 0 ? ttl * 1000 : windowMs)
           );
@@ -92,7 +156,7 @@ export const rateLimitMiddleware = (
             'X-RateLimit-Limit': maxRequests.toString(),
             'X-RateLimit-Remaining': Math.max(
               0,
-              maxRequests - newCount
+              maxRequests - count
             ).toString(),
             'X-RateLimit-Reset': resetTime.toISOString(),
             'X-RateLimit-Window': windowMs.toString(),
@@ -119,7 +183,7 @@ export const rateLimitMiddleware = (
 
             if (shouldSkip) {
               const key = `rate_limit:${keyGenerator(request)}`;
-              const client = redisClient.getClient();
+              const client = rateLimitRedisClient.getClient();
               await client.decr(key);
             }
           } catch (error) {
@@ -149,7 +213,7 @@ export const createRateLimitHandler = (options: RateLimitOptions = {}) => {
       Logger.debug(`Rate limit check for key: ${key}`);
 
       // Verify Redis client is available and ready
-      if (!redisClient.isConnected()) {
+      if (!rateLimitRedisClient.isConnected()) {
         Logger.error('Redis client not ready for rate limiting');
         // FAIL CLOSED - block request if Redis unavailable
         reply.code(503).send({
@@ -159,19 +223,17 @@ export const createRateLimitHandler = (options: RateLimitOptions = {}) => {
         return; // CRITICAL: return to halt execution
       }
 
-      const client = redisClient.getClient();
+      const { count, ttl, limited } = await evaluateRateLimit(
+        key,
+        windowMs,
+        maxRequests
+      );
 
-      // CRITICAL: Check current count BEFORE incrementing
-      const currentValue = await client.get(key);
-      const currentCount = currentValue ? parseInt(currentValue, 10) : 0;
-
-      // Block BEFORE incrementing if limit exceeded
-      if (currentCount >= maxRequests) {
+      if (limited) {
         if (onLimitReached) {
           onLimitReached(request, reply);
         }
 
-        const ttl = await client.ttl(key);
         const resetTime = new Date(
           Date.now() + (ttl > 0 ? ttl * 1000 : windowMs)
         );
@@ -195,17 +257,6 @@ export const createRateLimitHandler = (options: RateLimitOptions = {}) => {
         });
         return; // CRITICAL: return to halt execution
       }
-
-      // Only increment AFTER checking limit
-      const newCount = await client.incr(key);
-
-      // Set expiry only on first request
-      if (newCount === 1) {
-        await client.expire(key, Math.ceil(windowMs / 1000));
-      }
-
-      // Get TTL for response headers
-      const ttl = await client.ttl(key);
       const resetTime = new Date(
         Date.now() + (ttl > 0 ? ttl * 1000 : windowMs)
       );
@@ -213,7 +264,7 @@ export const createRateLimitHandler = (options: RateLimitOptions = {}) => {
       // Add rate limit headers
       reply.headers({
         'X-RateLimit-Limit': maxRequests.toString(),
-        'X-RateLimit-Remaining': Math.max(0, maxRequests - newCount).toString(),
+        'X-RateLimit-Remaining': Math.max(0, maxRequests - count).toString(),
         'X-RateLimit-Reset': resetTime.toISOString(),
         'X-RateLimit-Window': windowMs.toString(),
       });

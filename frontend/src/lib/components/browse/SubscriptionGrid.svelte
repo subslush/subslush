@@ -20,6 +20,7 @@
     'subscription:click': BrowseSubscription;
     'subscription:compare': BrowseSubscription;
     'grid:loaded': void;
+    'filters:clear': void;
   }>();
 
   let gridElement: HTMLElement;

@@ -1,12 +1,6 @@
 <script lang="ts">
-  import { Star } from 'lucide-svelte';
   import type { SubscriptionDetail } from '$lib/types/subscription';
-
-  // Import SVG logos
-  import netflixLogo from '$lib/assets/netflixlogo.svg';
-  import spotifyLogo from '$lib/assets/spotifylogo.svg';
-  import tradingviewLogo from '$lib/assets/tradingviewlogo.svg';
-  import hboLogo from '$lib/assets/hbologo.svg';
+  import { resolveLogoKey } from '$lib/assets/logoRegistry.js';
 
   export let subscription: SubscriptionDetail;
 
@@ -20,14 +14,8 @@
     return colors[serviceType] || { bg: 'bg-surface-50', text: 'text-surface-700', border: 'border-surface-200' };
   }
 
-  function getServiceLogo(serviceType: string): string {
-    const logos: Record<string, string> = {
-      spotify: spotifyLogo,
-      netflix: netflixLogo,
-      tradingview: tradingviewLogo,
-      hbo: hboLogo
-    };
-    return logos[serviceType] || '';
+  function getServiceLogo(serviceType: string, logoKey?: string | null): string {
+    return resolveLogoKey(logoKey || serviceType) || '';
   }
 
   function formatJoinDate(dateString: string) {
@@ -38,7 +26,10 @@
   }
 
   $: serviceColors = getServiceColors(subscription.serviceType);
-  $: serviceLogo = getServiceLogo(subscription.serviceType);
+  $: serviceLogo = getServiceLogo(
+    subscription.serviceType,
+    subscription.logoKey ?? subscription.logo_key
+  );
 </script>
 
 <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow duration-300 animate-in slide-in-from-bottom-4 duration-500">
@@ -69,41 +60,6 @@
       </div>
     </div>
   </div>
-
-  <!-- Badges -->
-  <div class="flex flex-wrap gap-2 mb-4">
-    {#each subscription.badges.filter(badge => badge !== 'shared_plan') as badge}
-      <span class="px-3 py-1 text-xs font-medium rounded-full
-        {badge === 'verified' ? 'bg-green-100 text-green-800' :
-         badge === 'popular' ? 'bg-purple-100 text-purple-800' :
-         'bg-gray-200 text-gray-700'}">
-        {badge === 'verified' ? 'Verified' :
-         badge === 'popular' ? 'Popular' :
-         badge.charAt(0).toUpperCase() + badge.slice(1)}
-      </span>
-    {/each}
-  </div>
-
-  <!-- Rating and Reviews -->
-  <div class="flex items-center space-x-4 mb-4">
-    <div class="flex items-center space-x-1">
-      {#each Array(5) as _, i}
-        <Star
-          size={20}
-          class={i < Math.floor(subscription.ratings.average)
-            ? 'text-yellow-400 fill-current'
-            : 'text-gray-300'}
-        />
-      {/each}
-      <span class="text-lg font-semibold text-gray-900 ml-2">
-        {subscription.ratings.average.toFixed(1)}
-      </span>
-      <span class="text-gray-600">
-        ({subscription.ratings.count} reviews)
-      </span>
-    </div>
-  </div>
-
 
   <!-- Description -->
   <div class="space-y-4">

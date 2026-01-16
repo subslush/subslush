@@ -27,6 +27,7 @@ export interface UserProfile {
   displayName?: string | undefined;
   role?: string | undefined;
   status: string;
+  pinSetAt?: string | undefined;
   timezone?: string | undefined;
   languagePreference?: string | undefined;
   notificationPreferences?:
@@ -95,6 +96,7 @@ export interface UserDatabaseRecord {
   last_login?: string;
   status: string;
   display_name?: string;
+  pin_set_at?: string | null;
   user_timezone?: string;
   language_preference?: string;
   notification_preferences?: {

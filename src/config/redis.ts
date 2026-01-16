@@ -21,9 +21,10 @@ export interface RedisHealthInfo {
 class RedisClient {
   private client: Redis | null = null;
   private config: RedisConfig;
+  private label: string;
 
-  constructor() {
-    this.config = {
+  constructor(configOverrides: Partial<RedisConfig> = {}, label = 'redis') {
+    const baseConfig: RedisConfig = {
       host: env.REDIS_HOST,
       port: env.REDIS_PORT,
       password: env.REDIS_PASSWORD,
@@ -33,6 +34,8 @@ class RedisClient {
       maxRetries: env.REDIS_MAX_RETRIES,
       retryDelay: env.REDIS_RETRY_DELAY,
     };
+    this.config = { ...baseConfig, ...configOverrides };
+    this.label = label;
   }
 
   async connect(): Promise<void> {
@@ -56,29 +59,29 @@ class RedisClient {
     this.client = new Redis(redisOptions);
 
     this.client.on('connect', () => {
-      Logger.info('Redis connection established');
+      Logger.info(`${this.label} Redis connection established`);
     });
 
     this.client.on('ready', () => {
-      Logger.info('Redis client ready');
+      Logger.info(`${this.label} Redis client ready`);
     });
 
     this.client.on('error', error => {
-      Logger.error('Redis connection error:', error);
+      Logger.error(`${this.label} Redis connection error:`, error);
     });
 
     this.client.on('close', () => {
-      Logger.info('Redis connection closed');
+      Logger.info(`${this.label} Redis connection closed`);
     });
 
     this.client.on('reconnecting', () => {
-      Logger.info('Redis reconnecting...');
+      Logger.info(`${this.label} Redis reconnecting...`);
     });
 
     try {
       await this.client.connect();
     } catch (connectError) {
-      Logger.error('Failed to connect to Redis:', connectError);
+      Logger.error(`Failed to connect to ${this.label} Redis:`, connectError);
       throw connectError;
     }
   }
@@ -106,9 +109,10 @@ class RedisClient {
       throw new Error('Redis client is not connected');
     }
 
-    const start = Date.now();
+    const start = process.hrtime.bigint();
     await this.client!.ping();
-    return Date.now() - start;
+    const elapsedNs = process.hrtime.bigint() - start;
+    return Number(elapsedNs) / 1e6;
   }
 
   async getHealthInfo(): Promise<RedisHealthInfo> {
@@ -133,6 +137,10 @@ class RedisClient {
 }
 
 const redisClient = new RedisClient();
+const rateLimitRedisClient = new RedisClient(
+  { db: env.REDIS_RATE_LIMIT_DB },
+  'redis-rate-limit'
+);
 
-export { redisClient };
+export { redisClient, rateLimitRedisClient };
 export default redisClient;

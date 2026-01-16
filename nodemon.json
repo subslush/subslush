@@ -1,0 +1,15 @@
+{
+  "watch": ["src"],
+  "ext": "ts",
+  "ignore": [
+    "dist/**",
+    "node_modules/**",
+    "frontend/**",
+    ".svelte-kit/**",
+    "database/**",
+    "docs/**",
+    "*.log"
+  ],
+  "signal": "SIGTERM",
+  "delay": "200"
+}

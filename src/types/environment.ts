@@ -6,6 +6,7 @@ export interface EnvironmentConfig {
   DB_DATABASE: string;
   DB_USER: string;
   DB_PASSWORD: string;
+  DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: number;
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
@@ -13,6 +14,7 @@ export interface EnvironmentConfig {
   REDIS_PORT: number;
   REDIS_PASSWORD?: string | undefined;
   REDIS_DB: number;
+  REDIS_RATE_LIMIT_DB: number;
   REDIS_TTL_DEFAULT: number;
   REDIS_SESSION_TTL: number;
   REDIS_MAX_RETRIES: number;
@@ -20,16 +22,41 @@ export interface EnvironmentConfig {
   JWT_SECRET: string;
   JWT_EXPIRY: number;
   JWT_ALGORITHM: 'HS256' | 'RS256';
+  STRIPE_SECRET_KEY: string;
+  STRIPE_WEBHOOK_SECRET: string;
   COOKIE_SECRET: string;
   SESSION_ENCRYPTION_KEY: string;
   SESSION_IV_LENGTH: number;
+  CREDENTIALS_ENCRYPTION_KEY: string;
+  CREDENTIALS_IV_LENGTH: number;
   MAX_SESSIONS_PER_USER: number;
   SESSION_CLEANUP_INTERVAL: number;
   NOWPAYMENTS_API_KEY: string;
+  NOWPAYMENTS_SANDBOX_API_KEY?: string | undefined;
   NOWPAYMENTS_IPN_SECRET: string;
   NOWPAYMENTS_BASE_URL: string;
   NOWPAYMENTS_SANDBOX_MODE: boolean;
   NOWPAYMENTS_WEBHOOK_URL: string;
+  NOWPAYMENTS_CURRENCY_CACHE_TTL: number;
+  NOWPAYMENTS_CURRENCY_LKG_TTL: number;
+  NOWPAYMENTS_CURRENCY_REFRESH_INTERVAL: number;
+  PASSWORD_RESET_REDIRECT_URL?: string | undefined;
+  APP_BASE_URL?: string | undefined;
+  EMAIL_PROVIDER: 'smtp' | 'console' | 'resend';
+  EMAIL_FROM?: string | undefined;
+  EMAIL_REPLY_TO?: string | undefined;
+  RESEND_API_KEY?: string | undefined;
+  SMTP_HOST?: string | undefined;
+  SMTP_PORT?: number | undefined;
+  SMTP_SECURE: boolean;
+  SMTP_USER?: string | undefined;
+  SMTP_PASSWORD?: string | undefined;
+  SMTP_CONNECTION_TIMEOUT: number;
+  SMTP_GREETING_TIMEOUT: number;
+  SMTP_SOCKET_TIMEOUT: number;
+  PASSWORD_RESET_EMAIL_SUBJECT: string;
+  CATALOG_DB_PRICING: boolean;
+  COUPON_RESERVATION_MINUTES: number;
 
   // Payment Monitoring Configuration
   PAYMENT_MONITORING_INTERVAL: number;
@@ -44,4 +71,22 @@ export interface EnvironmentConfig {
   // Refund Processing Configuration
   REFUND_APPROVAL_REQUIRED: boolean;
   REFUND_PROCESSING_TIMEOUT: number;
+
+  // Background Jobs / Monitors
+  JOBS_ENABLED: boolean;
+  PAYMENT_MONITORING_AUTO_START: boolean;
+  SUBSCRIPTION_RENEWAL_INTERVAL: number;
+  SUBSCRIPTION_RENEWAL_LOOKAHEAD_MINUTES: number;
+  SUBSCRIPTION_RENEWAL_BATCH_SIZE: number;
+  SUBSCRIPTION_RENEWAL_RETRY_MINUTES: number;
+  SUBSCRIPTION_EXPIRY_INTERVAL: number;
+  SUBSCRIPTION_REMINDER_INTERVAL: number;
+  UPGRADE_SELECTION_REMINDER_INTERVAL: number;
+  MANUAL_MONTHLY_UPGRADE_INTERVAL: number;
+  PIN_LOCKOUT_MONITOR_INTERVAL: number;
+  SUBSCRIPTION_DATA_QUALITY_INTERVAL: number;
+  CONTEST_PRIZE_INTERVAL: number;
+  VIRAL_METRICS_INTERVAL: number;
+  EMAIL_VERIFICATION_SYNC_INTERVAL: number;
+  EMAIL_VERIFICATION_SYNC_BATCH_SIZE: number;
 }

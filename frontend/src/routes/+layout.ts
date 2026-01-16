@@ -6,5 +6,6 @@ export const load: LayoutLoad = async ({ data }) => {
   // Pass server data to client
   return {
     user: data?.user || null,
+    currency: data?.currency || null
   };
 };

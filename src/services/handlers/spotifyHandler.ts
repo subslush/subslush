@@ -122,7 +122,10 @@ export class SpotifyHandler extends BaseServiceHandler {
   }
 
   override getAvailablePlans(): ServicePlanDetails[] {
-    return [this.planDetails.premium, this.planDetails.family];
+    const plans = ['premium', 'family']
+      .map(plan => this.planDetails[plan])
+      .filter(Boolean) as ServicePlanDetails[];
+    return plans;
   }
 
   override async validatePurchase(

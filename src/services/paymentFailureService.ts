@@ -6,11 +6,17 @@ import { PaymentStatus } from '../types/payment';
 import {
   FailureHandlingResult,
   createSuccessResult,
-  createErrorResult
+  createErrorResult,
 } from '../types/service';
 import { env } from '../config/environment';
 
-export type FailureType = 'expired' | 'failed' | 'network_error' | 'insufficient_payment' | 'monitoring_error' | 'system_error';
+export type FailureType =
+  | 'expired'
+  | 'failed'
+  | 'network_error'
+  | 'insufficient_payment'
+  | 'monitoring_error'
+  | 'system_error';
 
 export interface PaymentFailureData {
   paymentId: string;
@@ -57,7 +63,7 @@ export class PaymentFailureService {
     expiredPayments: 0,
     networkErrors: 0,
     userNotifications: 0,
-    adminAlerts: 0
+    adminAlerts: 0,
   };
 
   // Main entry point for handling payment failures
@@ -99,7 +105,6 @@ export class PaymentFailureService {
       this.updateMetrics(failureType, action);
 
       return result;
-
     } catch (error) {
       Logger.error(`Error handling payment failure for ${paymentId}:`, error);
       return createErrorResult('System error in failure handling');
@@ -107,7 +112,10 @@ export class PaymentFailureService {
   }
 
   // Handle monitoring failures (when API calls fail)
-  async handleMonitoringFailure(paymentId: string, error: string): Promise<void> {
+  async handleMonitoringFailure(
+    paymentId: string,
+    error: string
+  ): Promise<void> {
     try {
       Logger.warn(`Monitoring failure for payment ${paymentId}: ${error}`);
 
@@ -117,20 +125,28 @@ export class PaymentFailureService {
         `Monitoring error: ${error}`,
         { monitoringError: true, originalError: error }
       );
-
     } catch (err) {
       Logger.error(`Error handling monitoring failure for ${paymentId}:`, err);
     }
   }
 
   // Categorize the type of failure
-  private categorizeFailure(status: PaymentStatus, reason: string): FailureType {
+  private categorizeFailure(
+    status: PaymentStatus,
+    reason: string
+  ): FailureType {
     if (status === 'expired') return 'expired';
     if (status === 'failed') return 'failed';
-    if (reason.toLowerCase().includes('network') || reason.toLowerCase().includes('timeout')) {
+    if (
+      reason.toLowerCase().includes('network') ||
+      reason.toLowerCase().includes('timeout')
+    ) {
       return 'network_error';
     }
-    if (reason.toLowerCase().includes('insufficient') || reason.toLowerCase().includes('underpaid')) {
+    if (
+      reason.toLowerCase().includes('insufficient') ||
+      reason.toLowerCase().includes('underpaid')
+    ) {
       return 'insufficient_payment';
     }
     if (reason.toLowerCase().includes('monitoring')) {
@@ -140,7 +156,9 @@ export class PaymentFailureService {
   }
 
   // Get payment information from database
-  private async getPaymentInfo(paymentId: string): Promise<{ userId: string; createdAt: Date } | null> {
+  private async getPaymentInfo(
+    paymentId: string
+  ): Promise<{ userId: string; createdAt: Date } | null> {
     try {
       const pool = getDatabasePool();
       const result = await pool.query(
@@ -152,7 +170,7 @@ export class PaymentFailureService {
 
       return {
         userId: result.rows[0].user_id,
-        createdAt: new Date(result.rows[0].created_at)
+        createdAt: new Date(result.rows[0].created_at),
       };
     } catch (error) {
       Logger.error(`Error getting payment info for ${paymentId}:`, error);
@@ -196,7 +214,7 @@ export class PaymentFailureService {
         retryCount: 0,
         canRetry: this.canRetryFailureType(failureType),
         lastAttempt: new Date(),
-        metadata: metadata || {}
+        metadata: metadata || {},
       };
 
       // Cache the failure record
@@ -207,9 +225,11 @@ export class PaymentFailureService {
       );
 
       return failureData;
-
     } catch (error) {
-      Logger.error(`Error getting/creating failure record for ${paymentId}:`, error);
+      Logger.error(
+        `Error getting/creating failure record for ${paymentId}:`,
+        error
+      );
       throw error;
     }
   }
@@ -231,7 +251,9 @@ export class PaymentFailureService {
   }
 
   // Determine the appropriate action for a failure
-  private async determineFailureAction(failureData: PaymentFailureData): Promise<string> {
+  private async determineFailureAction(
+    failureData: PaymentFailureData
+  ): Promise<string> {
     // If payment is permanently failed or expired
     if (['expired', 'failed', 'refunded'].includes(failureData.status)) {
       return 'cleanup_completed';
@@ -280,9 +302,13 @@ export class PaymentFailureService {
   }
 
   // Retry payment monitoring
-  private async retryPaymentMonitoring(failureData: PaymentFailureData): Promise<FailureHandlingResult> {
+  private async retryPaymentMonitoring(
+    failureData: PaymentFailureData
+  ): Promise<FailureHandlingResult> {
     try {
-      Logger.info(`Retrying payment monitoring for ${failureData.paymentId} (attempt ${failureData.retryCount + 1})`);
+      Logger.info(
+        `Retrying payment monitoring for ${failureData.paymentId} (attempt ${failureData.retryCount + 1})`
+      );
 
       // Update retry count and schedule next retry
       failureData.retryCount++;
@@ -294,19 +320,26 @@ export class PaymentFailureService {
 
       // Try to get fresh payment status
       try {
-        const paymentStatus = await nowpaymentsClient.getPaymentStatus(failureData.paymentId);
+        const paymentStatus = await nowpaymentsClient.getPaymentStatus(
+          failureData.paymentId
+        );
 
         // If status has changed, let monitoring service handle it
         if (paymentStatus.payment_status !== failureData.status) {
-          Logger.info(`Payment status changed during retry: ${failureData.paymentId} now ${paymentStatus.payment_status}`);
+          Logger.info(
+            `Payment status changed during retry: ${failureData.paymentId} now ${paymentStatus.payment_status}`
+          );
           await this.clearFailureRecord(failureData.paymentId);
           return createSuccessResult({
             action: 'retried' as const,
-            retryCount: failureData.retryCount
+            retryCount: failureData.retryCount,
           });
         }
       } catch (error) {
-        Logger.warn(`Retry attempt failed for ${failureData.paymentId}:`, error);
+        Logger.warn(
+          `Retry attempt failed for ${failureData.paymentId}:`,
+          error
+        );
       }
 
       // Update cached failure record
@@ -315,19 +348,25 @@ export class PaymentFailureService {
       return createSuccessResult({
         action: 'retried' as const,
         retryCount: failureData.retryCount,
-        nextRetryAt: failureData.nextRetryAt
+        nextRetryAt: failureData.nextRetryAt,
       });
-
     } catch (error) {
-      Logger.error(`Error retrying payment monitoring for ${failureData.paymentId}:`, error);
+      Logger.error(
+        `Error retrying payment monitoring for ${failureData.paymentId}:`,
+        error
+      );
       return createErrorResult('Retry failed');
     }
   }
 
   // Notify user of payment failure
-  private async notifyUserOfFailure(failureData: PaymentFailureData): Promise<FailureHandlingResult> {
+  private async notifyUserOfFailure(
+    failureData: PaymentFailureData
+  ): Promise<FailureHandlingResult> {
     try {
-      Logger.info(`Notifying user of payment failure: ${failureData.paymentId}`);
+      Logger.info(
+        `Notifying user of payment failure: ${failureData.paymentId}`
+      );
 
       // Create user notification
       const notification = await this.createUserNotification(failureData);
@@ -337,19 +376,26 @@ export class PaymentFailureService {
 
       return createSuccessResult({
         action: 'user_notified' as const,
-        notificationSent: true
+        notificationSent: true,
       });
-
     } catch (error) {
-      Logger.error(`Error notifying user of failure for ${failureData.paymentId}:`, error);
+      Logger.error(
+        `Error notifying user of failure for ${failureData.paymentId}:`,
+        error
+      );
       return createErrorResult('User notification failed');
     }
   }
 
   // Alert admin of critical failure
-  private async alertAdminOfFailure(failureData: PaymentFailureData): Promise<FailureHandlingResult> {
+  private async alertAdminOfFailure(
+    failureData: PaymentFailureData
+  ): Promise<FailureHandlingResult> {
     try {
-      Logger.error(`Admin alert: Payment failure requires intervention: ${failureData.paymentId}`, failureData);
+      Logger.error(
+        `Admin alert: Payment failure requires intervention: ${failureData.paymentId}`,
+        failureData
+      );
 
       // Create admin alert
       const alert = await this.createAdminAlert(failureData);
@@ -362,17 +408,21 @@ export class PaymentFailureService {
 
       return createSuccessResult({
         action: 'admin_alerted' as const,
-        alertLevel: 'high' as const
+        alertLevel: 'high' as const,
       });
-
     } catch (error) {
-      Logger.error(`Error alerting admin of failure for ${failureData.paymentId}:`, error);
+      Logger.error(
+        `Error alerting admin of failure for ${failureData.paymentId}:`,
+        error
+      );
       return createErrorResult('Admin alert failed');
     }
   }
 
   // Cleanup failed/expired payment
-  private async cleanupFailedPayment(failureData: PaymentFailureData): Promise<FailureHandlingResult> {
+  private async cleanupFailedPayment(
+    failureData: PaymentFailureData
+  ): Promise<FailureHandlingResult> {
     try {
       Logger.info(`Cleaning up failed payment: ${failureData.paymentId}`);
 
@@ -388,17 +438,21 @@ export class PaymentFailureService {
       }
 
       return createSuccessResult({
-        action: 'cleanup_completed' as const
+        action: 'cleanup_completed' as const,
       });
-
     } catch (error) {
-      Logger.error(`Error cleaning up failed payment ${failureData.paymentId}:`, error);
+      Logger.error(
+        `Error cleaning up failed payment ${failureData.paymentId}:`,
+        error
+      );
       return createErrorResult('Cleanup failed');
     }
   }
 
   // Create user notification
-  private async createUserNotification(failureData: PaymentFailureData): Promise<string> {
+  private async createUserNotification(
+    failureData: PaymentFailureData
+  ): Promise<string> {
     const message = this.generateUserMessage(failureData);
 
     // Cache notification for retrieval
@@ -409,9 +463,11 @@ export class PaymentFailureService {
         paymentId: failureData.paymentId,
         status: failureData.status,
         message,
-        canRetry: failureData.canRetry && failureData.retryCount < this.MAX_RETRY_ATTEMPTS,
-        timestamp: new Date().toISOString()
-      }
+        canRetry:
+          failureData.canRetry &&
+          failureData.retryCount < this.MAX_RETRY_ATTEMPTS,
+        timestamp: new Date().toISOString(),
+      },
     };
 
     await redisClient.getClient().setex(
@@ -442,7 +498,9 @@ export class PaymentFailureService {
   }
 
   // Create admin alert
-  private async createAdminAlert(failureData: PaymentFailureData): Promise<string> {
+  private async createAdminAlert(
+    failureData: PaymentFailureData
+  ): Promise<string> {
     const alert = {
       type: 'payment_failure_alert',
       severity: 'high',
@@ -452,7 +510,7 @@ export class PaymentFailureService {
       retryCount: failureData.retryCount,
       reason: failureData.reason,
       timestamp: new Date().toISOString(),
-      action_required: 'Manual intervention needed for payment monitoring'
+      action_required: 'Manual intervention needed for payment monitoring',
     };
 
     // Store alert in Redis for admin dashboard
@@ -467,32 +525,52 @@ export class PaymentFailureService {
   }
 
   // Notify user of payment expiry
-  private async notifyUserOfExpiry(failureData: PaymentFailureData): Promise<void> {
+  private async notifyUserOfExpiry(
+    failureData: PaymentFailureData
+  ): Promise<void> {
     const notification = {
       type: 'payment:expired',
       data: {
         paymentId: failureData.paymentId,
-        message: 'Your payment has expired. You can create a new payment to purchase credits.',
-        timestamp: new Date().toISOString()
-      }
+        message:
+          'Your payment has expired. You can create a new payment to purchase credits.',
+        timestamp: new Date().toISOString(),
+      },
     };
 
     const notificationKey = `notification:${failureData.userId}:expired:${Date.now()}`;
-    await redisClient.getClient().setex(
-      notificationKey,
-      3600,
-      JSON.stringify(notification)
-    );
+    await redisClient
+      .getClient()
+      .setex(notificationKey, 3600, JSON.stringify(notification));
   }
 
   // Update failure record in cache
-  private async updateFailureRecord(failureData: PaymentFailureData): Promise<void> {
+  private async updateFailureRecord(
+    failureData: PaymentFailureData
+  ): Promise<void> {
     const cacheKey = `${this.CACHE_PREFIX}${failureData.paymentId}`;
-    await redisClient.getClient().setex(
-      cacheKey,
-      86400 * this.CLEANUP_AFTER_DAYS,
-      JSON.stringify(failureData)
-    );
+    await redisClient
+      .getClient()
+      .setex(
+        cacheKey,
+        86400 * this.CLEANUP_AFTER_DAYS,
+        JSON.stringify(failureData)
+      );
+  }
+
+  // Clear failure record when payment completes successfully
+  async resolveFailure(paymentId: string, context?: string): Promise<void> {
+    try {
+      const cacheKey = `${this.CACHE_PREFIX}${paymentId}`;
+      const deleted = await redisClient.getClient().del(cacheKey);
+      if (deleted > 0) {
+        Logger.info(`Cleared failure record for payment ${paymentId}`, {
+          context,
+        });
+      }
+    } catch (error) {
+      Logger.error(`Error clearing failure record for ${paymentId}:`, error);
+    }
   }
 
   // Clear failure record from cache
@@ -502,25 +580,32 @@ export class PaymentFailureService {
   }
 
   // Mark payment as cleaned in database
-  private async markPaymentAsCleaned(failureData: PaymentFailureData): Promise<void> {
+  private async markPaymentAsCleaned(
+    failureData: PaymentFailureData
+  ): Promise<void> {
     try {
       const pool = getDatabasePool();
       const metadata = {
         cleanedAt: new Date().toISOString(),
         finalStatus: failureData.status,
         failureType: failureData.failureType,
-        retryCount: failureData.retryCount
+        retryCount: failureData.retryCount,
       };
 
-      await pool.query(`
+      await pool.query(
+        `
         UPDATE credit_transactions
         SET metadata = COALESCE(metadata, '{}')::jsonb || $1::jsonb,
             updated_at = NOW()
         WHERE payment_id = $2
-      `, [JSON.stringify(metadata), failureData.paymentId]);
-
+      `,
+        [JSON.stringify(metadata), failureData.paymentId]
+      );
     } catch (error) {
-      Logger.error(`Error marking payment as cleaned ${failureData.paymentId}:`, error);
+      Logger.error(
+        `Error marking payment as cleaned ${failureData.paymentId}:`,
+        error
+      );
     }
   }
 
@@ -537,7 +622,7 @@ export class PaymentFailureService {
         recipient,
         message,
         failureType: failureData.failureType,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
 
       // Store in Redis for audit trail
@@ -547,7 +632,6 @@ export class PaymentFailureService {
         86400 * 30, // 30 days TTL
         JSON.stringify(logEntry)
       );
-
     } catch (error) {
       Logger.error('Error logging failure notification:', error);
     }
@@ -597,25 +681,29 @@ export class PaymentFailureService {
       expiredPayments: 0,
       networkErrors: 0,
       userNotifications: 0,
-      adminAlerts: 0
+      adminAlerts: 0,
     };
   }
 
   // Get all failed payments for admin dashboard
-  async getFailedPayments(limit = 50, offset = 0): Promise<PaymentFailureData[]> {
+  async getFailedPayments(
+    limit = 50,
+    offset = 0
+  ): Promise<PaymentFailureData[]> {
     try {
       // Get from Redis cache
       const pattern = `${this.CACHE_PREFIX}*`;
       const keys = await redisClient.getClient().keys(pattern);
 
-      const failurePromises = keys.slice(offset, offset + limit).map(async key => {
-        const data = await redisClient.getClient().get(key);
-        return data ? JSON.parse(data) : null;
-      });
+      const failurePromises = keys
+        .slice(offset, offset + limit)
+        .map(async key => {
+          const data = await redisClient.getClient().get(key);
+          return data ? JSON.parse(data) : null;
+        });
 
       const failures = await Promise.all(failurePromises);
       return failures.filter(f => f !== null);
-
     } catch (error) {
       Logger.error('Error getting failed payments:', error);
       return [];
@@ -623,9 +711,14 @@ export class PaymentFailureService {
   }
 
   // Manual retry for specific payment (admin action)
-  async manualRetryPayment(paymentId: string, adminUserId: string): Promise<FailureHandlingResult> {
+  async manualRetryPayment(
+    paymentId: string,
+    adminUserId: string
+  ): Promise<FailureHandlingResult> {
     try {
-      Logger.info(`Manual retry initiated by admin ${adminUserId} for payment ${paymentId}`);
+      Logger.info(
+        `Manual retry initiated by admin ${adminUserId} for payment ${paymentId}`
+      );
 
       const failureData = await this.getFailureRecord(paymentId);
       if (!failureData) {
@@ -639,11 +732,10 @@ export class PaymentFailureService {
         ...failureData.metadata,
         manualRetry: true,
         adminUserId,
-        manualRetryAt: new Date().toISOString()
+        manualRetryAt: new Date().toISOString(),
       };
 
       return await this.retryPaymentMonitoring(failureData);
-
     } catch (error) {
       Logger.error(`Error in manual retry for ${paymentId}:`, error);
       return createErrorResult('Manual retry failed');
@@ -651,7 +743,9 @@ export class PaymentFailureService {
   }
 
   // Get specific failure record
-  private async getFailureRecord(paymentId: string): Promise<PaymentFailureData | null> {
+  private async getFailureRecord(
+    paymentId: string
+  ): Promise<PaymentFailureData | null> {
     try {
       const cacheKey = `${this.CACHE_PREFIX}${paymentId}`;
       const data = await redisClient.getClient().get(cacheKey);
@@ -678,7 +772,9 @@ export class PaymentFailureService {
   // Cleanup old failure records
   async cleanupOldFailures(): Promise<number> {
     try {
-      const cutoffDate = new Date(Date.now() - (86400000 * this.CLEANUP_AFTER_DAYS));
+      const cutoffDate = new Date(
+        Date.now() - 86400000 * this.CLEANUP_AFTER_DAYS
+      );
       const pattern = `${this.CACHE_PREFIX}*`;
       const keys = await redisClient.getClient().keys(pattern);
 
@@ -696,7 +792,6 @@ export class PaymentFailureService {
 
       Logger.info(`Cleaned up ${cleanedCount} old failure records`);
       return cleanedCount;
-
     } catch (error) {
       Logger.error('Error cleaning up old failures:', error);
       return 0;

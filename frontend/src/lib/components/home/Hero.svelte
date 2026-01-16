@@ -1,63 +1,88 @@
 <script lang="ts">
-  import { Lock, Check, Users, Zap } from 'lucide-svelte';
-  import CategoryFilter from './CategoryFilter.svelte';
+  import pandaHero from '$lib/assets/pandabearny.webp';
+  import netflixNY from '$lib/assets/netflixny.jpg';
+  import spotifyNY from '$lib/assets/spotifyny.jpg';
+  import chatgptNY from '$lib/assets/chatgptny.jpg';
 
-  export let selectedCategory = 'all';
+  const heroCards = [
+    {
+      title: 'Netflix Premium',
+      description: 'Ultra HD · 4 screens · Worldwide access',
+      badge: 'Save up to 75%',
+      background: netflixNY
+    },
+    {
+      title: 'Spotify Premium',
+      description: 'Ad-free music · Offline downloads · Family ready',
+      badge: 'Save up to 65%',
+      background: spotifyNY
+    },
+    {
+      title: 'ChatGPT Plus',
+      description: 'Chat with the most advanced AI to explore ideas, solve problems, and learn faster.',
+      badge: 'Save up to 70%',
+      background: chatgptNY
+    }
+  ];
+
 </script>
 
-<section class="bg-gray-50 py-12 md:py-16">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<section id="hero-section" class="relative overflow-hidden py-12 md:py-16">
+  <img
+    src={pandaHero}
+    alt="Panda celebrating the New Year"
+    class="absolute inset-0 h-full w-full object-cover blur-sm brightness-90 opacity-90 pointer-events-none"
+    loading="lazy"
+  />
+  <div class="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70 pointer-events-none"></div>
 
+  <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="mt-2">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-fr">
+            {#each heroCards as card}
+          <article
+            class="relative h-[380px] min-h-[380px] overflow-hidden rounded-2xl shadow-lg border-4 text-gray-900 border-white/70"
+          >
+            {#if card.background}
+              <div class="absolute inset-0 bg-cover bg-center" style={`background-image: url(${card.background});`}></div>
+            {/if}
+            <a
+              href="/browse"
+              class="relative flex h-full flex-col justify-between gap-4 p-6 transition-transform hover:translate-y-[-2px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 rounded-2xl"
+            >
+              <div class="flex items-start gap-3">
+                <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-gradient-to-r from-cyan-50 to-pink-50 text-cyan-700">
+                  {card.badge}
+                </span>
+              </div>
 
-    <!-- Heading -->
-    <h1 class="text-3xl md:text-4xl font-bold text-gray-900 text-center mb-4">
-      Save Up To <span class="bg-gradient-to-r from-cyan-500 to-pink-500 bg-clip-text text-transparent">90%</span> On Premium Subscriptions
-    </h1>
-
-    <!-- Subtitle -->
-    <p class="text-base text-gray-600 text-center mb-8 max-w-2xl mx-auto">
-      Join 250,000+ users getting Spotify, Netflix, and 500+ services at a fraction of retail price. Instant access. Verified accounts.
-    </p>
-
-
-    <!-- Category Filter Chips -->
-    <CategoryFilter bind:selectedCategory />
-
-    <!-- Primary CTA Button -->
-    <div class="text-center mt-8">
-      <button class="bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600
-                     text-white font-semibold px-8 py-4 text-lg rounded-lg shadow-lg hover:shadow-xl
-                     transition-all duration-200 hover:scale-105 inline-flex items-center gap-2">
-        <span>Browse All Subscriptions</span>
-        <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" />
-        </svg>
-      </button>
-
-      <!-- Secondary Text -->
-      <p class="text-sm text-gray-500 mt-3">
-        No credit card required • Cancel anytime
-      </p>
-
-      <!-- Mini Trust Badges -->
-      <div class="flex flex-wrap items-center justify-center gap-4 mt-4 text-sm text-gray-600">
-        <div class="flex items-center gap-1.5">
-          <Lock size={16} class="text-gray-500" />
-          <span>Encrypted Payments</span>
-        </div>
-        <div class="flex items-center gap-1.5">
-          <Check size={16} class="text-green-600" />
-          <span>7-Day Guarantee</span>
-        </div>
-        <div class="flex items-center gap-1.5">
-          <Users size={16} class="text-cyan-600" />
-          <span>250K+ Users</span>
-        </div>
-        <div class="flex items-center gap-1.5">
-          <Zap size={16} class="text-amber-500" />
-          <span>99.9% Uptime</span>
-        </div>
+              <div class="hero-card-body space-y-2 rounded-xl bg-black/40 backdrop-blur-sm p-4">
+                <h2 class="text-xl font-bold leading-tight text-white">
+                  {card.title}
+                </h2>
+                <p class="hero-card-description text-sm leading-relaxed text-white">
+                  {card.description}
+                </p>
+              </div>
+            </a>
+          </article>
+        {/each}
       </div>
+
     </div>
   </div>
 </section>
+
+<style>
+  .hero-card-body {
+    min-height: 132px;
+  }
+
+  .hero-card-description {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    line-clamp: 3;
+    overflow: hidden;
+  }
+</style>

@@ -6,38 +6,45 @@ import type {
   AuthResponse,
   LogoutRequest,
   RefreshResponse,
+  ConfirmEmailRequest,
   SessionsResponse
 } from '$lib/types/auth.js';
+import { unwrapApiData } from './response.js';
 
 export class AuthService {
   async register(data: RegisterRequest): Promise<AuthResponse> {
     const response = await apiClient.post(API_ENDPOINTS.AUTH.REGISTER, data);
-    return response.data;
+    return unwrapApiData<AuthResponse>(response);
   }
 
   async login(data: LoginRequest): Promise<AuthResponse> {
     const response = await apiClient.post(API_ENDPOINTS.AUTH.LOGIN, data);
-    return response.data;
+    return unwrapApiData<AuthResponse>(response);
   }
 
   async logout(data?: LogoutRequest): Promise<{ message: string }> {
     const response = await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT, data);
-    return response.data;
+    return unwrapApiData<{ message: string }>(response);
   }
 
   async refreshSession(): Promise<RefreshResponse> {
     const response = await apiClient.post(API_ENDPOINTS.AUTH.REFRESH);
-    return response.data;
+    return unwrapApiData<RefreshResponse>(response);
+  }
+
+  async confirmEmail(data: ConfirmEmailRequest): Promise<AuthResponse> {
+    const response = await apiClient.post(API_ENDPOINTS.AUTH.CONFIRM_EMAIL, data);
+    return unwrapApiData<AuthResponse>(response);
   }
 
   async getSessions(): Promise<SessionsResponse> {
     const response = await apiClient.get(API_ENDPOINTS.AUTH.SESSIONS);
-    return response.data;
+    return unwrapApiData<SessionsResponse>(response);
   }
 
   async revokeSession(sessionId: string): Promise<{ message: string }> {
     const response = await apiClient.delete(`${API_ENDPOINTS.AUTH.SESSIONS}/${sessionId}`);
-    return response.data;
+    return unwrapApiData<{ message: string }>(response);
   }
 
   async logoutAllDevices(): Promise<{ message: string }> {

@@ -201,10 +201,17 @@ class MigrationRunner {
             console.log(`\n🔄 Applying ${direction.toUpperCase()}: ${filename}`);
 
             const content = await fs.readFile(filePath, 'utf8');
+            const hasMarkers = this.hasMigrationMarkers(content);
+            if (!hasMarkers && direction === 'up') {
+                console.warn(
+                    `⚠️  Legacy migration format detected in ${filename}; applying full file as UP migration`
+                );
+            }
             const sql = this.extractSqlForDirection(content, direction);
+            const cleanedSql = this.stripPsqlMeta(sql);
             const checksum = this.calculateChecksum(content);
 
-            if (!sql.trim()) {
+            if (!cleanedSql.trim()) {
                 console.warn(`⚠️  No ${direction.toUpperCase()} migration found in ${filename}`);
                 return;
             }
@@ -213,7 +220,7 @@ class MigrationRunner {
 
             await this.db.transaction(async (client) => {
                 // Split SQL into individual statements
-                const statements = this.splitSqlStatements(sql);
+                const statements = this.splitSqlStatements(cleanedSql);
 
                 for (const statement of statements) {
                     if (statement.trim()) {
@@ -349,19 +356,26 @@ class MigrationRunner {
 
                 const filePath = path.join(this.migrationsDir, file);
                 const content = await fs.readFile(filePath, 'utf8');
+                const hasMarkers = this.hasMigrationMarkers(content);
 
                 // Check file format
-                const upSql = this.extractSqlForDirection(content, 'up');
-                const downSql = this.extractSqlForDirection(content, 'down');
+                const upSql = this.stripPsqlMeta(
+                    this.extractSqlForDirection(content, 'up')
+                );
+                const downSql = this.stripPsqlMeta(
+                    this.extractSqlForDirection(content, 'down')
+                );
 
                 if (!upSql.trim()) {
                     console.error(`   ❌ No UP migration found`);
                     hasErrors = true;
                 }
 
-                if (!downSql.trim()) {
+                if (hasMarkers && !downSql.trim()) {
                     console.error(`   ❌ No DOWN migration found`);
                     hasErrors = true;
+                } else if (!hasMarkers) {
+                    console.warn(`   ⚠️  Legacy migration format (no Down migration)`);
                 }
 
                 // Check for transaction blocks
@@ -369,7 +383,7 @@ class MigrationRunner {
                     console.warn(`   ⚠️  UP migration missing transaction block`);
                 }
 
-                if (!downSql.includes('BEGIN') || !downSql.includes('COMMIT')) {
+                if (downSql.trim() && (!downSql.includes('BEGIN') || !downSql.includes('COMMIT'))) {
                     console.warn(`   ⚠️  DOWN migration missing transaction block`);
                 }
 
@@ -478,12 +492,33 @@ class MigrationRunner {
     extractSqlForDirection(content, direction) {
         const upMatch = content.match(/-- Up Migration\s*\n([\s\S]*?)(?=-- Down Migration|$)/i);
         const downMatch = content.match(/-- Down Migration\s*\n([\s\S]*?)$/i);
+        const hasMarkers = this.hasMigrationMarkers(content);
 
         if (direction === 'up') {
-            return upMatch ? upMatch[1].trim() : '';
+            if (upMatch) {
+                return upMatch[1].trim();
+            }
+            return hasMarkers ? '' : content.trim();
         } else {
             return downMatch ? downMatch[1].trim() : '';
         }
+    }
+
+    /**
+     * Detect legacy migrations that omit Up/Down markers
+     */
+    hasMigrationMarkers(content) {
+        return /-- Up Migration/i.test(content) || /-- Down Migration/i.test(content);
+    }
+
+    /**
+     * Strip psql meta-commands (e.g., \echo) that are invalid in node-postgres
+     */
+    stripPsqlMeta(sql) {
+        return sql
+            .split('\n')
+            .filter(line => !line.trim().startsWith('\\'))
+            .join('\n');
     }
 
     /**
@@ -544,15 +579,18 @@ class MigrationRunner {
      * Get version from filename
      */
     getVersionFromFilename(filename) {
-        const match = filename.match(/^(\d{8}_\d{6})/);
-        return match ? match[1] : null;
+        const match = filename.match(/^(\d{8})(?:_(\d{6}))?/);
+        if (!match) {
+            return null;
+        }
+        return match[2] ? `${match[1]}_${match[2]}` : match[1];
     }
 
     /**
      * Get name from filename
      */
     getNameFromFilename(filename) {
-        const match = filename.match(/^\d{8}_\d{6}_(.+)\.sql$/);
+        const match = filename.match(/^\d{8}(?:_\d{6})?_(.+)\.sql$/);
         return match ? match[1].replace(/_/g, ' ') : filename;
     }
 

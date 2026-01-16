@@ -1,24 +1,22 @@
 <script lang="ts">
-  import { Check } from 'lucide-svelte';
-  import type { SubscriptionDetail, DurationOption } from '$lib/types/subscription';
+  import type { SubscriptionDetail } from '$lib/types/subscription';
+  import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
 
   export let subscription: SubscriptionDetail;
   export let userCredits: number = 0;
   export let onJoinPlan: () => void;
-
-  let selectedDuration = 1; // Default to 1 month
+  export let selectedDuration = 1;
+  export let onSelectDuration: (months: number) => void;
 
   $: selectedOption = subscription.durationOptions.find(opt => opt.months === selectedDuration)
     || subscription.durationOptions[0];
   $: finalPrice = selectedOption?.totalPrice || subscription.price;
-  $: savingsPercentage = subscription.originalPrice > subscription.price
-    ? Math.round(((subscription.originalPrice - subscription.price) / subscription.originalPrice) * 100)
+  $: resolvedCurrency = normalizeCurrencyCode(subscription.currency) || 'USD';
+  $: creditsEligible = resolvedCurrency === 'USD' && userCredits >= 0;
+  $: originalPrice = subscription.originalPrice ?? subscription.price;
+  $: savingsPercentage = originalPrice > subscription.price
+    ? Math.round(((originalPrice - subscription.price) / originalPrice) * 100)
     : 0;
-  $: canPurchase = userCredits >= finalPrice;
-
-  function formatCurrency(amount: number) {
-    return `€${amount.toFixed(2)}`;
-  }
 </script>
 
 <div class="lg:sticky lg:top-8 space-y-4 lg:space-y-6">
@@ -27,7 +25,7 @@
     <!-- Main Price Display -->
     <div class="text-center mb-6">
       <div class="text-4xl font-bold text-gray-900">
-        {formatCurrency(finalPrice)}
+        {formatCurrency(finalPrice, resolvedCurrency)}
       </div>
       <div class="text-gray-600 mt-1">
         per {selectedDuration === 1 ? 'month' : `${selectedDuration} months`}
@@ -58,7 +56,7 @@
                   ? 'border-blue-500 bg-blue-50 text-blue-700'
                   : 'border-gray-300 hover:border-gray-400'
               }"
-              on:click={() => selectedDuration = option.months}
+              on:click={() => onSelectDuration?.(option.months)}
               aria-pressed={selectedDuration === option.months}
               aria-label="Select {option.months === 1 ? '1 month' : `${option.months} months`} duration"
             >
@@ -85,44 +83,18 @@
     <div class="space-y-4">
       <button
         on:click={onJoinPlan}
-        disabled={!canPurchase}
-        class="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 focus:ring-2 focus:ring-offset-2 focus:outline-none {
-          canPurchase
-            ? 'text-white shadow-lg hover:shadow-xl focus:ring-blue-500'
-            : 'bg-gray-300 text-gray-500 cursor-not-allowed focus:ring-gray-300'
-        }"
-        style={canPurchase ? 'background: linear-gradient(45deg, #4FC3F7, #F06292)' : ''}
-        aria-describedby={!canPurchase ? 'insufficient-credits-message' : undefined}
+        class="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 focus:ring-2 focus:ring-offset-2 focus:outline-none text-white shadow-lg hover:shadow-xl focus:ring-blue-500"
+        style="background: linear-gradient(45deg, #4FC3F7, #F06292)"
       >
-        {#if canPurchase}
-          Join Plan
-        {:else}
-          Insufficient Credits
-        {/if}
+        Join Plan
       </button>
 
     </div>
 
-    <!-- Trust Signals -->
-    <div class="mt-4 space-y-2">
-      <div class="flex items-center space-x-2">
-        <Check size={16} class="text-green-600" />
-        <span class="text-sm text-gray-600">30-day money-back guarantee</span>
-      </div>
-      <div class="flex items-center space-x-2">
-        <Check size={16} class="text-green-600" />
-        <span class="text-sm text-gray-600">Instant access after purchase</span>
-      </div>
-      <div class="flex items-center space-x-2">
-        <Check size={16} class="text-green-600" />
-        <span class="text-sm text-gray-600">Cancel anytime</span>
-      </div>
-    </div>
-
-    {#if !canPurchase}
+    {#if !creditsEligible}
       <div class="mt-4 text-center">
-        <p class="text-xs text-gray-500" id="insufficient-credits-message">
-          You need {formatCurrency(finalPrice - userCredits)} more credits
+        <p class="text-xs text-gray-500">
+          Credit purchases are available in USD only. Card checkout will use {resolvedCurrency}.
         </p>
       </div>
     {/if}

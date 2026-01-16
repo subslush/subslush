@@ -11,7 +11,9 @@ jest.mock('../config/database');
 
 const mockCreditService = creditService as jest.Mocked<typeof creditService>;
 const mockRedisClient = redisClient as jest.Mocked<typeof redisClient>;
-const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<typeof getDatabasePool>;
+const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
+  typeof getDatabasePool
+>;
 
 // Mock Redis client
 const mockRedis = {
@@ -29,12 +31,23 @@ const mockDbClient = {
 
 const mockPool = {
   query: jest.fn<(sql: string, params?: any[]) => Promise<any>>(),
-  connect: jest.fn<() => Promise<typeof mockDbClient>>().mockResolvedValue(mockDbClient),
+  connect: jest
+    .fn<() => Promise<typeof mockDbClient>>()
+    .mockResolvedValue(mockDbClient),
 };
 
 describe('CreditAllocationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+
+    mockRedis.get.mockReset();
+    mockRedis.setex.mockReset();
+    mockRedis.del.mockReset();
+    mockRedis.ping.mockReset();
+    mockPool.query.mockReset();
+    mockPool.connect.mockReset().mockResolvedValue(mockDbClient);
+    mockDbClient.query.mockReset();
+    mockDbClient.release.mockReset();
 
     // Setup Redis mock
     mockRedisClient.getClient.mockReturnValue(mockRedis as any);
@@ -48,7 +61,7 @@ describe('CreditAllocationService', () => {
       totalBalance: 50,
       availableBalance: 50,
       pendingBalance: 0,
-      lastUpdated: new Date()
+      lastUpdated: new Date(),
     });
 
     mockCreditService.healthCheck.mockResolvedValue(true);
@@ -70,7 +83,7 @@ describe('CreditAllocationService', () => {
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
         payin_hash: 'hash-123',
-        payouts: []
+        payouts: [],
       };
 
       // Mock no duplicate allocation
@@ -79,17 +92,22 @@ describe('CreditAllocationService', () => {
 
       // Mock user validation
       mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'user-123' }]
+        rows: [{ id: 'user-123' }],
       });
 
       // Mock database transaction
       mockDbClient.query
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ // Find original transaction
-          rows: [{
-            id: 'tx-123',
-            metadata: JSON.stringify({})
-          }]
+        .mockResolvedValueOnce({ rows: [] }) // advisory lock
+        .mockResolvedValueOnce({ rows: [{ total_balance: '50' }] }) // balance
+        .mockResolvedValueOnce({
+          // Find original transaction
+          rows: [
+            {
+              id: 'tx-123',
+              metadata: JSON.stringify({}),
+            },
+          ],
         })
         .mockResolvedValueOnce({ rows: [] }) // UPDATE transaction
         .mockResolvedValueOnce({ rows: [] }); // COMMIT
@@ -112,6 +130,43 @@ describe('CreditAllocationService', () => {
       }
     });
 
+    it('should reject allocations when payment is below the requested amount', async () => {
+      const mockPaymentData = {
+        payment_id: 'payment-456',
+        payment_status: 'finished' as const,
+        pay_address: 'addr-456',
+        price_amount: 100,
+        price_currency: 'usd',
+        pay_amount: 1,
+        actually_paid: 0.95,
+        pay_currency: 'btc',
+        order_id: 'order-456',
+        purchase_id: 'purchase-456',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+        payin_hash: 'hash-456',
+        payouts: [],
+      };
+
+      // Mock no duplicate allocation
+      mockRedis.get.mockResolvedValueOnce(null); // Check cache
+      mockPool.query.mockResolvedValueOnce({ rows: [] }); // Check database
+
+      const result = await creditAllocationService.allocateCreditsForPayment(
+        'user-456',
+        'payment-456',
+        100,
+        mockPaymentData
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe(
+          'Payment amount below required invoice amount'
+        );
+      }
+    });
+
     it('should prevent duplicate allocation', async () => {
       const mockPaymentData = {
         payment_id: 'payment-123',
@@ -127,15 +182,17 @@ describe('CreditAllocationService', () => {
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
         payin_hash: 'hash-123',
-        payouts: []
+        payouts: [],
       };
 
       // Mock existing allocation in cache
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify({
-        transactionId: 'tx-existing',
-        creditAmount: 100,
-        balanceAfter: 150
-      }));
+      mockRedis.get.mockResolvedValueOnce(
+        JSON.stringify({
+          transactionId: 'tx-existing',
+          creditAmount: 100,
+          balanceAfter: 150,
+        })
+      );
 
       const result = await creditAllocationService.allocateCreditsForPayment(
         'user-123',
@@ -168,17 +225,19 @@ describe('CreditAllocationService', () => {
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
         payin_hash: 'hash-123',
-        payouts: []
+        payouts: [],
       };
 
       // Mock no cache hit but database hit
       mockRedis.get.mockResolvedValueOnce(null);
       mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'tx-existing',
-          amount: '100',
-          balance_after: '150'
-        }]
+        rows: [
+          {
+            id: 'tx-existing',
+            amount: '100',
+            balance_after: '150',
+          },
+        ],
       });
 
       mockRedis.setex.mockResolvedValue('OK');
@@ -211,7 +270,7 @@ describe('CreditAllocationService', () => {
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
         payin_hash: 'hash-123',
-        payouts: []
+        payouts: [],
       };
 
       mockRedis.get.mockResolvedValueOnce(null);
@@ -219,7 +278,7 @@ describe('CreditAllocationService', () => {
 
       // Mock user validation
       mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'user-123' }]
+        rows: [{ id: 'user-123' }],
       });
 
       const result = await creditAllocationService.allocateCreditsForPayment(
@@ -250,7 +309,7 @@ describe('CreditAllocationService', () => {
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
         payin_hash: 'hash-123',
-        payouts: []
+        payouts: [],
       };
 
       mockRedis.get.mockResolvedValueOnce(null);
@@ -272,7 +331,7 @@ describe('CreditAllocationService', () => {
       }
     });
 
-    it('should fail validation for insufficient payment amount', async () => {
+    it('should fail validation when payment is below full amount', async () => {
       const mockPaymentData = {
         payment_id: 'payment-123',
         payment_status: 'finished' as const,
@@ -287,7 +346,7 @@ describe('CreditAllocationService', () => {
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
         payin_hash: 'hash-123',
-        payouts: []
+        payouts: [],
       };
 
       mockRedis.get.mockResolvedValueOnce(null);
@@ -295,7 +354,7 @@ describe('CreditAllocationService', () => {
 
       // Mock user validation
       mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'user-123' }]
+        rows: [{ id: 'user-123' }],
       });
 
       const result = await creditAllocationService.allocateCreditsForPayment(
@@ -307,7 +366,9 @@ describe('CreditAllocationService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toBe('Insufficient payment amount received');
+        expect(result.error).toBe(
+          'Payment amount below required invoice amount'
+        );
       }
     });
   });
@@ -315,32 +376,29 @@ describe('CreditAllocationService', () => {
   describe('Manual Credit Allocation', () => {
     it('should perform manual credit allocation successfully', async () => {
       mockRedis.get.mockResolvedValueOnce(null); // No duplicate
-      mockPool.query.mockResolvedValueOnce({ rows: [] }); // No database duplicate
+      mockPool.query.mockResolvedValueOnce({ rows: [] }); // duplicate check
+      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'user-123' }] }); // user check
 
-      mockCreditService.addCredits.mockResolvedValue({
-        success: true,
-        transaction: {
-          id: 'tx-manual',
-          userId: 'user-123',
-          type: 'bonus',
-          amount: 50,
-          balanceBefore: 100,
-          balanceAfter: 150,
-          description: 'Manual allocation',
-          metadata: {},
-          createdAt: new Date(),
-          updatedAt: new Date()
-        },
-        balance: {
-          userId: 'user-123',
-          totalBalance: 150,
-          availableBalance: 150,
-          pendingBalance: 0,
-          lastUpdated: new Date()
-        }
-      });
+      mockDbClient.query
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // advisory lock
+        .mockResolvedValueOnce({ rows: [{ total_balance: '100' }] }) // balance
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'tx-manual',
+              user_id: 'user-123',
+              metadata: JSON.stringify({}),
+              payment_provider: 'nowpayments',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ rows: [] }) // UPDATE credit_transactions
+        .mockResolvedValueOnce({ rows: [{}] }) // UPDATE payments
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       mockRedis.setex.mockResolvedValue('OK');
+      mockRedis.del.mockResolvedValue(1);
 
       const result = await creditAllocationService.manualCreditAllocation(
         'user-123',
@@ -356,26 +414,16 @@ describe('CreditAllocationService', () => {
         expect(result.data.creditAmount).toBe(50);
         expect(result.data.balanceAfter).toBe(150);
       }
-
-      expect(mockCreditService.addCredits).toHaveBeenCalledWith(
-        'user-123',
-        50,
-        'bonus',
-        expect.stringContaining('Manual allocation'),
-        expect.objectContaining({
-          paymentId: 'payment-123',
-          manualAllocation: true,
-          adminUserId: 'admin-123'
-        })
-      );
     });
 
     it('should prevent duplicate manual allocation', async () => {
-      mockRedis.get.mockResolvedValueOnce(JSON.stringify({
-        transactionId: 'tx-existing',
-        creditAmount: 50,
-        balanceAfter: 150
-      }));
+      mockRedis.get.mockResolvedValueOnce(
+        JSON.stringify({
+          transactionId: 'tx-existing',
+          creditAmount: 50,
+          balanceAfter: 150,
+        })
+      );
 
       const result = await creditAllocationService.manualCreditAllocation(
         'user-123',
@@ -388,19 +436,23 @@ describe('CreditAllocationService', () => {
       expect(result.success).toBe(true);
       // Duplicate detected, but still returns success
 
-      // Should not call credit service for duplicates
-      expect(mockCreditService.addCredits).not.toHaveBeenCalled();
+      // Should not perform database operations for duplicates
+      expect(mockDbClient.query).not.toHaveBeenCalled();
     });
   });
 
   describe('Credit Amount Calculation', () => {
     it('should calculate credit amount with default rate', () => {
-      const creditAmount = (creditAllocationService as any).calculateCreditAmount(100);
+      const creditAmount = (
+        creditAllocationService as any
+      ).calculateCreditAmount(100);
       expect(creditAmount).toBe(100); // 1:1 default rate
     });
 
     it('should round credit amount to 2 decimal places', () => {
-      const creditAmount = (creditAllocationService as any).calculateCreditAmount(99.999);
+      const creditAmount = (
+        creditAllocationService as any
+      ).calculateCreditAmount(99.999);
       expect(creditAmount).toBe(100);
     });
   });
@@ -414,19 +466,23 @@ describe('CreditAllocationService', () => {
             payment_id: 'payment-1',
             amount: '100',
             created_at: new Date(),
-            metadata: JSON.stringify({ paymentCompleted: true })
+            metadata: JSON.stringify({ paymentCompleted: true }),
           },
           {
             id: 'tx-2',
             payment_id: 'payment-2',
             amount: '50',
             created_at: new Date(),
-            metadata: JSON.stringify({ paymentCompleted: true })
-          }
-        ]
+            metadata: JSON.stringify({ paymentCompleted: true }),
+          },
+        ],
       });
 
-      const history = await creditAllocationService.getAllocationHistory('user-123', 10, 0);
+      const history = await creditAllocationService.getAllocationHistory(
+        'user-123',
+        10,
+        0
+      );
 
       expect(history).toHaveLength(2);
       expect(history[0]?.transactionId).toBe('tx-1');
@@ -437,7 +493,11 @@ describe('CreditAllocationService', () => {
     it('should return empty array on database error', async () => {
       mockPool.query.mockRejectedValue(new Error('Database error'));
 
-      const history = await creditAllocationService.getAllocationHistory('user-123', 10, 0);
+      const history = await creditAllocationService.getAllocationHistory(
+        'user-123',
+        10,
+        0
+      );
 
       expect(history).toEqual([]);
     });
@@ -450,16 +510,16 @@ describe('CreditAllocationService', () => {
           {
             payment_id: 'payment-1',
             user_id: 'user-1',
-            metadata: JSON.stringify({ priceAmount: 100 }),
-            created_at: new Date()
+            metadata: JSON.stringify({ creditAmountUsd: 100 }),
+            created_at: new Date(),
           },
           {
             payment_id: 'payment-2',
             user_id: 'user-2',
-            metadata: JSON.stringify({ priceAmount: 50 }),
-            created_at: new Date()
-          }
-        ]
+            metadata: JSON.stringify({ creditAmountUsd: 50 }),
+            created_at: new Date(),
+          },
+        ],
       });
 
       const pending = await creditAllocationService.getPendingAllocations();
@@ -476,9 +536,9 @@ describe('CreditAllocationService', () => {
             payment_id: 'payment-1',
             user_id: 'user-1',
             metadata: 'invalid-json',
-            created_at: new Date()
-          }
-        ]
+            created_at: new Date(),
+          },
+        ],
       });
 
       const pending = await creditAllocationService.getPendingAllocations();
@@ -498,7 +558,7 @@ describe('CreditAllocationService', () => {
         duplicatePrevented: expect.any(Number),
         failedAllocations: expect.any(Number),
         averageProcessingTime: expect.any(Number),
-        lastAllocationTime: expect.any(Date)
+        lastAllocationTime: expect.any(Date),
       });
     });
 
@@ -568,7 +628,7 @@ describe('CreditAllocationService', () => {
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
         payin_hash: 'hash-123',
-        payouts: []
+        payouts: [],
       };
 
       mockRedis.get.mockResolvedValueOnce(null);
@@ -578,11 +638,16 @@ describe('CreditAllocationService', () => {
       // Mock database transaction failure
       mockDbClient.query
         .mockResolvedValueOnce({ rows: [] }) // BEGIN
-        .mockResolvedValueOnce({ // Find original transaction
-          rows: [{
-            id: 'tx-123',
-            metadata: JSON.stringify({})
-          }]
+        .mockResolvedValueOnce({ rows: [] }) // advisory lock
+        .mockResolvedValueOnce({ rows: [{ total_balance: '50' }] }) // balance
+        .mockResolvedValueOnce({
+          // Find original transaction
+          rows: [
+            {
+              id: 'tx-123',
+              metadata: JSON.stringify({}),
+            },
+          ],
         })
         .mockRejectedValueOnce(new Error('Database error')); // UPDATE fails
 
@@ -615,7 +680,7 @@ describe('CreditAllocationService', () => {
         created_at: '2024-01-01T00:00:00Z',
         updated_at: '2024-01-01T00:00:00Z',
         payin_hash: 'hash-123',
-        payouts: []
+        payouts: [],
       };
 
       mockRedis.get.mockRejectedValue(new Error('Redis error'));

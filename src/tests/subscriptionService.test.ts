@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { SubscriptionService } from '../services/subscriptionService';
 import { serviceHandlerRegistry } from '../services/handlers';
 import { creditService } from '../services/creditService';
+import { catalogService } from '../services/catalogService';
 
 // Mock dependencies
 jest.mock('../config/database');
@@ -29,6 +30,7 @@ describe('SubscriptionService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   describe('Validation Logic', () => {
@@ -63,40 +65,96 @@ describe('SubscriptionService', () => {
       ).toBe(false);
     });
 
-    it('should validate service plan compatibility', () => {
+    it('should validate service plan existence via catalog data', async () => {
       const service = new SubscriptionService();
 
-      // Valid combinations
-      expect(service['validateServicePlan']('spotify', 'premium')).toBe(true);
-      expect(service['validateServicePlan']('netflix', 'basic')).toBe(true);
-      expect(service['validateServicePlan']('tradingview', 'pro')).toBe(true);
+      const listing = {
+        product: {
+          id: 'prod-1',
+          name: 'Spotify',
+          slug: 'spotify',
+          description: null,
+          service_type: 'spotify',
+          logo_key: null,
+          category: null,
+          default_currency: null,
+          max_subscriptions: 1,
+          status: 'active',
+          metadata: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+        variant: {
+          id: 'variant-1',
+          product_id: 'prod-1',
+          name: 'Premium',
+          variant_code: 'premium',
+          description: null,
+          service_plan: 'premium',
+          is_active: true,
+          sort_order: 0,
+          metadata: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      };
 
-      // Invalid combinations - will depend on serviceHandlerRegistry mock
-      // This tests the integration with the handler registry
+      const listingSpy = jest.spyOn(
+        catalogService,
+        'findProductVariantByServicePlan'
+      );
+      listingSpy.mockResolvedValue(listing as any);
+
+      await expect(
+        service['validateServicePlan']('spotify', 'premium')
+      ).resolves.toBe(true);
+
+      listingSpy.mockResolvedValue(null);
+
+      await expect(
+        service['validateServicePlan']('spotify', 'premium')
+      ).resolves.toBe(false);
     });
 
-    it('should validate metadata for service types', () => {
+    it('should validate metadata against catalog rules', () => {
       const service = new SubscriptionService();
 
-      const spotifyMetadata = {
-        region: 'US',
-        payment_method: 'credit_card',
+      const product = {
+        id: 'prod-2',
+        name: 'Spotify',
+        slug: 'spotify',
+        description: null,
+        service_type: 'spotify',
+        logo_key: null,
+        category: null,
+        default_currency: null,
+        max_subscriptions: 1,
+        status: 'active',
+        metadata: {
+          rules: {
+            metadata_schema: {
+              type: 'object',
+              required: ['region'],
+              properties: {
+                region: { type: 'string' },
+              },
+              additionalProperties: true,
+            },
+          },
+        },
+        created_at: new Date(),
+        updated_at: new Date(),
       };
 
-      const netflixMetadata = {
-        screens: 2,
-        region: 'US',
-        quality: 'HD' as const,
-        profiles: 3,
-      };
+      const validMetadata = { region: 'US' };
+      const invalidMetadata = { payment_method: 'credit_card' };
 
-      // These tests depend on the service handlers being properly implemented
-      expect(service['validateMetadata']('spotify', spotifyMetadata)).toBe(
-        true
-      );
-      expect(service['validateMetadata']('netflix', netflixMetadata)).toBe(
-        true
-      );
+      expect(
+        service['validateMetadataRules'](product as any, validMetadata).valid
+      ).toBe(true);
+      expect(
+        service['validateMetadataRules'](product as any, invalidMetadata).valid
+      ).toBe(false);
     });
   });
 
@@ -117,12 +175,44 @@ describe('SubscriptionService', () => {
       const service = new SubscriptionService();
 
       // Mock the subscription count to return 0 (no existing subscriptions)
-      jest.spyOn(service, 'getActiveSubscriptionsCount').mockResolvedValue(0);
+      jest
+        .spyOn(service, 'getActiveSubscriptionsCountByProduct')
+        .mockResolvedValue(0);
+
+      jest.spyOn(catalogService, 'getVariantWithProduct').mockResolvedValue({
+        product: {
+          id: 'prod-1',
+          name: 'Spotify',
+          slug: 'spotify',
+          description: null,
+          service_type: 'spotify',
+          logo_key: null,
+          category: null,
+          default_currency: null,
+          max_subscriptions: 1,
+          status: 'active',
+          metadata: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+        variant: {
+          id: 'variant-1',
+          product_id: 'prod-1',
+          name: 'Premium',
+          variant_code: 'premium',
+          description: null,
+          service_plan: 'premium',
+          is_active: true,
+          sort_order: 0,
+          metadata: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      } as any);
 
       const result = await service.canPurchaseSubscription(
         mockUserId,
-        'spotify',
-        'premium'
+        'variant-1'
       );
 
       expect(result.canPurchase).toBe(true);
@@ -131,13 +221,45 @@ describe('SubscriptionService', () => {
     it('should allow purchase when only business logic validation passes', async () => {
       // Credit validation is now handled at route level, not in canPurchaseSubscription
       const service = new SubscriptionService();
-      jest.spyOn(service, 'getActiveSubscriptionsCount').mockResolvedValue(0);
+      jest
+        .spyOn(service, 'getActiveSubscriptionsCountByProduct')
+        .mockResolvedValue(0);
       jest.spyOn(service, 'hasDuplicateSubscription').mockResolvedValue(false);
+
+      jest.spyOn(catalogService, 'getVariantWithProduct').mockResolvedValue({
+        product: {
+          id: 'prod-1',
+          name: 'Spotify',
+          slug: 'spotify',
+          description: null,
+          service_type: 'spotify',
+          logo_key: null,
+          category: null,
+          default_currency: null,
+          max_subscriptions: 1,
+          status: 'active',
+          metadata: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+        variant: {
+          id: 'variant-1',
+          product_id: 'prod-1',
+          name: 'Premium',
+          variant_code: 'premium',
+          description: null,
+          service_plan: 'premium',
+          is_active: true,
+          sort_order: 0,
+          metadata: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      } as any);
 
       const result = await service.canPurchaseSubscription(
         mockUserId,
-        'spotify',
-        'premium'
+        'variant-1'
       );
 
       expect(result.canPurchase).toBe(true);
@@ -148,12 +270,44 @@ describe('SubscriptionService', () => {
       const service = new SubscriptionService();
 
       // Mock to return max subscriptions for Spotify (1)
-      jest.spyOn(service, 'getActiveSubscriptionsCount').mockResolvedValue(1);
+      jest
+        .spyOn(service, 'getActiveSubscriptionsCountByProduct')
+        .mockResolvedValue(1);
+
+      jest.spyOn(catalogService, 'getVariantWithProduct').mockResolvedValue({
+        product: {
+          id: 'prod-1',
+          name: 'Spotify',
+          slug: 'spotify',
+          description: null,
+          service_type: 'spotify',
+          logo_key: null,
+          category: null,
+          default_currency: null,
+          max_subscriptions: 1,
+          status: 'active',
+          metadata: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+        variant: {
+          id: 'variant-1',
+          product_id: 'prod-1',
+          name: 'Premium',
+          variant_code: 'premium',
+          description: null,
+          service_plan: 'premium',
+          is_active: true,
+          sort_order: 0,
+          metadata: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      } as any);
 
       const result = await service.canPurchaseSubscription(
         mockUserId,
-        'spotify',
-        'premium'
+        'variant-1'
       );
 
       expect(result.canPurchase).toBe(false);
@@ -372,9 +526,9 @@ describe('SubscriptionService', () => {
     it('should validate all handler health', async () => {
       const health = await serviceHandlerRegistry.healthCheck();
 
-      expect(health.spotify).toBe(true);
-      expect(health.netflix).toBe(true);
-      expect(health.tradingview).toBe(true);
+      expect(health['spotify']).toBe(true);
+      expect(health['netflix']).toBe(true);
+      expect(health['tradingview']).toBe(true);
     });
   });
 });

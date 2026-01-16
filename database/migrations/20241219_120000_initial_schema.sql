@@ -13,10 +13,10 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- =====================================================
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW(),
+    email TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     last_login TIMESTAMP,
-    status VARCHAR(20) DEFAULT 'active' NOT NULL,
+    status TEXT DEFAULT 'active',
 
     -- Constraints
     CONSTRAINT users_status_check CHECK (status IN ('active', 'inactive', 'suspended', 'deleted')),
@@ -34,15 +34,15 @@ COMMENT ON COLUMN users.status IS 'User account status: active, inactive, suspen
 CREATE TABLE subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    service_type VARCHAR(50) NOT NULL,
-    service_plan VARCHAR(50) NOT NULL,
+    service_type TEXT NOT NULL,
+    service_plan TEXT NOT NULL,
     start_date TIMESTAMP NOT NULL,
     end_date TIMESTAMP NOT NULL,
-    renewal_date TIMESTAMP NOT NULL,
+    renewal_date TIMESTAMP,
     credentials_encrypted TEXT,
-    status VARCHAR(20) DEFAULT 'active' NOT NULL,
+    status TEXT DEFAULT 'active' NOT NULL,
     metadata JSONB,
-    created_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 
     -- Constraints
     CONSTRAINT subscriptions_service_type_check CHECK (service_type IN ('spotify', 'netflix', 'tradingview')),
@@ -94,7 +94,7 @@ CREATE TABLE admin_tasks (
     created_at TIMESTAMP DEFAULT NOW(),
 
     -- Constraints
-    CONSTRAINT admin_tasks_type_check CHECK (task_type IN ('credential_provision', 'renewal', 'cancellation', 'support', 'verification')),
+    CONSTRAINT admin_tasks_type_check CHECK (task_type IN ('credential_provision', 'renewal', 'cancellation', 'support', 'verification', 'manual_monthly_upgrade')),
     CONSTRAINT admin_tasks_priority_check CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
     CONSTRAINT admin_tasks_completion_check CHECK (completed_at IS NULL OR completed_at >= created_at)
 );

@@ -13,15 +13,41 @@ const config = {
   timeout: 5000,
 };
 
+const cookieJar = new Map();
+
+function updateCookies(setCookieHeaders) {
+  if (!setCookieHeaders) return;
+  const headers = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
+  headers.forEach((header) => {
+    const [cookiePair] = header.split(';');
+    if (!cookiePair) return;
+    const [name, value] = cookiePair.split('=');
+    if (name && value) {
+      cookieJar.set(name, value);
+    }
+  });
+}
+
+function getCookieHeader() {
+  return Array.from(cookieJar.entries())
+    .map(([name, value]) => `${name}=${value}`)
+    .join('; ');
+}
 /**
  * Make HTTP request using Node.js built-in http module
  */
 function makeRequest(options, data = null) {
   return new Promise((resolve, reject) => {
+    const cookieHeader = getCookieHeader();
+    if (cookieHeader) {
+      options.headers = { ...(options.headers || {}), Cookie: cookieHeader };
+    }
+
     const req = http.request(options, (res) => {
       let body = '';
       res.on('data', (chunk) => body += chunk);
       res.on('end', () => {
+        updateCookies(res.headers['set-cookie']);
         try {
           const jsonBody = body ? JSON.parse(body) : {};
           resolve({
@@ -110,8 +136,7 @@ async function testRegistration() {
       console.log(`   User ID: ${response.body.user?.id}`);
       return {
         success: true,
-        user: response.body.user,
-        token: response.body.accessToken
+        user: response.body.user
       };
     } else {
       console.log(`❌ Registration failed: ${response.statusCode}`);
@@ -127,7 +152,7 @@ async function testRegistration() {
 /**
  * Test profile retrieval
  */
-async function testGetProfile(token) {
+async function testGetProfile() {
   console.log('📄 Testing profile retrieval...');
 
   try {
@@ -135,16 +160,18 @@ async function testGetProfile(token) {
       hostname: config.host,
       port: config.port,
       path: '/api/v1/users/profile',
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      method: 'GET'
     });
 
     if (response.statusCode === 200) {
       console.log('✅ Profile retrieval successful');
       console.log('   Profile data:');
-      const profile = response.body.profile;
+      const profile = response.body.data?.profile;
+      if (!profile) {
+        console.log('❌ Profile retrieval failed: invalid response format');
+        console.log(`   Response: ${JSON.stringify(response.body)}`);
+        return { success: false };
+      }
       console.log(`     - ID: ${profile.id}`);
       console.log(`     - Email: ${profile.email}`);
       console.log(`     - First Name: ${profile.firstName}`);
@@ -168,7 +195,7 @@ async function testGetProfile(token) {
 /**
  * Test profile update (the key functionality of our refactor)
  */
-async function testProfileUpdate(token) {
+async function testProfileUpdate() {
   console.log('✏️  Testing profile preferences update...');
 
   const profileUpdates = JSON.stringify({
@@ -190,7 +217,6 @@ async function testProfileUpdate(token) {
       path: '/api/v1/users/profile',
       method: 'PUT',
       headers: {
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(profileUpdates)
       }
@@ -224,8 +250,6 @@ async function runTests() {
   console.log('Testing the key functionality: Profile updates without admin permissions\n');
   console.log('=' .repeat(60) + '\n');
 
-  let token = null;
-
   try {
     // Test 1: Server Health
     const healthOk = await testHealth();
@@ -239,18 +263,17 @@ async function runTests() {
     if (!regResult.success) {
       throw new Error('User registration failed');
     }
-    token = regResult.token;
     console.log('');
 
     // Test 3: Profile Retrieval
-    const profileResult = await testGetProfile(token);
+    const profileResult = await testGetProfile();
     if (!profileResult.success) {
       throw new Error('Profile retrieval failed');
     }
     console.log('');
 
     // Test 4: Profile Update (The main test!)
-    const updateResult = await testProfileUpdate(token);
+    const updateResult = await testProfileUpdate();
     if (!updateResult.success) {
       throw new Error('Profile update failed');
     }
@@ -258,7 +281,7 @@ async function runTests() {
 
     // Test 5: Verify Update
     console.log('🔍 Verifying the update...');
-    const verifyResult = await testGetProfile(token);
+    const verifyResult = await testGetProfile();
     if (verifyResult.success) {
       console.log('✅ Profile update verification successful');
     }

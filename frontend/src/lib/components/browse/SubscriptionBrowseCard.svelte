@@ -12,10 +12,14 @@
     Verified
   } from 'lucide-svelte';
   import type { BrowseSubscription } from '$lib/types/browse.js';
+  import { resolveLogoKey } from '$lib/assets/logoRegistry.js';
+  import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
 
   export let subscription: BrowseSubscription;
   export let isHovered = false;
   export let showCompareButton = false;
+
+  let hasLogoError = false;
 
   const dispatch = createEventDispatcher<{
     hover: BrowseSubscription;
@@ -26,7 +30,15 @@
 
   $: availabilityColor = getAvailabilityColor(subscription.availability.availableSeats);
   $: availabilityText = getAvailabilityText(subscription.availability);
-  $: savingsBarWidth = Math.min(subscription.savingsPercentage, 100);
+  $: logoSource = resolveLogoKey(subscription.logoKey ?? subscription.logo_key) || subscription.logoUrl || '';
+  $: resolvedCurrency = normalizeCurrencyCode(subscription.currency) || 'USD';
+  $: if (logoSource) {
+    hasLogoError = false;
+  }
+
+  const handleLogoError = () => {
+    hasLogoError = true;
+  };
 
   function getAvailabilityColor(seats: number): string {
     if (seats <= 2) return 'text-red-600 bg-red-50 border-red-200';
@@ -123,19 +135,19 @@
   <!-- Service logo and badges -->
   <div class="flex items-start justify-between mb-4">
     <div class="flex items-center space-x-3">
-      {#if subscription.logoUrl}
+      {#if logoSource && !hasLogoError}
         <img
-          src={subscription.logoUrl}
+          src={logoSource}
           alt="{subscription.serviceName} logo"
           class="w-16 h-16 rounded-lg object-cover"
           loading="lazy"
-          onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"
+          on:error={handleLogoError}
         />
       {/if}
       <!-- Fallback logo -->
       <div
         class="w-16 h-16 rounded-lg bg-gradient-to-br from-cyan-500/10 to-pink-500/10 flex items-center justify-center text-2xl font-bold text-gray-700"
-        style="display: {subscription.logoUrl ? 'none' : 'flex'}"
+        style="display: {logoSource && !hasLogoError ? 'none' : 'flex'}"
       >
         {subscription.serviceName.charAt(0)}
       </div>
@@ -161,23 +173,6 @@
       {subscription.planName} • {subscription.availability.totalSeats} Seats
     </p>
 
-    <!-- Ratings -->
-    <div class="flex items-center space-x-2 mb-3">
-      <div class="flex items-center space-x-1">
-        {#each Array(5) as _, i}
-          <Star
-            size={14}
-            class={i < Math.floor(subscription.ratings.average) ? 'text-yellow-400 fill-current' : 'text-gray-300'}
-          />
-        {/each}
-      </div>
-      <span class="text-sm font-medium text-gray-900">
-        {subscription.ratings.average.toFixed(1)}
-      </span>
-      <span class="text-sm text-gray-500">
-        ({subscription.ratings.count} reviews)
-      </span>
-    </div>
   </div>
 
   <!-- Availability status -->
@@ -212,33 +207,11 @@
   <!-- Pricing section -->
   <div class="mt-auto">
     <div class="bg-gray-50 rounded-lg p-4 mb-4">
-      <div class="flex justify-between items-center mb-2">
-        <span class="text-sm text-gray-600">Retail:</span>
-        <span class="text-sm text-gray-500 line-through">
-          €{subscription.originalPrice.toFixed(2)}/mo
-        </span>
-      </div>
       <div class="flex justify-between items-center mb-3">
-        <span class="text-sm font-medium text-gray-900">SubSlush:</span>
+        <span class="text-sm font-medium text-gray-900">Price:</span>
         <span class="text-lg font-bold text-gray-900">
-          €{subscription.price.toFixed(2)}/mo
+          {formatCurrency(subscription.price, resolvedCurrency)}/mo
         </span>
-      </div>
-
-      <!-- Savings bar -->
-      <div class="mb-3">
-        <div class="w-full bg-gray-200 rounded-full h-2">
-          <div
-            class="bg-gradient-to-r from-cyan-500 to-pink-500 h-2 rounded-full transition-all duration-500"
-            style="width: {savingsBarWidth}%"
-          ></div>
-        </div>
-        <div class="flex items-center justify-center mt-2 space-x-1">
-          <TrendingDown size={14} class="text-green-600" />
-          <span class="text-sm font-semibold text-green-600">
-            Save €{subscription.monthlySavings.toFixed(2)}/mo ({subscription.savingsPercentage}% off)
-          </span>
-        </div>
       </div>
     </div>
 
@@ -268,7 +241,7 @@
 
   @media (max-width: 768px) {
     .subscription-card {
-      min-h: auto;
+      min-height: auto;
     }
   }
 </style>

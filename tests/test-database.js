@@ -4,7 +4,7 @@
 // Description: Complete database connectivity and CRUD testing
 // Uses Node.js built-in test framework (node:test)
 
-const { test, describe, before, after, beforeEach, afterEach } = require('node:test');
+const { test: baseTest, describe, before, after, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const { Pool } = require('pg');
 
@@ -91,25 +91,42 @@ class DatabaseTestSuite {
      * Clean up test data
      */
     async cleanupTestData(pool) {
-        const tables = ['admin_tasks', 'credits', 'subscriptions', 'users'];
+        const nonUserTables = ['admin_tasks', 'credits', 'subscriptions'];
 
-        for (const table of tables) {
+        for (const table of nonUserTables) {
             try {
-                const result = await pool.query(`DELETE FROM ${table} WHERE id IN (
-                    SELECT id FROM ${table}
-                    WHERE created_at > NOW() - INTERVAL '1 hour'
-                    OR (
-                        CASE
-                            WHEN '${table}' = 'users' THEN email LIKE '%@test.com' OR email LIKE '%@example.com'
-                            ELSE true
-                        END
+                const result = await pool.query(`
+                    WITH to_delete AS (
+                        SELECT id
+                        FROM ${table}
+                        WHERE created_at > NOW() - INTERVAL '1 hour'
+                        LIMIT 10000
                     )
-                    LIMIT 10000
-                )`);
+                    DELETE FROM ${table}
+                    WHERE id IN (SELECT id FROM to_delete)
+                `);
                 console.log(`🧹 Cleaned ${result.rowCount} rows from ${table}`);
             } catch (error) {
                 console.warn(`⚠️  Cleanup warning for ${table}:`, error.message);
             }
+        }
+
+        try {
+            const result = await pool.query(`
+                WITH to_delete AS (
+                    SELECT id
+                    FROM users
+                    WHERE created_at > NOW() - INTERVAL '1 hour'
+                       OR email LIKE '%@test.com'
+                       OR email LIKE '%@example.com'
+                    LIMIT 10000
+                )
+                DELETE FROM users
+                WHERE id IN (SELECT id FROM to_delete)
+            `);
+            console.log(`🧹 Cleaned ${result.rowCount} rows from users`);
+        } catch (error) {
+            console.warn(`⚠️  Cleanup warning for users:`, error.message);
         }
     }
 
@@ -137,6 +154,58 @@ class DatabaseTestSuite {
 
 // Global test suite instance
 const dbTest = new DatabaseTestSuite();
+
+const test = (...args) => {
+    let name;
+    let options;
+    let fn;
+
+    if (typeof args[0] === 'function') {
+        fn = args[0];
+    } else if (typeof args[1] === 'function') {
+        name = args[0];
+        fn = args[1];
+    } else {
+        name = args[0];
+        options = args[1];
+        fn = args[2];
+    }
+
+    const skipTracker = { skipped: false };
+    const wrappedFn = fn
+        ? async (...fnArgs) => {
+              const t = fnArgs[0];
+              if (t && typeof t.skip === 'function') {
+                  const originalSkip = t.skip.bind(t);
+                  t.skip = (message) => {
+                      skipTracker.skipped = true;
+                      dbTest.testResults.skipped += 1;
+                      return originalSkip(message);
+                  };
+              }
+              return fn(...fnArgs);
+          }
+        : undefined;
+
+    const testPromise =
+        options !== undefined
+            ? baseTest(name, options, wrappedFn)
+            : baseTest(name, wrappedFn);
+
+    testPromise
+        .then(() => {
+            if (!skipTracker.skipped) {
+                dbTest.testResults.passed += 1;
+            }
+        })
+        .catch(() => {
+            if (!skipTracker.skipped) {
+                dbTest.testResults.failed += 1;
+            }
+        });
+
+    return testPromise;
+};
 
 // =====================================================
 // TEST SUITE SETUP AND TEARDOWN
@@ -525,37 +594,52 @@ describe('Database Test Suite', () => {
     // =====================================================
 
     describe('CRUD Operations', () => {
-        let testUsers = [];
-        let testSubscriptions = [];
-        let testCredits = [];
-        let testTasks = [];
+        let poolDatasets = new Map();
 
-        beforeEach(() => {
-            // Generate fresh test data for each test
-            testUsers = testData.generateUsers(3);
-            testSubscriptions = [];
-            testCredits = [];
-            testTasks = [];
+        const buildCrudDataset = () => {
+            const users = testData.generateUsers(3);
+            const subscriptions = [];
+            const credits = [];
+            const tasks = [];
 
-            testUsers.forEach(user => {
+            users.forEach(user => {
                 const userSubscriptions = testData.generateSubscriptions(user.id, 2);
                 const userCredits = testData.generateCredits(user.id, 3);
 
-                testSubscriptions.push(...userSubscriptions);
-                testCredits.push(...userCredits);
+                subscriptions.push(...userSubscriptions);
+                credits.push(...userCredits);
 
                 userSubscriptions.forEach(sub => {
                     const subTasks = testData.generateAdminTasks(sub.id, user.id, 1);
-                    testTasks.push(...subTasks);
+                    tasks.push(...subTasks);
                 });
             });
+
+            return { users, subscriptions, credits, tasks };
+        };
+
+        const getPoolDataset = (name) => {
+            const dataset = poolDatasets.get(name);
+            if (!dataset) {
+                throw new Error(`Missing CRUD dataset for pool: ${name}`);
+            }
+            return dataset;
+        };
+
+        beforeEach(() => {
+            poolDatasets = new Map();
+            for (const [name] of dbTest.pools) {
+                poolDatasets.set(name, buildCrudDataset());
+            }
         });
 
         afterEach(async () => {
             // Clean up test data after each test
             for (const [name, pool] of dbTest.pools) {
+                const dataset = poolDatasets.get(name);
+                if (!dataset) continue;
                 try {
-                    const userIds = testUsers.map(u => `'${u.id}'`).join(',');
+                    const userIds = dataset.users.map(u => `'${u.id}'`).join(',');
                     if (userIds) {
                         await pool.query(`DELETE FROM admin_tasks WHERE subscription_id IN (SELECT id FROM subscriptions WHERE user_id IN (${userIds}))`);
                         await pool.query(`DELETE FROM credits WHERE user_id IN (${userIds})`);
@@ -571,7 +655,8 @@ describe('Database Test Suite', () => {
         describe('CREATE Operations', () => {
             test('Insert users with various data combinations', async () => {
                 for (const [name, pool] of dbTest.pools) {
-                    for (const user of testUsers) {
+                    const { users } = getPoolDataset(name);
+                    for (const user of users) {
                         const result = await dbTest.executeTimedQuery(pool, `
                             INSERT INTO users (id, email, created_at, last_login, status)
                             VALUES ($1, $2, $3, $4, $5)
@@ -583,19 +668,20 @@ describe('Database Test Suite', () => {
                         assert.strictEqual(result.result.rows[0].status, user.status, `${name} should return correct status`);
                     }
 
-                    console.log(`✅ ${name} inserted ${testUsers.length} users`);
+                    console.log(`✅ ${name} inserted ${users.length} users`);
                 }
             });
 
             test('Create subscriptions with foreign key relationships', async () => {
                 for (const [name, pool] of dbTest.pools) {
+                    const { users, subscriptions } = getPoolDataset(name);
                     // First insert users
-                    for (const user of testUsers) {
+                    for (const user of users) {
                         await pool.query("INSERT INTO users (id, email, status) VALUES ($1, $2, $3)", [user.id, user.email, user.status]);
                     }
 
                     // Then insert subscriptions
-                    for (const subscription of testSubscriptions) {
+                    for (const subscription of subscriptions) {
                         const result = await dbTest.executeTimedQuery(pool, `
                             INSERT INTO subscriptions (id, user_id, service_type, service_plan, start_date, end_date, renewal_date, status, metadata)
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -611,19 +697,20 @@ describe('Database Test Suite', () => {
                         assert.strictEqual(result.result.rows[0].service_type, subscription.service_type, `${name} should return correct service type`);
                     }
 
-                    console.log(`✅ ${name} inserted ${testSubscriptions.length} subscriptions`);
+                    console.log(`✅ ${name} inserted ${subscriptions.length} subscriptions`);
                 }
             });
 
             test('Add credits with different transaction types', async () => {
                 for (const [name, pool] of dbTest.pools) {
+                    const { users, credits } = getPoolDataset(name);
                     // Insert users first
-                    for (const user of testUsers) {
+                    for (const user of users) {
                         await pool.query("INSERT INTO users (id, email, status) VALUES ($1, $2, $3)", [user.id, user.email, user.status]);
                     }
 
                     // Insert credits
-                    for (const credit of testCredits) {
+                    for (const credit of credits) {
                         const result = await dbTest.executeTimedQuery(pool, `
                             INSERT INTO credits (id, user_id, amount, transaction_type, transaction_hash, created_at, description)
                             VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -638,18 +725,19 @@ describe('Database Test Suite', () => {
                         assert.strictEqual(parseFloat(result.result.rows[0].amount), credit.amount, `${name} should return correct amount`);
                     }
 
-                    console.log(`✅ ${name} inserted ${testCredits.length} credits`);
+                    console.log(`✅ ${name} inserted ${credits.length} credits`);
                 }
             });
 
             test('Create admin tasks with proper references', async () => {
                 for (const [name, pool] of dbTest.pools) {
+                    const { users, subscriptions, tasks } = getPoolDataset(name);
                     // Insert prerequisite data
-                    for (const user of testUsers) {
+                    for (const user of users) {
                         await pool.query("INSERT INTO users (id, email, status) VALUES ($1, $2, $3)", [user.id, user.email, user.status]);
                     }
 
-                    for (const subscription of testSubscriptions) {
+                    for (const subscription of subscriptions) {
                         await pool.query(`
                             INSERT INTO subscriptions (id, user_id, service_type, service_plan, start_date, end_date, renewal_date, status)
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -661,7 +749,7 @@ describe('Database Test Suite', () => {
                     }
 
                     // Insert admin tasks
-                    for (const task of testTasks) {
+                    for (const task of tasks) {
                         const result = await dbTest.executeTimedQuery(pool, `
                             INSERT INTO admin_tasks (id, subscription_id, task_type, due_date, completed_at, assigned_admin, notes, priority, created_at)
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -676,7 +764,7 @@ describe('Database Test Suite', () => {
                         assert.strictEqual(result.result.rows[0].task_type, task.task_type, `${name} should return correct task type`);
                     }
 
-                    console.log(`✅ ${name} inserted ${testTasks.length} admin tasks`);
+                    console.log(`✅ ${name} inserted ${tasks.length} admin tasks`);
                 }
             });
         });
@@ -685,14 +773,15 @@ describe('Database Test Suite', () => {
             beforeEach(async () => {
                 // Insert all test data
                 for (const [name, pool] of dbTest.pools) {
+                    const { users, subscriptions, credits, tasks } = getPoolDataset(name);
                     // Insert users
-                    for (const user of testUsers) {
+                    for (const user of users) {
                         await pool.query("INSERT INTO users (id, email, created_at, last_login, status) VALUES ($1, $2, $3, $4, $5)",
                             [user.id, user.email, user.created_at, user.last_login, user.status]);
                     }
 
                     // Insert subscriptions
-                    for (const subscription of testSubscriptions) {
+                    for (const subscription of subscriptions) {
                         await pool.query(`
                             INSERT INTO subscriptions (id, user_id, service_type, service_plan, start_date, end_date, renewal_date, status, metadata)
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -704,7 +793,7 @@ describe('Database Test Suite', () => {
                     }
 
                     // Insert credits
-                    for (const credit of testCredits) {
+                    for (const credit of credits) {
                         await pool.query(`
                             INSERT INTO credits (id, user_id, amount, transaction_type, transaction_hash, created_at, description)
                             VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -715,7 +804,7 @@ describe('Database Test Suite', () => {
                     }
 
                     // Insert admin tasks
-                    for (const task of testTasks) {
+                    for (const task of tasks) {
                         await pool.query(`
                             INSERT INTO admin_tasks (id, subscription_id, task_type, due_date, completed_at, assigned_admin, notes, priority, created_at)
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -729,7 +818,8 @@ describe('Database Test Suite', () => {
 
             test('Query users by email and status', async () => {
                 for (const [name, pool] of dbTest.pools) {
-                    const testUser = testUsers[0];
+                    const { users } = getPoolDataset(name);
+                    const testUser = users[0];
 
                     // Query by email
                     const emailResult = await dbTest.executeTimedQuery(pool,
@@ -752,8 +842,9 @@ describe('Database Test Suite', () => {
 
             test('Fetch subscriptions by user_id and service_type', async () => {
                 for (const [name, pool] of dbTest.pools) {
-                    const testUser = testUsers[0];
-                    const userSubscriptions = testSubscriptions.filter(s => s.user_id === testUser.id);
+                    const { users, subscriptions } = getPoolDataset(name);
+                    const testUser = users[0];
+                    const userSubscriptions = subscriptions.filter(s => s.user_id === testUser.id);
 
                     // Query by user_id
                     const userResult = await dbTest.executeTimedQuery(pool,
@@ -776,7 +867,8 @@ describe('Database Test Suite', () => {
 
             test('Calculate credit balances for users', async () => {
                 for (const [name, pool] of dbTest.pools) {
-                    const testUser = testUsers[0];
+                    const { users } = getPoolDataset(name);
+                    const testUser = users[0];
 
                     const balanceResult = await dbTest.executeTimedQuery(pool, `
                         SELECT
@@ -804,8 +896,9 @@ describe('Database Test Suite', () => {
 
             test('Retrieve admin tasks by various filters', async () => {
                 for (const [name, pool] of dbTest.pools) {
+                    const { tasks } = getPoolDataset(name);
                     // Query by task type
-                    const taskType = testTasks[0].task_type;
+                    const taskType = tasks[0].task_type;
                     const typeResult = await dbTest.executeTimedQuery(pool,
                         "SELECT * FROM admin_tasks WHERE task_type = $1", [taskType]);
 
@@ -813,7 +906,7 @@ describe('Database Test Suite', () => {
                     assert.ok(typeResult.result.rows.length > 0, `${name} should find tasks by type`);
 
                     // Query by priority
-                    const priority = testTasks[0].priority;
+                    const priority = tasks[0].priority;
                     const priorityResult = await dbTest.executeTimedQuery(pool,
                         "SELECT * FROM admin_tasks WHERE priority = $1", [priority]);
 
@@ -835,12 +928,13 @@ describe('Database Test Suite', () => {
             beforeEach(async () => {
                 // Insert test data for updates
                 for (const [name, pool] of dbTest.pools) {
-                    for (const user of testUsers) {
+                    const { users, subscriptions, credits, tasks } = getPoolDataset(name);
+                    for (const user of users) {
                         await pool.query("INSERT INTO users (id, email, created_at, last_login, status) VALUES ($1, $2, $3, $4, $5)",
                             [user.id, user.email, user.created_at, user.last_login, user.status]);
                     }
 
-                    for (const subscription of testSubscriptions) {
+                    for (const subscription of subscriptions) {
                         await pool.query(`
                             INSERT INTO subscriptions (id, user_id, service_type, service_plan, start_date, end_date, renewal_date, status)
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -851,14 +945,14 @@ describe('Database Test Suite', () => {
                         ]);
                     }
 
-                    for (const credit of testCredits) {
+                    for (const credit of credits) {
                         await pool.query(`
                             INSERT INTO credits (id, user_id, amount, transaction_type, created_at, description)
                             VALUES ($1, $2, $3, $4, $5, $6)
                         `, [credit.id, credit.user_id, credit.amount, credit.transaction_type, credit.created_at, credit.description]);
                     }
 
-                    for (const task of testTasks) {
+                    for (const task of tasks) {
                         await pool.query(`
                             INSERT INTO admin_tasks (id, subscription_id, task_type, due_date, assigned_admin, notes, priority, created_at)
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -869,7 +963,8 @@ describe('Database Test Suite', () => {
 
             test('Modify user profiles and track last_login', async () => {
                 for (const [name, pool] of dbTest.pools) {
-                    const testUser = testUsers[0];
+                    const { users } = getPoolDataset(name);
+                    const testUser = users[0];
                     const newLoginTime = new Date();
 
                     const updateResult = await dbTest.executeTimedQuery(pool, `
@@ -889,7 +984,8 @@ describe('Database Test Suite', () => {
 
             test('Update subscription status and dates', async () => {
                 for (const [name, pool] of dbTest.pools) {
-                    const testSubscription = testSubscriptions[0];
+                    const { subscriptions } = getPoolDataset(name);
+                    const testSubscription = subscriptions[0];
                     const newEndDate = testData.generateFutureDate(400);
 
                     const updateResult = await dbTest.executeTimedQuery(pool, `
@@ -909,7 +1005,8 @@ describe('Database Test Suite', () => {
 
             test('Complete admin tasks', async () => {
                 for (const [name, pool] of dbTest.pools) {
-                    const testTask = testTasks[0];
+                    const { tasks } = getPoolDataset(name);
+                    const testTask = tasks[0];
                     const completionTime = new Date();
 
                     const updateResult = await dbTest.executeTimedQuery(pool, `
@@ -932,11 +1029,12 @@ describe('Database Test Suite', () => {
             beforeEach(async () => {
                 // Insert test data for deletion tests
                 for (const [name, pool] of dbTest.pools) {
-                    for (const user of testUsers) {
+                    const { users, subscriptions, tasks } = getPoolDataset(name);
+                    for (const user of users) {
                         await pool.query("INSERT INTO users (id, email, status) VALUES ($1, $2, $3)", [user.id, user.email, user.status]);
                     }
 
-                    for (const subscription of testSubscriptions) {
+                    for (const subscription of subscriptions) {
                         await pool.query(`
                             INSERT INTO subscriptions (id, user_id, service_type, service_plan, start_date, end_date, renewal_date, status)
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -947,7 +1045,7 @@ describe('Database Test Suite', () => {
                         ]);
                     }
 
-                    for (const task of testTasks) {
+                    for (const task of tasks) {
                         await pool.query(`
                             INSERT INTO admin_tasks (id, subscription_id, task_type, due_date, created_at)
                             VALUES ($1, $2, $3, $4, $5)
@@ -958,7 +1056,8 @@ describe('Database Test Suite', () => {
 
             test('Test cascade deletes (user -> subscriptions -> admin_tasks)', async () => {
                 for (const [name, pool] of dbTest.pools) {
-                    const testUser = testUsers[0];
+                    const { users } = getPoolDataset(name);
+                    const testUser = users[0];
 
                     // Count related records before deletion
                     const beforeCounts = await dbTest.executeTimedQuery(pool, `
@@ -998,7 +1097,8 @@ describe('Database Test Suite', () => {
 
             test('Verify referential integrity', async () => {
                 for (const [name, pool] of dbTest.pools) {
-                    const testSubscription = testSubscriptions[0];
+                    const { subscriptions } = getPoolDataset(name);
+                    const testSubscription = subscriptions[0];
 
                     // Try to delete a user that has subscriptions (should fail if no cascade)
                     // But since we have CASCADE, let's test a different integrity constraint
@@ -1079,15 +1179,15 @@ describe('Database Test Suite', () => {
                 return;
             }
 
-            // Setup test data
-            const testUsers = testData.generateUsers(100);
-            const testSubscriptions = [];
-
-            testUsers.forEach(user => {
-                testSubscriptions.push(...testData.generateSubscriptions(user.id, 2));
-            });
-
             for (const [name, pool] of dbTest.pools) {
+                // Setup test data per pool to avoid collisions
+                const testUsers = testData.generateUsers(100);
+                const testSubscriptions = [];
+
+                testUsers.forEach(user => {
+                    testSubscriptions.push(...testData.generateSubscriptions(user.id, 2));
+                });
+
                 // Insert test data
                 console.log(`📊 Setting up performance test data for ${name}...`);
 

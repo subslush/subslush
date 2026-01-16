@@ -84,7 +84,13 @@ export abstract class BaseServiceHandler implements ServiceHandler {
     if (!this.isValidPlan(plan)) {
       throw new Error(`Invalid plan ${plan} for service ${this.serviceType}`);
     }
-    return this.planDetails[plan];
+    const details = this.planDetails[plan];
+    if (!details) {
+      throw new Error(
+        `Missing plan details for ${plan} on ${this.serviceType}`
+      );
+    }
+    return details;
   }
 
   getAvailablePlans(): ServicePlanDetails[] {

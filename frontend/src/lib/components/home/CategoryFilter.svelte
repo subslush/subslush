@@ -2,7 +2,7 @@
   export let selectedCategory = 'all';
 
   const categories = [
-    { id: 'all', label: 'All Categories', icon: '📁', count: 560 },
+    { id: 'all', label: 'All products', icon: '📁', count: 560 },
     { id: 'streaming', label: 'Streaming', icon: '📺' },
     { id: 'music', label: 'Music', icon: '🎵' },
     { id: 'productivity', label: 'Productivity', icon: '💼' },

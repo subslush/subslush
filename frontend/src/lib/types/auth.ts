@@ -4,7 +4,9 @@ export interface User {
   role?: string;
   firstName?: string;
   lastName?: string;
-  createdAt: string;
+  displayName?: string | null;
+  pinSetAt?: string | null;
+  createdAt?: string;
   lastLoginAt?: string;
 }
 
@@ -33,8 +35,14 @@ export interface LoginRequest {
 export interface AuthResponse {
   message: string;
   user: User;
+  accessToken?: string;
+  sessionId?: string;
+  requiresEmailVerification?: boolean;
+}
+
+export interface ConfirmEmailRequest {
   accessToken: string;
-  sessionId: string;
+  refreshToken?: string;
 }
 
 export interface LogoutRequest {

@@ -1,5 +1,5 @@
 import fastify, { FastifyInstance } from 'fastify';
-import { redisClient } from '../config/redis';
+import { rateLimitRedisClient } from '../config/redis';
 import { createRateLimitHandler } from '../middleware/rateLimitMiddleware';
 
 describe('Rate Limiting Middleware Security Tests', () => {
@@ -8,13 +8,13 @@ describe('Rate Limiting Middleware Security Tests', () => {
 
   beforeAll(async () => {
     // Connect to Redis
-    await redisClient.connect();
-    client = redisClient.getClient();
+    await rateLimitRedisClient.connect();
+    client = rateLimitRedisClient.getClient();
   });
 
   afterAll(async () => {
     // Clean up and disconnect
-    await redisClient.disconnect();
+    await rateLimitRedisClient.disconnect();
   });
 
   beforeEach(async () => {
@@ -22,9 +22,9 @@ describe('Rate Limiting Middleware Security Tests', () => {
     app = fastify({ logger: false });
 
     // Ensure Redis is connected before each test
-    if (!redisClient.isConnected()) {
-      await redisClient.connect();
-      client = redisClient.getClient();
+    if (!rateLimitRedisClient.isConnected()) {
+      await rateLimitRedisClient.connect();
+      client = rateLimitRedisClient.getClient();
     }
 
     // Clear all rate limit keys before each test
@@ -163,6 +163,40 @@ describe('Rate Limiting Middleware Security Tests', () => {
         });
     });
 
+    it('should enforce limits under concurrent load', async () => {
+      const maxRequests = 5;
+      const totalRequests = 25;
+      const rateLimitHandler = createRateLimitHandler({
+        windowMs: 60 * 1000,
+        maxRequests,
+        keyGenerator: () => 'test-user-concurrent',
+      });
+
+      app.get('/test', { preHandler: [rateLimitHandler] }, async () => ({
+        success: true,
+      }));
+      await app.ready();
+
+      const responses = await Promise.all(
+        Array.from({ length: totalRequests }, () =>
+          app.inject({
+            method: 'GET',
+            url: '/test',
+          })
+        )
+      );
+
+      const successCount = responses.filter(r => r.statusCode === 200).length;
+      const rateLimitedCount = responses.filter(
+        r => r.statusCode === 429
+      ).length;
+
+      expect(successCount).toBeLessThanOrEqual(maxRequests);
+      expect(rateLimitedCount).toBeGreaterThanOrEqual(
+        totalRequests - maxRequests
+      );
+    });
+
     it('should track limits per user correctly', async () => {
       const rateLimitHandler = createRateLimitHandler({
         windowMs: 60 * 1000,
@@ -259,7 +293,7 @@ describe('Rate Limiting Middleware Security Tests', () => {
   describe('Critical Security: Fail-Closed Error Handling', () => {
     it('should block requests when Redis is unavailable', async () => {
       // Mock Redis isConnected to return false
-      jest.spyOn(redisClient, 'isConnected').mockReturnValue(false);
+      jest.spyOn(rateLimitRedisClient, 'isConnected').mockReturnValue(false);
 
       const rateLimitHandler = createRateLimitHandler({
         windowMs: 60 * 1000,
@@ -292,14 +326,13 @@ describe('Rate Limiting Middleware Security Tests', () => {
       // Mock Redis client to throw errors but maintain connection status
       const mockClient = {
         status: 'ready',
-        get: jest.fn().mockRejectedValue(new Error('Redis operation failed')),
-        incr: jest.fn(),
-        expire: jest.fn(),
-        ttl: jest.fn(),
+        eval: jest.fn().mockRejectedValue(new Error('Redis operation failed')),
       };
 
-      jest.spyOn(redisClient, 'getClient').mockReturnValue(mockClient as any);
-      jest.spyOn(redisClient, 'isConnected').mockReturnValue(true);
+      jest
+        .spyOn(rateLimitRedisClient, 'getClient')
+        .mockReturnValue(mockClient as any);
+      jest.spyOn(rateLimitRedisClient, 'isConnected').mockReturnValue(true);
 
       const rateLimitHandler = createRateLimitHandler({
         windowMs: 60 * 1000,

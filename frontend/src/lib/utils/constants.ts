@@ -11,24 +11,81 @@ export const API_ENDPOINTS = {
     LOGIN: '/auth/login',
     LOGOUT: '/auth/logout',
     REFRESH: '/auth/refresh',
+    CONFIRM_EMAIL: '/auth/confirm',
     SESSIONS: '/auth/sessions'
+  },
+  DASHBOARD: {
+    OVERVIEW: '/dashboard/overview',
+    PRELAUNCH_REWARDS: '/dashboard/prelaunch-rewards'
   },
   SUBSCRIPTIONS: {
     AVAILABLE: '/subscriptions/available',
+    PRODUCTS_AVAILABLE: '/subscriptions/products/available',
+    PRODUCT_DETAIL: '/subscriptions/products',
     VALIDATE: '/subscriptions/validate-purchase',
     PURCHASE: '/subscriptions/purchase',
     MY_SUBSCRIPTIONS: '/subscriptions/my-subscriptions',
-    DETAILS: '/subscriptions'
+    DETAILS: '/subscriptions',
+    AUTO_RENEW_ENABLE: '/subscriptions',
+    AUTO_RENEW_CONFIRM: '/subscriptions',
+    AUTO_RENEW_DISABLE: '/subscriptions',
+    RENEWAL_CHECKOUT: '/subscriptions'
   },
   CREDITS: {
-    BALANCE: '/credits/balance'
+    BALANCE: '/credits/balance',
+    HISTORY: '/credits/history'
+  },
+  ORDERS: {
+    LIST: '/orders'
+  },
+  NOTIFICATIONS: {
+    LIST: '/notifications',
+    READ: '/notifications/read',
+    CLEAR: '/notifications'
+  },
+  NEWSLETTER: {
+    SUBSCRIBE: '/newsletter/subscribe'
+  },
+  BIS: {
+    SUBMIT: '/bis/inquiries'
   },
   PAYMENTS: {
     CREATE: '/payments/create-payment',
     STATUS: '/payments/status',
     CURRENCIES: '/payments/currencies',
     ESTIMATE: '/payments/estimate',
-    HISTORY: '/payments/history'
+    MIN_AMOUNT: '/payments/min-amount',
+    HISTORY: '/payments/history',
+    CHECKOUT: '/payments/checkout',
+    QUOTE: '/payments/quote'
+  },
+  USERS: {
+    PROFILE: '/users/profile',
+    PASSWORD: '/users/password',
+    PIN_STATUS: '/users/pin/status',
+    PIN_SET: '/users/pin/set',
+    PIN_VERIFY: '/users/pin/verify',
+    PIN_RESET: '/users/pin/reset-request'
+  },
+  ADMIN: {
+    PRODUCTS: '/admin/products',
+    PRODUCT_VARIANTS: '/admin/product-variants',
+    PRODUCT_VARIANT_TERMS: '/admin/product-variant-terms',
+    PRODUCT_LABELS: '/admin/product-labels',
+    PRODUCT_MEDIA: '/admin/product-media',
+    PRICE_HISTORY: '/admin/price-history',
+    ORDERS: '/admin/orders',
+    PAYMENTS: '/admin/payments',
+    SUBSCRIPTIONS: '/admin/subscriptions',
+    CREDITS: '/admin/credits',
+    USERS: '/admin/users',
+    REWARDS: '/admin/rewards',
+    TASKS: '/admin/tasks',
+    MIGRATION: '/admin/migration',
+    COUPONS: '/admin/coupons',
+    NOTIFICATIONS: '/admin/notifications',
+    BIS: '/admin/bis',
+    PIN_RESET: '/admin/pin-reset'
   }
 } as const;
 
@@ -39,9 +96,10 @@ export const ROUTES = {
     REGISTER: '/auth/register'
   },
   DASHBOARD: '/dashboard',
-  PROFILE: '/profile',
+  SETTINGS: '/dashboard/settings',
+  ADMIN: '/admin',
   SUBSCRIPTIONS: {
-    MY_SUBSCRIPTIONS: '/dashboard/subscriptions/active'
+    MY_SUBSCRIPTIONS: '/dashboard/subscriptions'
   },
   CREDITS: '/dashboard/credits'
 } as const;

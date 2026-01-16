@@ -14,6 +14,7 @@ const mockPaymentFailureService = {
     });
   }),
   handleMonitoringFailure: jest.fn().mockResolvedValue(undefined),
+  resolveFailure: jest.fn().mockResolvedValue(undefined),
   getFailedPayments: jest.fn().mockResolvedValue([]),
   manualRetryPayment: jest.fn().mockResolvedValue({
     success: true,
@@ -23,7 +24,9 @@ const mockPaymentFailureService = {
     },
   }),
   cleanupOldFailures: jest.fn().mockResolvedValue(0),
-  getMetrics: jest.fn().mockImplementation(() => mockPaymentFailureService._metrics),
+  getMetrics: jest
+    .fn()
+    .mockImplementation(() => mockPaymentFailureService._metrics),
   resetMetrics: jest.fn().mockImplementation(() => {
     mockPaymentFailureService._metrics = {
       totalFailures: 0,
@@ -42,7 +45,7 @@ const mockPaymentFailureService = {
       // Try calling ping to see if it throws
       await pingMock();
       return true;
-    } catch (error) {
+    } catch {
       // If ping throws an error (like 'Redis connection failed'), return false
       return false;
     }

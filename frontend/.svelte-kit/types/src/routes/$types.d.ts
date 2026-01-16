@@ -12,8 +12,8 @@ type EnsureDefined<T> = T extends null | undefined ? {} : T;
 type OptionalUnion<U extends Record<string, any>, A extends keyof U = U extends U ? keyof U : never> = U extends unknown ? { [P in Exclude<A, keyof U>]?: never } & U : never;
 export type Snapshot<T = any> = Kit.Snapshot<T>;
 type PageParentData = EnsureDefined<LayoutData>;
-type LayoutRouteId = RouteId | "/" | "/auth/login" | "/auth/register" | "/browse" | "/browse/subscriptions/[serviceType]/[planId]" | "/dashboard" | "/dashboard/credits" | "/dashboard/subscriptions" | "/dashboard/subscriptions/[subscriptionId]" | "/dashboard/subscriptions/active" | "/profile" | null
-type LayoutParams = RouteParams & { serviceType?: string; planId?: string; subscriptionId?: string }
+type LayoutRouteId = RouteId | "/" | "/admin" | "/admin/bis" | "/admin/bis/[inquiryId]" | "/admin/coupons" | "/admin/credits" | "/admin/migration" | "/admin/notifications" | "/admin/orders" | "/admin/orders/[orderId]/fulfillment" | "/admin/payments" | "/admin/pin-reset" | "/admin/products" | "/admin/products/[productId]" | "/admin/rewards" | "/admin/subscriptions" | "/admin/subscriptions/[subscriptionId]/renewal" | "/admin/tasks" | "/admin/users" | "/auth/confirm" | "/auth/login" | "/auth/register" | "/browse" | "/browse/products/[slug]" | "/cart" | "/dashboard" | "/dashboard/browse" | "/dashboard/credits" | "/dashboard/orders" | "/dashboard/prelaunch-rewards" | "/dashboard/settings" | "/dashboard/subscriptions" | "/dashboard/subscriptions/[subscriptionId]" | "/dashboard/subscriptions/[subscriptionId]/billing" | "/dashboard/subscriptions/[subscriptionId]/renewal" | "/dashboard/subscriptions/active" | "/feedback" | "/help" | "/privacy" | "/profile" | "/returns" | "/terms" | null
+type LayoutParams = RouteParams & { inquiryId?: string; orderId?: string; productId?: string; subscriptionId?: string; slug?: string }
 type LayoutServerParentData = EnsureDefined<{}>;
 type LayoutParentData = EnsureDefined<{}>;
 

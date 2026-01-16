@@ -26,7 +26,10 @@
   let showFiltersModal = false;
   let sortDropdownOpen = false;
 
-  const sortOptions: SortOption[] = [
+  type SortBy = BrowseFilters['sortBy'];
+  type Availability = BrowseFilters['availability'];
+
+  const sortOptions: Array<SortOption & { value: SortBy }> = [
     { value: 'recommended', label: 'Recommended', icon: '⭐' },
     { value: 'price_low', label: 'Price: Low to High', icon: '💰' },
     { value: 'price_high', label: 'Price: High to Low', icon: '💎' },
@@ -34,14 +37,14 @@
     { value: 'popularity', label: 'Most Popular', icon: '👥' }
   ];
 
-  const availabilityOptions: FilterOption[] = [
+  const availabilityOptions: Array<FilterOption & { value: Availability }> = [
     { value: 'all', label: 'All Subscriptions' },
     { value: 'available', label: 'Available Seats' },
     { value: 'filling_fast', label: 'Filling Fast' }
   ];
 
-  function handleSortChange(sortValue: string) {
-    filters = { ...filters, sortBy: sortValue as any };
+  function handleSortChange(sortValue: SortBy) {
+    filters = { ...filters, sortBy: sortValue };
     dispatch('sortChange', sortValue);
     dispatch('filtersChange', filters);
     sortDropdownOpen = false;
@@ -52,8 +55,8 @@
     dispatch('filtersChange', filters);
   }
 
-  function handleAvailabilityChange(availability: string) {
-    filters = { ...filters, availability: availability as any };
+  function handleAvailabilityChange(availability: Availability) {
+    filters = { ...filters, availability };
     dispatch('filtersChange', filters);
   }
 
@@ -145,11 +148,10 @@
         aria-expanded={sortDropdownOpen}
       >
         <span>Sort: {getCurrentSortLabel()}</span>
-        <ChevronDown
-          size={16}
-          class="transform transition-transform duration-200"
-          class:rotate-180={sortDropdownOpen}
-        />
+          <ChevronDown
+            size={16}
+            class={`transform transition-transform duration-200 ${sortDropdownOpen ? 'rotate-180' : ''}`}
+          />
       </button>
 
       {#if sortDropdownOpen}
@@ -280,17 +282,18 @@
       <!-- Modal content -->
       <div class="p-6 space-y-6">
         <!-- Price range -->
-        <div>
-          <label class="block text-sm font-medium text-gray-900 mb-3">
+        <fieldset>
+          <legend class="block text-sm font-medium text-gray-900 mb-3">
             Price Range (per month)
-          </label>
+          </legend>
           <div class="space-y-4">
             <div class="flex items-center space-x-4">
               <div class="flex-1">
-                <label class="block text-xs text-gray-600 mb-1">Min Price</label>
+                <label for="price-min" class="block text-xs text-gray-600 mb-1">Min Price</label>
                 <div class="relative">
                   <Euro size={16} class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <input
+                    id="price-min"
                     type="number"
                     min="0"
                     max="150"
@@ -301,10 +304,11 @@
                 </div>
               </div>
               <div class="flex-1">
-                <label class="block text-xs text-gray-600 mb-1">Max Price</label>
+                <label for="price-max" class="block text-xs text-gray-600 mb-1">Max Price</label>
                 <div class="relative">
                   <Euro size={16} class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <input
+                    id="price-max"
                     type="number"
                     min="0"
                     max="150"
@@ -330,13 +334,13 @@
               </div>
             </div>
           </div>
-        </div>
+        </fieldset>
 
         <!-- Availability -->
-        <div>
-          <label class="block text-sm font-medium text-gray-900 mb-3">
+        <fieldset>
+          <legend class="block text-sm font-medium text-gray-900 mb-3">
             Availability
-          </label>
+          </legend>
           <div class="space-y-2">
             {#each availabilityOptions as option}
               <label class="flex items-center space-x-3">
@@ -352,7 +356,7 @@
               </label>
             {/each}
           </div>
-        </div>
+        </fieldset>
       </div>
 
       <!-- Modal footer -->

@@ -11,13 +11,13 @@
   export let isSelected: boolean = false;
   export let disabled: boolean = false;
 
-  const serviceIcons = {
+  const serviceIcons: Record<string, typeof Music> = {
     spotify: Music,
     netflix: Tv,
     tradingview: TrendingUp
   };
 
-  const serviceColors = {
+  const serviceColors: Record<string, string> = {
     spotify: 'bg-green-500',
     netflix: 'bg-red-500',
     tradingview: 'bg-blue-500'

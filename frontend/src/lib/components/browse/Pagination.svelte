@@ -86,6 +86,16 @@
     }
   }
 
+  function handleJumpKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      const target = event.currentTarget as HTMLInputElement;
+      const page = parseInt(target.value);
+      if (page >= 1 && page <= pagination.totalPages) {
+        goToPage(page);
+      }
+    }
+  }
+
   $: visiblePages = getVisiblePages();
   $: startItem = (pagination.currentPage - 1) * pagination.itemsPerPage + 1;
   $: endItem = Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems);
@@ -119,7 +129,7 @@
     </div>
 
     <!-- Pagination controls -->
-    <nav class="flex items-center justify-center" role="navigation" aria-label="Pagination">
+    <nav class="flex items-center justify-center" aria-label="Pagination">
       <div class="flex items-center space-x-1">
         <!-- Previous button -->
         <button
@@ -143,18 +153,11 @@
             {:else}
               <button
                 type="button"
-                class="pagination-btn w-10 h-10 text-sm font-medium rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                class:bg-gradient-to-br={page === pagination.currentPage}
-                class:from-cyan-500/5={page === pagination.currentPage}
-                class:to-pink-500/5={page === pagination.currentPage}
-                class:border={page === pagination.currentPage}
-                class:border-cyan-200={page === pagination.currentPage}
-                class:text-gray-900={page === pagination.currentPage}
-                class:font-semibold={page === pagination.currentPage}
-                class:bg-white={page !== pagination.currentPage}
-                class:border-gray-200={page !== pagination.currentPage}
-                class:text-gray-600={page !== pagination.currentPage}
-                class:hover:bg-gray-50={page !== pagination.currentPage}
+                class={`pagination-btn w-10 h-10 text-sm font-medium rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                  page === pagination.currentPage
+                    ? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900 font-semibold'
+                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
                 on:click={() => goToPage(page)}
                 on:keydown={(e) => handleKeydown(e, page)}
                 aria-label="Go to page {page}"
@@ -192,17 +195,7 @@
             max={pagination.totalPages}
             placeholder={pagination.currentPage.toString()}
             class="w-16 px-2 py-1 text-center border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-cyan-500"
-            on:keydown={(e) => {
-              if (e.key === 'Enter') {
-                const target = e.currentTarget as HTMLInputElement;
-                const page = parseInt(target.value);
-                if (page >= 1 && page <= pagination.totalPages) {
-                  goToPage(page);
-                  target.value = '';
-                  target.blur();
-                }
-              }
-            }}
+            on:keydown={handleJumpKeydown}
           />
           <span class="text-gray-500">of {pagination.totalPages}</span>
         </div>

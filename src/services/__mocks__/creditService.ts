@@ -20,14 +20,14 @@ const mockCreditService = {
       description: 'Test credit allocation',
       metadata: {},
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     },
     balance: {
       userId: 'user-123',
       totalBalance: 150,
       availableBalance: 150,
       pendingBalance: 0,
-      lastUpdated: new Date()
+      lastUpdated: new Date(),
     },
   }),
   deductCredits: jest.fn().mockResolvedValue({
@@ -48,6 +48,28 @@ const mockCreditService = {
       balanceBefore: 100,
       balanceAfter: 50,
       description: 'Refund processed',
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    balance: {
+      userId: 'user-123',
+      totalBalance: 50,
+      availableBalance: 50,
+      pendingBalance: 0,
+      lastUpdated: new Date(),
+    },
+  }),
+  reverseCredits: jest.fn().mockResolvedValue({
+    success: true,
+    transaction: {
+      id: 'refund-reversal-tx-123',
+      userId: 'user-123',
+      type: 'refund_reversal',
+      amount: 50,
+      balanceBefore: 100,
+      balanceAfter: 50,
+      description: 'Refund reversal processed',
       metadata: {},
       createdAt: new Date(),
       updatedAt: new Date(),

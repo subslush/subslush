@@ -5,20 +5,710 @@ import { paymentMonitoringService } from '../services/paymentMonitoringService';
 import { creditAllocationService } from '../services/creditAllocationService';
 import { paymentFailureService } from '../services/paymentFailureService';
 import { refundService } from '../services/refundService';
-import { SuccessResponses, ErrorResponses } from '../utils/response';
+import { subscriptionService } from '../services/subscriptionService';
+import { creditService } from '../services/creditService';
+import { orderService } from '../services/orderService';
+import { resolveVariantPricing } from '../services/variantPricingService';
+import { couponService, normalizeCouponCode } from '../services/couponService';
+import {
+  SuccessResponses,
+  ErrorResponses,
+  sendError,
+  HttpStatus,
+} from '../utils/response';
 import { Logger } from '../utils/logger';
 import {
+  NOWPaymentsError,
+  nowpaymentsClient,
+} from '../utils/nowpaymentsClient';
+import { getDatabasePool } from '../config/database';
+import {
+  normalizeUpgradeOptions,
+  validateUpgradeOptions,
+} from '../utils/upgradeOptions';
+import {
+  resolveCountryFromHeaders,
+  resolvePreferredCurrency,
+  type SupportedCurrency,
+} from '../utils/currency';
+import {
   createPaymentRequestJsonSchema,
+  minAmountRequestJsonSchema,
   paymentHistoryQueryJsonSchema,
   webhookPayloadJsonSchema,
 } from '../schemas/payment';
+import {
+  paymentRateLimit,
+  paymentQuoteRateLimit,
+  paymentRefreshRateLimit,
+  paymentRetryRateLimit,
+  webhookRateLimit,
+} from '../middleware/paymentMiddleware';
 import {
   CreatePaymentRequest,
   PaymentHistoryQuery,
   WebhookPayload,
 } from '../types/payment';
 
+const isNowPaymentsFailure = (error: unknown): boolean =>
+  error instanceof NOWPaymentsError ||
+  (error instanceof Error && error.message.includes('NOWPayments'));
+
+const resolveRequestCurrency = (
+  request: FastifyRequest,
+  bodyCurrency?: string | null
+): SupportedCurrency => {
+  const headerCurrency = request.headers['x-currency'];
+  const cookieCurrency = request.cookies?.['preferred_currency'];
+  const headerCountry = resolveCountryFromHeaders(
+    request.headers as Record<string, string | string[] | undefined>
+  );
+
+  return resolvePreferredCurrency({
+    queryCurrency: bodyCurrency || null,
+    headerCurrency: typeof headerCurrency === 'string' ? headerCurrency : null,
+    cookieCurrency: typeof cookieCurrency === 'string' ? cookieCurrency : null,
+    headerCountry,
+    fallback: 'USD',
+  });
+};
+
 export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
+  // Quote pricing without creating an order or reserving inventory
+  fastify.post(
+    '/quote',
+    {
+      preHandler: [authPreHandler, paymentQuoteRateLimit],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['variant_id', 'duration_months'],
+          properties: {
+            variant_id: {
+              type: 'string',
+              minLength: 1,
+            },
+            duration_months: {
+              type: 'number',
+              minimum: 1,
+              default: 1,
+            },
+            currency: {
+              type: 'string',
+              minLength: 1,
+            },
+            coupon_code: {
+              type: 'string',
+              minLength: 1,
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const user = request.user;
+        if (!user?.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
+
+        const {
+          variant_id,
+          duration_months = 1,
+          currency: requestedCurrency,
+          coupon_code,
+        } = request.body as any;
+
+        const preferredCurrency = resolveRequestCurrency(
+          request,
+          requestedCurrency
+        );
+
+        const pricingResult = await resolveVariantPricing({
+          variantId: variant_id,
+          currency: preferredCurrency,
+          termMonths: duration_months,
+        });
+
+        if (!pricingResult.ok) {
+          if (pricingResult.error === 'term_unavailable') {
+            return ErrorResponses.badRequest(
+              reply,
+              'Selected duration is not available for this plan'
+            );
+          }
+          return ErrorResponses.badRequest(
+            reply,
+            'Subscription plan is not available'
+          );
+        }
+
+        const { product, snapshot, currency } = pricingResult.data;
+        const subtotalCents = snapshot.basePriceCents * snapshot.termMonths;
+        const termDiscountCents = snapshot.discountCents;
+        let couponDiscountCents = 0;
+        let totalCents = snapshot.totalPriceCents;
+
+        const normalizedCoupon = normalizeCouponCode(coupon_code);
+        if (normalizedCoupon) {
+          const couponResult = await couponService.validateCouponForOrder({
+            couponCode: normalizedCoupon,
+            userId: user.userId,
+            product,
+            subtotalCents: snapshot.totalPriceCents,
+          });
+
+          if (!couponResult.success) {
+            return ErrorResponses.badRequest(
+              reply,
+              'Coupon not valid for this order.'
+            );
+          }
+
+          couponDiscountCents = couponResult.data.discountCents;
+          totalCents = couponResult.data.totalCents;
+        }
+
+        return SuccessResponses.ok(reply, {
+          subtotal_cents: subtotalCents,
+          term_discount_cents: termDiscountCents,
+          coupon_discount_cents: couponDiscountCents,
+          total_cents: totalCents,
+          currency,
+        });
+      } catch (error) {
+        Logger.error('Error creating payment quote:', error);
+        return ErrorResponses.internalError(reply, 'Failed to create quote');
+      }
+    }
+  );
+
+  // Unified checkout: Stripe (default) or credits
+  fastify.post(
+    '/checkout',
+    {
+      preHandler: [authPreHandler, paymentRateLimit],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['variant_id', 'duration_months'],
+          properties: {
+            variant_id: {
+              type: 'string',
+              minLength: 1,
+            },
+            duration_months: {
+              type: 'number',
+              minimum: 1,
+              default: 1,
+            },
+            payment_method: {
+              type: 'string',
+              enum: ['stripe', 'credits'],
+              default: 'stripe',
+            },
+            auto_renew: {
+              type: 'boolean',
+              default: false,
+            },
+            currency: {
+              type: 'string',
+              minLength: 1,
+            },
+            coupon_code: {
+              type: 'string',
+              minLength: 1,
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const user = request.user;
+        if (!user?.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
+
+        const {
+          variant_id,
+          duration_months = 1,
+          payment_method = 'stripe',
+          auto_renew = false,
+          currency: requestedCurrency,
+          coupon_code,
+        } = request.body as any;
+
+        const preferredCurrency = resolveRequestCurrency(
+          request,
+          requestedCurrency
+        );
+        const pricingCurrency: SupportedCurrency =
+          payment_method === 'credits' ? 'USD' : preferredCurrency;
+
+        const pricingResult = await resolveVariantPricing({
+          variantId: variant_id,
+          currency: pricingCurrency,
+          termMonths: duration_months,
+        });
+
+        if (!pricingResult.ok) {
+          if (pricingResult.error === 'term_unavailable') {
+            return ErrorResponses.badRequest(
+              reply,
+              'Selected duration is not available for this plan'
+            );
+          }
+          return ErrorResponses.badRequest(
+            reply,
+            'Subscription plan is not available'
+          );
+        }
+
+        const { product, variant, snapshot, currency } = pricingResult.data;
+        const upgradeOptionsRaw = normalizeUpgradeOptions(product.metadata);
+        const upgradeValidation = validateUpgradeOptions(upgradeOptionsRaw);
+        if (!upgradeValidation.valid) {
+          Logger.error('Invalid upgrade options configuration', {
+            productId: product.id,
+            reason: upgradeValidation.reason,
+          });
+          return ErrorResponses.internalError(
+            reply,
+            'Subscription plan is not available'
+          );
+        }
+        const upgradeOptions = upgradeOptionsRaw;
+        const planCode = variant.service_plan || variant.variant_code;
+        if (!planCode || !product.service_type) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Subscription plan is not available'
+          );
+        }
+
+        if (payment_method === 'credits' && currency !== 'USD') {
+          return ErrorResponses.badRequest(
+            reply,
+            'Credit payments are only supported for USD pricing'
+          );
+        }
+
+        const termSubtotalCents = snapshot.basePriceCents * snapshot.termMonths;
+        const termTotalCents = snapshot.totalPriceCents;
+        let couponDiscountCents = 0;
+        let coupon: { id: string; code: string; percent_off: number } | null =
+          null;
+
+        const normalizedCoupon = normalizeCouponCode(coupon_code);
+        if (normalizedCoupon) {
+          const couponResult = await couponService.validateCouponForOrder({
+            couponCode: normalizedCoupon,
+            userId: user.userId,
+            product,
+            subtotalCents: termTotalCents,
+          });
+
+          if (!couponResult.success) {
+            return ErrorResponses.badRequest(
+              reply,
+              'Coupon not valid for this order.'
+            );
+          }
+
+          coupon = couponResult.data.coupon;
+          couponDiscountCents = couponResult.data.discountCents;
+        }
+
+        const finalTotalCents = Math.max(
+          0,
+          termTotalCents - couponDiscountCents
+        );
+        const priceCents = finalTotalCents;
+        const price = priceCents / 100;
+        const orderDescription = `Subscription: ${product.service_type} ${planCode} (${snapshot.termMonths} month${snapshot.termMonths > 1 ? 's' : ''})`;
+        const productVariantId = variant.id;
+        const orderInput = {
+          user_id: user.userId,
+          status: 'pending_payment' as const,
+          status_reason: 'checkout_started',
+          currency,
+          subtotal_cents: termSubtotalCents,
+          discount_cents: snapshot.discountCents,
+          coupon_id: coupon?.id ?? null,
+          coupon_code: coupon?.code ?? null,
+          coupon_discount_cents: couponDiscountCents,
+          total_cents: finalTotalCents,
+          term_months: snapshot.termMonths,
+          paid_with_credits: payment_method === 'credits',
+          auto_renew,
+          payment_provider: payment_method === 'credits' ? 'credits' : 'stripe',
+          metadata: {
+            service_type: product.service_type,
+            service_plan: planCode,
+            duration_months: snapshot.termMonths,
+            discount_percent: snapshot.discountPercent,
+            base_price_cents: snapshot.basePriceCents,
+            total_price_cents: finalTotalCents,
+            ...(upgradeOptions ? { upgrade_options: upgradeOptions } : {}),
+            ...(coupon
+              ? {
+                  coupon_code: coupon.code,
+                  coupon_percent_off: coupon.percent_off,
+                  coupon_discount_cents: couponDiscountCents,
+                }
+              : {}),
+          },
+        };
+
+        const orderItems = [
+          {
+            product_variant_id: productVariantId,
+            quantity: 1,
+            unit_price_cents: finalTotalCents,
+            base_price_cents: snapshot.basePriceCents,
+            discount_percent: snapshot.discountPercent,
+            term_months: snapshot.termMonths,
+            currency,
+            total_price_cents: finalTotalCents,
+            description: orderDescription,
+            metadata: {
+              service_type: product.service_type,
+              service_plan: planCode,
+              duration_months: snapshot.termMonths,
+              discount_percent: snapshot.discountPercent,
+              base_price_cents: snapshot.basePriceCents,
+              total_price_cents: finalTotalCents,
+              ...(upgradeOptions ? { upgrade_options: upgradeOptions } : {}),
+              ...(coupon
+                ? {
+                    coupon_code: coupon.code,
+                    coupon_percent_off: coupon.percent_off,
+                    coupon_discount_cents: couponDiscountCents,
+                  }
+                : {}),
+            },
+          },
+        ];
+
+        let orderResult:
+          | Awaited<ReturnType<typeof orderService.createOrderWithItems>>
+          | Awaited<
+              ReturnType<typeof orderService.createOrderWithItemsInTransaction>
+            >;
+
+        if (coupon) {
+          const pool = getDatabasePool();
+          const client = await pool.connect();
+          let transactionOpen = false;
+          try {
+            await client.query('BEGIN');
+            transactionOpen = true;
+            orderResult = await orderService.createOrderWithItemsInTransaction(
+              client,
+              orderInput,
+              orderItems
+            );
+
+            if (!orderResult.success || !orderResult.data) {
+              await client.query('ROLLBACK');
+              transactionOpen = false;
+              return ErrorResponses.internalError(
+                reply,
+                'Failed to create order for checkout'
+              );
+            }
+
+            const reservation = await couponService.reserveCouponRedemption({
+              couponId: coupon.id,
+              userId: user.userId,
+              orderId: orderResult.data.id,
+              product,
+              subtotalCents: termTotalCents,
+              client,
+            });
+
+            if (!reservation.success) {
+              await client.query('ROLLBACK');
+              transactionOpen = false;
+              return ErrorResponses.badRequest(
+                reply,
+                'Coupon not valid for this order.'
+              );
+            }
+
+            await client.query('COMMIT');
+            transactionOpen = false;
+          } catch (error) {
+            if (transactionOpen) {
+              await client.query('ROLLBACK');
+              transactionOpen = false;
+            }
+            Logger.error('Failed to reserve coupon during checkout:', error);
+            return ErrorResponses.internalError(
+              reply,
+              'Failed to create order for checkout'
+            );
+          } finally {
+            if (transactionOpen) {
+              try {
+                await client.query('ROLLBACK');
+              } catch (rollbackError) {
+                Logger.error(
+                  'Failed to rollback checkout coupon reservation',
+                  rollbackError
+                );
+              }
+            }
+            client.release();
+          }
+        } else {
+          orderResult = await orderService.createOrderWithItems(
+            orderInput,
+            orderItems
+          );
+        }
+
+        if (!orderResult.success || !orderResult.data) {
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to create order for checkout'
+          );
+        }
+
+        const order = orderResult.data;
+        const startDate = new Date();
+        const endDate = new Date(startDate);
+        endDate.setMonth(endDate.getMonth() + snapshot.termMonths);
+        const renewalDate = new Date(endDate);
+        renewalDate.setDate(renewalDate.getDate() - 7);
+        const nextBillingAt = auto_renew ? renewalDate : null;
+
+        if (payment_method === 'credits') {
+          // Reuse existing credit purchase flow
+          const validation = await subscriptionService.canPurchaseSubscription(
+            user.userId,
+            productVariantId
+          );
+
+          if (!validation.canPurchase) {
+            await orderService.updateOrderStatus(
+              order.id,
+              'cancelled',
+              validation.reason || 'purchase_not_allowed'
+            );
+            if (coupon) {
+              await couponService.voidRedemptionForOrder(order.id);
+            }
+            return ErrorResponses.badRequest(
+              reply,
+              validation.reason || 'Purchase not allowed'
+            );
+          }
+
+          const creditResult = await creditService.spendCredits(
+            user.userId,
+            price,
+            `Subscription purchase: ${product.service_type} ${planCode}`,
+            {
+              service_type: product.service_type,
+              service_plan: planCode,
+              duration_months: snapshot.termMonths,
+              purchase_type: 'subscription',
+            },
+            {
+              orderId: order.id,
+              ...(productVariantId ? { productVariantId } : {}),
+              priceCents,
+              basePriceCents: snapshot.basePriceCents,
+              discountPercent: snapshot.discountPercent,
+              termMonths: snapshot.termMonths,
+              currency,
+              autoRenew: auto_renew,
+              ...(nextBillingAt ? { nextBillingAt } : {}),
+              renewalMethod: 'credits',
+              statusReason: 'paid_with_credits',
+            }
+          );
+
+          if (!creditResult.success) {
+            await orderService.updateOrderStatus(
+              order.id,
+              'cancelled',
+              creditResult.error || 'credit_payment_failed'
+            );
+            if (coupon) {
+              await couponService.voidRedemptionForOrder(order.id);
+            }
+            return ErrorResponses.badRequest(
+              reply,
+              creditResult.error || 'Insufficient credits'
+            );
+          }
+
+          const subResult = await subscriptionService.createSubscription(
+            user.userId,
+            {
+              service_type: product.service_type,
+              service_plan: planCode,
+              start_date: startDate,
+              end_date: endDate,
+              renewal_date: renewalDate,
+              auto_renew,
+              order_id: order.id,
+              product_variant_id: productVariantId,
+              price_cents: termTotalCents,
+              base_price_cents: snapshot.basePriceCents,
+              discount_percent: snapshot.discountPercent,
+              term_months: snapshot.termMonths,
+              currency,
+              next_billing_at: nextBillingAt,
+              renewal_method: 'credits',
+              status_reason: 'paid_with_credits',
+              upgrade_options_snapshot: upgradeOptions ?? null,
+            }
+          );
+
+          if (!subResult.success) {
+            // refund credits on failure
+            await creditService.refundCredits(
+              user.userId,
+              price,
+              'Subscription creation failed - automatic refund',
+              creditResult.transaction?.id,
+              { service_type: product.service_type, service_plan: planCode },
+              {
+                orderId: order.id,
+                ...(productVariantId ? { productVariantId } : {}),
+                priceCents,
+                basePriceCents: snapshot.basePriceCents,
+                discountPercent: snapshot.discountPercent,
+                termMonths: snapshot.termMonths,
+                currency,
+                autoRenew: auto_renew,
+                ...(nextBillingAt ? { nextBillingAt } : {}),
+                renewalMethod: 'credits',
+                statusReason: 'subscription_create_failed',
+              }
+            );
+            await orderService.updateOrderStatus(
+              order.id,
+              'cancelled',
+              'subscription_create_failed'
+            );
+            if (coupon) {
+              await couponService.voidRedemptionForOrder(order.id);
+            }
+            return ErrorResponses.internalError(
+              reply,
+              'Subscription creation failed, credits refunded'
+            );
+          }
+
+          await orderService.updateOrderPayment(order.id, {
+            payment_provider: 'credits',
+            payment_reference: creditResult.transaction?.id || null,
+            paid_with_credits: true,
+            auto_renew,
+            status: 'in_process',
+            status_reason: 'paid_with_credits',
+          });
+          if (coupon) {
+            await couponService.finalizeRedemptionForOrder(order.id);
+          }
+
+          return SuccessResponses.created(reply, {
+            payment_method: 'credits',
+            order_id: order.id,
+            subscription: subResult.data,
+            upgrade_options: upgradeOptions ?? null,
+            transaction: {
+              transaction_id: creditResult.transaction?.id,
+              amount_debited: price,
+              balance_after: creditResult.balance?.availableBalance,
+            },
+          });
+        }
+
+        // Default: Stripe direct payment
+        const stripeResult = await paymentService.createStripePayment(
+          user.userId,
+          price,
+          currency,
+          orderDescription,
+          'subscription',
+          {
+            service_type: product.service_type,
+            service_plan: planCode,
+            duration_months: snapshot.termMonths,
+            discount_percent: snapshot.discountPercent,
+            base_price_cents: snapshot.basePriceCents,
+            total_price_cents: finalTotalCents,
+            subscription_price_cents: termTotalCents,
+            auto_renew,
+            ...(upgradeOptions ? { upgrade_options: upgradeOptions } : {}),
+            ...(coupon
+              ? {
+                  coupon_code: coupon.code,
+                  coupon_percent_off: coupon.percent_off,
+                  coupon_discount_cents: couponDiscountCents,
+                }
+              : {}),
+          },
+          {
+            orderId: order.id,
+            productVariantId: productVariantId ?? null,
+            priceCents,
+            basePriceCents: snapshot.basePriceCents,
+            discountPercent: snapshot.discountPercent,
+            termMonths: snapshot.termMonths,
+            currency,
+            autoRenew: auto_renew,
+            nextBillingAt: nextBillingAt ?? null,
+            renewalMethod: 'stripe',
+            statusReason: 'checkout_started',
+          }
+        );
+
+        if (!stripeResult.success) {
+          await orderService.updateOrderStatus(
+            order.id,
+            'cancelled',
+            stripeResult.error || 'stripe_checkout_failed'
+          );
+          if (coupon) {
+            await couponService.voidRedemptionForOrder(order.id);
+          }
+          return ErrorResponses.internalError(
+            reply,
+            stripeResult.error || 'Failed to start Stripe checkout'
+          );
+        }
+
+        await orderService.updateOrderPayment(order.id, {
+          payment_provider: 'stripe',
+          payment_reference: stripeResult.paymentId,
+          auto_renew,
+          status: 'pending_payment',
+          status_reason: 'awaiting_payment',
+        });
+
+        return SuccessResponses.created(reply, {
+          payment_method: 'stripe',
+          order_id: order.id,
+          paymentId: stripeResult.paymentId,
+          clientSecret: stripeResult.clientSecret,
+          amount: stripeResult.amount,
+          currency: stripeResult.currency,
+          upgrade_options: upgradeOptions ?? null,
+        });
+      } catch (error) {
+        Logger.error('Error creating checkout:', error);
+        return ErrorResponses.internalError(reply, 'Failed to create checkout');
+      }
+    }
+  );
+
   // Create payment
   fastify.post(
     '/create-payment',
@@ -26,7 +716,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
       schema: {
         body: createPaymentRequestJsonSchema,
       },
-      preHandler: [authPreHandler],
+      preHandler: [authPreHandler, paymentRateLimit],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
@@ -41,6 +731,8 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         Logger.info(`Creating payment for user ${user.userId}`, {
           userId: user.userId,
           creditAmount: body.creditAmount,
+          price_currency: body.price_currency,
+          pay_currency: body.pay_currency,
           currency: body.currency,
         });
 
@@ -51,6 +743,21 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             `Payment creation failed for user ${user.userId}:`,
             result.error
           );
+          if (result.errorCode === 'PAYMENT_PROVIDER_UNAVAILABLE') {
+            return ErrorResponses.serviceUnavailable(
+              reply,
+              result.error || 'Payment provider unavailable'
+            );
+          }
+          if (result.errorCode) {
+            return sendError(
+              reply,
+              HttpStatus.BAD_REQUEST,
+              'Bad Request',
+              result.error || 'Payment creation failed',
+              result.errorCode
+            );
+          }
           return ErrorResponses.badRequest(
             reply,
             result.error || 'Payment creation failed'
@@ -78,6 +785,41 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  // Stripe webhook (no auth)
+  fastify.post(
+    '/stripe/webhook',
+    {
+      config: {
+        rawBody: true,
+      },
+      preHandler: [webhookRateLimit],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const signature = request.headers['stripe-signature'] as
+          | string
+          | undefined;
+        // rawBody added via fastify-raw-body
+        const rawBody =
+          (request as any).rawBody || JSON.stringify(request.body);
+
+        const success = await paymentService.handleStripeWebhook(
+          { rawBody, parsed: request.body },
+          signature
+        );
+
+        if (!success) {
+          return ErrorResponses.badRequest(reply, 'Webhook handling failed');
+        }
+
+        return reply.code(200).send({ received: true });
+      } catch (error) {
+        Logger.error('Stripe webhook error:', error);
+        return ErrorResponses.internalError(reply, 'Failed to handle webhook');
+      }
+    }
+  );
+
   // Get payment status
   fastify.get(
     '/status/:paymentId',
@@ -91,7 +833,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           },
         },
       },
-      preHandler: [authPreHandler],
+      preHandler: [authPreHandler, paymentRefreshRateLimit],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
@@ -127,12 +869,52 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
     '/webhook',
     {
+      config: {
+        rawBody: true,
+      },
       schema: {
         body: webhookPayloadJsonSchema,
       },
+      preHandler: [webhookRateLimit],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
+        const signature = request.headers['x-nowpayments-sig'] as
+          | string
+          | undefined;
+        const rawBody = (request as any).rawBody as Buffer | undefined;
+
+        if (!signature) {
+          Logger.error('Missing NOWPayments webhook signature');
+          return ErrorResponses.unauthorized(
+            reply,
+            'Missing webhook signature'
+          );
+        }
+
+        if (!rawBody) {
+          Logger.error('Missing NOWPayments webhook raw body');
+          return ErrorResponses.internalError(
+            reply,
+            'Webhook validation failed'
+          );
+        }
+
+        const isValidSignature = nowpaymentsClient.verifyIPNSignature(
+          rawBody.toString('utf8'),
+          signature
+        );
+
+        if (!isValidSignature) {
+          Logger.error('Invalid NOWPayments webhook signature', {
+            ip: request.ip,
+          });
+          return ErrorResponses.unauthorized(
+            reply,
+            'Invalid webhook signature'
+          );
+        }
+
         const payload = request.body as WebhookPayload;
 
         Logger.info(`Received webhook for payment ${payload.payment_id}`, {
@@ -170,6 +952,12 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         return SuccessResponses.ok(reply, currencies);
       } catch (error) {
         Logger.error('Error getting supported currencies:', error);
+        if (isNowPaymentsFailure(error)) {
+          return ErrorResponses.serviceUnavailable(
+            reply,
+            'Payment provider unavailable'
+          );
+        }
         return ErrorResponses.internalError(
           reply,
           'Failed to get supported currencies'
@@ -256,19 +1044,48 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           currency_to
         );
 
-        if (!estimate) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Unable to calculate estimate'
-          );
-        }
-
         return SuccessResponses.ok(reply, estimate);
       } catch (error) {
         Logger.error('Error getting payment estimate:', error);
+        if (isNowPaymentsFailure(error)) {
+          return ErrorResponses.serviceUnavailable(
+            reply,
+            'Payment provider unavailable'
+          );
+        }
         return ErrorResponses.internalError(
           reply,
           'Failed to get payment estimate'
+        );
+      }
+    }
+  );
+
+  // Get minimum deposit amount for a currency
+  fastify.get(
+    '/min-amount',
+    {
+      preHandler: [authPreHandler],
+      schema: {
+        querystring: minAmountRequestJsonSchema,
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { currency } = request.query as { currency: string };
+        const minAmount = await paymentService.getMinimumDeposit(currency);
+        return SuccessResponses.ok(reply, minAmount);
+      } catch (error) {
+        Logger.error('Error getting minimum deposit amount:', error);
+        if (isNowPaymentsFailure(error)) {
+          return ErrorResponses.serviceUnavailable(
+            reply,
+            'Payment provider unavailable'
+          );
+        }
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to get minimum deposit amount'
         );
       }
     }
@@ -288,7 +1105,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         },
         querystring: paymentHistoryQueryJsonSchema,
       },
-      preHandler: [authPreHandler],
+      preHandler: [authPreHandler, paymentRetryRateLimit],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {

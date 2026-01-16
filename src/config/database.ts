@@ -22,6 +22,24 @@ export function createDatabasePool(config: EnvironmentConfig): Pool {
 
   pool = new Pool(poolConfig);
 
+  const idleInTransactionTimeout = config.DB_IDLE_IN_TRANSACTION_TIMEOUT_MS;
+  if (
+    Number.isFinite(idleInTransactionTimeout) &&
+    idleInTransactionTimeout > 0
+  ) {
+    const timeoutValue = Math.trunc(idleInTransactionTimeout);
+    pool.on('connect', client => {
+      void client
+        .query(`SET idle_in_transaction_session_timeout = ${timeoutValue}`)
+        .catch(error => {
+          Logger.warn(
+            'Failed to set idle_in_transaction_session_timeout for database session',
+            error
+          );
+        });
+    });
+  }
+
   pool.on('error', (err: Error) => {
     Logger.error('Unexpected error on idle client', err);
     process.exit(-1);

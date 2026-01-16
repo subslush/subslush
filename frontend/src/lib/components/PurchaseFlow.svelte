@@ -1,101 +1,222 @@
 <script lang="ts">
-  import { createMutation } from '@tanstack/svelte-query';
   import { goto } from '$app/navigation';
-  import {
-    Check,
-    X,
-    CreditCard,
-    Calendar,
-    RotateCcw,
-    Loader2,
-    AlertCircle,
-    CheckCircle2,
-    ArrowLeft,
-    ArrowRight
-  } from 'lucide-svelte';
+  import { AlertCircle, CheckCircle2, CreditCard, Loader2, X } from 'lucide-svelte';
+  import UpgradeSelectionForm from '$lib/components/subscription/UpgradeSelectionForm.svelte';
   import { subscriptionService } from '$lib/api/subscriptions.js';
+  import { paymentService } from '$lib/api/payments.js';
+  import { ordersService } from '$lib/api/orders.js';
   import { user } from '$lib/stores/auth.js';
-  import { ERROR_MESSAGES, SUCCESS_MESSAGES, ROUTES } from '$lib/utils/constants.js';
-  import type { ServicePlanDetails, Subscription, PurchaseRequest } from '$lib/types/subscription.js';
+  import { credits } from '$lib/stores/credits.js';
+  import { ROUTES } from '$lib/utils/constants.js';
+  import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
+  import type { ServicePlanDetails, Subscription, UpgradeOptions } from '$lib/types/subscription.js';
+  import type { CheckoutRequest, CheckoutResponseStripe, PaymentQuoteResponse } from '$lib/types/payment.js';
+  import type { UpgradeSelectionSubmission } from '$lib/types/upgradeSelection.js';
+  import { loadStripe, type Stripe, type StripeElements, type StripePaymentElement } from '@stripe/stripe-js';
+  import { tick, onDestroy } from 'svelte';
 
   export let selectedPlan: ServicePlanDetails;
+  export let selectedDuration = 1;
+  export let selectedTotalPrice: number | null = null;
+  export let userCredits = 0;
   export let onClose: () => void;
   export let onSuccess: (subscription: Subscription) => void;
 
-  let currentStep = 1;
-  let durationMonths = 1;
-  let autoRenew = false;
-  let validationResult: any = null;
+  let paymentMethod: 'stripe' | 'credits' | null = null;
+  let lastPaymentMethod: 'stripe' | 'credits' | null = null;
+  let showCreditsConfirm = false;
+  let autoRenew = true;
+  let isProcessing = false;
+  let errorMessage = '';
+  let validationMessage = '';
+  let creditsQuoteMessage = '';
+  let showCreditsAuthNotice = false;
+  let checkoutResult: CheckoutResponseStripe | null = null;
   let purchaseResult: Subscription | null = null;
-
-  const steps = [
-    { step: 1, title: 'Review Selection', isActive: false, isCompleted: false },
-    { step: 2, title: 'Validate Purchase', isActive: false, isCompleted: false },
-    { step: 3, title: 'Confirm Purchase', isActive: false, isCompleted: false },
-    { step: 4, title: 'Success', isActive: false, isCompleted: false }
-  ];
-
-  $: {
-    steps.forEach((step, index) => {
-      step.isActive = step.step === currentStep;
-      step.isCompleted = step.step < currentStep;
-    });
-  }
-
-  $: totalCost = selectedPlan.price * durationMonths;
-
-  const validateMutation = createMutation({
-    mutationFn: async () => {
-      return subscriptionService.validatePurchase({
-        service_type: selectedPlan.service_type,
-        service_plan: selectedPlan.plan,
-        duration_months: durationMonths
-      });
-    },
-    onSuccess: (result) => {
-      validationResult = result;
-      if (result.valid) {
-        currentStep = 3;
+  let stripe: Stripe | null = null;
+  let elements: StripeElements | null = null;
+  let paymentElement: StripePaymentElement | null = null;
+  let paymentElementContainer: HTMLElement | null = null;
+  let stripeClientSecret: string | null = null;
+  let stripeFormOpen = false;
+  let creditsQuoteLoading = false;
+  let lastCreditsQuoteKey = '';
+  let creditsQuote:
+    | {
+        requiredCredits: number | null;
+        canPurchase: boolean;
+        reason?: string;
+        subtotalCents?: number;
+        termDiscountCents?: number;
+        couponDiscountCents?: number;
+        totalCents?: number;
       }
-    },
-    onError: (error: any) => {
-      console.error('Validation failed:', error);
-    }
+    | null = null;
+  let couponCode = '';
+  let appliedCouponCode: string | null = null;
+  let couponMessage = '';
+  let pricingQuoteLoading = false;
+  let lastPricingQuoteKey = '';
+  let pricingQuote: PaymentQuoteResponse | null = null;
+  type PurchaseStage = 'checkout' | 'processing' | 'selection' | 'success';
+  let stage: PurchaseStage = 'checkout';
+  let orderId: string | null = null;
+  let upgradeOptions: UpgradeOptions | null = null;
+  let selectionLocked = false;
+  let selectionError = '';
+  let selectionLoading = false;
+  let selectionSubmitting = false;
+  let processingError = '';
+  const POLL_INTERVAL_MS = 3000;
+  const POLL_TIMEOUT_MS = 120000;
+  let pollSequence = 0;
+
+  onDestroy(() => {
+    pollSequence += 1;
   });
 
-  const purchaseMutation = createMutation({
-    mutationFn: async () => {
-      const purchaseData: PurchaseRequest = {
-        service_type: selectedPlan.service_type,
-        service_plan: selectedPlan.plan,
-        duration_months: durationMonths,
-        auto_renew: autoRenew
-      };
-      return subscriptionService.purchaseSubscription(purchaseData);
-    },
-    onSuccess: (result) => {
-      purchaseResult = result.subscription;
-      currentStep = 4;
-    },
-    onError: (error: any) => {
-      console.error('Purchase failed:', error);
-    }
-  });
+  const RATE_LIMIT_COUPON_MESSAGE =
+    'You have made too many attempts in a short time.\nPlease wait 10 minutes before trying again.';
 
-  function handleValidate() {
-    currentStep = 2;
-    $validateMutation.mutate();
+  const resolveRateLimitMessage = (error: unknown): string | null => {
+    if (!error || typeof error !== 'object') return null;
+    const statusCode =
+      typeof (error as { statusCode?: unknown }).statusCode === 'number'
+        ? (error as { statusCode: number }).statusCode
+        : null;
+    const errorLabel =
+      typeof (error as { error?: unknown }).error === 'string'
+        ? (error as { error: string }).error
+        : '';
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof (error as { message?: unknown }).message === 'string'
+          ? (error as { message: string }).message
+          : '';
+
+    if (
+      statusCode === 429 ||
+      errorLabel.toLowerCase().includes('too many requests') ||
+      message.toLowerCase().includes('rate limit')
+    ) {
+      return RATE_LIMIT_COUPON_MESSAGE;
+    }
+    return null;
+  };
+
+  $: resolvedCurrency = normalizeCurrencyCode(selectedPlan.currency) || 'USD';
+  $: isLoggedIn = Boolean($user?.id);
+  $: isUsdCurrency = resolvedCurrency === 'USD';
+  $: fallbackSubtotal = selectedPlan.price * selectedDuration;
+  $: fallbackTermTotal = selectedTotalPrice ?? fallbackSubtotal;
+  $: fallbackTermDiscount = Math.max(0, fallbackSubtotal - fallbackTermTotal);
+  $: quoteSubtotal = pricingQuote ? pricingQuote.subtotal_cents / 100 : fallbackSubtotal;
+  $: quoteTermDiscount = pricingQuote
+    ? pricingQuote.term_discount_cents / 100
+    : fallbackTermDiscount;
+  $: quoteCouponDiscount = pricingQuote
+    ? pricingQuote.coupon_discount_cents / 100
+    : 0;
+  $: totalCost = pricingQuote ? pricingQuote.total_cents / 100 : fallbackTermTotal;
+  $: resolvedCredits = $credits.balance ?? userCredits;
+  $: creditsRequired = creditsQuote?.requiredCredits ?? (isUsdCurrency ? totalCost : null);
+  $: hasEnoughCredits = creditsRequired !== null && resolvedCredits >= creditsRequired;
+  $: creditsPurchaseBlocked = creditsQuote?.canPurchase === false;
+  $: creditsCostLabel = creditsRequired ?? totalCost;
+  $: topUpHref = $user?.id ? ROUTES.CREDITS : ROUTES.AUTH.REGISTER;
+
+  $: if (paymentMethod !== 'stripe') {
+    stripeClientSecret = null;
+    checkoutResult = null;
+    stripeFormOpen = false;
+    if (paymentElement) {
+      paymentElement.destroy();
+      paymentElement = null;
+    }
+    elements = null;
   }
 
-  function handlePurchase() {
-    $purchaseMutation.mutate();
+  $: if (paymentMethod !== lastPaymentMethod) {
+    validationMessage = '';
+    errorMessage = '';
+    creditsQuoteMessage = '';
+    showCreditsConfirm = false;
+    resetSelectionState();
+    if (paymentMethod !== 'credits') {
+      showCreditsAuthNotice = false;
+    }
+    if (paymentMethod === 'credits') {
+      void refreshCredits(true);
+      void refreshCreditsQuote(true);
+    }
+    lastPaymentMethod = paymentMethod;
   }
 
-  function handleSuccess() {
-    if (purchaseResult) {
-      onSuccess(purchaseResult);
-    }
-    goto(ROUTES.SUBSCRIPTIONS.MY_SUBSCRIPTIONS);
+  $: if (stripeFormOpen && stripeClientSecret && !paymentElement) {
+    void initStripeElements();
+  }
+
+  $: checkoutGridClass =
+    paymentMethod === 'stripe' && stripeFormOpen
+      ? 'lg:grid-cols-[1fr,1.4fr]'
+      : 'lg:grid-cols-[1fr,1.2fr]';
+
+  $: primaryLabel =
+    stage !== 'checkout'
+      ? ''
+      : !paymentMethod
+        ? 'Select a payment method'
+        : paymentMethod === 'stripe'
+          ? stripeFormOpen && stripeClientSecret
+            ? 'Pay now'
+            : 'Continue to payment'
+          : showCreditsConfirm
+            ? 'Awaiting confirmation'
+            : 'Review purchase';
+
+  $: primaryDisabled =
+    stage !== 'checkout' ||
+    !paymentMethod ||
+    isProcessing ||
+    (paymentMethod === 'credits' && (creditsRequired === null || !hasEnoughCredits)) ||
+    (paymentMethod === 'credits' && creditsPurchaseBlocked) ||
+    (paymentMethod === 'credits' && showCreditsConfirm);
+
+  $: headerTitle =
+    stage === 'success'
+      ? 'Purchase confirmed'
+      : stage === 'selection'
+        ? 'Select upgrade option'
+        : stage === 'processing'
+          ? 'Payment received'
+          : 'Checkout';
+
+  $: headerSubtitle =
+    stage === 'success'
+      ? ''
+      : stage === 'selection'
+        ? 'Choose how you want to complete this upgrade.'
+        : stage === 'processing'
+          ? 'We are finalizing your subscription.'
+          : 'Review your plan and finish checkout.';
+
+  $: closeDisabled = stage === 'processing' && !processingError;
+
+  $: if (paymentMethod === 'credits' && selectedPlan?.variant_id) {
+    void refreshCreditsQuote();
+  }
+
+  $: if (selectedPlan?.variant_id) {
+    void refreshPricingQuote();
+  }
+
+  $: if (!isLoggedIn && paymentMethod === 'credits') {
+    paymentMethod = null;
+  }
+
+  $: if (isLoggedIn) {
+    showCreditsAuthNotice = false;
   }
 
   function formatDuration(months: number): string {
@@ -106,339 +227,873 @@
     if (remainingMonths === 0) return years === 1 ? '1 year' : `${years} years`;
     return `${years} year${years > 1 ? 's' : ''} and ${remainingMonths} month${remainingMonths > 1 ? 's' : ''}`;
   }
+
+  async function initStripeElements() {
+    try {
+      if (!stripeClientSecret) return;
+
+      if (!stripe) {
+        const publishableKey =
+          import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ||
+          import.meta.env.PUBLIC_VITE_STRIPE_PUBLISHABLE_KEY ||
+          '';
+        if (!publishableKey) {
+          errorMessage = 'Stripe is missing a publishable key.';
+          return;
+        }
+        stripe = await loadStripe(publishableKey);
+      }
+
+      if (!stripe) {
+        errorMessage = 'Stripe failed to initialize.';
+        return;
+      }
+
+      await tick();
+
+      elements = stripe.elements({ clientSecret: stripeClientSecret });
+      if (paymentElement) {
+        paymentElement.destroy();
+      }
+      paymentElement = elements.create('payment');
+      paymentElement.mount(paymentElementContainer as HTMLElement);
+    } catch (err) {
+      console.error('Stripe elements init failed', err);
+      errorMessage = 'Unable to load the secure payment form.';
+    }
+  }
+
+  const resetSelectionState = () => {
+    orderId = null;
+    upgradeOptions = null;
+    selectionLocked = false;
+    selectionError = '';
+    selectionLoading = false;
+    selectionSubmitting = false;
+    processingError = '';
+    purchaseResult = null;
+    stage = 'checkout';
+  };
+
+  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  async function pollForSubscription(orderIdValue: string): Promise<Subscription | null> {
+    const sequence = ++pollSequence;
+    const start = Date.now();
+
+    while (Date.now() - start < POLL_TIMEOUT_MS) {
+      if (sequence !== pollSequence) {
+        return null;
+      }
+      try {
+        const response = await ordersService.getOrderSubscription(orderIdValue);
+        if (response.subscription) {
+          return response.subscription;
+        }
+      } catch (error) {
+        console.warn('Order subscription poll failed:', error);
+      }
+
+      await wait(POLL_INTERVAL_MS);
+    }
+
+    return null;
+  }
+
+  async function loadSelection(subscriptionId: string): Promise<void> {
+    selectionLoading = true;
+    selectionError = '';
+    try {
+      const response = await subscriptionService.getUpgradeSelection(subscriptionId);
+      upgradeOptions = response.selection.upgrade_options_snapshot || upgradeOptions;
+      selectionLocked = response.locked;
+      if (response.locked) {
+        stage = 'success';
+      }
+    } catch (error) {
+      selectionError =
+        error instanceof Error
+          ? error.message
+          : 'Unable to load upgrade selection. Please try again.';
+    } finally {
+      selectionLoading = false;
+    }
+  }
+
+  async function advanceAfterSubscription(
+    subscription: Subscription,
+    options: UpgradeOptions | null
+  ): Promise<void> {
+    purchaseResult = subscription;
+    upgradeOptions = options;
+    selectionLocked = false;
+    selectionError = '';
+    processingError = '';
+
+    const hasSelectionOptions = Boolean(
+      options?.allow_new_account || options?.allow_own_account
+    );
+    const needsSelection =
+      hasSelectionOptions ||
+      subscription.status_reason === 'waiting_for_selection';
+
+    if (!needsSelection) {
+      stage = 'success';
+      return;
+    }
+
+    stage = 'selection';
+    await loadSelection(subscription.id);
+  }
+
+  async function startStripeCheckout() {
+    if (stripeClientSecret) return;
+    isProcessing = true;
+    errorMessage = '';
+
+    if (!selectedPlan.variant_id) {
+      errorMessage = 'Please select a subscription option.';
+      isProcessing = false;
+      return;
+    }
+
+    const payload: CheckoutRequest = {
+      variant_id: selectedPlan.variant_id,
+      duration_months: selectedDuration,
+      payment_method: 'stripe',
+      auto_renew: autoRenew,
+      currency: resolvedCurrency,
+      ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})
+    };
+
+    try {
+      const response = await paymentService.createCheckout(payload);
+      checkoutResult = response as CheckoutResponseStripe;
+      orderId = checkoutResult.order_id;
+      upgradeOptions = checkoutResult.upgrade_options ?? null;
+      stripeClientSecret = checkoutResult.clientSecret;
+      await initStripeElements();
+    } catch (err) {
+      console.error('Stripe checkout failed', err);
+      errorMessage =
+        resolveRateLimitMessage(err) ||
+        'Unable to start card checkout. Please try again.';
+    } finally {
+      isProcessing = false;
+    }
+  }
+
+  async function confirmStripePayment() {
+    if (!stripe || !elements || !stripeClientSecret) {
+      errorMessage = 'Stripe is not ready yet.';
+      return;
+    }
+
+    isProcessing = true;
+    errorMessage = '';
+    processingError = '';
+    selectionError = '';
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: 'if_required'
+    });
+
+    if (error) {
+      console.error('Stripe confirm error', error);
+      errorMessage = error.message || 'Payment failed. Please try again.';
+      isProcessing = false;
+      return;
+    }
+
+    if (!orderId) {
+      errorMessage = 'Checkout is missing an order id.';
+      isProcessing = false;
+      return;
+    }
+
+    const status = paymentIntent?.status;
+    if (!status || status === 'succeeded' || status === 'processing') {
+      stage = 'processing';
+      isProcessing = false;
+      const subscription = await pollForSubscription(orderId);
+      if (!subscription) {
+        processingError =
+          'We are still processing your payment. You can close this window and finish selection later in your subscriptions.';
+        return;
+      }
+      await advanceAfterSubscription(subscription, upgradeOptions);
+    } else {
+      errorMessage = 'Payment did not complete. Please try again.';
+    }
+  }
+
+  async function handleCreditsPurchase() {
+    validationMessage = '';
+    errorMessage = '';
+
+    if (!isLoggedIn) {
+      errorMessage = 'Please register an account to pay with credits.';
+      return;
+    }
+
+    if (!selectedPlan.variant_id) {
+      errorMessage = 'Please select a subscription option.';
+      return;
+    }
+
+    if (!hasEnoughCredits) {
+      validationMessage = 'You do not have enough credits for this purchase.';
+      return;
+    }
+
+    isProcessing = true;
+
+    try {
+      const validation =
+        creditsQuote?.canPurchase === false || creditsQuote?.requiredCredits !== null
+          ? creditsQuote
+          : await subscriptionService.validatePurchase({
+              variant_id: selectedPlan.variant_id,
+              duration_months: selectedDuration,
+              ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})
+            });
+
+      const canPurchase =
+        (validation as { canPurchase?: boolean }).canPurchase ??
+        (validation as { can_purchase?: boolean }).can_purchase ??
+        (validation as { valid?: boolean }).valid ??
+        false;
+
+      if (!canPurchase) {
+        validationMessage =
+          (validation as { reason?: string }).reason ||
+          'This purchase is not available right now.';
+        return;
+      }
+
+      const purchase = await subscriptionService.purchaseSubscription({
+        variant_id: selectedPlan.variant_id,
+        duration_months: selectedDuration,
+        auto_renew: autoRenew,
+        ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})
+      });
+
+      orderId = purchase.order_id;
+      await refreshCredits(true);
+      await advanceAfterSubscription(
+        purchase.subscription,
+        purchase.upgrade_options ?? null
+      );
+    } catch (error) {
+      console.error('Credit purchase failed:', error);
+      errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Unable to complete purchase. Please try again.';
+    } finally {
+      isProcessing = false;
+    }
+  }
+
+  async function refreshCredits(force = false) {
+    if (!$user?.id) return;
+    if (!force && paymentMethod !== 'credits') return;
+    await credits.refresh($user.id, { force: true });
+  }
+
+  async function refreshCreditsQuote(force = false) {
+    if (!isLoggedIn) {
+      creditsQuote = null;
+      return;
+    }
+    if (!selectedPlan?.variant_id) {
+      creditsQuote = null;
+      return;
+    }
+    const couponKey = appliedCouponCode ? appliedCouponCode.toLowerCase() : '';
+    const quoteKey = `${selectedPlan.variant_id}:${selectedDuration}:${couponKey}`;
+    if (!force && quoteKey === lastCreditsQuoteKey && creditsQuote) {
+      return;
+    }
+
+    creditsQuoteLoading = true;
+    creditsQuoteMessage = '';
+    try {
+      const validation = await subscriptionService.validatePurchase({
+        variant_id: selectedPlan.variant_id,
+        duration_months: selectedDuration,
+        ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})
+      });
+      const currentKey = `${selectedPlan.variant_id}:${selectedDuration}:${couponKey}`;
+      if (currentKey !== quoteKey) {
+        return;
+      }
+
+      const requiredCreditsRaw = (validation as { required_credits?: number }).required_credits;
+      const requiredCredits =
+        typeof requiredCreditsRaw === 'number' && Number.isFinite(requiredCreditsRaw)
+          ? requiredCreditsRaw
+          : null;
+      const canPurchase =
+        (validation as { can_purchase?: boolean }).can_purchase ??
+        (validation as { valid?: boolean }).valid ??
+        true;
+      const reason = (validation as { reason?: string }).reason;
+      const subtotalCents = (validation as { subtotal_cents?: number }).subtotal_cents ?? null;
+      const termDiscountCents =
+        (validation as { term_discount_cents?: number }).term_discount_cents ?? null;
+      const couponDiscountCents =
+        (validation as { coupon_discount_cents?: number }).coupon_discount_cents ?? null;
+      const totalCents = (validation as { total_cents?: number }).total_cents ?? null;
+
+      creditsQuote = {
+        requiredCredits,
+        canPurchase,
+        ...(reason ? { reason } : {}),
+        ...(subtotalCents !== null ? { subtotalCents } : {}),
+        ...(termDiscountCents !== null ? { termDiscountCents } : {}),
+        ...(couponDiscountCents !== null ? { couponDiscountCents } : {}),
+        ...(totalCents !== null ? { totalCents } : {})
+      };
+      lastCreditsQuoteKey = quoteKey;
+      if (!canPurchase && reason) {
+        creditsQuoteMessage = reason;
+      }
+    } catch (error) {
+      console.error('Credits quote failed:', error);
+      creditsQuote = null;
+      creditsQuoteMessage = 'Unable to calculate credit pricing right now.';
+    } finally {
+      creditsQuoteLoading = false;
+    }
+  }
+
+  async function refreshPricingQuote(force = false) {
+    if (!selectedPlan?.variant_id) {
+      pricingQuote = null;
+      return;
+    }
+    if (!isLoggedIn) {
+      pricingQuote = null;
+      if (appliedCouponCode) {
+        couponMessage = 'Log in to apply coupon codes.';
+      }
+      return;
+    }
+
+    const couponKey = appliedCouponCode ? appliedCouponCode.toLowerCase() : '';
+    const quoteKey = `${selectedPlan.variant_id}:${selectedDuration}:${resolvedCurrency}:${couponKey}`;
+    if (!force && quoteKey === lastPricingQuoteKey && pricingQuote) {
+      return;
+    }
+
+    pricingQuoteLoading = true;
+    try {
+      const response = await paymentService.getQuote({
+        variant_id: selectedPlan.variant_id,
+        duration_months: selectedDuration,
+        currency: resolvedCurrency,
+        ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})
+      });
+      pricingQuote = response;
+      lastPricingQuoteKey = quoteKey;
+      couponMessage = appliedCouponCode ? 'Coupon applied.' : '';
+    } catch (error) {
+      pricingQuote = null;
+      lastPricingQuoteKey = '';
+      if (appliedCouponCode) {
+        couponMessage =
+          resolveRateLimitMessage(error) ||
+          (error instanceof Error ? error.message : 'Coupon not valid for this order.');
+        appliedCouponCode = null;
+      }
+    } finally {
+      pricingQuoteLoading = false;
+    }
+  }
+
+  async function handleApplyCoupon() {
+    const nextCode = couponCode.trim();
+    if (!isLoggedIn) {
+      couponMessage = 'Log in to apply coupon codes.';
+      return;
+    }
+    appliedCouponCode = nextCode || null;
+    await refreshPricingQuote(true);
+    await refreshCreditsQuote(true);
+  }
+
+  async function handleClearCoupon() {
+    couponCode = '';
+    appliedCouponCode = null;
+    couponMessage = '';
+    await refreshPricingQuote(true);
+    await refreshCreditsQuote(true);
+  }
+
+  async function handleCreditsConfirm() {
+    showCreditsConfirm = false;
+    await handleCreditsPurchase();
+  }
+
+  async function handleSelectionSubmit(event: CustomEvent<UpgradeSelectionSubmission>) {
+    if (!purchaseResult) {
+      selectionError = 'Subscription is not ready yet.';
+      return;
+    }
+
+    selectionSubmitting = true;
+    selectionError = '';
+
+    try {
+      const response = await subscriptionService.submitUpgradeSelection(
+        purchaseResult.id,
+        event.detail
+      );
+      selectionLocked = response.locked;
+      if (response.locked) {
+        stage = 'success';
+      }
+    } catch (error) {
+      selectionError =
+        error instanceof Error
+          ? error.message
+          : 'Unable to submit upgrade selection.';
+    } finally {
+      selectionSubmitting = false;
+    }
+  }
+
+  async function handlePrimaryAction() {
+    if (stage !== 'checkout') return;
+    if (!paymentMethod) return;
+
+    if (paymentMethod === 'stripe') {
+      if (!stripeFormOpen) {
+        stripeFormOpen = true;
+        if (!stripeClientSecret) {
+          await startStripeCheckout();
+        } else if (!paymentElement) {
+          await initStripeElements();
+        }
+        return;
+      }
+
+      if (stripeClientSecret) {
+        await confirmStripePayment();
+      } else {
+        await startStripeCheckout();
+      }
+      return;
+    }
+
+    if (paymentMethod === 'credits') {
+      await refreshCredits(true);
+      if (!showCreditsConfirm) {
+        showCreditsConfirm = true;
+        return;
+      }
+      await handleCreditsPurchase();
+    }
+  }
+
+  function handleCreditsAuthNotice() {
+    showCreditsAuthNotice = true;
+    validationMessage = '';
+    errorMessage = '';
+  }
+
+  function handleStripeBack() {
+    stripeFormOpen = false;
+    if (paymentElement) {
+      paymentElement.destroy();
+      paymentElement = null;
+    }
+    elements = null;
+    errorMessage = '';
+  }
+
+  function handleDone() {
+    if (purchaseResult) {
+      onSuccess(purchaseResult);
+    }
+    goto(ROUTES.SUBSCRIPTIONS.MY_SUBSCRIPTIONS);
+  }
+
+  function resolveCreditsPlanLabel(): string {
+    const productName = selectedPlan.product_name?.trim() || '';
+    const variantName = selectedPlan.variant_name?.trim() || '';
+    if (productName && variantName) {
+      return `${productName} + ${variantName}`;
+    }
+    if (productName || variantName) {
+      return productName || variantName;
+    }
+    return selectedPlan.display_name;
+  }
+
+  function handleContinueShopping() {
+    onClose();
+    goto('/browse');
+  }
 </script>
 
-<!-- Modal Backdrop -->
-<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-  <div class="bg-surface-100-800-token border border-surface-300-600-token rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-
-    <!-- Header -->
-    <div class="flex items-center justify-between p-6 border-b border-surface-300-600-token">
-      <h2 class="text-2xl font-bold text-surface-900-50-token">Purchase Subscription</h2>
+<div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+  <div class="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto overscroll-contain">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-slate-200">
+      <div>
+        <h2 class="text-2xl font-bold text-slate-900">{headerTitle}</h2>
+        {#if headerSubtitle}
+          <p class="text-sm text-slate-500">{headerSubtitle}</p>
+        {/if}
+      </div>
       <button
         on:click={onClose}
-        class="p-2 hover:bg-surface-200-700-token rounded-full transition-colors"
+        class={`p-2 rounded-full transition-colors ${
+          closeDisabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-slate-100'
+        }`}
+        aria-label="Close"
+        disabled={closeDisabled}
       >
-        <X class="w-5 h-5 text-surface-600-300-token" />
+        <X class="w-5 h-5 text-slate-600" />
       </button>
     </div>
 
-    <!-- Progress Steps -->
-    <div class="p-6 border-b border-surface-300-600-token">
-      <div class="flex items-center justify-between mb-4">
-        {#each steps as step, index}
-          <div class="flex items-center {index < steps.length - 1 ? 'flex-1' : ''}">
-            <div class="flex items-center">
-              <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium
-                {step.isCompleted ? 'bg-success-500 text-white' :
-                 step.isActive ? 'bg-primary-500 text-white' :
-                 'bg-surface-300-600-token text-surface-600-300-token'}">
-                {#if step.isCompleted}
-                  <Check class="w-4 h-4" />
-                {:else}
-                  {step.step}
-                {/if}
+    {#if showCreditsConfirm && hasEnoughCredits && stage === 'checkout'}
+      <div class="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+        <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <h3 class="text-lg font-semibold text-slate-900">Confirm purchase</h3>
+          <p class="mt-2 text-sm text-slate-600">
+            You're about to purchase <span class="font-semibold">{resolveCreditsPlanLabel()}</span> for
+            <span class="font-semibold">{creditsCostLabel} credits</span> ({formatDuration(selectedDuration)}).
+          </p>
+          <div class="mt-5 flex items-center justify-end gap-3">
+            <button
+              on:click={() => (showCreditsConfirm = false)}
+              class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              disabled={isProcessing}
+            >
+              No, go back
+            </button>
+            <button
+              on:click={handleCreditsConfirm}
+              class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              disabled={isProcessing}
+            >
+              Confirm purchase
+            </button>
+          </div>
+        </div>
+      </div>
+    {/if}
+
+    {#if stage === 'success'}
+      <div class="px-6 py-10 text-center">
+        <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-white">
+          <CheckCircle2 class="h-7 w-7" />
+        </div>
+        <h3 class="text-2xl font-bold text-slate-900">You're all set</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          Your purchase is confirmed. We'll activate your subscription shortly.
+        </p>
+        <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <button
+            on:click={handleContinueShopping}
+            class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Continue shopping
+          </button>
+          <button
+            on:click={handleDone}
+            class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            View my subscriptions
+          </button>
+        </div>
+      </div>
+    {:else if stage === 'processing'}
+      <div class="px-6 py-12 text-center">
+        <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-600">
+          <Loader2 class="h-7 w-7 animate-spin" />
+        </div>
+        <h3 class="text-2xl font-bold text-slate-900">We're processing your payment</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          We're currently processing your payment, do not close this window.
+        </p>
+        {#if processingError}
+          <p class="mt-3 text-xs text-amber-600">{processingError}</p>
+          <button
+            on:click={handleDone}
+            class="mt-5 inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Check my subscriptions
+          </button>
+        {/if}
+      </div>
+    {:else if stage === 'selection'}
+      <div class="px-6 py-6">
+        {#if selectionLoading}
+          <div class="flex flex-col items-center gap-3 py-10 text-slate-600">
+            <Loader2 class="h-6 w-6 animate-spin" />
+            <p class="text-sm">Loading upgrade options...</p>
+          </div>
+        {:else if upgradeOptions}
+          <UpgradeSelectionForm
+            upgradeOptions={upgradeOptions}
+            durationMonths={selectedDuration}
+            locked={selectionLocked}
+            submitting={selectionSubmitting}
+            errorMessage={selectionError}
+            on:submit={handleSelectionSubmit}
+          />
+        {:else}
+          <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+            {selectionError || 'Upgrade selection is unavailable right now. Please try again shortly.'}
+          </div>
+        {/if}
+      </div>
+    {:else}
+      <div class={`grid gap-6 px-6 py-6 ${checkoutGridClass}`}>
+        <section class="space-y-4">
+          <div class="rounded-xl border border-slate-200 p-4">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Your plan</p>
+            <h3 class="mt-2 text-xl font-semibold text-slate-900">{selectedPlan.display_name}</h3>
+            <div class="mt-4 space-y-2 text-sm text-slate-600">
+              <div class="flex items-center justify-between">
+                <span>Subtotal</span>
+                <span>
+                  {pricingQuoteLoading ? '--' : formatCurrency(quoteSubtotal, resolvedCurrency)}
+                </span>
               </div>
-              <span class="ml-2 text-sm font-medium
-                {step.isActive || step.isCompleted ? 'text-surface-900-50-token' : 'text-surface-600-300-token'}">
-                {step.title}
-              </span>
+              {#if quoteTermDiscount > 0}
+                <div class="flex items-center justify-between">
+                  <span>Term discount</span>
+                  <span class="text-emerald-600">
+                    -{pricingQuoteLoading ? '--' : formatCurrency(quoteTermDiscount, resolvedCurrency)}
+                  </span>
+                </div>
+              {/if}
+              {#if quoteCouponDiscount > 0}
+                <div class="flex items-center justify-between">
+                  <span>Coupon discount</span>
+                  <span class="text-emerald-600">
+                    -{pricingQuoteLoading ? '--' : formatCurrency(quoteCouponDiscount, resolvedCurrency)}
+                  </span>
+                </div>
+              {/if}
             </div>
-            {#if index < steps.length - 1}
-              <div class="flex-1 h-px bg-surface-300-600-token mx-4"></div>
+            <div class="mt-4 flex items-baseline gap-3">
+              <span class="text-3xl font-bold text-slate-900">
+                {pricingQuoteLoading ? '--' : formatCurrency(totalCost, resolvedCurrency)}
+              </span>
+              <span class="text-sm text-slate-500">total</span>
+            </div>
+            <div class="mt-2 text-sm text-slate-600">Duration: {formatDuration(selectedDuration)}</div>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 p-4 space-y-3">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Promo code</p>
+            <div class="flex items-center gap-2">
+              <input
+                class="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                placeholder="Enter code"
+                bind:value={couponCode}
+              />
+              <button
+                type="button"
+                class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                on:click={handleApplyCoupon}
+                disabled={pricingQuoteLoading}
+              >
+                Apply
+              </button>
+              {#if appliedCouponCode}
+                <button
+                  type="button"
+                  class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50"
+                  on:click={handleClearCoupon}
+                >
+                  Clear
+                </button>
+              {/if}
+            </div>
+            {#if couponMessage}
+              <p class="text-xs text-slate-500 whitespace-pre-line">{couponMessage}</p>
             {/if}
           </div>
-        {/each}
-      </div>
-    </div>
 
-    <!-- Content -->
-    <div class="p-6">
-      {#if currentStep === 1}
-        <!-- Step 1: Review Selection -->
-        <div class="space-y-6">
-          <div class="bg-surface-50-900-token rounded-lg p-4">
-            <h3 class="text-lg font-semibold text-surface-900-50-token mb-3">Selected Plan</h3>
-            <div class="flex items-center space-x-3 mb-4">
-              <div class="p-3 bg-primary-500 text-white rounded-full">
-                <CreditCard class="w-6 h-6" />
-              </div>
-              <div>
-                <p class="font-semibold text-surface-900-50-token">{selectedPlan.display_name}</p>
-                <p class="text-sm text-surface-600-300-token">{selectedPlan.description}</p>
-                <p class="text-lg font-bold text-primary-600-300-token">{selectedPlan.price} credits/month</p>
-              </div>
-            </div>
-
-            <div class="space-y-2">
-              <h4 class="font-medium text-surface-900-50-token">Features included:</h4>
-              {#each selectedPlan.features as feature}
-                <div class="flex items-center space-x-2">
-                  <Check class="w-4 h-4 text-success-500" />
-                  <span class="text-sm text-surface-700-200-token">{feature}</span>
-                </div>
-              {/each}
-            </div>
-          </div>
-
-          <!-- Duration Selection -->
-          <div class="bg-surface-50-900-token rounded-lg p-4">
-            <label for="duration-select" class="block text-sm font-medium text-surface-900-50-token mb-3">
-              Subscription Duration
-            </label>
-            <select
-              id="duration-select"
-              bind:value={durationMonths}
-              class="select w-full"
-            >
-              {#each Array.from({length: 12}, (_, i) => i + 1) as months}
-                <option value={months}>{formatDuration(months)}</option>
-              {/each}
-            </select>
-          </div>
-
-          <!-- Auto-renewal -->
-          <div class="bg-surface-50-900-token rounded-lg p-4">
-            <label class="flex items-center space-x-3">
+          <div class="rounded-xl border border-slate-200 p-4">
+            <label class="flex items-start gap-3">
               <input
                 type="checkbox"
                 bind:checked={autoRenew}
-                class="checkbox"
+                class="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-300"
               />
               <div>
-                <span class="text-sm font-medium text-surface-900-50-token">Auto-renewal</span>
-                <p class="text-xs text-surface-600-300-token">
-                  Automatically renew this subscription when it expires
+                <p class="text-sm font-semibold text-slate-900">Auto-renew</p>
+                <p class="text-xs text-slate-500">
+                  Keep this plan active and renew automatically before it expires.
                 </p>
               </div>
             </label>
           </div>
+        </section>
 
-          <!-- Cost Summary -->
-          <div class="bg-surface-50-900-token rounded-lg p-4">
-            <h4 class="font-medium text-surface-900-50-token mb-2">Cost Summary</h4>
-            <div class="space-y-1 text-sm">
-              <div class="flex justify-between">
-                <span>Monthly cost:</span>
-                <span>{selectedPlan.price} credits</span>
+        <section class="space-y-4">
+          {#if paymentMethod === 'stripe' && stripeFormOpen}
+            <div class="rounded-xl border border-slate-200 p-5 space-y-4">
+              <div class="flex items-center gap-2 text-sm text-slate-600">
+                <CreditCard class="h-4 w-4" />
+                <span>Card details</span>
               </div>
-              <div class="flex justify-between">
-                <span>Duration:</span>
-                <span>{formatDuration(durationMonths)}</span>
-              </div>
-              <div class="border-t border-surface-300-600-token pt-1 mt-2">
-                <div class="flex justify-between font-bold">
-                  <span>Total cost:</span>
-                  <span>{totalCost} credits</span>
+              {#if stripeClientSecret}
+                <div class="rounded-lg border border-slate-200 p-4">
+                  <div bind:this={paymentElementContainer}></div>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      {:else if currentStep === 2}
-        <!-- Step 2: Validation -->
-        <div class="space-y-6">
-          {#if $validateMutation.isPending}
-            <div class="flex items-center justify-center py-12">
-              <div class="text-center">
-                <Loader2 class="w-8 h-8 animate-spin text-primary-500 mx-auto mb-4" />
-                <p class="text-lg text-surface-900-50-token">Validating purchase...</p>
-                <p class="text-sm text-surface-600-300-token">Checking credit balance and eligibility</p>
-              </div>
-            </div>
-          {:else if $validateMutation.isError}
-            <div class="bg-error-100-800-token border border-error-300-600-token rounded-lg p-6">
-              <div class="flex items-center space-x-3 mb-3">
-                <AlertCircle class="w-6 h-6 text-error-600-300-token" />
-                <h3 class="text-lg font-semibold text-error-600-300-token">Validation Failed</h3>
-              </div>
-              <p class="text-error-600-300-token mb-4">
-                {$validateMutation.error?.message || ERROR_MESSAGES.GENERIC_ERROR}
-              </p>
-              <button
-                on:click={() => $validateMutation.mutate()}
-                class="btn variant-filled-error"
-              >
-                <RotateCcw class="w-4 h-4" />
-                Try Again
-              </button>
-            </div>
-          {:else if validationResult && !validationResult.valid}
-            <div class="bg-warning-100-800-token border border-warning-300-600-token rounded-lg p-6">
-              <div class="flex items-center space-x-3 mb-3">
-                <AlertCircle class="w-6 h-6 text-warning-600-300-token" />
-                <h3 class="text-lg font-semibold text-warning-600-300-token">Purchase Not Available</h3>
-              </div>
-              <p class="text-warning-600-300-token mb-4">
-                {validationResult.reason || 'This purchase cannot be completed at this time.'}
-              </p>
-              {#if validationResult.reason?.includes('credit')}
-                <div class="bg-surface-50-900-token rounded-lg p-4 mb-4">
-                  <div class="flex justify-between items-center">
-                    <span>Required credits:</span>
-                    <span class="font-bold">{validationResult.required_credits}</span>
-                  </div>
-                  <div class="flex justify-between items-center">
-                    <span>Your balance:</span>
-                    <span class="font-bold {validationResult.user_credits < validationResult.required_credits ? 'text-error-600-300-token' : ''}">
-                      {validationResult.user_credits}
-                    </span>
-                  </div>
+                {#if errorMessage}
+                  <p class="text-sm text-red-600 whitespace-pre-line">{errorMessage}</p>
+                {/if}
+              {:else}
+                <div class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-xs text-slate-500 whitespace-pre-line">
+                  {errorMessage || 'Loading the secure card form...'}
                 </div>
-                <a href="/dashboard/credits/add" class="btn variant-filled-primary">
-                  <CreditCard class="w-4 h-4" />
-                  Add Credits
-                </a>
+              {/if}
+            </div>
+          {:else}
+            <div class="rounded-xl border border-slate-200 p-4 space-y-3">
+              <h4 class="text-sm font-semibold text-slate-900">Payment method</h4>
+              <label class="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50">
+                <input
+                  type="radio"
+                  name="payment-method"
+                  value="stripe"
+                  bind:group={paymentMethod}
+                  class="mt-1 h-4 w-4 text-slate-900 focus:ring-slate-300"
+                />
+                <div>
+                  <p class="text-sm font-semibold text-slate-900">Pay with card</p>
+                  <p class="text-xs text-slate-500">Secure checkout powered by Stripe.</p>
+                </div>
+              </label>
+              {#if isLoggedIn}
+                <label class="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50">
+                  <input
+                    type="radio"
+                    name="payment-method"
+                    value="credits"
+                    bind:group={paymentMethod}
+                    class="mt-1 h-4 w-4 text-slate-900 focus:ring-slate-300"
+                  />
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900">Pay with crypto (credits)</p>
+                    <p class="text-xs text-slate-500">
+                      Use your available balance.
+                    </p>
+                    {#if !isUsdCurrency}
+                      <p class="mt-1 text-[11px] text-slate-500">
+                        Crypto payments are based on USD pricing.
+                      </p>
+                    {/if}
+                  </div>
+                </label>
+              {:else if !showCreditsAuthNotice}
+                <button
+                  type="button"
+                  class="w-full text-left flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50"
+                  on:click={handleCreditsAuthNotice}
+                >
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900">Pay with crypto (credits)</p>
+                    <p class="text-xs text-slate-500">Requires an account.</p>
+                  </div>
+                </button>
+              {:else}
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                  <p class="text-xs text-slate-600">
+                    To pay with crypto (credits), please
+                    <a href={ROUTES.AUTH.LOGIN} class="font-semibold text-slate-900 underline">login</a>
+                    or
+                    <a href={ROUTES.AUTH.REGISTER} class="font-semibold text-slate-900 underline">register</a>
+                    an account.
+                  </p>
+                </div>
               {/if}
             </div>
           {/if}
-        </div>
 
-      {:else if currentStep === 3}
-        <!-- Step 3: Confirm Purchase -->
-        <div class="space-y-6">
-          {#if validationResult && validationResult.valid}
-            <div class="bg-success-100-800-token border border-success-300-600-token rounded-lg p-6">
-              <div class="flex items-center space-x-3 mb-3">
-                <CheckCircle2 class="w-6 h-6 text-success-600-300-token" />
-                <h3 class="text-lg font-semibold text-success-600-300-token">Ready to Purchase</h3>
+          {#if paymentMethod === 'credits'}
+            <div class="rounded-xl border border-slate-200 p-4 space-y-3">
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-slate-600">Available credits</span>
+                <span class="font-semibold text-slate-900">{resolvedCredits}</span>
               </div>
-              <p class="text-success-600-300-token">
-                Your purchase has been validated and is ready to complete.
-              </p>
-            </div>
-
-            <div class="bg-surface-50-900-token rounded-lg p-4">
-              <h4 class="font-medium text-surface-900-50-token mb-3">Credit Balance</h4>
-              <div class="space-y-1 text-sm">
-                <div class="flex justify-between">
-                  <span>Current balance:</span>
-                  <span>{validationResult.user_credits} credits</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>Purchase cost:</span>
-                  <span>-{validationResult.required_credits} credits</span>
-                </div>
-                <div class="border-t border-surface-300-600-token pt-1 mt-2">
-                  <div class="flex justify-between font-bold">
-                    <span>Remaining balance:</span>
-                    <span>{validationResult.user_credits - validationResult.required_credits} credits</span>
-                  </div>
-                </div>
+              <div class="flex items-center justify-between text-sm">
+                <span class="text-slate-600">Credits needed</span>
+                <span class="font-semibold text-slate-900">
+                  {creditsQuoteLoading ? '--' : creditsRequired ?? '--'}
+                </span>
               </div>
-            </div>
-
-            {#if $purchaseMutation.isError}
-              <div class="bg-error-100-800-token border border-error-300-600-token rounded-lg p-4">
-                <div class="flex items-center space-x-3 mb-2">
-                  <AlertCircle class="w-5 h-5 text-error-600-300-token" />
-                  <span class="font-medium text-error-600-300-token">Purchase Failed</span>
-                </div>
-                <p class="text-error-600-300-token text-sm">
-                  {$purchaseMutation.error?.message || ERROR_MESSAGES.PURCHASE_FAILED}
+              {#if !isUsdCurrency}
+                <p class="text-[11px] text-slate-500">
+                  Credit totals use USD pricing even when browsing another currency.
+                </p>
+              {/if}
+            {#if !hasEnoughCredits}
+              <div class="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
+                <AlertCircle class="mt-0.5 h-4 w-4" />
+                <p class="text-xs">
+                  You don't have enough credits. <a href={topUpHref} class="font-semibold underline">Top up</a> to continue.
                 </p>
               </div>
             {/if}
-          {/if}
-        </div>
-
-      {:else if currentStep === 4}
-        <!-- Step 4: Success -->
-        <div class="text-center py-8">
-          <div class="w-16 h-16 bg-success-500 text-white rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle2 class="w-8 h-8" />
-          </div>
-          <h3 class="text-2xl font-bold text-surface-900-50-token mb-2">Purchase Successful!</h3>
-          <p class="text-surface-600-300-token mb-6">
-            {SUCCESS_MESSAGES.PURCHASE_SUCCESS}
-          </p>
-
-          {#if purchaseResult}
-            <div class="bg-surface-50-900-token rounded-lg p-4 mb-6 text-left">
-              <h4 class="font-medium text-surface-900-50-token mb-3">Subscription Details</h4>
-              <div class="space-y-2 text-sm">
-                <div class="flex justify-between">
-                  <span>Service:</span>
-                  <span class="capitalize">{purchaseResult.service_type}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>Plan:</span>
-                  <span class="capitalize">{purchaseResult.service_plan}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>Start date:</span>
-                  <span>{new Date(purchaseResult.start_date).toLocaleDateString()}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>End date:</span>
-                  <span>{new Date(purchaseResult.end_date).toLocaleDateString()}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>Auto-renewal:</span>
-                  <span>{purchaseResult.auto_renew ? 'Enabled' : 'Disabled'}</span>
-                </div>
-              </div>
+            {#if creditsQuoteMessage}
+              <p class="text-xs text-amber-700">{creditsQuoteMessage}</p>
+            {/if}
+            {#if validationMessage}
+              <p class="text-xs text-amber-700">{validationMessage}</p>
+            {/if}
+              {#if errorMessage}
+                <p class="text-xs text-red-600">{errorMessage}</p>
+              {/if}
             </div>
           {/if}
-        </div>
-      {/if}
-    </div>
-
-    <!-- Footer Actions -->
-    <div class="flex items-center justify-between p-6 border-t border-surface-300-600-token">
-      <div class="flex space-x-3">
-        {#if currentStep > 1 && currentStep < 4}
-          <button
-            on:click={() => currentStep--}
-            class="btn variant-ghost-surface"
-            disabled={$validateMutation.isPending || $purchaseMutation.isPending}
-          >
-            <ArrowLeft class="w-4 h-4" />
-            Back
-          </button>
-        {/if}
+        </section>
       </div>
 
-      <div class="flex space-x-3">
+      <div class="flex items-center justify-between px-6 pb-6">
         <button
           on:click={onClose}
-          class="btn variant-ghost-surface"
-          disabled={$purchaseMutation.isPending}
+          class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          disabled={isProcessing}
         >
-          {currentStep === 4 ? 'Close' : 'Cancel'}
+          Cancel
         </button>
-
-        {#if currentStep === 1}
+        <div class="flex items-center gap-3">
+          {#if paymentMethod === 'stripe' && stripeFormOpen}
+            <button
+              type="button"
+              on:click={handleStripeBack}
+              class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              disabled={isProcessing}
+            >
+              Go back
+            </button>
+          {/if}
           <button
-            on:click={handleValidate}
-            class="btn variant-filled-primary"
+            on:click={handlePrimaryAction}
+            class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500 to-pink-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={primaryDisabled}
           >
-            Validate Purchase
-            <ArrowRight class="w-4 h-4" />
-          </button>
-        {:else if currentStep === 3 && validationResult?.valid}
-          <button
-            on:click={handlePurchase}
-            class="btn variant-filled-primary"
-            disabled={$purchaseMutation.isPending}
-          >
-            {#if $purchaseMutation.isPending}
-              <Loader2 class="w-4 h-4 animate-spin" />
-              Processing...
+            {#if isProcessing}
+              <Loader2 class="h-4 w-4 animate-spin" />
+              <span>Working...</span>
             {:else}
-              Confirm Purchase
+              <span>{primaryLabel}</span>
             {/if}
           </button>
-        {:else if currentStep === 4}
-          <button
-            on:click={handleSuccess}
-            class="btn variant-filled-primary"
-          >
-            View My Subscriptions
-          </button>
-        {/if}
+        </div>
       </div>
-    </div>
+    {/if}
   </div>
 </div>

@@ -10,7 +10,76 @@ export type PaymentStatus =
   | 'refunded'
   | 'expired';
 
-export type PaymentProvider = 'nowpayments' | 'manual' | 'admin';
+export type PaymentProvider = 'nowpayments' | 'stripe' | 'manual' | 'admin';
+
+export type UnifiedPaymentStatus =
+  | 'pending'
+  | 'requires_payment_method'
+  | 'requires_action'
+  | 'processing'
+  | 'succeeded'
+  | 'failed'
+  | 'canceled'
+  | 'expired';
+
+export type PaymentPurpose = 'subscription' | 'credit_topup' | 'one_time';
+
+export interface UnifiedPayment {
+  id: string;
+  userId: string;
+  provider: PaymentProvider;
+  providerPaymentId: string;
+  status: UnifiedPaymentStatus;
+  providerStatus?: string;
+  purpose: PaymentPurpose;
+  amount: number;
+  currency: string;
+  amountUsd?: number;
+  paymentMethodType?: string;
+  subscriptionId?: string;
+  creditTransactionId?: string;
+  expiresAt?: Date;
+  metadata?: Record<string, any>;
+  orderId?: string;
+  productVariantId?: string;
+  priceCents?: number;
+  basePriceCents?: number;
+  discountPercent?: number;
+  termMonths?: number;
+  autoRenew?: boolean;
+  nextBillingAt?: Date;
+  renewalMethod?: string;
+  statusReason?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateUnifiedPaymentInput {
+  userId: string;
+  provider: PaymentProvider;
+  providerPaymentId: string;
+  status: UnifiedPaymentStatus;
+  providerStatus?: string;
+  purpose: PaymentPurpose;
+  amount: number;
+  currency: string;
+  amountUsd?: number;
+  paymentMethodType?: string;
+  subscriptionId?: string;
+  creditTransactionId?: string;
+  expiresAt?: Date;
+  metadata?: Record<string, any>;
+  orderId?: string;
+  productVariantId?: string;
+  priceCents?: number;
+  basePriceCents?: number;
+  discountPercent?: number;
+  termMonths?: number;
+  autoRenew?: boolean;
+  nextBillingAt?: Date;
+  renewalMethod?: string;
+  statusReason?: string;
+}
 
 export interface Payment {
   id: string;
@@ -136,6 +205,9 @@ export interface PaymentEstimate {
 
 export interface CreatePaymentRequest {
   creditAmount: number;
+  price_currency?: string;
+  pay_currency?: string;
+  // Deprecated: use pay_currency instead.
   currency?: string;
   orderDescription?: string;
 }
@@ -204,10 +276,33 @@ export interface WebhookPayload {
   payout_hash?: string;
 }
 
+export type NowPaymentsPaymentData = Pick<
+  NOWPaymentsPaymentStatus,
+  | 'payment_id'
+  | 'payment_status'
+  | 'pay_address'
+  | 'price_amount'
+  | 'price_currency'
+  | 'pay_amount'
+  | 'pay_currency'
+  | 'order_id'
+  | 'purchase_id'
+> & {
+  actually_paid?: number;
+  order_description?: string;
+  outcome_amount?: number;
+  outcome_currency?: string;
+  payin_hash?: string;
+  payout_hash?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export interface PaymentOperationResult {
   success: boolean;
   payment?: Payment;
   error?: string;
+  errorCode?: string;
 }
 
 export interface CurrencyInfo {
@@ -216,6 +311,9 @@ export interface CurrencyInfo {
   image: string;
   isPopular: boolean;
   isStable: boolean;
+  baseTicker?: string;
+  network?: string;
+  networkCode?: string;
   minAmount?: number;
   maxAmount?: number;
 }

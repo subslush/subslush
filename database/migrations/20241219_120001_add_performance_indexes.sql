@@ -22,9 +22,6 @@ WHERE status = 'active';
 CREATE INDEX idx_subscriptions_active_service ON subscriptions(service_type)
 WHERE status = 'active';
 
--- Index for subscription expiration monitoring
-CREATE INDEX idx_subscriptions_expiring ON subscriptions(end_date)
-WHERE status = 'active' AND end_date > NOW();
 
 -- =====================================================
 -- CREDITS PERFORMANCE INDEXES
@@ -56,9 +53,6 @@ CREATE INDEX idx_admin_tasks_assigned_due ON admin_tasks(assigned_admin, due_dat
 CREATE INDEX idx_admin_tasks_incomplete ON admin_tasks(due_date, priority)
 WHERE completed_at IS NULL;
 
--- Index for overdue tasks
-CREATE INDEX idx_admin_tasks_overdue ON admin_tasks(due_date)
-WHERE completed_at IS NULL AND due_date < NOW();
 
 -- =====================================================
 -- USERS PERFORMANCE INDEXES
@@ -126,7 +120,6 @@ DROP INDEX IF EXISTS idx_subscriptions_renewal_date;
 DROP INDEX IF EXISTS idx_subscriptions_end_date;
 DROP INDEX IF EXISTS idx_subscriptions_active_user;
 DROP INDEX IF EXISTS idx_subscriptions_active_service;
-DROP INDEX IF EXISTS idx_subscriptions_expiring;
 
 -- Credits indexes
 DROP INDEX IF EXISTS idx_credits_user_date;
@@ -138,7 +131,6 @@ DROP INDEX IF EXISTS idx_credits_purchases;
 DROP INDEX IF EXISTS idx_admin_tasks_type_priority;
 DROP INDEX IF EXISTS idx_admin_tasks_assigned_due;
 DROP INDEX IF EXISTS idx_admin_tasks_incomplete;
-DROP INDEX IF EXISTS idx_admin_tasks_overdue;
 
 -- Users indexes
 DROP INDEX IF EXISTS idx_users_last_login;

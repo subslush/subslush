@@ -118,7 +118,7 @@ class RedisSessionService implements SessionService {
 
       const sessionData =
         encryptionService.decryptObject<SessionData>(encryptedData);
-      await this.updateLastAccessed(sessionId);
+      await this.updateLastAccessed(sessionId, sessionData);
       return sessionData;
     } catch (error) {
       Logger.error(`Error getting session ${sessionId}:`, error);
@@ -515,27 +515,37 @@ class RedisSessionService implements SessionService {
     }
   }
 
-  private async updateLastAccessed(sessionId: string): Promise<void> {
+  private async updateLastAccessed(
+    sessionId: string,
+    sessionData?: SessionData
+  ): Promise<void> {
     try {
       const sessionKey = this.getSessionKey(sessionId);
-      const encryptedData = await cacheService.get<any>(sessionKey);
+      let resolvedSession = sessionData;
 
-      if (
-        encryptedData &&
-        encryptionService.isValidEncryptedData(encryptedData)
-      ) {
-        const sessionData =
-          encryptionService.decryptObject<SessionData>(encryptedData);
-        const updatedSession: SessionData = {
-          ...sessionData,
-          lastAccessedAt: Date.now(),
-        };
-
-        const newEncryptedData =
-          encryptionService.encryptObject(updatedSession);
-        const ttl = this.getSessionTtl();
-        await cacheService.set(sessionKey, newEncryptedData, ttl);
+      if (!resolvedSession) {
+        const encryptedData = await cacheService.get<any>(sessionKey);
+        if (
+          encryptedData &&
+          encryptionService.isValidEncryptedData(encryptedData)
+        ) {
+          resolvedSession =
+            encryptionService.decryptObject<SessionData>(encryptedData);
+        }
       }
+
+      if (!resolvedSession) {
+        return;
+      }
+
+      const updatedSession: SessionData = {
+        ...resolvedSession,
+        lastAccessedAt: Date.now(),
+      };
+
+      const newEncryptedData = encryptionService.encryptObject(updatedSession);
+      const ttl = this.getSessionTtl();
+      await cacheService.set(sessionKey, newEncryptedData, ttl);
     } catch (error) {
       Logger.error(
         `Error updating last accessed for session ${sessionId}:`,

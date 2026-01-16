@@ -1,275 +1,274 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { CreditCard, Plus, Calendar, Wallet, Loader2, CheckCircle, Clock, XCircle } from 'lucide-svelte';
+  import { creditsService } from '$lib/api/credits.js';
   import AddCreditsModal from '$lib/components/payment/AddCreditsModal.svelte';
-  import { paymentService } from '$lib/api/payments.js';
+  import { credits } from '$lib/stores/credits.js';
+  import type { CreditBalance, CreditTransaction } from '$lib/types/credits.js';
+  import type { PaymentStatus, ResumablePayment } from '$lib/types/payment.js';
   import type { PageData } from './$types';
 
   export let data: PageData;
 
-  $: balance = data?.balance ?? 0;
-  $: isLoading = balance === undefined;
+  let balance: CreditBalance = data.balance;
+  let transactions: CreditTransaction[] = data.transactions || [];
 
+  $: balance = data.balance;
+  $: transactions = data.transactions || [];
+  let loadingHistory = false;
   let showPaymentModal = false;
-  let transactions: any[] = [];
-  let loadingTransactions = false;
+  let resumePayment: ResumablePayment | null = null;
+  let availableBalance = 0;
+  let pendingBalance = 0;
 
-  onMount(async () => {
-    await loadTransactions();
-  });
+  $: if (data.balance) {
+    credits.setFromBalance(data.balance, data.balance.userId);
+  }
 
-  async function loadTransactions() {
+  $: availableBalance =
+    $credits.availableBalance ??
+    balance.availableBalance ??
+    balance.balance ??
+    0;
+  $: pendingBalance =
+    $credits.pendingBalance ??
+    balance.pendingBalance ??
+    0;
+
+  const creditTypes: Record<string, { label: string; isPositive: boolean }> = {
+    deposit: { label: 'Deposit', isPositive: true },
+    bonus: { label: 'Bonus', isPositive: true },
+    refund: { label: 'Refund', isPositive: true },
+    purchase: { label: 'Purchase', isPositive: false },
+    refund_reversal: { label: 'Refund reversal', isPositive: false },
+    withdrawal: { label: 'Withdrawal', isPositive: false }
+  };
+
+  type InvoiceDetails = {
+    canResume: boolean;
+    isExpired: boolean;
+    resumePayment?: ResumablePayment;
+  };
+
+  const isPaymentStatus = (
+    value: string | null | undefined
+  ): value is PaymentStatus =>
+    value === 'waiting' ||
+    value === 'confirming' ||
+    value === 'confirmed' ||
+    value === 'sending' ||
+    value === 'partially_paid' ||
+    value === 'finished' ||
+    value === 'failed' ||
+    value === 'refunded' ||
+    value === 'expired';
+
+  function formatDate(value?: string): string {
+    if (!value) return '-';
+    return new Date(value).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
+
+  function formatAmount(amount: number, isPositive: boolean): string {
+    const signed = isPositive ? amount : -amount;
+    const sign = signed >= 0 ? '+' : '-';
+    return `${sign}$${Math.abs(signed).toFixed(2)}`;
+  }
+
+  async function refreshHistory(): Promise<CreditTransaction[]> {
+    if (!balance.userId) return transactions;
     try {
-      loadingTransactions = true;
-      console.log('[CREDITS] Starting to load transactions...');
-      // Limit to 10 most recent transactions
-      const allTransactions = await paymentService.getPaymentHistory(10, 0);
-      transactions = allTransactions.slice(0, 10);
-      console.log('[CREDITS] Loaded transactions:', transactions.length);
+      loadingHistory = true;
+      const history = await creditsService.getHistory(balance.userId, { limit: 10, offset: 0 });
+      transactions = history.transactions || [];
+      return transactions;
     } catch (error) {
-      console.error('[CREDITS] Failed to load transactions:', error);
-      transactions = [];
+      console.error('Failed to refresh credit history:', error);
+      return transactions;
     } finally {
-      loadingTransactions = false;
+      loadingHistory = false;
     }
   }
 
-  function handleAddCredits() {
+  function handleTopUp() {
+    resumePayment = null;
     showPaymentModal = true;
   }
 
   function handlePaymentSuccess(newBalance: number) {
-    balance = newBalance;
-    showPaymentModal = false;
-    // Reload transactions to show the new payment
-    loadTransactions();
-  }
-
-  function getTransactionStatus(status: string) {
-    const statusMap = {
-      finished: { color: 'success', text: 'Completed' },
-      waiting: { color: 'warning', text: 'Pending' },
-      confirming: { color: 'warning', text: 'Confirming' },
-      failed: { color: 'error', text: 'Failed' },
-      expired: { color: 'error', text: 'Expired' }
+    balance = {
+      ...balance,
+      balance: newBalance,
+      availableBalance: newBalance,
+      totalBalance: newBalance
     };
-    return statusMap[status] || { color: 'surface', text: status };
+    credits.setBalance(newBalance, balance.userId);
+    showPaymentModal = false;
+    resumePayment = null;
+    refreshHistory();
   }
 
-  function formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  async function handlePaymentCreated(payment: { paymentId: string }) {
+    const paymentId = payment?.paymentId;
+    if (!paymentId) {
+      await refreshHistory();
+      return;
+    }
+
+    const maxAttempts = 5;
+    const delayMs = 1200;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const latest = await refreshHistory();
+      const found = latest?.some(entry => entry.paymentId === paymentId);
+      if (found) return;
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  function resolveInvoiceDetails(transaction: CreditTransaction): InvoiceDetails {
+    const metadata = transaction.metadata || {};
+    const payAddress = typeof metadata.payAddress === 'string' ? metadata.payAddress : null;
+    const payCurrency = typeof metadata.payCurrency === 'string' ? metadata.payCurrency : null;
+    const payAmountRaw = metadata.payAmount;
+    const payAmount = typeof payAmountRaw === 'number' ? payAmountRaw : Number(payAmountRaw);
+    const expiresAt = typeof metadata.expiresAt === 'string' ? metadata.expiresAt : null;
+    const paymentCompleted = Boolean(metadata.paymentCompleted);
+    const paymentId = transaction.paymentId || (typeof metadata.paymentId === 'string' ? metadata.paymentId : null);
+
+    const status = transaction.paymentStatus?.toLowerCase() || '';
+    const isExpired =
+      status === 'expired' || (expiresAt ? Date.parse(expiresAt) <= Date.now() : false);
+    const hasInvoiceData =
+      Boolean(paymentId && payAddress && payCurrency && Number.isFinite(payAmount));
+
+    if (!hasInvoiceData || paymentCompleted) {
+      return { canResume: false, isExpired: false };
+    }
+
+    if (isExpired) {
+      return { canResume: false, isExpired: true };
+    }
+
+    return {
+      canResume: true,
+      isExpired: false,
+      resumePayment: {
+        paymentId: paymentId as string,
+        payAddress: payAddress as string,
+        payAmount,
+        payCurrency: payCurrency as string,
+        expiresAt,
+        status: isPaymentStatus(transaction.paymentStatus)
+          ? transaction.paymentStatus
+          : null
+      }
+    };
+  }
+
+  function openInvoice(details: InvoiceDetails) {
+    if (!details.resumePayment) return;
+    resumePayment = details.resumePayment;
+    showPaymentModal = true;
+  }
+
+  $: if (!showPaymentModal) {
+    resumePayment = null;
   }
 </script>
 
 <svelte:head>
-  <title>Manage Credits - SubSlush</title>
-  <meta name="description" content="View your credit balance and transaction history. Add more credits to purchase premium subscriptions." />
+  <title>Credits - SubSlush</title>
+  <meta name="description" content="View your credit balance and history." />
 </svelte:head>
 
-<!-- Header Section -->
-<div class="flex items-center justify-between mb-6">
-  <div>
-    <h1 class="text-2xl font-bold text-gray-900">
-      Credit Management
-      <span class="inline-block">💳</span>
-    </h1>
-    <p class="text-gray-600 mt-1 text-base">
-      View your balance and manage your credits for subscription purchases
+<section class="space-y-6">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-900">Credits</h1>
+    </div>
+  </div>
+
+  <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+    <div class="font-semibold text-amber-900">Crypto-only credits</div>
+    <p class="mt-1 text-amber-800">
+      Credit topups and credit payments are intended for crypto. You can still buy any product directly with card at
+      checkout without adding credits.
     </p>
   </div>
 
-  <div class="flex gap-3">
-    <button
-      on:click={handleAddCredits}
-      class="px-6 py-2.5 text-white text-sm font-medium rounded-lg transition-all duration-300 focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 flex items-center space-x-2 hover:shadow-lg hover:shadow-pink-500/30 hover:scale-105"
-      style="background-color: #F06292;"
-      onmouseover="this.style.backgroundColor='#E91E63'"
-      onmouseout="this.style.backgroundColor='#F06292'"
-    >
-      <Plus size={20} />
-      <span>Add Credits</span>
-    </button>
-  </div>
-</div>
-
-<div>
-
-{#if isLoading}
-  <!-- Loading State -->
-  <div class="space-y-8">
-    <!-- Balance Cards Skeleton -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {#each Array(3) as _}
-        <div class="bg-white rounded-xl border border-gray-200 p-6">
-          <div class="h-4 bg-gray-200 rounded animate-pulse w-24 mb-4"></div>
-          <div class="h-8 bg-gray-200 rounded animate-pulse w-20 mb-2"></div>
-          <div class="h-3 bg-gray-200 rounded animate-pulse w-16"></div>
-        </div>
-      {/each}
-    </div>
-
-    <!-- Transaction History Skeleton -->
-    <div class="bg-white rounded-xl border border-gray-200 p-6">
-      <div class="h-6 bg-gray-200 rounded animate-pulse w-48 mb-6"></div>
-      <div class="space-y-4">
-        {#each Array(4) as _}
-          <div class="flex items-center space-x-4">
-            <div class="w-10 h-10 bg-gray-200 rounded-full animate-pulse"></div>
-            <div class="flex-1">
-              <div class="h-4 bg-gray-200 rounded animate-pulse w-48 mb-2"></div>
-              <div class="h-3 bg-gray-200 rounded animate-pulse w-32"></div>
-            </div>
-            <div class="h-4 bg-gray-200 rounded animate-pulse w-16"></div>
-          </div>
-        {/each}
+  <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-sm text-gray-600">Available balance</p>
+        <p class="text-3xl font-semibold text-gray-900 mt-2">${availableBalance.toFixed(2)}</p>
       </div>
+      <button
+        on:click={handleTopUp}
+        class="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black"
+      >
+        Add credits
+      </button>
     </div>
-  </div>
-{:else}
-  <!-- Balance Overview -->
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-    <!-- Credit Balance -->
-    <div class="bg-white rounded-xl border border-gray-200 p-6">
-      <div class="flex items-center mb-4">
-        <div class="p-3 bg-green-100 rounded-lg">
-          <Wallet class="w-6 h-6 text-green-600" />
-        </div>
-        <div class="ml-4">
-          <p class="text-sm font-medium text-gray-600">Credit Balance</p>
-          <p class="text-2xl font-bold text-green-600">€{balance}</p>
-        </div>
-      </div>
-      <p class="text-xs text-gray-500">
-        Available for purchases
-      </p>
-    </div>
-
-    <!-- Total Purchases -->
-    <div class="bg-white rounded-xl border border-gray-200 p-6">
-      <div class="flex items-center mb-4">
-        <div class="p-3 bg-blue-100 rounded-lg">
-          <CreditCard class="w-6 h-6 text-blue-600" />
-        </div>
-        <div class="ml-4">
-          <p class="text-sm font-medium text-gray-600">Total Purchases</p>
-          <p class="text-2xl font-bold text-blue-600">{transactions.length}</p>
-        </div>
-      </div>
-      <p class="text-xs text-gray-500">
-        Credit transactions
-      </p>
-    </div>
-
-    <!-- Account Status -->
-    <div class="bg-white rounded-xl border border-gray-200 p-6">
-      <div class="flex items-center mb-4">
-        <div class="p-3 bg-purple-100 rounded-lg">
-          <CheckCircle class="w-6 h-6 text-purple-600" />
-        </div>
-        <div class="ml-4">
-          <p class="text-sm font-medium text-gray-600">Account Status</p>
-          <p class="text-2xl font-bold text-purple-600">Active</p>
-        </div>
-      </div>
-      <p class="text-xs text-gray-500">
-        Account in good standing
-      </p>
-    </div>
+    {#if pendingBalance > 0}
+      <p class="text-xs text-gray-500 mt-2">Pending: ${pendingBalance.toFixed(2)}</p>
+    {/if}
   </div>
 
-  <!-- Transaction History -->
-  <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-    <div class="flex items-center justify-between mb-6">
-      <h2 class="text-xl font-semibold text-gray-900 flex items-center">
-        <span class="mr-2 text-2xl">📊</span>
-        Transaction History
-      </h2>
-      <span class="text-sm text-gray-500">
-        Recent 10 transactions
-      </span>
+  <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-semibold text-gray-900">Credit history</h2>
+        <p class="text-sm text-gray-600">Latest 10 transactions</p>
+      </div>
     </div>
 
-    {#if loadingTransactions}
-      <div class="text-center py-8">
-        <Loader2 class="animate-spin mx-auto w-8 h-8 text-blue-500" />
-        <p class="text-sm text-gray-500 mt-2">Loading transactions...</p>
+    {#if loadingHistory}
+      <p class="text-sm text-gray-600">Loading history...</p>
+    {:else if transactions.length === 0}
+      <div class="rounded-lg border border-dashed border-gray-200 p-6 text-center">
+        <p class="text-sm font-medium text-gray-900">No transactions yet.</p>
+        <p class="text-sm text-gray-600 mt-1">Top up credits to get started.</p>
       </div>
-    {:else if transactions.length > 0}
-      <div class="space-y-4">
+    {:else}
+      <div class="divide-y divide-gray-100">
         {#each transactions as transaction}
-          <div class="flex items-center justify-between py-4 border-b border-gray-100 last:border-b-0">
-            <div class="flex items-center space-x-4">
-              <div class="p-2 rounded-full
-                {transaction.status === 'finished' ? 'bg-green-100' : ''}
-                {transaction.status === 'waiting' ? 'bg-yellow-100' : ''}
-                {transaction.status === 'failed' ? 'bg-red-100' : ''}">
-                {#if transaction.status === 'finished'}
-                  <CheckCircle size={20} class="text-green-600" />
-                {:else if transaction.status === 'waiting'}
-                  <Clock size={20} class="text-yellow-600" />
-                {:else}
-                  <XCircle size={20} class="text-red-600" />
-                {/if}
-              </div>
-              <div>
-                <p class="font-medium text-gray-900">{transaction.description || 'Credit Purchase'}</p>
-                <div class="flex items-center space-x-2 text-sm text-gray-500">
-                  <Calendar size={14} />
-                  <span>{formatDate(transaction.createdAt)}</span>
-                  <span class="px-2 py-1 rounded-full text-xs
-                    {transaction.status === 'finished' ? 'bg-green-100 text-green-700' : ''}
-                    {transaction.status === 'waiting' ? 'bg-yellow-100 text-yellow-700' : ''}
-                    {transaction.status === 'failed' ? 'bg-red-100 text-red-700' : ''}">
-                    {getTransactionStatus(transaction.status).text}
-                  </span>
-                </div>
-              </div>
+          {@const typeInfo = creditTypes[transaction.type] || { label: transaction.type, isPositive: true }}
+          {@const invoiceDetails = resolveInvoiceDetails(transaction)}
+          <div class="flex items-center justify-between py-3">
+            <div>
+              <p class="text-sm font-medium text-gray-900">{transaction.description || typeInfo.label}</p>
+              <p class="text-xs text-gray-500 mt-1">{formatDate(transaction.createdAt)}</p>
             </div>
             <div class="text-right">
-              <span class="font-semibold {transaction.creditAmount > 0 ? 'text-green-600' : 'text-red-600'}">
-                {transaction.creditAmount > 0 ? '+' : ''}€{transaction.creditAmount}
-              </span>
-              {#if transaction.currency}
-                <p class="text-xs text-gray-500">{transaction.currency.toUpperCase()}</p>
+              <p class={`text-sm font-semibold ${typeInfo.isPositive ? 'text-green-600' : 'text-gray-900'}`}>
+                {formatAmount(transaction.amount, typeInfo.isPositive)}
+              </p>
+              <p class="text-xs text-gray-500">Balance: ${transaction.balanceAfter.toFixed(2)}</p>
+              {#if invoiceDetails.canResume}
+                <button
+                  type="button"
+                  class="mt-1 text-xs font-semibold text-cyan-600 hover:text-cyan-700"
+                  on:click={() => openInvoice(invoiceDetails)}
+                >
+                  Open invoice
+                </button>
+              {:else if invoiceDetails.isExpired}
+                <p class="mt-1 text-xs text-gray-400">Invoice expired</p>
               {/if}
             </div>
           </div>
         {/each}
       </div>
-    {:else}
-      <div class="text-center py-12">
-        <div class="mb-4 p-4 bg-gray-100 rounded-full inline-block">
-          <CreditCard class="w-10 h-10 text-gray-400" />
-        </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">No transaction history</h3>
-        <p class="text-gray-500 mb-6">
-          Your credit transactions will appear here once you make a purchase.
-        </p>
-        <button
-          on:click={handleAddCredits}
-          class="inline-flex items-center px-6 py-2.5 text-white text-sm font-medium rounded-lg transition-colors focus:ring-2 focus:ring-offset-2"
-          style="background-color: #4FC3F7; focus:ring-color: #4FC3F7;"
-          onmouseover="this.style.backgroundColor='#29B6F6'"
-          onmouseout="this.style.backgroundColor='#4FC3F7'"
-        >
-          <Plus size={16} class="mr-2" />
-          Add Your First Credits
-        </button>
-      </div>
     {/if}
   </div>
-{/if}
-</div>
+</section>
 
-<!-- Payment Modal -->
 <AddCreditsModal
   bind:isOpen={showPaymentModal}
-  userBalance={balance}
+  userBalance={availableBalance}
+  {resumePayment}
+  onPaymentCreated={handlePaymentCreated}
   onSuccess={handlePaymentSuccess}
 />

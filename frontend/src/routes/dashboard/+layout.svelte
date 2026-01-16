@@ -1,27 +1,23 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth.js';
 	import { onMount } from 'svelte';
-	import { subscriptionService } from '$lib/api/subscriptions.js';
+	import { credits } from '$lib/stores/credits.js';
 	import TopNav from '$lib/components/navigation/TopNav.svelte';
+	import type { LayoutData } from './$types';
 
-	export let data; // Data from +layout.server.ts
+	export let data: LayoutData & { userBalance?: number };
 
-	let userBalance = data.userBalance || 0;
+	let initialBalance = data.userBalance || 0;
+	let userBalance = initialBalance;
 
 	// Initialize auth store with server data
 	onMount(async () => {
 		if (data.user) {
 			auth.init(data.user);
-
-			// Load user balance
-			try {
-				const balanceResponse = await subscriptionService.getCreditBalance(data.user.id);
-				userBalance = balanceResponse.balance;
-			} catch (err) {
-				console.warn('Could not load user credit balance:', err);
-			}
 		}
 	});
+
+	$: userBalance = $credits.balance ?? initialBalance;
 </script>
 
 <div class="dashboard-shell bg-gray-50 relative">
@@ -36,4 +32,3 @@
 		</div>
 	</main>
 </div>
-
