@@ -2,13 +2,13 @@ import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { API_CONFIG, API_ENDPOINTS } from '$lib/utils/constants';
 
-export const load: PageServerLoad = async ({ fetch, parent, locals, url }) => {
+export const load: PageServerLoad = async ({ fetch, parent, locals }) => {
   const parentData = await parent();
   if (!parentData.user) {
     throw redirect(303, '/auth/login');
   }
 
-  const perfEnabled = url.searchParams.has('perf');
+  const perfEnabled = Boolean(locals.perfEnabled);
   const recordTiming = (name: string, start: number, desc?: string) => {
     if (!perfEnabled) return;
     locals.serverTimings?.push({

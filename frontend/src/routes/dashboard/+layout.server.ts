@@ -46,8 +46,8 @@ const sanitizeProfileUser = (value: unknown) => {
   };
 };
 
-export const load: LayoutServerLoad = async ({ locals, fetch, cookies, url }) => {
-  const perfEnabled = url.searchParams.has('perf');
+export const load: LayoutServerLoad = async ({ locals, fetch, cookies }) => {
+  const perfEnabled = Boolean(locals.perfEnabled);
   const recordTiming = (name: string, start: number, desc?: string) => {
     if (!perfEnabled) return;
     locals.serverTimings?.push({
@@ -75,7 +75,8 @@ export const load: LayoutServerLoad = async ({ locals, fetch, cookies, url }) =>
       });
     }
     return {
-      user: cachedUser
+      user: cachedUser,
+      perfEnabled
     };
   }
 
@@ -105,11 +106,13 @@ export const load: LayoutServerLoad = async ({ locals, fetch, cookies, url }) =>
           maxAge: PROFILE_CACHE_MAX_AGE_SECONDS
         });
         return {
-          user
+          user,
+          perfEnabled
         };
       }
       return {
-        user: data.user
+        user: data.user,
+        perfEnabled
       };
     } else {
       // Session invalid on backend, clear cookie and redirect
@@ -138,7 +141,8 @@ export const load: LayoutServerLoad = async ({ locals, fetch, cookies, url }) =>
         role: locals.user.role,
         // firstName/lastName intentionally omitted - they're not available offline
         displayName: null
-      }
+      },
+      perfEnabled
     };
   }
 };

@@ -16,6 +16,8 @@ const PROTECTED_ROUTES = ['/dashboard', '/profile', '/admin'];
 const AUTH_ROUTES = ['/auth/login', '/auth/register'];
 const PROFILE_URL = `${API_CONFIG.BASE_URL}/auth/profile`;
 const PROFILE_CACHE_COOKIE = 'profile_cache';
+const PERF_COOKIE = 'perf_mode';
+const PERF_COOKIE_MAX_AGE_SECONDS = 600;
 
 const clearAuthCookie = (event: Parameters<Handle>[0]['event']) => {
   event.cookies.delete('auth_token', {
@@ -61,11 +63,32 @@ const fetchValidatedUser = async (
 };
 
 export const handle: Handle = async ({ event, resolve }) => {
-  const perfEnabled = event.url.searchParams.has('perf');
+  const perfParam = event.url.searchParams.get('perf');
+  const perfExplicitOff = perfParam === '0' || perfParam === 'off';
+  const perfFromCookie = event.cookies.get(PERF_COOKIE) === '1';
+  const perfEnabled = !perfExplicitOff && (perfParam !== null || perfFromCookie);
   const authToken = event.cookies.get('auth_token');
 
   // Initialize user as null
   event.locals.user = null;
+  event.locals.perfEnabled = perfEnabled;
+  if (perfExplicitOff) {
+    event.cookies.delete(PERF_COOKIE, {
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    });
+  } else if (perfParam !== null) {
+    event.cookies.set(PERF_COOKIE, '1', {
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: PERF_COOKIE_MAX_AGE_SECONDS
+    });
+  }
+
   if (perfEnabled) {
     event.locals.serverTimings = [];
   }
@@ -131,9 +154,9 @@ export const handle: Handle = async ({ event, resolve }) => {
     filterSerializedResponseHeaders: (name) => name.toLowerCase() === 'content-type'
   });
 
-  if (perfEnabled && event.locals.serverTimings?.length) {
-    const existing = response.headers.get('Server-Timing');
-    const timingValue = event.locals.serverTimings
+  if (perfEnabled) {
+    const timings = event.locals.serverTimings || [];
+    const timingValue = timings
       .map(({ name, dur, desc }) => {
         const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '');
         const duration = Math.max(0, Math.round(dur));
@@ -141,10 +164,12 @@ export const handle: Handle = async ({ event, resolve }) => {
         return `${safeName};dur=${duration}${description}`;
       })
       .join(', ');
-    response.headers.set(
-      'Server-Timing',
-      existing ? `${existing}, ${timingValue}` : timingValue
-    );
+    if (timingValue) {
+      response.headers.set('Server-Timing', timingValue);
+      response.headers.set('x-subslush-perf', timingValue);
+    } else {
+      response.headers.set('x-subslush-perf', 'none');
+    }
   }
   return response;
 };

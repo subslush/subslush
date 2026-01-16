@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ url, fetch, parent, cookies, locals
     throw redirect(303, '/auth/login');
   }
 
-  const perfEnabled = url.searchParams.has('perf');
+  const perfEnabled = Boolean(locals.perfEnabled);
   const recordTiming = (name: string, start: number, desc?: string) => {
     if (!perfEnabled) return;
     locals.serverTimings?.push({

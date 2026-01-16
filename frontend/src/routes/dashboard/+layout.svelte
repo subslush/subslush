@@ -14,7 +14,7 @@
 	let userBalance = initialBalance;
 	let navStart = 0;
 
-	$: perfEnabled = $page.url.searchParams.has('perf');
+	$: perfEnabled = Boolean(data.perfEnabled) || $page.url.searchParams.has('perf');
 
 	if (browser) {
 		beforeNavigate(({ to }) => {

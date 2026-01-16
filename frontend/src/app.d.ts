@@ -9,6 +9,7 @@ declare global {
         role?: string;
         sessionId: string;
       } | null;
+      perfEnabled?: boolean;
       serverTimings?: Array<{
         name: string;
         dur: number;
@@ -25,6 +26,7 @@ declare global {
         role?: string;
       };
       currency?: string | null;
+      perfEnabled?: boolean;
     }
 
     interface Error {

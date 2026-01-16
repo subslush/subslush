@@ -5,7 +5,7 @@ import { createApiClient } from '$lib/api/client.js';
 import { API_ENDPOINTS } from '$lib/utils/constants.js';
 import { unwrapApiData } from '$lib/api/response.js';
 
-export const load: PageServerLoad = async ({ parent, fetch, cookies, locals, url }) => {
+export const load: PageServerLoad = async ({ parent, fetch, cookies, locals }) => {
   try {
     const parentData = await parent();
     const user = parentData.user || locals.user;
@@ -14,7 +14,7 @@ export const load: PageServerLoad = async ({ parent, fetch, cookies, locals, url
       throw redirect(303, '/auth/login');
     }
 
-    const perfEnabled = url.searchParams.has('perf');
+    const perfEnabled = Boolean(locals.perfEnabled);
     const recordTiming = (name: string, start: number, desc?: string) => {
       if (!perfEnabled) return;
       locals.serverTimings?.push({
