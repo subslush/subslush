@@ -10,21 +10,11 @@ const emptyOverview = {
   recent_orders: [],
 };
 
-export const load: PageServerLoad = async ({ fetch, parent, cookies, locals }) => {
+export const load: PageServerLoad = async ({ fetch, parent, cookies }) => {
   const parentData = await parent();
   if (!parentData.user) {
     throw redirect(303, '/auth/login');
   }
-
-  const perfEnabled = Boolean(locals.perfEnabled);
-  const recordTiming = (name: string, start: number, desc?: string) => {
-    if (!perfEnabled) return;
-    locals.serverTimings?.push({
-      name,
-      dur: Date.now() - start,
-      desc
-    });
-  };
 
   const cookieHeader = cookies
     .getAll()
@@ -32,12 +22,10 @@ export const load: PageServerLoad = async ({ fetch, parent, cookies, locals }) =
     .join('; ');
 
   try {
-    const overviewStart = Date.now();
     const response = await fetch(
       `${API_CONFIG.BASE_URL}${API_ENDPOINTS.DASHBOARD.OVERVIEW}`,
       cookieHeader ? { headers: { cookie: cookieHeader } } : undefined
     );
-    recordTiming('dashboard_overview', overviewStart);
 
     if (!response.ok) {
       return { overview: emptyOverview };

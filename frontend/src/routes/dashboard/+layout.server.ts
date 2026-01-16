@@ -47,16 +47,6 @@ const sanitizeProfileUser = (value: unknown) => {
 };
 
 export const load: LayoutServerLoad = async ({ locals, fetch, cookies }) => {
-  const perfEnabled = Boolean(locals.perfEnabled);
-  const recordTiming = (name: string, start: number, desc?: string) => {
-    if (!perfEnabled) return;
-    locals.serverTimings?.push({
-      name,
-      dur: Date.now() - start,
-      desc
-    });
-  };
-
   // If no user from hooks, redirect to login
   if (!locals.user) {
     throw redirect(303, '/auth/login');
@@ -67,28 +57,18 @@ export const load: LayoutServerLoad = async ({ locals, fetch, cookies }) => {
     locals.user.id
   );
   if (cachedUser) {
-    if (perfEnabled) {
-      locals.serverTimings?.push({
-        name: 'profile_cache',
-        dur: 0,
-        desc: 'cache hit'
-      });
-    }
     return {
-      user: cachedUser,
-      perfEnabled
+      user: cachedUser
     };
   }
 
   // Get full user data from backend API (periodic revalidation)
   try {
-    const profileStart = Date.now();
     const response = await fetch(`${API_CONFIG.BASE_URL}/auth/profile`, {
       headers: {
         'Cookie': cookies.getAll().map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
       }
     });
-    recordTiming('profile_fetch', profileStart);
 
     if (response.ok) {
       const data = await response.json();
@@ -106,13 +86,11 @@ export const load: LayoutServerLoad = async ({ locals, fetch, cookies }) => {
           maxAge: PROFILE_CACHE_MAX_AGE_SECONDS
         });
         return {
-          user,
-          perfEnabled
+          user
         };
       }
       return {
-        user: data.user,
-        perfEnabled
+        user: data.user
       };
     } else {
       // Session invalid on backend, clear cookie and redirect
@@ -141,8 +119,7 @@ export const load: LayoutServerLoad = async ({ locals, fetch, cookies }) => {
         role: locals.user.role,
         // firstName/lastName intentionally omitted - they're not available offline
         displayName: null
-      },
-      perfEnabled
+      }
     };
   }
 };

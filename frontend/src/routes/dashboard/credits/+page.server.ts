@@ -14,16 +14,6 @@ export const load: PageServerLoad = async ({ parent, fetch, cookies, locals }) =
       throw redirect(303, '/auth/login');
     }
 
-    const perfEnabled = Boolean(locals.perfEnabled);
-    const recordTiming = (name: string, start: number, desc?: string) => {
-      if (!perfEnabled) return;
-      locals.serverTimings?.push({
-        name,
-        dur: Date.now() - start,
-        desc
-      });
-    };
-
     const cookieHeader = cookies
       .getAll()
       .map(cookie => `${cookie.name}=${cookie.value}`)
@@ -35,19 +25,11 @@ export const load: PageServerLoad = async ({ parent, fetch, cookies, locals }) =
       Pragma: 'no-cache'
     });
 
-    const balanceStart = Date.now();
-    const historyStart = Date.now();
     const [balanceResponse, historyResponse] = await Promise.all([
-      api.get(`${API_ENDPOINTS.CREDITS.BALANCE}/${user.id}`).finally(() => {
-        recordTiming('credits_balance', balanceStart);
-      }),
-      api
-        .get(`${API_ENDPOINTS.CREDITS.HISTORY}/${user.id}`, {
-          params: { limit: 10, offset: 0 }
-        })
-        .finally(() => {
-          recordTiming('credits_history', historyStart);
-        })
+      api.get(`${API_ENDPOINTS.CREDITS.BALANCE}/${user.id}`),
+      api.get(`${API_ENDPOINTS.CREDITS.HISTORY}/${user.id}`, {
+        params: { limit: 10, offset: 0 }
+      })
     ]);
 
     const balance = unwrapApiData<CreditBalance>(balanceResponse);
