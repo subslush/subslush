@@ -57,8 +57,10 @@ async function buildServer(): Promise<typeof fastify> {
     },
   });
 
+  const appOrigin = env.APP_BASE_URL?.replace(/\/$/, '');
   await fastify.register(cors, {
-    origin: env.NODE_ENV === 'development' ? true : ['http://localhost:3000'],
+    origin:
+      env.NODE_ENV === 'development' ? true : appOrigin ? [appOrigin] : [],
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   });

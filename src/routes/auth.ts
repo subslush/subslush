@@ -105,11 +105,10 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             httpOnly: true,
             secure: process.env['NODE_ENV'] === 'production',
             sameSite: 'lax', // CHANGE: 'strict' blocks cookies in cross-origin dev scenarios
-            domain: 'localhost', // EXPLICIT: Set domain for localhost
             path: '/',
             maxAge: 60 * 60 * 24, // 24 hours
           });
-          setCsrfCookie(reply, { domain: 'localhost' });
+          setCsrfCookie(reply);
         }
 
         reply.statusCode = result.requiresEmailVerification ? 202 : 201;
@@ -179,11 +178,10 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             httpOnly: true,
             secure: process.env['NODE_ENV'] === 'production',
             sameSite: 'lax',
-            domain: 'localhost',
             path: '/',
             maxAge: 60 * 60 * 24,
           });
-          setCsrfCookie(reply, { domain: 'localhost' });
+          setCsrfCookie(reply);
         }
 
         return reply.send({
@@ -242,11 +240,10 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             httpOnly: true,
             secure: process.env['NODE_ENV'] === 'production',
             sameSite: 'lax', // CHANGE: 'strict' blocks cookies in cross-origin dev scenarios
-            domain: 'localhost', // EXPLICIT: Set domain for localhost
             path: '/',
             maxAge: 60 * 60 * 24, // 24 hours
           });
-          setCsrfCookie(reply, { domain: 'localhost' });
+          setCsrfCookie(reply);
         }
 
         return reply.send({

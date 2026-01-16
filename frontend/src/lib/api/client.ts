@@ -108,18 +108,8 @@ class ApiClient {
     this.fetchFn = customFetch || fetch;
     this.defaultHeaders = defaultHeaders;
 
-    // Detect SSR context
-    const isSSR = typeof window === 'undefined';
-
-    if (isSSR) {
-      // During SSR, use absolute URL to backend
-      this.baseURL = 'http://localhost:3001/api/v1';
-      console.log('🌐 [API CLIENT] SSR mode - using absolute URL:', this.baseURL);
-    } else {
-      // In browser, use relative URL (works with proxy)
-      this.baseURL = API_CONFIG.BASE_URL;
-      console.log('🌐 [API CLIENT] Browser mode - using relative URL:', this.baseURL);
-    }
+    // Use relative URL so Vercel rewrites/proxy and local dev proxy can handle routing
+    this.baseURL = API_CONFIG.BASE_URL;
   }
 
   private buildURL(url: string, params?: QueryParams): string {
@@ -187,12 +177,6 @@ class ApiClient {
         }
       }
     }
-
-    console.log('🌐 [API CLIENT] Request:', {
-      method,
-      url,
-      isSSR: typeof window === 'undefined'
-    });
 
     try {
       const response = await this.fetchFn(url, {
