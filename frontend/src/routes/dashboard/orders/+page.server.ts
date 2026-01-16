@@ -4,11 +4,21 @@ import { API_CONFIG, API_ENDPOINTS } from '$lib/utils/constants';
 
 const DEFAULT_LIMIT = 10;
 
-export const load: PageServerLoad = async ({ url, fetch, parent, cookies }) => {
+export const load: PageServerLoad = async ({ url, fetch, parent, cookies, locals }) => {
   const parentData = await parent();
   if (!parentData.user) {
     throw redirect(303, '/auth/login');
   }
+
+  const perfEnabled = url.searchParams.has('perf');
+  const recordTiming = (name: string, start: number, desc?: string) => {
+    if (!perfEnabled) return;
+    locals.serverTimings?.push({
+      name,
+      dur: Date.now() - start,
+      desc
+    });
+  };
 
   const cookieHeader = cookies
     .getAll()
@@ -33,10 +43,12 @@ export const load: PageServerLoad = async ({ url, fetch, parent, cookies }) => {
   if (paymentProvider) params.set('payment_provider', paymentProvider);
 
   try {
+    const ordersStart = Date.now();
     const response = await fetch(
       `${API_CONFIG.BASE_URL}${API_ENDPOINTS.ORDERS.LIST}?${params.toString()}`,
       cookieHeader ? { headers: { cookie: cookieHeader } } : undefined
     );
+    recordTiming('orders_list', ordersStart);
 
     if (!response.ok) {
       return {

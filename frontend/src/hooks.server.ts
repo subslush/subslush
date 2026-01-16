@@ -61,10 +61,14 @@ const fetchValidatedUser = async (
 };
 
 export const handle: Handle = async ({ event, resolve }) => {
+  const perfEnabled = event.url.searchParams.has('perf');
   const authToken = event.cookies.get('auth_token');
 
   // Initialize user as null
   event.locals.user = null;
+  if (perfEnabled) {
+    event.locals.serverTimings = [];
+  }
 
   const { pathname } = event.url;
   const isProtectedRoute = PROTECTED_ROUTES.some(route => pathname.startsWith(route));
@@ -126,5 +130,21 @@ export const handle: Handle = async ({ event, resolve }) => {
   const response = await resolve(event, {
     filterSerializedResponseHeaders: (name) => name.toLowerCase() === 'content-type'
   });
+
+  if (perfEnabled && event.locals.serverTimings?.length) {
+    const existing = response.headers.get('Server-Timing');
+    const timingValue = event.locals.serverTimings
+      .map(({ name, dur, desc }) => {
+        const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '');
+        const duration = Math.max(0, Math.round(dur));
+        const description = desc ? `;desc="${desc}"` : '';
+        return `${safeName};dur=${duration}${description}`;
+      })
+      .join(', ');
+    response.headers.set(
+      'Server-Timing',
+      existing ? `${existing}, ${timingValue}` : timingValue
+    );
+  }
   return response;
 };

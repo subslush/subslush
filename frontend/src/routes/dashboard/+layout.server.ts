@@ -46,7 +46,17 @@ const sanitizeProfileUser = (value: unknown) => {
   };
 };
 
-export const load: LayoutServerLoad = async ({ locals, fetch, cookies }) => {
+export const load: LayoutServerLoad = async ({ locals, fetch, cookies, url }) => {
+  const perfEnabled = url.searchParams.has('perf');
+  const recordTiming = (name: string, start: number, desc?: string) => {
+    if (!perfEnabled) return;
+    locals.serverTimings?.push({
+      name,
+      dur: Date.now() - start,
+      desc
+    });
+  };
+
   // If no user from hooks, redirect to login
   if (!locals.user) {
     throw redirect(303, '/auth/login');
@@ -57,6 +67,13 @@ export const load: LayoutServerLoad = async ({ locals, fetch, cookies }) => {
     locals.user.id
   );
   if (cachedUser) {
+    if (perfEnabled) {
+      locals.serverTimings?.push({
+        name: 'profile_cache',
+        dur: 0,
+        desc: 'cache hit'
+      });
+    }
     return {
       user: cachedUser
     };
@@ -64,11 +81,13 @@ export const load: LayoutServerLoad = async ({ locals, fetch, cookies }) => {
 
   // Get full user data from backend API (periodic revalidation)
   try {
+    const profileStart = Date.now();
     const response = await fetch(`${API_CONFIG.BASE_URL}/auth/profile`, {
       headers: {
         'Cookie': cookies.getAll().map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
       }
     });
+    recordTiming('profile_fetch', profileStart);
 
     if (response.ok) {
       const data = await response.json();

@@ -9,6 +9,11 @@ declare global {
         role?: string;
         sessionId: string;
       } | null;
+      serverTimings?: Array<{
+        name: string;
+        dur: number;
+        desc?: string;
+      }>;
     }
 
     interface PageData {

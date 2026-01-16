@@ -81,6 +81,7 @@
 			<!-- Menu Items -->
 			<a
 				href="/dashboard/subscriptions"
+				data-sveltekit-preload-data="hover"
 				class="flex items-center px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors group"
 				on:click={closeMenu}
 			>
@@ -92,6 +93,7 @@
 
 			<a
 				href="/dashboard/orders"
+				data-sveltekit-preload-data="hover"
 				class="flex items-center px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors group"
 				on:click={closeMenu}
 			>
@@ -103,6 +105,7 @@
 
 			<a
 				href="/dashboard/settings"
+				data-sveltekit-preload-data="hover"
 				class="flex items-center px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors group"
 				on:click={closeMenu}
 			>

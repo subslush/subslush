@@ -6,12 +6,24 @@ export const load: PageServerLoad = async ({
   params,
   fetch,
   parent,
-  cookies
+  cookies,
+  locals,
+  url
 }) => {
   const parentData = await parent();
   if (!parentData.user) {
     throw redirect(303, '/auth/login');
   }
+
+  const perfEnabled = url.searchParams.has('perf');
+  const recordTiming = (name: string, start: number, desc?: string) => {
+    if (!perfEnabled) return;
+    locals.serverTimings?.push({
+      name,
+      dur: Date.now() - start,
+      desc
+    });
+  };
 
   const cookieHeader = cookies
     .getAll()
@@ -26,10 +38,12 @@ export const load: PageServerLoad = async ({
   let error = '';
 
   try {
+    const detailStart = Date.now();
     const response = await fetch(
       `${API_CONFIG.BASE_URL}${API_ENDPOINTS.SUBSCRIPTIONS.DETAILS}/${subscriptionId}`,
       { headers }
     );
+    recordTiming('subscription_detail', detailStart);
     if (!response.ok) {
       error = 'Subscription not found.';
     } else {
@@ -46,10 +60,12 @@ export const load: PageServerLoad = async ({
 
   if (!error) {
     try {
+      const selectionStart = Date.now();
       const selectionResponse = await fetch(
         `${API_CONFIG.BASE_URL}${API_ENDPOINTS.SUBSCRIPTIONS.DETAILS}/${subscriptionId}/upgrade-selection`,
         { headers }
       );
+      recordTiming('subscription_selection', selectionStart);
       if (selectionResponse.ok) {
         const payload = await selectionResponse.json();
         const data = payload?.data || payload || {};

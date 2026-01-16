@@ -4,11 +4,21 @@ import { API_CONFIG, API_ENDPOINTS } from '$lib/utils/constants';
 
 const DEFAULT_LIMIT = 10;
 
-export const load: PageServerLoad = async ({ url, fetch, parent, cookies }) => {
+export const load: PageServerLoad = async ({ url, fetch, parent, cookies, locals }) => {
   const parentData = await parent();
   if (!parentData.user) {
     throw redirect(303, '/auth/login');
   }
+
+  const perfEnabled = url.searchParams.has('perf');
+  const recordTiming = (name: string, start: number, desc?: string) => {
+    if (!perfEnabled) return;
+    locals.serverTimings?.push({
+      name,
+      dur: Date.now() - start,
+      desc
+    });
+  };
 
   const cookieHeader = cookies
     .getAll()
@@ -42,25 +52,30 @@ export const load: PageServerLoad = async ({ url, fetch, parent, cookies }) => {
   const filters = { status, page, limit };
 
   const creditBalancePromise = (async () => {
+    const balanceStart = Date.now();
     try {
       const balanceResponse = await fetch(
         `${API_CONFIG.BASE_URL}${API_ENDPOINTS.CREDITS.BALANCE}/${parentData.user.id}`,
         cookieHeader ? { headers: { cookie: cookieHeader } } : undefined
       );
+      recordTiming('credits_balance', balanceStart);
       if (!balanceResponse.ok) return null;
       const balancePayload = await balanceResponse.json();
       return balancePayload?.balance ?? balancePayload?.data?.balance ?? null;
     } catch {
+      recordTiming('credits_balance', balanceStart, 'failed');
       return null;
     }
   })();
 
   const subscriptionsPromise = (async () => {
+    const subscriptionsStart = Date.now();
     try {
       const response = await fetch(
         `${API_CONFIG.BASE_URL}${API_ENDPOINTS.SUBSCRIPTIONS.MY_SUBSCRIPTIONS}?${params.toString()}`,
         cookieHeader ? { headers: { cookie: cookieHeader } } : undefined
       );
+      recordTiming('subscriptions_list', subscriptionsStart);
 
       if (!response.ok) {
         return {
@@ -78,6 +93,7 @@ export const load: PageServerLoad = async ({ url, fetch, parent, cookies }) => {
         pagination: data.pagination || paginationFallback,
       };
     } catch {
+      recordTiming('subscriptions_list', subscriptionsStart, 'failed');
       return {
         subscriptions: [],
         pagination: paginationFallback,

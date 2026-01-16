@@ -5,7 +5,7 @@ import { createApiClient } from '$lib/api/client.js';
 import { API_ENDPOINTS } from '$lib/utils/constants.js';
 import { unwrapApiData } from '$lib/api/response.js';
 
-export const load: PageServerLoad = async ({ parent, fetch, cookies, locals }) => {
+export const load: PageServerLoad = async ({ parent, fetch, cookies, locals, url }) => {
   try {
     const parentData = await parent();
     const user = parentData.user || locals.user;
@@ -13,6 +13,16 @@ export const load: PageServerLoad = async ({ parent, fetch, cookies, locals }) =
     if (!user?.id) {
       throw redirect(303, '/auth/login');
     }
+
+    const perfEnabled = url.searchParams.has('perf');
+    const recordTiming = (name: string, start: number, desc?: string) => {
+      if (!perfEnabled) return;
+      locals.serverTimings?.push({
+        name,
+        dur: Date.now() - start,
+        desc
+      });
+    };
 
     const cookieHeader = cookies
       .getAll()
@@ -25,11 +35,19 @@ export const load: PageServerLoad = async ({ parent, fetch, cookies, locals }) =
       Pragma: 'no-cache'
     });
 
+    const balanceStart = Date.now();
+    const historyStart = Date.now();
     const [balanceResponse, historyResponse] = await Promise.all([
-      api.get(`${API_ENDPOINTS.CREDITS.BALANCE}/${user.id}`),
-      api.get(`${API_ENDPOINTS.CREDITS.HISTORY}/${user.id}`, {
-        params: { limit: 10, offset: 0 }
-      })
+      api.get(`${API_ENDPOINTS.CREDITS.BALANCE}/${user.id}`).finally(() => {
+        recordTiming('credits_balance', balanceStart);
+      }),
+      api
+        .get(`${API_ENDPOINTS.CREDITS.HISTORY}/${user.id}`, {
+          params: { limit: 10, offset: 0 }
+        })
+        .finally(() => {
+          recordTiming('credits_history', historyStart);
+        })
     ]);
 
     const balance = unwrapApiData<CreditBalance>(balanceResponse);
