@@ -607,6 +607,18 @@
               </a>
             </div>
           {/if}
+          {#if subscription.status === 'pending' && subscription.status_reason === 'waiting_for_mmu_acknowledgement'}
+            <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex flex-wrap items-center gap-2">
+              <span class="font-medium">Action required.</span>
+              <span>Confirm the monthly renewal acknowledgement to continue.</span>
+              <a
+                href={`/dashboard/subscriptions/${subscription.id}`}
+                class="text-amber-900 underline underline-offset-2 hover:text-amber-950"
+              >
+                Review acknowledgement
+              </a>
+            </div>
+          {/if}
 
           {#if openSubscriptionId === subscription.id}
             <div class="mt-5 border-t border-gray-100 pt-4 space-y-4">

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
+  import ManualMonthlyAcknowledgement from './ManualMonthlyAcknowledgement.svelte';
   import type { UpgradeOptions } from '$lib/types/subscription.js';
   import type {
     UpgradeSelectionSubmission,
@@ -13,7 +14,6 @@
   export let title = 'Choose your upgrade option';
   export let description = 'Select how you want us to complete this upgrade.';
   export let submitLabel = 'Submit selection';
-  export let durationMonths: number | null = null;
 
   const dispatch = createEventDispatcher<{
     submit: UpgradeSelectionSubmission;
@@ -126,40 +126,10 @@
   {/if}
 
   {#if requiresManualAck}
-    <div class="space-y-3 text-sm text-slate-700">
-      <div class="space-y-2">
-        <p class="text-base font-semibold text-slate-900">Monthly renewal process</p>
-        <p>
-          This subscription needs a monthly renewal because the service only supports monthly billing
-          periods. We will access your account once per month, only to renew your subscription.
-        </p>
-        <p>
-          If you chose a new account, we will create one with a strong password and share it after
-          delivery. If you chose your existing account, set a strong, unique password and keep it in
-          a safe place.
-        </p>
-        <p>
-          The password you submit is locked for this subscription and should not be changed. If you
-          need to reset or change it (for example, through account recovery), switch it back to the
-          password you provided us if possible. If you cannot revert it or the service does not
-          allow reuse, contact support via <strong>live chat</strong> or
-          <strong>hello@subslush.com</strong>.
-        </p>
-        <p>
-          Credentials shared on SubSlush are encrypted with 256-bit encryption. No other action is
-          required from you during the subscription period.
-        </p>
-      </div>
-      <label class="flex items-center gap-2 text-sm text-slate-900">
-        <input
-          type="checkbox"
-          bind:checked={manualMonthlyAcknowledged}
-          class="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-300"
-          disabled={locked || submitting}
-        />
-        <span>I understand</span>
-      </label>
-    </div>
+    <ManualMonthlyAcknowledgement
+      bind:acknowledged={manualMonthlyAcknowledged}
+      disabled={locked || submitting}
+    />
   {/if}
 
   {#if errorMessage}

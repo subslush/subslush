@@ -85,6 +85,15 @@ export class SubscriptionService {
     return unwrapApiData<UpgradeSelectionResponse>(response);
   }
 
+  async acknowledgeManualMonthly(
+    subscriptionId: string
+  ): Promise<UpgradeSelectionResponse> {
+    const response = await apiClient.post(
+      `${API_ENDPOINTS.SUBSCRIPTIONS.DETAILS}/${subscriptionId}/manual-monthly-acknowledge`
+    );
+    return unwrapApiData<UpgradeSelectionResponse>(response);
+  }
+
   async getMySubscriptions(query?: SubscriptionQuery): Promise<SubscriptionsResponse> {
     const response = await apiClient.get(
       API_ENDPOINTS.SUBSCRIPTIONS.MY_SUBSCRIPTIONS,

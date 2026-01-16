@@ -2128,6 +2128,134 @@ export async function subscriptionRoutes(
     }
   );
 
+  // Acknowledge manual monthly upgrade requirement (requires auth)
+  fastify.post<{
+    Params: { subscriptionId: string };
+  }>(
+    '/:subscriptionId/manual-monthly-acknowledge',
+    {
+      preHandler: [authPreHandler],
+      schema: {
+        params: FastifySchemas.subscriptionIdParam,
+      },
+    },
+    async (
+      request: FastifyRequest<{ Params: { subscriptionId: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const userId = request.user?.userId;
+        if (!userId) {
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
+        }
+
+        const { subscriptionId } = request.params;
+        if (!validateSubscriptionId(subscriptionId)) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Invalid subscription ID format'
+          );
+        }
+
+        const subscriptionResult =
+          await subscriptionService.getSubscriptionById(subscriptionId, userId);
+        if (!subscriptionResult.success || !subscriptionResult.data) {
+          return ErrorResponses.notFound(reply, 'Subscription not found');
+        }
+
+        const selection =
+          await upgradeSelectionService.getSelectionForSubscriptionUser(
+            subscriptionId,
+            userId
+          );
+        if (!selection) {
+          return ErrorResponses.notFound(
+            reply,
+            'Upgrade selection is not available for this subscription'
+          );
+        }
+
+        const upgradeValidation = validateUpgradeOptions(
+          selection.upgrade_options_snapshot
+        );
+        if (!upgradeValidation.valid) {
+          Logger.error('Invalid upgrade options snapshot', {
+            subscriptionId,
+            reason: upgradeValidation.reason,
+          });
+          return ErrorResponses.internalError(
+            reply,
+            'Upgrade selection is unavailable'
+          );
+        }
+
+        const allowNew =
+          selection.upgrade_options_snapshot.allow_new_account === true;
+        const allowOwn =
+          selection.upgrade_options_snapshot.allow_own_account === true;
+        const manualMonthly =
+          selection.upgrade_options_snapshot.manual_monthly_upgrade === true;
+
+        if (!manualMonthly) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Manual monthly acknowledgement is not required'
+          );
+        }
+
+        if (allowNew || allowOwn) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Upgrade selection is required before acknowledging manual monthly upgrades'
+          );
+        }
+
+        const acknowledgedSelection =
+          selection.manual_monthly_acknowledged_at &&
+          selection.submitted_at &&
+          selection.locked_at
+            ? selection
+            : await upgradeSelectionService.acknowledgeManualMonthly({
+                subscriptionId,
+              });
+
+        if (!acknowledgedSelection) {
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to acknowledge manual monthly upgrade'
+          );
+        }
+
+        if (subscriptionResult.data.status === 'pending') {
+          await subscriptionService.createCredentialProvisionTask({
+            subscriptionId,
+            userId,
+            orderId: subscriptionResult.data.order_id ?? null,
+            notes: `MMU acknowledgement received for subscription ${subscriptionId}.`,
+          });
+
+          await subscriptionService.updateSubscriptionForAdmin(subscriptionId, {
+            status_reason: 'mmu_acknowledged',
+          });
+        }
+
+        const { credentials_encrypted: _credentials, ...safeSelection } =
+          acknowledgedSelection;
+
+        return SuccessResponses.ok(reply, {
+          selection: safeSelection,
+          locked: Boolean(acknowledgedSelection.locked_at),
+        });
+      } catch (error) {
+        Logger.error('Manual monthly acknowledgement failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to acknowledge manual monthly upgrade'
+        );
+      }
+    }
+  );
+
   // Submit upgrade selection (requires auth)
   fastify.post<{
     Params: { subscriptionId: string };

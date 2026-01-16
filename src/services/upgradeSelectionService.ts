@@ -208,6 +208,39 @@ export class UpgradeSelectionService {
     }
   }
 
+  async acknowledgeManualMonthly(params: {
+    subscriptionId: string;
+    acknowledgedAt?: Date;
+  }): Promise<UpgradeSelection | null> {
+    try {
+      const pool = getDatabasePool();
+      const now = params.acknowledgedAt ?? new Date();
+
+      const result = await pool.query(
+        `UPDATE subscription_upgrade_selections
+         SET manual_monthly_acknowledged_at = COALESCE(manual_monthly_acknowledged_at, $2),
+             submitted_at = COALESCE(submitted_at, $3),
+             locked_at = COALESCE(locked_at, $4),
+             updated_at = NOW()
+         WHERE subscription_id = $1
+         RETURNING *`,
+        [params.subscriptionId, now, now, now]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return mapSelection(result.rows[0]);
+    } catch (error) {
+      Logger.error('Failed to acknowledge manual monthly upgrade', {
+        subscriptionId: params.subscriptionId,
+        error,
+      });
+      return null;
+    }
+  }
+
   async markReminder(params: {
     subscriptionId: string;
     reminder: '24h' | '48h';

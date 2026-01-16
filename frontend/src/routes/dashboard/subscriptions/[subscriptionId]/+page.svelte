@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import UpgradeSelectionForm from '$lib/components/subscription/UpgradeSelectionForm.svelte';
+  import ManualMonthlyAcknowledgement from '$lib/components/subscription/ManualMonthlyAcknowledgement.svelte';
   import { subscriptionService } from '$lib/api/subscriptions.js';
   import type { Subscription } from '$lib/types/subscription.js';
   import type {
@@ -18,6 +19,9 @@
   let submitError = '';
   let successMessage = '';
   let isSubmitting = false;
+  let manualMonthlyAcknowledged = Boolean(
+    selection?.manual_monthly_acknowledged_at
+  );
 
   const formatLabel = (value: string) =>
     value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
@@ -26,6 +30,21 @@
     if (!value) return 'Selection submitted';
     return formatLabel(value);
   };
+
+  $: upgradeOptions = selection?.upgrade_options_snapshot;
+  $: hasSelectionOptions = Boolean(
+    upgradeOptions?.allow_new_account || upgradeOptions?.allow_own_account
+  );
+  $: requiresManualAck = Boolean(upgradeOptions?.manual_monthly_upgrade);
+  $: ackOnly = requiresManualAck && !hasSelectionOptions;
+  $: isMmuPending =
+    subscription?.status === 'pending' &&
+    subscription?.status_reason === 'waiting_for_mmu_acknowledgement';
+  $: if (selection) {
+    manualMonthlyAcknowledged = Boolean(
+      selection.manual_monthly_acknowledged_at
+    );
+  }
 
   async function handleSubmit(event: CustomEvent<UpgradeSelectionSubmission>) {
     if (!subscription) return;
@@ -49,6 +68,30 @@
       isSubmitting = false;
     }
   }
+
+  async function handleManualMonthlyAck() {
+    if (!subscription) return;
+    isSubmitting = true;
+    submitError = '';
+    successMessage = '';
+
+    try {
+      const response = await subscriptionService.acknowledgeManualMonthly(
+        subscription.id
+      );
+      selection = response.selection;
+      selectionLocked = response.locked;
+      manualMonthlyAcknowledged = true;
+      successMessage = 'Acknowledgement confirmed.';
+    } catch (error) {
+      submitError =
+        error instanceof Error
+          ? error.message
+          : 'Unable to submit acknowledgement.';
+    } finally {
+      isSubmitting = false;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -64,6 +107,11 @@
         ? `Subscription ${subscription.id.slice(0, 8)} - ${formatLabel(subscription.service_type)} ${formatLabel(subscription.service_plan)}`
         : 'Choose how to complete your upgrade.'}
     </p>
+    {#if isMmuPending}
+      <div class="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+        Manual monthly acknowledgement is required before we can activate this subscription.
+      </div>
+    {/if}
   </div>
 
   {#if error}
@@ -76,7 +124,7 @@
     </div>
   {:else if !selection}
     <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-      No upgrade selection is required for this subscription.
+      Upgrade selection is unavailable for this subscription.
     </div>
     <button
       class="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black"
@@ -86,7 +134,9 @@
     </button>
   {:else if selectionLocked}
     <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-      {getSelectionLabel(selection.selection_type)} confirmed.
+      {ackOnly
+        ? 'Manual monthly acknowledgement confirmed.'
+        : `${getSelectionLabel(selection.selection_type)} confirmed.`}
     </div>
     <button
       class="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black"
@@ -101,14 +151,24 @@
           {successMessage}
         </div>
       {/if}
-      <UpgradeSelectionForm
-        upgradeOptions={selection.upgrade_options_snapshot}
-        durationMonths={subscription?.term_months ?? null}
-        locked={selectionLocked}
-        submitting={isSubmitting}
-        errorMessage={submitError}
-        on:submit={handleSubmit}
-      />
+      {#if ackOnly}
+        <ManualMonthlyAcknowledgement
+          bind:acknowledged={manualMonthlyAcknowledged}
+          showSubmit={true}
+          submitting={isSubmitting}
+          errorMessage={submitError}
+          submitLabel="Confirm acknowledgement"
+          on:submit={handleManualMonthlyAck}
+        />
+      {:else}
+        <UpgradeSelectionForm
+          upgradeOptions={selection.upgrade_options_snapshot}
+          locked={selectionLocked}
+          submitting={isSubmitting}
+          errorMessage={submitError}
+          on:submit={handleSubmit}
+        />
+      {/if}
     </div>
   {/if}
 </section>

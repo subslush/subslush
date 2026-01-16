@@ -217,15 +217,17 @@ export class SubscriptionService {
 
       const upgradeOptionsSnapshot =
         await this.resolveUpgradeOptionsSnapshot(input);
+      const manualMonthlyRequired =
+        upgradeOptionsSnapshot?.manual_monthly_upgrade === true;
       const selectionRequired = hasUpgradeOptions(upgradeOptionsSnapshot);
-      const manualMonthlyOnly =
-        upgradeOptionsSnapshot?.manual_monthly_upgrade === true &&
-        !selectionRequired;
+      const manualMonthlyOnly = manualMonthlyRequired && !selectionRequired;
 
       const statusReason =
-        selectionRequired && initialStatus === 'pending'
-          ? 'waiting_for_selection'
-          : input.status_reason || null;
+        initialStatus === 'pending' && manualMonthlyRequired
+          ? 'waiting_for_mmu_acknowledgement'
+          : selectionRequired && initialStatus === 'pending'
+            ? 'waiting_for_selection'
+            : input.status_reason || null;
 
       const metadataPayload = input.metadata
         ? {
@@ -330,12 +332,7 @@ export class SubscriptionService {
           notes: noteParts.join(' '),
         });
       } else {
-        if (manualMonthlyOnly) {
-          await upgradeSelectionService.markSelectionResolved({
-            subscriptionId,
-          });
-        }
-        if (subscription.status === 'pending') {
+        if (!manualMonthlyOnly && subscription.status === 'pending') {
           const noteParts = [
             `Provision credentials for ${input.service_type} ${input.service_plan}.`,
             `Subscription ${subscriptionId}`,

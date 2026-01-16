@@ -1147,7 +1147,7 @@ export async function runUpgradeSelectionReminderSweep(): Promise<void> {
         options?.allow_new_account === true ||
         options?.allow_own_account === true;
       if (!selectionOptionsEnabled) {
-        if (options?.manual_monthly_upgrade) {
+        if (!options?.manual_monthly_upgrade) {
           await upgradeSelectionService.markSelectionResolved({
             subscriptionId,
           });

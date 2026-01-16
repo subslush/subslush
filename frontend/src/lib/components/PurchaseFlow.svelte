@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { AlertCircle, CheckCircle2, CreditCard, Loader2, X } from 'lucide-svelte';
   import UpgradeSelectionForm from '$lib/components/subscription/UpgradeSelectionForm.svelte';
+  import ManualMonthlyAcknowledgement from '$lib/components/subscription/ManualMonthlyAcknowledgement.svelte';
   import { subscriptionService } from '$lib/api/subscriptions.js';
   import { paymentService } from '$lib/api/payments.js';
   import { ordersService } from '$lib/api/orders.js';
@@ -66,6 +67,7 @@
   let selectionError = '';
   let selectionLoading = false;
   let selectionSubmitting = false;
+  let manualMonthlyAcknowledged = false;
   let processingError = '';
   const POLL_INTERVAL_MS = 3000;
   const POLL_TIMEOUT_MS = 120000;
@@ -118,6 +120,11 @@
   $: quoteCouponDiscount = pricingQuote
     ? pricingQuote.coupon_discount_cents / 100
     : 0;
+  $: hasSelectionOptions = Boolean(
+    upgradeOptions?.allow_new_account || upgradeOptions?.allow_own_account
+  );
+  $: requiresManualMonthlyAck = Boolean(upgradeOptions?.manual_monthly_upgrade);
+  $: ackOnly = requiresManualMonthlyAck && !hasSelectionOptions;
   $: totalCost = pricingQuote ? pricingQuote.total_cents / 100 : fallbackTermTotal;
   $: resolvedCredits = $credits.balance ?? userCredits;
   $: creditsRequired = creditsQuote?.requiredCredits ?? (isUsdCurrency ? totalCost : null);
@@ -270,6 +277,7 @@
     selectionError = '';
     selectionLoading = false;
     selectionSubmitting = false;
+    manualMonthlyAcknowledged = false;
     processingError = '';
     purchaseResult = null;
     stage = 'checkout';
@@ -307,6 +315,9 @@
       const response = await subscriptionService.getUpgradeSelection(subscriptionId);
       upgradeOptions = response.selection.upgrade_options_snapshot || upgradeOptions;
       selectionLocked = response.locked;
+      manualMonthlyAcknowledged = Boolean(
+        response.selection.manual_monthly_acknowledged_at
+      );
       if (response.locked) {
         stage = 'success';
       }
@@ -330,11 +341,15 @@
     selectionError = '';
     processingError = '';
 
-    const hasSelectionOptions = Boolean(
+    const nextHasSelectionOptions = Boolean(
       options?.allow_new_account || options?.allow_own_account
     );
+    const manualMonthlyRequired =
+      Boolean(options?.manual_monthly_upgrade) ||
+      subscription.status_reason === 'waiting_for_mmu_acknowledgement';
     const needsSelection =
-      hasSelectionOptions ||
+      nextHasSelectionOptions ||
+      manualMonthlyRequired ||
       subscription.status_reason === 'waiting_for_selection';
 
     if (!needsSelection) {
@@ -665,6 +680,34 @@
     }
   }
 
+  async function handleManualMonthlyAck() {
+    if (!purchaseResult) {
+      selectionError = 'Subscription is not ready yet.';
+      return;
+    }
+
+    selectionSubmitting = true;
+    selectionError = '';
+
+    try {
+      const response = await subscriptionService.acknowledgeManualMonthly(
+        purchaseResult.id
+      );
+      selectionLocked = response.locked;
+      manualMonthlyAcknowledged = true;
+      if (response.locked) {
+        stage = 'success';
+      }
+    } catch (error) {
+      selectionError =
+        error instanceof Error
+          ? error.message
+          : 'Unable to submit acknowledgement.';
+    } finally {
+      selectionSubmitting = false;
+    }
+  }
+
   async function handlePrimaryAction() {
     if (stage !== 'checkout') return;
     if (!paymentMethod) return;
@@ -839,14 +882,24 @@
             <p class="text-sm">Loading upgrade options...</p>
           </div>
         {:else if upgradeOptions}
-          <UpgradeSelectionForm
-            upgradeOptions={upgradeOptions}
-            durationMonths={selectedDuration}
-            locked={selectionLocked}
-            submitting={selectionSubmitting}
-            errorMessage={selectionError}
-            on:submit={handleSelectionSubmit}
-          />
+          {#if ackOnly}
+            <ManualMonthlyAcknowledgement
+              bind:acknowledged={manualMonthlyAcknowledged}
+              showSubmit={true}
+              submitting={selectionSubmitting}
+              errorMessage={selectionError}
+              submitLabel="Confirm acknowledgement"
+              on:submit={handleManualMonthlyAck}
+            />
+          {:else}
+            <UpgradeSelectionForm
+              upgradeOptions={upgradeOptions}
+              locked={selectionLocked}
+              submitting={selectionSubmitting}
+              errorMessage={selectionError}
+              on:submit={handleSelectionSubmit}
+            />
+          {/if}
         {:else}
           <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
             {selectionError || 'Upgrade selection is unavailable right now. Please try again shortly.'}

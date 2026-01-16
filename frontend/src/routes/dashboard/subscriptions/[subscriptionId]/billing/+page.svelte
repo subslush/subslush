@@ -20,6 +20,48 @@
 
   $: subscriptionId = $page.params.subscriptionId;
   $: isAutoRenewEnabled = subscription?.auto_renew === true;
+  $: subscriptionTitle = subscription ? resolveSubscriptionTitle(subscription) : '';
+
+  const formatLabel = (value: string) =>
+    value
+      .replace(/[_-]+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, char => char.toUpperCase());
+
+  const formatDurationLabel = (termMonths?: number | null): string => {
+    const normalized =
+      termMonths !== null && termMonths !== undefined ? Number(termMonths) : null;
+    if (!normalized || !Number.isFinite(normalized) || normalized <= 0) return '';
+    const months = Math.floor(normalized);
+    return `(${months} month${months === 1 ? '' : 's'})`;
+  };
+
+  const resolveSubscriptionTitle = (item: Subscription): string => {
+    const productName = item.product_name?.trim() || '';
+    const variantName = item.variant_name?.trim() || '';
+    let baseLabel = '';
+
+    if (productName && variantName) {
+      baseLabel = variantName.toLowerCase().startsWith(productName.toLowerCase())
+        ? variantName
+        : `${productName} ${variantName}`;
+    } else if (productName || variantName) {
+      baseLabel = productName || variantName;
+    } else {
+      const service = formatLabel(item.service_type || '');
+      const plan = item.service_plan ? formatLabel(item.service_plan) : '';
+      if (plan && service && plan.toLowerCase().startsWith(service.toLowerCase())) {
+        baseLabel = plan;
+      } else if (plan) {
+        baseLabel = `${service} ${plan}`;
+      } else {
+        baseLabel = service;
+      }
+    }
+
+    const durationLabel = formatDurationLabel(item.term_months ?? null);
+    return durationLabel ? `${baseLabel} ${durationLabel}` : baseLabel;
+  };
 
   async function initStripeElements() {
     if (!clientSecret) return;
@@ -154,7 +196,7 @@
   {#if subscription}
     <div class="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-700">
       <p class="font-medium text-gray-900">
-        {subscription.service_type} {subscription.service_plan}
+        {subscriptionTitle}
       </p>
       <p class="text-xs text-gray-500 mt-1">Subscription {subscription.id.slice(0, 8)}</p>
     </div>
