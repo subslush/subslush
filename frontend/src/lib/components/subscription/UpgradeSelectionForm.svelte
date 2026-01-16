@@ -26,14 +26,7 @@
 
   $: allowNew = upgradeOptions?.allow_new_account;
   $: allowOwn = upgradeOptions?.allow_own_account;
-  $: normalizedDuration =
-    durationMonths !== null && durationMonths !== undefined
-      ? Number(durationMonths)
-      : 1;
-  $: requiresManualAck =
-    Boolean(upgradeOptions?.manual_monthly_upgrade) &&
-    Number.isFinite(normalizedDuration) &&
-    normalizedDuration > 1;
+  $: requiresManualAck = Boolean(upgradeOptions?.manual_monthly_upgrade);
 
   $: if (!selectionType) {
     if (allowNew && !allowOwn) {
