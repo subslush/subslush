@@ -2,7 +2,7 @@
   email admin@subslush.com
 }
 
-api.subslush.com {
+api.subslush.com, api-staging.subslush.com {
   encode zstd gzip
 
   reverse_proxy backend:3001 {
