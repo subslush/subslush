@@ -34,6 +34,7 @@ const fastify = Fastify({
       : {
           level: 'warn',
         },
+  trustProxy: true,
 });
 
 async function buildServer(): Promise<typeof fastify> {

@@ -136,6 +136,6 @@ echo "4. Enable auto-startup: sudo systemctl enable pgbouncer"
 echo "5. Test the connection using the provided examples"
 
 print_status "Configuration files are ready to be deployed."
-echo -e "\n${BLUE}Generated MD5 hash for userlist.txt: md5${MD5_HASH}${NC}"
+echo -e "\n${BLUE}Generated MD5 hash for userlist.txt.example: md5${MD5_HASH}${NC}"
 
 exit 0

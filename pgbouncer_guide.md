@@ -25,16 +25,16 @@ chmod +x setup_pgbouncer.sh
 ```bash
 # Generate MD5 hash for subscription_user
 echo -n "subscription_pass_2024subscription_user" | md5sum
-# Copy the result and update userlist.txt with: "subscription_user" "md5<hash_result>"
+# Copy the result and update userlist.txt.example with: "subscription_user" "md5<hash_result>"
 ```
 
 ## Configuration Deployment
 
 ### 1. Deploy Configuration Files
 ```bash
-# Copy configuration files to PgBouncer directory
-sudo cp pgbouncer.ini /etc/pgbouncer/
-sudo cp userlist.txt /etc/pgbouncer/
+# Copy configuration templates to PgBouncer directory
+sudo cp pgbouncer.ini.example /etc/pgbouncer/pgbouncer.ini
+sudo cp userlist.txt.example /etc/pgbouncer/userlist.txt
 
 # Set proper ownership and permissions
 sudo chown pgbouncer:pgbouncer /etc/pgbouncer/*
