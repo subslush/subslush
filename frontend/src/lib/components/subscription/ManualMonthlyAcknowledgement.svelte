@@ -61,7 +61,7 @@
 
 {#if showSubmit}
   <button
-    class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+    class="mt-3 inline-flex items-center justify-center rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
     on:click={handleSubmit}
     disabled={!canSubmit}
   >
