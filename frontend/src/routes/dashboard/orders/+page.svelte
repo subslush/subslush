@@ -1,6 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { onMount } from 'svelte';
   import { Receipt } from 'lucide-svelte';
+  import { ordersService } from '$lib/api/orders.js';
   import type { PageData } from './$types';
   import type { OrderItem, OrderListItem } from '$lib/types/order.js';
 
@@ -115,6 +117,37 @@
     if (data.filters.paymentProvider) params.set('payment_provider', data.filters.paymentProvider);
     goto(`/dashboard/orders?${params.toString()}`);
   }
+
+  onMount(() => {
+    let isActive = true;
+
+    const refreshOrders = async () => {
+      try {
+        const currentPage = data.page || 1;
+        const limit = pagination.limit || 10;
+        const offset = (currentPage - 1) * limit;
+        const params = {
+          limit,
+          offset,
+          include_items: true,
+          status: data.filters.status || undefined,
+          payment_provider: data.filters.paymentProvider || undefined
+        };
+        const result = await ordersService.listOrders(params);
+        if (!isActive) return;
+        orders = result.orders || [];
+        pagination = result.pagination || pagination;
+      } catch (error) {
+        console.warn('Failed to refresh orders:', error);
+      }
+    };
+
+    void refreshOrders();
+
+    return () => {
+      isActive = false;
+    };
+  });
 </script>
 
 <svelte:head>

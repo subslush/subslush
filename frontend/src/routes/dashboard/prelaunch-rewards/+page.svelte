@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { dashboardService } from '$lib/api/dashboard.js';
   import type { PageData } from './$types';
   import type {
     PrelaunchReward,
@@ -11,10 +13,6 @@
   let rewards: PrelaunchReward[] = data.rewards;
   let vouchers: PrelaunchVoucher[] = data.vouchers;
   let raffleEntries: PrelaunchRaffleEntry[] = data.raffleEntries;
-
-  $: rewards = data.rewards;
-  $: vouchers = data.vouchers;
-  $: raffleEntries = data.raffleEntries;
 
   const rewardTypeLabels: Record<string, string> = {
     pre_launch: 'Pre-launch reward',
@@ -57,6 +55,28 @@
   function getRewardTitle(reward: PrelaunchReward): string {
     return rewardTypeLabels[reward.reward_type] || formatLabel(reward.reward_type);
   }
+
+  onMount(() => {
+    let isActive = true;
+
+    const refreshRewards = async () => {
+      try {
+        const latest = await dashboardService.getPrelaunchRewards();
+        if (!isActive) return;
+        rewards = latest.rewards || [];
+        vouchers = latest.vouchers || [];
+        raffleEntries = latest.raffleEntries || [];
+      } catch (error) {
+        console.warn('Failed to refresh pre-launch rewards:', error);
+      }
+    };
+
+    void refreshRewards();
+
+    return () => {
+      isActive = false;
+    };
+  });
 </script>
 
 <svelte:head>

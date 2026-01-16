@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { Calendar, CreditCard, Package, AlertTriangle, Clock } from 'lucide-svelte';
   import StatCard from '$lib/components/dashboard/StatCard.svelte';
+  import { dashboardService } from '$lib/api/dashboard.js';
   import type { PageData } from './$types';
   import type {
     DashboardAlert,
@@ -11,8 +13,8 @@
 
   export let data: PageData;
 
-  $: overview = data.overview as DashboardOverview;
-  $: user = data.user;
+  let overview = data.overview as DashboardOverview;
+  let user = data.user;
 
   const serviceLabels: Record<string, string> = {
     spotify: 'Spotify',
@@ -139,6 +141,27 @@
     const currency = order.display_currency || order.currency || 'USD';
     return formatCents(amountCents, currency);
   }
+
+  onMount(() => {
+    let isActive = true;
+
+    const refreshOverview = async () => {
+      try {
+        const latest = await dashboardService.getOverview();
+        if (isActive) {
+          overview = latest;
+        }
+      } catch (error) {
+        console.warn('Failed to refresh dashboard overview:', error);
+      }
+    };
+
+    void refreshOverview();
+
+    return () => {
+      isActive = false;
+    };
+  });
 </script>
 
 <svelte:head>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { creditsService } from '$lib/api/credits.js';
   import AddCreditsModal from '$lib/components/payment/AddCreditsModal.svelte';
   import { credits } from '$lib/stores/credits.js';
@@ -10,17 +11,14 @@
 
   let balance: CreditBalance = data.balance;
   let transactions: CreditTransaction[] = data.transactions || [];
-
-  $: balance = data.balance;
-  $: transactions = data.transactions || [];
   let loadingHistory = false;
   let showPaymentModal = false;
   let resumePayment: ResumablePayment | null = null;
   let availableBalance = 0;
   let pendingBalance = 0;
 
-  $: if (data.balance) {
-    credits.setFromBalance(data.balance, data.balance.userId);
+  $: if (balance) {
+    credits.setFromBalance(balance, balance.userId);
   }
 
   $: availableBalance =
@@ -88,6 +86,21 @@
       return transactions;
     } finally {
       loadingHistory = false;
+    }
+  }
+
+  async function refreshBalanceAndHistory() {
+    if (!balance.userId) return;
+    try {
+      const [latestBalance, history] = await Promise.all([
+        creditsService.getBalance(balance.userId),
+        creditsService.getHistory(balance.userId, { limit: 10, offset: 0 })
+      ]);
+      balance = latestBalance;
+      transactions = history.transactions || [];
+      credits.setFromBalance(latestBalance, latestBalance.userId);
+    } catch (error) {
+      console.warn('Failed to refresh credits:', error);
     }
   }
 
@@ -176,6 +189,14 @@
   $: if (!showPaymentModal) {
     resumePayment = null;
   }
+
+  onMount(() => {
+    const refresh = async () => {
+      await refreshBalanceAndHistory();
+    };
+
+    void refresh();
+  });
 </script>
 
 <svelte:head>

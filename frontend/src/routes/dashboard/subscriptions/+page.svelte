@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { onMount } from 'svelte';
   import { AlertTriangle, ChevronDown, Eye, EyeOff, X, XCircle } from 'lucide-svelte';
   import PinModal from '$lib/components/subscription/PinModal.svelte';
   import { subscriptionService } from '$lib/api/subscriptions.js';
@@ -447,6 +448,50 @@
   $: creditRenewMissingCredits = creditRenewTarget
     ? resolveMissingCredits(creditRenewTarget)
     : null;
+
+  onMount(() => {
+    let isActive = true;
+
+    const refreshSubscriptions = async () => {
+      try {
+        const query: Record<string, string | number | boolean> = {
+          page: data.filters.page,
+          limit: data.filters.limit
+        };
+        if (data.filters.status && data.filters.status !== 'all') {
+          query.status = data.filters.status;
+        } else {
+          query.include_expired = true;
+        }
+
+        const [subscriptionsResponse, balanceResponse] = await Promise.all([
+          subscriptionService.getMySubscriptions(query),
+          data.user?.id
+            ? subscriptionService.getCreditBalance(data.user.id)
+            : Promise.resolve(null)
+        ]);
+
+        if (!isActive) return;
+        subscriptions = subscriptionsResponse.subscriptions || [];
+        if (subscriptionsResponse.pagination) {
+          pagination = subscriptionsResponse.pagination;
+        }
+
+        if (balanceResponse && typeof balanceResponse.balance === 'number') {
+          creditBalance = balanceResponse.balance;
+          credits.setBalance(balanceResponse.balance, data.user?.id);
+        }
+      } catch (error) {
+        console.warn('Failed to refresh subscriptions:', error);
+      }
+    };
+
+    void refreshSubscriptions();
+
+    return () => {
+      isActive = false;
+    };
+  });
 
 </script>
 
