@@ -114,3 +114,23 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# SvelteKit build output
+**/.svelte-kit/
+
+# Windows metadata files
+*:Zone.Identifier
+
+# Local backup files
+*.bak
+*.backup
+*.dep-backup
+
+# Local binaries/archives
+/stripe
+/stripe.tar.gz
+
+# Local schema dump artifacts
+t_login*timestamp without time zone*
+tamp without time zone*
+|*jsonb*
