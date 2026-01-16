@@ -1,6 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { redirect } from '@sveltejs/kit';
 import { jwtDecode } from 'jwt-decode';
+import { API_CONFIG } from '$lib/utils/constants';
 
 interface JWTPayload {
   userId: string;
@@ -13,7 +14,7 @@ interface JWTPayload {
 
 const PROTECTED_ROUTES = ['/dashboard', '/profile', '/admin'];
 const AUTH_ROUTES = ['/auth/login', '/auth/register'];
-const PROFILE_URL = 'http://localhost:3001/api/v1/auth/profile';
+const PROFILE_URL = `${API_CONFIG.BASE_URL}/auth/profile`;
 
 const clearAuthCookie = (event: Parameters<Handle>[0]['event']) => {
   event.cookies.delete('auth_token', {
