@@ -134,3 +134,7 @@ Thumbs.db
 t_login*timestamp without time zone*
 tamp without time zone*
 |*jsonb*
+
+# Deploy secrets
+deploy/backend.env
+deploy/backup/restic.env

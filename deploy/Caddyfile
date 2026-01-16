@@ -1,0 +1,12 @@
+{
+  email admin@subslush.com
+}
+
+api.subslush.com {
+  encode zstd gzip
+
+  reverse_proxy backend:3001 {
+    header_up X-Forwarded-Proto {scheme}
+    header_up X-Forwarded-Host {host}
+  }
+}

@@ -1,0 +1,74 @@
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    env_file: ./backend.env
+    restart: unless-stopped
+    expose:
+      - "3001"
+    depends_on:
+      - redis
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:3001/health',res=>{process.exit(res.statusCode===200?0:1);}).on('error',()=>process.exit(1));"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - subslush
+
+  redis:
+    image: redis:7.2-alpine
+    env_file: ./backend.env
+    command: >
+      sh -c "redis-server --requirepass \"$${REDIS_PASSWORD}\" --appendonly yes"
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks:
+      - subslush
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+    networks:
+      - subslush
+
+volumes:
+  redis-data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/subslush/data/redis
+      o: bind
+  caddy-data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/subslush/data/caddy
+      o: bind
+  caddy-config:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/subslush/data/caddy_config
+      o: bind
+
+networks:
+  subslush:
+    driver: bridge
