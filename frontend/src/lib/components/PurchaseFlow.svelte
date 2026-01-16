@@ -764,22 +764,15 @@
     goto(ROUTES.SUBSCRIPTIONS.MY_SUBSCRIPTIONS);
   }
 
-  function resolveCreditsPlanLabel(): string {
-    const productName = selectedPlan.product_name?.trim() || '';
-    const variantName = selectedPlan.variant_name?.trim() || '';
-    if (productName && variantName) {
-      return `${productName} + ${variantName}`;
-    }
-    if (productName || variantName) {
-      return productName || variantName;
-    }
-    return selectedPlan.display_name;
-  }
-
   function resolvePlanTitle(): string {
     const productName = selectedPlan.product_name?.trim() || '';
     const variantName = selectedPlan.variant_name?.trim() || '';
     if (productName && variantName) {
+      const normalizedProduct = productName.toLowerCase();
+      const normalizedVariant = variantName.toLowerCase();
+      if (normalizedProduct === normalizedVariant) return productName;
+      if (normalizedProduct.includes(normalizedVariant)) return productName;
+      if (normalizedVariant.includes(normalizedProduct)) return variantName;
       return `${productName} ${variantName}`;
     }
     if (productName || variantName) {
@@ -820,8 +813,9 @@
         <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
           <h3 class="text-lg font-semibold text-slate-900">Confirm purchase</h3>
           <p class="mt-2 text-sm text-slate-600">
-            You're about to purchase <span class="font-semibold">{resolveCreditsPlanLabel()}</span> for
-            <span class="font-semibold">{creditsCostLabel} credits</span> ({formatDuration(selectedDuration)}).
+            You're about to purchase <span class="font-semibold">{resolvePlanTitle()}</span>{' '}
+            <span class="font-semibold">({formatDuration(selectedDuration)})</span>{' '}
+            for <span class="font-semibold">{creditsCostLabel} credits</span>.
           </p>
           <div class="mt-5 flex items-center justify-end gap-3">
             <button
