@@ -776,6 +776,18 @@
     return selectedPlan.display_name;
   }
 
+  function resolvePlanTitle(): string {
+    const productName = selectedPlan.product_name?.trim() || '';
+    const variantName = selectedPlan.variant_name?.trim() || '';
+    if (productName && variantName) {
+      return `${productName} ${variantName}`;
+    }
+    if (productName || variantName) {
+      return productName || variantName;
+    }
+    return selectedPlan.display_name;
+  }
+
   function handleContinueShopping() {
     onClose();
     goto('/browse');
@@ -911,7 +923,7 @@
         <section class="space-y-4">
           <div class="rounded-xl border border-slate-200 p-4">
             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Your plan</p>
-            <h3 class="mt-2 text-xl font-semibold text-slate-900">{selectedPlan.display_name}</h3>
+            <h3 class="mt-2 text-xl font-semibold text-slate-900">{resolvePlanTitle()}</h3>
             <div class="mt-4 space-y-2 text-sm text-slate-600">
               <div class="flex items-center justify-between">
                 <span>Subtotal</span>
