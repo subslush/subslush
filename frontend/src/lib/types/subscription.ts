@@ -223,6 +223,8 @@ export interface Subscription {
   product_name?: string | null;
   variant_name?: string | null;
   status_reason?: string | null;
+  cancellation_requested_at?: string | null;
+  cancellation_reason?: string | null;
   renewal_state?: string;
   days_until_renewal?: number | null;
   metadata?: Record<string, unknown> | string | null;

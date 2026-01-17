@@ -375,7 +375,7 @@ export const cancelSubscriptionJsonSchema = {
   properties: {
     reason: {
       type: 'string',
-      minLength: 10,
+      minLength: 1,
       maxLength: 500,
     },
   },

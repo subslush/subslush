@@ -2565,7 +2565,11 @@ export async function subscriptionRoutes(
         const subscriptionsWithDerived = subscriptions.map(subscription => {
           const { credentials_encrypted: _credentials, ...safeSubscription } =
             subscription;
-          if (safeSubscription.status !== 'active') {
+          if (
+            safeSubscription.status !== 'active' ||
+            safeSubscription.cancellation_requested_at ||
+            safeSubscription.status_reason === 'cancelled_by_user'
+          ) {
             return {
               ...safeSubscription,
               renewal_state: null,
@@ -2834,6 +2838,18 @@ export async function subscriptionRoutes(
             'Auto-renew can only be enabled for active subscriptions'
           );
         }
+        if (subscriptionResult.data.cancellation_requested_at) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Cancellation has been requested for this subscription'
+          );
+        }
+        if (subscriptionResult.data.cancellation_requested_at) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Cancellation has been requested for this subscription'
+          );
+        }
 
         const setupIntent = await paymentService.createStripeSetupIntent({
           userId,
@@ -3009,6 +3025,12 @@ export async function subscriptionRoutes(
             'Auto-renew can only be enabled for active subscriptions'
           );
         }
+        if (subscription.cancellation_requested_at) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Cancellation has been requested for this subscription'
+          );
+        }
 
         if (subscription.renewal_method !== 'credits') {
           return ErrorResponses.badRequest(
@@ -3170,6 +3192,12 @@ export async function subscriptionRoutes(
           return ErrorResponses.badRequest(
             reply,
             'Manual renewal is only available for active subscriptions'
+          );
+        }
+        if (subscription.cancellation_requested_at) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Cancelled subscriptions cannot be renewed'
           );
         }
 
@@ -3412,6 +3440,12 @@ export async function subscriptionRoutes(
           return ErrorResponses.badRequest(
             reply,
             'Renewal checkout is only available for active subscriptions'
+          );
+        }
+        if (subscription.cancellation_requested_at) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Cancelled subscriptions cannot be renewed'
           );
         }
 
@@ -3754,9 +3788,21 @@ export async function subscriptionRoutes(
           );
         }
 
+        try {
+          await paymentService.cancelPendingStripeRenewalPayments([
+            subscriptionId,
+          ]);
+        } catch (error) {
+          Logger.warn('Failed to cancel pending renewal payments on cancel', {
+            subscriptionId,
+            error,
+          });
+        }
+
         return SuccessResponses.ok(reply, {
           message: 'Subscription cancelled successfully',
           subscription_id: subscriptionId,
+          subscription: result.subscription,
         });
       } catch (error) {
         Logger.error('Failed to cancel subscription:', error);

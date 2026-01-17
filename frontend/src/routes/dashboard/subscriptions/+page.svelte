@@ -40,7 +40,6 @@
 
   let cancelReasonById: Record<string, string> = {};
   let cancelErrorById: Record<string, string> = {};
-  let cancelLoadingById: Record<string, boolean> = {};
   let autoRenewLoadingById: Record<string, boolean> = {};
   let autoRenewErrorById: Record<string, string> = {};
 
@@ -50,6 +49,11 @@
   let creditRenewLoading = false;
   let creditRenewPriceCents: number | null = null;
   let creditRenewMissingCredits: number | null = null;
+
+  let cancelConfirmModalOpen = false;
+  let cancelTarget: Subscription | null = null;
+  let cancelConfirmError = '';
+  let cancelConfirmLoading = false;
 
 
   const serviceLabels: Record<string, string> = {
@@ -197,7 +201,15 @@
     return missing > 0 ? missing : 0;
   }
 
+  function isCancellationRequested(subscription: Subscription): boolean {
+    return (
+      !!subscription.cancellation_requested_at ||
+      subscription.status_reason === 'cancelled_by_user'
+    );
+  }
+
   function isStripeRenewalFailure(subscription: Subscription): boolean {
+    if (isCancellationRequested(subscription)) return false;
     return (
       subscription.renewal_method === 'stripe' &&
       stripeFailureStatuses.has(subscription.status_reason || '')
@@ -319,27 +331,59 @@
     }
   }
 
-  async function cancelSubscription(subscriptionId: string) {
-    cancelLoadingById = { ...cancelLoadingById, [subscriptionId]: true };
-    cancelErrorById = { ...cancelErrorById, [subscriptionId]: '' };
-
-    const reason = (cancelReasonById[subscriptionId] || '').trim();
+  function requestCancellation(subscription: Subscription) {
+    const reason = (cancelReasonById[subscription.id] || '').trim();
     if (reason.length < 1) {
-      cancelLoadingById = { ...cancelLoadingById, [subscriptionId]: false };
-      cancelErrorById = { ...cancelErrorById, [subscriptionId]: 'Reason is required.' };
+      cancelErrorById = { ...cancelErrorById, [subscription.id]: 'Reason is required.' };
       return;
     }
 
+    cancelErrorById = { ...cancelErrorById, [subscription.id]: '' };
+    cancelConfirmError = '';
+    cancelConfirmModalOpen = true;
+    cancelTarget = subscription;
+  }
+
+  function closeCancelModal() {
+    cancelConfirmModalOpen = false;
+    cancelTarget = null;
+    cancelConfirmError = '';
+    cancelConfirmLoading = false;
+  }
+
+  async function confirmCancellation() {
+    if (!cancelTarget) return;
+    const subscriptionId = cancelTarget.id;
+    const reason = (cancelReasonById[subscriptionId] || '').trim();
+    if (reason.length < 1) {
+      cancelConfirmError = 'Reason is required.';
+      return;
+    }
+
+    cancelConfirmLoading = true;
+    cancelConfirmError = '';
+
     try {
-      await subscriptionService.cancelSubscription(subscriptionId, reason);
+      const result = await subscriptionService.cancelSubscription(subscriptionId, reason);
+      const updated = result.subscription;
       subscriptions = subscriptions.map(sub =>
-        sub.id === subscriptionId ? { ...sub, status: 'cancelled', auto_renew: false } : sub
+        sub.id === subscriptionId
+          ? {
+              ...sub,
+              ...updated,
+              auto_renew: updated?.auto_renew ?? false,
+              cancellation_requested_at:
+                updated?.cancellation_requested_at ?? new Date().toISOString()
+            }
+          : sub
       );
+      cancelReasonById = { ...cancelReasonById, [subscriptionId]: '' };
+      closeCancelModal();
     } catch (error) {
       const apiError = error as ApiError;
-      cancelErrorById = { ...cancelErrorById, [subscriptionId]: apiError.message || 'Unable to cancel subscription.' };
+      cancelConfirmError = apiError.message || 'Unable to cancel subscription.';
     } finally {
-      cancelLoadingById = { ...cancelLoadingById, [subscriptionId]: false };
+      cancelConfirmLoading = false;
     }
   }
 
@@ -571,6 +615,12 @@
                 <p class="text-xs text-gray-500 mt-1">
                   Pending delivery.
                 </p>
+              {:else if isCancellationRequested(subscription)}
+                <p class="text-[11px] uppercase tracking-wide text-gray-400">Cancelled</p>
+                <p class="text-sm font-medium text-gray-700">Will not renew</p>
+                <p class="text-xs text-gray-500 mt-1">
+                  Active until {formatDate(subscription.end_date)}
+                </p>
               {:else}
                 {#if subscription.auto_renew}
                   <div class="flex items-center gap-1">
@@ -609,7 +659,9 @@
             </div>
             <div>
               <p class="text-[11px] uppercase tracking-wide text-gray-400">Auto-renew</p>
-              <p class="text-sm font-medium text-gray-700">{subscription.auto_renew ? 'Enabled' : 'Manual'}</p>
+              <p class="text-sm font-medium text-gray-700">
+                {isCancellationRequested(subscription) ? 'Cancelled' : subscription.auto_renew ? 'Enabled' : 'Manual'}
+              </p>
             </div>
             <div>
               <p class="text-[11px] uppercase tracking-wide text-gray-400">Price</p>
@@ -685,7 +737,12 @@
                     </p>
                   {/if}
 
-                  {#if subscription.auto_renew}
+                  {#if isCancellationRequested(subscription)}
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      Cancellation requested. This subscription will stay active until {formatDate(subscription.end_date)}
+                      and will not renew.
+                    </div>
+                  {:else if subscription.auto_renew}
                     <div class="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <p class="text-xs text-gray-500">Next billing date</p>
@@ -743,7 +800,7 @@
                     {/if}
                   {/if}
 
-                  {#if autoRenewErrorById[subscription.id]}
+                  {#if autoRenewErrorById[subscription.id] && !isCancellationRequested(subscription)}
                     <div class="text-xs text-red-700">{autoRenewErrorById[subscription.id]}</div>
                   {/if}
                 </div>
@@ -765,7 +822,12 @@
                     </p>
                   {/if}
 
-                  {#if subscription.auto_renew}
+                  {#if isCancellationRequested(subscription)}
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      Cancellation requested. This subscription will stay active until {formatDate(subscription.end_date)}
+                      and will not renew.
+                    </div>
+                  {:else if subscription.auto_renew}
                     <div class="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <p class="text-xs text-gray-500">Next billing date</p>
@@ -825,7 +887,7 @@
                     {/if}
                   {/if}
 
-                  {#if autoRenewErrorById[subscription.id]}
+                  {#if autoRenewErrorById[subscription.id] && !isCancellationRequested(subscription)}
                     <div class="text-xs text-red-700">{autoRenewErrorById[subscription.id]}</div>
                   {/if}
                 </div>
@@ -906,13 +968,17 @@
                 </div>
               {/if}
 
-              {#if subscription.status === 'active'}
+              {#if subscription.status === 'active' && !isCancellationRequested(subscription)}
+                {@const cancelReason = (cancelReasonById[subscription.id] || '').trim()}
+                {@const cancelDisabled = cancelReason.length < 1}
                 <div class="border border-gray-200 rounded-lg p-4 space-y-3">
                   <div class="flex items-center gap-2 text-sm font-semibold text-gray-900">
                     <AlertTriangle size={16} class="text-gray-700" />
                     Cancel subscription
                   </div>
-                  <p class="text-xs text-gray-600">Cancellation is immediate and revokes access.</p>
+                  <p class="text-xs text-gray-600">
+                    Cancellation stops future renewals. Your subscription will stay active until the end date.
+                  </p>
                   <textarea
                     rows="2"
                     bind:value={cancelReasonById[subscription.id]}
@@ -922,15 +988,25 @@
                   {#if cancelErrorById[subscription.id]}
                     <div class="text-xs text-red-700">{cancelErrorById[subscription.id]}</div>
                   {/if}
-                  <button
-                    on:click={() => cancelSubscription(subscription.id)}
-                    class="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-700"
-                    disabled={cancelLoadingById[subscription.id]
-                      || (cancelReasonById[subscription.id] || '').trim().length < 1}
-                  >
-                    <XCircle size={14} />
-                    {cancelLoadingById[subscription.id] ? 'Cancelling' : 'Cancel subscription'}
-                  </button>
+                  <div class="relative inline-flex group">
+                    <button
+                      on:click={() => requestCancellation(subscription)}
+                      class={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
+                        cancelDisabled
+                          ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                          : 'bg-red-600 text-white hover:bg-red-700'
+                      }`}
+                      disabled={cancelDisabled}
+                    >
+                      <XCircle size={14} />
+                      Cancel subscription
+                    </button>
+                    {#if cancelDisabled}
+                      <div class="pointer-events-none absolute left-0 top-full mt-2 w-max rounded-md bg-gray-900 px-2 py-1 text-[11px] text-white opacity-0 transition group-hover:opacity-100">
+                        Add a reason to continue
+                      </div>
+                    {/if}
+                  </div>
                 </div>
               {/if}
             </div>
@@ -968,6 +1044,57 @@
   title="Verify PIN"
   description="Enter your PIN to reveal credentials."
 />
+
+{#if cancelConfirmModalOpen && cancelTarget}
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-900">Confirm cancellation</h2>
+        <button
+          class="inline-flex items-center justify-center rounded-full p-1 text-gray-500 hover:text-gray-700"
+          on:click={closeCancelModal}
+          aria-label="Close"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <div class="mt-4 space-y-2 text-sm text-gray-700">
+        <p class="font-medium text-gray-900">{getProductVariantLabel(cancelTarget)}</p>
+        <p>
+          Your subscription will stay active until
+          <span class="font-semibold"> {formatDate(cancelTarget.end_date)}</span>.
+        </p>
+        {#if cancelTarget.auto_renew}
+          <p class="text-xs text-gray-500">Auto-renew will be disabled immediately after confirmation.</p>
+        {/if}
+        <p class="text-xs text-gray-500">
+          This action is irreversible. To subscribe again, you will need to make a new purchase.
+        </p>
+      </div>
+      {#if cancelConfirmError}
+        <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {cancelConfirmError}
+        </div>
+      {/if}
+      <div class="mt-5 flex gap-2">
+        <button
+          class="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          on:click={closeCancelModal}
+          disabled={cancelConfirmLoading}
+        >
+          Go back
+        </button>
+        <button
+          class="flex-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+          on:click={confirmCancellation}
+          disabled={cancelConfirmLoading}
+        >
+          {cancelConfirmLoading ? 'Cancelling...' : 'Confirm cancellation'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if creditRenewModalOpen && creditRenewTarget}
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

@@ -13,7 +13,7 @@ export interface RateLimitOptions {
 
 type RateLimitState = {
   count: number;
-  ttl: number;
+  ttlMs: number;
   limited: boolean;
 };
 
@@ -24,24 +24,24 @@ local max = tonumber(ARGV[2])
 
 local current = redis.call('GET', key)
 if not current then
-  redis.call('SET', key, 1, 'EX', window)
+  redis.call('SET', key, 1, 'PX', window)
   return {1, window, 0}
 end
 
 current = tonumber(current)
 if current >= max then
-  local ttl = redis.call('TTL', key)
+  local ttl = redis.call('PTTL', key)
   if ttl < 0 then
-    redis.call('EXPIRE', key, window)
+    redis.call('PEXPIRE', key, window)
     ttl = window
   end
   return {current, ttl, 1}
 end
 
 local newCount = redis.call('INCR', key)
-local ttl = redis.call('TTL', key)
+local ttl = redis.call('PTTL', key)
 if ttl < 0 then
-  redis.call('EXPIRE', key, window)
+  redis.call('PEXPIRE', key, window)
   ttl = window
 end
 return {newCount, ttl, 0}
@@ -61,24 +61,24 @@ const evaluateRateLimit = async (
   maxRequests: number
 ): Promise<RateLimitState> => {
   const client = rateLimitRedisClient.getClient();
-  const windowSeconds = Math.ceil(windowMs / 1000);
+  const normalizedWindowMs = Math.max(1, Math.ceil(windowMs));
   const result = (await client.eval(
     RATE_LIMIT_SCRIPT,
     1,
     key,
-    windowSeconds,
+    normalizedWindowMs,
     maxRequests
   )) as unknown as [unknown, unknown, unknown];
 
   const count = parseNumber(result?.[0]);
-  let ttl = parseNumber(result?.[1]);
+  let ttlMs = parseNumber(result?.[1]);
   const limited = parseNumber(result?.[2]) === 1;
 
-  if (ttl <= 0) {
-    ttl = windowSeconds;
+  if (ttlMs <= 0) {
+    ttlMs = normalizedWindowMs;
   }
 
-  return { count, ttl, limited };
+  return { count, ttlMs, limited };
 };
 
 export const rateLimitMiddleware = (
@@ -115,7 +115,7 @@ export const rateLimitMiddleware = (
             });
           }
 
-          const { count, ttl, limited } = await evaluateRateLimit(
+          const { count, ttlMs, limited } = await evaluateRateLimit(
             key,
             windowMs,
             maxRequests
@@ -127,7 +127,7 @@ export const rateLimitMiddleware = (
             }
 
             const resetTime = new Date(
-              Date.now() + (ttl > 0 ? ttl * 1000 : windowMs)
+              Date.now() + (ttlMs > 0 ? ttlMs : windowMs)
             );
 
             reply.headers({
@@ -141,14 +141,17 @@ export const rateLimitMiddleware = (
             return reply.code(429).send({
               error: 'Too Many Requests',
               message: 'Rate limit exceeded',
-              retryAfter: ttl > 0 ? ttl : Math.ceil(windowMs / 1000),
+              retryAfter:
+                ttlMs > 0
+                  ? Math.max(1, Math.ceil(ttlMs / 1000))
+                  : Math.ceil(windowMs / 1000),
               resetTime: resetTime.toISOString(),
               limit: maxRequests,
               windowMs,
             });
           }
           const resetTime = new Date(
-            Date.now() + (ttl > 0 ? ttl * 1000 : windowMs)
+            Date.now() + (ttlMs > 0 ? ttlMs : windowMs)
           );
 
           // Add rate limit headers
@@ -223,7 +226,7 @@ export const createRateLimitHandler = (options: RateLimitOptions = {}) => {
         return; // CRITICAL: return to halt execution
       }
 
-      const { count, ttl, limited } = await evaluateRateLimit(
+      const { count, ttlMs, limited } = await evaluateRateLimit(
         key,
         windowMs,
         maxRequests
@@ -234,9 +237,7 @@ export const createRateLimitHandler = (options: RateLimitOptions = {}) => {
           onLimitReached(request, reply);
         }
 
-        const resetTime = new Date(
-          Date.now() + (ttl > 0 ? ttl * 1000 : windowMs)
-        );
+        const resetTime = new Date(Date.now() + (ttlMs > 0 ? ttlMs : windowMs));
 
         // CRITICAL: Set rate limit headers for blocked requests
         reply.headers({
@@ -250,16 +251,17 @@ export const createRateLimitHandler = (options: RateLimitOptions = {}) => {
         reply.code(429).send({
           error: 'Too Many Requests',
           message: 'Rate limit exceeded',
-          retryAfter: ttl > 0 ? ttl : Math.ceil(windowMs / 1000),
+          retryAfter:
+            ttlMs > 0
+              ? Math.max(1, Math.ceil(ttlMs / 1000))
+              : Math.ceil(windowMs / 1000),
           resetTime: resetTime.toISOString(),
           limit: maxRequests,
           windowMs,
         });
         return; // CRITICAL: return to halt execution
       }
-      const resetTime = new Date(
-        Date.now() + (ttl > 0 ? ttl * 1000 : windowMs)
-      );
+      const resetTime = new Date(Date.now() + (ttlMs > 0 ? ttlMs : windowMs));
 
       // Add rate limit headers
       reply.headers({

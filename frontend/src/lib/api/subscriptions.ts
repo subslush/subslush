@@ -11,6 +11,7 @@ import type {
   ValidationResponse,
   PurchaseResponse,
   SubscriptionsResponse,
+  Subscription,
   SubscriptionResponse,
   AutoRenewEnableResponse,
   AutoRenewConfirmResponse,
@@ -117,12 +118,15 @@ export class SubscriptionService {
     return unwrapApiData<{ credentials: string; subscription_id: string }>(response);
   }
 
-  async cancelSubscription(subscriptionId: string, reason: string): Promise<{ subscription_id: string; message?: string }> {
+  async cancelSubscription(
+    subscriptionId: string,
+    reason: string
+  ): Promise<{ subscription_id: string; message?: string; subscription?: Subscription }> {
     const response = await apiClient.delete(
       `${API_ENDPOINTS.SUBSCRIPTIONS.DETAILS}/${subscriptionId}`,
       { data: { reason } }
     );
-    return unwrapApiData<{ subscription_id: string; message?: string }>(response);
+    return unwrapApiData<{ subscription_id: string; message?: string; subscription?: Subscription }>(response);
   }
 
   async enableStripeAutoRenew(subscriptionId: string): Promise<AutoRenewEnableResponse> {

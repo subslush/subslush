@@ -65,6 +65,8 @@ export interface Subscription {
   auto_renew_enabled_at?: Date | null;
   auto_renew_disabled_at?: Date | null;
   status_reason?: string | null;
+  cancellation_requested_at?: Date | null;
+  cancellation_reason?: string | null;
   referral_reward_id?: string | null;
   pre_launch_reward_id?: string | null;
   created_at: Date;
@@ -100,6 +102,8 @@ export interface CreateSubscriptionInput {
   auto_renew_enabled_at?: Date | null;
   auto_renew_disabled_at?: Date | null;
   status_reason?: string | null;
+  cancellation_requested_at?: Date | null;
+  cancellation_reason?: string | null;
   upgrade_options_snapshot?: UpgradeOptionsSnapshot | null;
   referral_reward_id?: string | null;
   pre_launch_reward_id?: string | null;
@@ -119,6 +123,8 @@ export interface UpdateSubscriptionInput {
   auto_renew_enabled_at?: Date | null;
   auto_renew_disabled_at?: Date | null;
   status_reason?: string | null;
+  cancellation_requested_at?: Date | null;
+  cancellation_reason?: string | null;
   price_cents?: number | null;
   base_price_cents?: number | null;
   discount_percent?: number | null;
@@ -184,6 +190,7 @@ export interface SubscriptionOperationResult {
   error?: string;
   subscription_id?: string;
   affected_count?: number;
+  subscription?: Subscription;
 }
 
 export type SubscriptionResult = ServiceResult<Subscription>;

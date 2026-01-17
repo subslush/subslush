@@ -905,6 +905,16 @@ export class SubscriptionService {
         updateValues.push(updates.status_reason);
       }
 
+      if (updates.cancellation_requested_at !== undefined) {
+        updateFields.push(`cancellation_requested_at = $${++paramCount}`);
+        updateValues.push(updates.cancellation_requested_at);
+      }
+
+      if (updates.cancellation_reason !== undefined) {
+        updateFields.push(`cancellation_reason = $${++paramCount}`);
+        updateValues.push(updates.cancellation_reason);
+      }
+
       if (updates.price_cents !== undefined) {
         updateFields.push(`price_cents = $${++paramCount}`);
         updateValues.push(updates.price_cents);
@@ -1033,6 +1043,19 @@ export class SubscriptionService {
           updated: false,
           data: currentSub,
           reason: 'inactive_status',
+        };
+      }
+      if (
+        currentSub.cancellation_requested_at ||
+        currentSub.status_reason === 'cancelled_by_user'
+      ) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return {
+          success: true,
+          updated: false,
+          data: currentSub,
+          reason: 'cancellation_requested',
         };
       }
       const expectedEndDate = params.expectedEndDate ?? null;
@@ -1496,29 +1519,73 @@ export class SubscriptionService {
     reason: string
   ): Promise<SubscriptionOperationResult> {
     try {
+      const trimmedReason = reason ? reason.trim() : '';
       Logger.info('Cancelling subscription', {
         subscriptionId,
         userId,
-        reason,
+        reason: trimmedReason,
       });
 
-      // const statusUpdate: StatusUpdateInput = {
-      //   status: 'cancelled',
-      //   reason,
-      //   updated_by: userId
-      // };
-
-      const result = await this.updateSubscriptionStatus(
-        subscriptionId,
-        'cancelled',
-        reason,
-        userId
-      );
-
-      if (!result.success) {
+      if (!trimmedReason) {
         return {
           success: false,
-          error: result.error as string,
+          error: 'Cancellation reason is required',
+        };
+      }
+
+      const currentResult = await this.getSubscriptionById(
+        subscriptionId,
+        userId
+      );
+      if (!currentResult.success || !currentResult.data) {
+        return {
+          success: false,
+          error: 'Subscription not found',
+        };
+      }
+
+      const currentSub = currentResult.data;
+      if (currentSub.status !== 'active') {
+        return {
+          success: false,
+          error: 'Cancellation is only available for active subscriptions',
+        };
+      }
+
+      if (
+        currentSub.cancellation_requested_at ||
+        currentSub.status_reason === 'cancelled_by_user'
+      ) {
+        return {
+          success: false,
+          error: 'Cancellation has already been requested',
+        };
+      }
+
+      const now = new Date();
+      const autoRenewDisabledAt = currentSub.auto_renew
+        ? now
+        : (currentSub.auto_renew_disabled_at ?? null);
+      const updateResult = await this.updateSubscription(
+        subscriptionId,
+        userId,
+        {
+          auto_renew: false,
+          next_billing_at: null,
+          auto_renew_disabled_at: autoRenewDisabledAt,
+          status_reason: 'cancelled_by_user',
+          cancellation_requested_at: now,
+          cancellation_reason: trimmedReason,
+        }
+      );
+
+      if (!updateResult.success || !updateResult.data) {
+        const updateError = updateResult.success
+          ? undefined
+          : updateResult.error;
+        return {
+          success: false,
+          error: updateError || 'Failed to cancel subscription',
         };
       }
 
@@ -1526,6 +1593,7 @@ export class SubscriptionService {
         success: true,
         data: true,
         subscription_id: subscriptionId,
+        subscription: updateResult.data,
       };
     } catch (error) {
       Logger.error('Error cancelling subscription:', error);
@@ -2298,6 +2366,8 @@ export class SubscriptionService {
       auto_renew_enabled_at: row.auto_renew_enabled_at ?? null,
       auto_renew_disabled_at: row.auto_renew_disabled_at ?? null,
       status_reason: row.status_reason ?? null,
+      cancellation_requested_at: row.cancellation_requested_at ?? null,
+      cancellation_reason: row.cancellation_reason ?? null,
       referral_reward_id: row.referral_reward_id ?? null,
       pre_launch_reward_id: row.pre_launch_reward_id ?? null,
       created_at: row.created_at,

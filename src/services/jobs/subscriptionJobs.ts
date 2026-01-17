@@ -363,6 +363,8 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
       ) oi ON true
       WHERE s.status = 'active'
         AND s.auto_renew = true
+        AND s.cancellation_requested_at IS NULL
+        AND COALESCE(s.status_reason, '') <> 'cancelled_by_user'
         AND (
           (s.next_billing_at IS NOT NULL AND s.next_billing_at <= NOW())
           OR (s.next_billing_at IS NULL AND s.end_date <= NOW() + ($1 || ' minutes')::interval)
@@ -988,6 +990,8 @@ export async function runSubscriptionReminderSweep(): Promise<void> {
         LEFT JOIN products p ON p.id = pv.product_id
         WHERE s.status = 'active'
           AND COALESCE(s.auto_renew, FALSE) = FALSE
+          AND s.cancellation_requested_at IS NULL
+          AND COALESCE(s.status_reason, '') <> 'cancelled_by_user'
           AND s.end_date IS NOT NULL
           AND s.end_date > NOW()
           AND s.end_date <= NOW() + ($1 * INTERVAL '1 hour')
