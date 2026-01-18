@@ -492,6 +492,17 @@ class RedisSessionService implements SessionService {
   async enforceSessionLimit(userId: string): Promise<void> {
     try {
       const maxSessions = env.MAX_SESSIONS_PER_USER;
+      if (!Number.isFinite(maxSessions) || maxSessions <= 0) {
+        return;
+      }
+
+      const userSessionsKey = this.getUserSessionsKey(userId);
+      const client = redisClient.getClient();
+      const sessionCount = await client.scard(userSessionsKey);
+      if (sessionCount < maxSessions) {
+        return;
+      }
+
       const sessionIds = await this.getUserSessions(userId);
 
       if (sessionIds.length < maxSessions) {
