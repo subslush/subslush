@@ -7,21 +7,27 @@
   const heroCards = [
     {
       title: 'Netflix Premium',
-      description: 'Ultra HD · 4 screens · Worldwide access',
+      description:
+        'Stream endless hits, originals, and movies anytime, anywhere — entertainment without limits',
       badge: 'Save up to 75%',
-      background: netflixNY
+      background: netflixNY,
+      link: 'https://www.subslush.com/browse/products/netflix'
     },
     {
       title: 'Spotify Premium',
-      description: 'Ad-free music · Offline downloads · Family ready',
+      description:
+        'Ad-free music, offline listening, unlimited skips, and richer sound — your soundtrack, your way',
       badge: 'Save up to 65%',
-      background: spotifyNY
+      background: spotifyNY,
+      link: 'https://www.subslush.com/browse/products/spotify'
     },
     {
-      title: 'ChatGPT Plus',
-      description: 'Chat with the most advanced AI to explore ideas, solve problems, and learn faster.',
+      title: 'ChatGPT',
+      description:
+        'Get faster answers, advanced AI tools, and priority access — smarter help, every time',
       badge: 'Save up to 70%',
-      background: chatgptNY
+      background: chatgptNY,
+      link: 'https://www.subslush.com/browse/products/chatgpt'
     }
   ];
 
@@ -47,7 +53,7 @@
               <div class="absolute inset-0 bg-cover bg-center" style={`background-image: url(${card.background});`}></div>
             {/if}
             <a
-              href="/browse"
+              href={card.link}
               class="relative flex h-full flex-col justify-between gap-4 p-6 transition-transform hover:translate-y-[-2px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 rounded-2xl"
             >
               <div class="flex items-start gap-3">
