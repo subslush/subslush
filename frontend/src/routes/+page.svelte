@@ -31,13 +31,14 @@
     { key: 'design', label: 'Design', icon: PenTool }
   ];
 
-  const bestsellers = Array.isArray(data.products) ? data.products.slice(0, 6) : [];
+  const allProducts = Array.isArray(data.products) ? data.products : [];
+  const normalizeCategory = (value?: string | null) => (value || '').trim().toLowerCase();
+  const filterByCategory = (category: string) =>
+    allProducts.filter(product => normalizeCategory(product.category) === category).slice(0, 6);
 
-  const bundles = [
-    { title: 'Creator duo', items: ['Adobe CC', 'Canva Pro'] },
-    { title: 'Music + Streaming', items: ['Spotify', 'Netflix', 'Disney+'] },
-    { title: 'Productivity power', items: ['Notion', 'Slack', 'Microsoft 365', 'Figma'] }
-  ];
+  const streamingProducts = filterByCategory('streaming');
+  const aiProducts = filterByCategory('ai');
+  const musicProducts = filterByCategory('music');
 
   onMount(() => {
     const hero = document.getElementById('hero-section');
@@ -171,48 +172,85 @@
   <!-- Spacer -->
   <div class="h-6 bg-white"></div>
 
-  <!-- Bestsellers -->
+  <!-- Streaming -->
   <section class="py-12 bg-white">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <h2 class="text-2xl font-bold text-gray-900">Bestsellers</h2>
-          <p class="text-sm text-gray-600 mt-1">The hottest items on our marketplace – discover what captured our users' hearts!</p>
+          <h2 class="text-2xl font-bold text-gray-900">Streaming</h2>
+          <p class="text-sm text-gray-600 mt-1">Binge-ready subscriptions with verified access and flexible terms.</p>
         </div>
       </div>
 
-      {#if bestsellers.length > 0}
-        <SubscriptionGrid products={bestsellers} />
+      {#if streamingProducts.length > 0}
+        <SubscriptionGrid products={streamingProducts} />
       {:else}
         <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
-          No bestsellers yet. Check back soon.
+          No streaming products yet. Check back soon.
         </div>
       {/if}
     </div>
   </section>
 
-  <!-- Bundle deals -->
+  <!-- AI -->
   <section class="py-12 bg-white">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <h2 class="text-2xl font-bold text-gray-900">Bundle deals</h2>
+          <h2 class="text-2xl font-bold text-gray-900">AI</h2>
+          <p class="text-sm text-gray-600 mt-1">Upgrade your workflows with leading AI tools and copilots.</p>
         </div>
       </div>
-      <div class="flex gap-3 overflow-x-auto pb-2">
-        {#each bundles as bundle}
-          <div class="flex-shrink-0 w-72 bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition">
-            <h3 class="text-lg font-bold text-gray-900 mb-3">{bundle.title}</h3>
-            <ul class="space-y-2 text-sm text-gray-700">
-              {#each bundle.items as item}
-                <li class="flex items-center gap-2">
-                  <span class="w-2 h-2 rounded-full bg-cyan-500"></span>
-                  {item}
-                </li>
-              {/each}
-            </ul>
+
+      {#if aiProducts.length > 0}
+        <SubscriptionGrid products={aiProducts} />
+      {:else}
+        <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
+          No AI products yet. Check back soon.
+        </div>
+      {/if}
+    </div>
+  </section>
+
+  <!-- Music -->
+  <section class="py-12 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-2xl font-bold text-gray-900">Music</h2>
+          <p class="text-sm text-gray-600 mt-1">Hi-fi streaming, curated playlists, and premium listening perks.</p>
+        </div>
+      </div>
+
+      {#if musicProducts.length > 0}
+        <SubscriptionGrid products={musicProducts} />
+      {:else}
+        <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
+          No music products yet. Check back soon.
+        </div>
+      {/if}
+    </div>
+  </section>
+
+  <!-- Explore banner -->
+  <section class="py-6 bg-white">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="rounded-2xl border border-gray-200 bg-gradient-to-r from-cyan-50 via-white to-pink-50 p-6 sm:p-8 shadow-sm">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-cyan-600">Discover more</p>
+            <h3 class="text-2xl font-bold text-gray-900 mt-2">Explore all products &amp; categories</h3>
+            <p class="text-sm text-gray-600 mt-1">
+              Browse streaming, AI, music, and every category in one place.
+            </p>
           </div>
-        {/each}
+          <a
+            href="/browse"
+            class="inline-flex items-center justify-center rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black"
+          >
+            Browse all products
+          </a>
+        </div>
       </div>
     </div>
   </section>
