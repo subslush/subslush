@@ -249,8 +249,9 @@ describe('Rate Limiting Middleware Security Tests', () => {
 
     it('should reset limits after window expires', async () => {
       // Use short window for testing: 1 second
+      const windowMs = 1000;
       const rateLimitHandler = createRateLimitHandler({
-        windowMs: 1000,
+        windowMs,
         maxRequests: 2,
         keyGenerator: () => 'test-user-reset',
       });
@@ -277,7 +278,7 @@ describe('Rate Limiting Middleware Security Tests', () => {
       expect(blockedResponse.statusCode).toBe(429);
 
       // Wait for window to expire
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise(resolve => setTimeout(resolve, windowMs + 250));
 
       // Should be able to make requests again
       for (let i = 1; i <= 2; i++) {

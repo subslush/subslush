@@ -5,7 +5,8 @@ const getHeaderValue = (
 ): string | null => {
   if (!value) return null;
   if (Array.isArray(value)) {
-    return value.length > 0 ? value[0] : null;
+    const first = value[0];
+    return first ?? null;
   }
   return value;
 };
@@ -18,7 +19,10 @@ export const getRequestIp = (request: FastifyRequest): string => {
 
   const forwardedFor = getHeaderValue(request.headers['x-forwarded-for']);
   if (forwardedFor && forwardedFor.trim()) {
-    return forwardedFor.split(',')[0].trim();
+    const firstForwarded = forwardedFor.split(',')[0];
+    if (firstForwarded) {
+      return firstForwarded.trim();
+    }
   }
 
   return request.ip;
