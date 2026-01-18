@@ -3,16 +3,20 @@ import { nowpaymentsClient } from '../utils/nowpaymentsClient';
 import { Logger } from '../utils/logger';
 import { ErrorResponses } from '../utils/response';
 import { createRateLimitHandler } from './rateLimitMiddleware';
+import { getRequestIp } from '../utils/requestIp';
 
 // Payment-specific rate limiting middleware
 export const paymentRateLimit = createRateLimitHandler({
   windowMs: 10 * 60 * 1000, // 10 minutes
   maxRequests: 10, // 10 payment creation attempts per 10 minutes
   keyGenerator: (request: FastifyRequest) =>
-    `payment:${request.ip}:${(request as any).user?.userId || 'anonymous'}`,
+    `payment:${getRequestIp(request)}:${
+      (request as any).user?.userId || 'anonymous'
+    }`,
   onLimitReached: (request: FastifyRequest) => {
-    Logger.warn(`Payment rate limit exceeded for IP: ${request.ip}`, {
-      ip: request.ip,
+    const clientIp = getRequestIp(request);
+    Logger.warn(`Payment rate limit exceeded for IP: ${clientIp}`, {
+      ip: clientIp,
       userId: (request as any).user?.userId,
     });
   },
@@ -23,10 +27,13 @@ export const paymentQuoteRateLimit = createRateLimitHandler({
   windowMs: 10 * 60 * 1000, // 10 minutes
   maxRequests: 10, // 10 quote attempts per 10 minutes
   keyGenerator: (request: FastifyRequest) =>
-    `payment_quote:${request.ip}:${(request as any).user?.userId || 'anonymous'}`,
+    `payment_quote:${getRequestIp(request)}:${
+      (request as any).user?.userId || 'anonymous'
+    }`,
   onLimitReached: (request: FastifyRequest) => {
-    Logger.warn(`Payment quote rate limit exceeded for IP: ${request.ip}`, {
-      ip: request.ip,
+    const clientIp = getRequestIp(request);
+    Logger.warn(`Payment quote rate limit exceeded for IP: ${clientIp}`, {
+      ip: clientIp,
       userId: (request as any).user?.userId,
     });
   },
@@ -37,7 +44,9 @@ export const paymentRefreshRateLimit = createRateLimitHandler({
   windowMs: 60 * 1000, // 1 minute
   maxRequests: 10, // 10 refresh attempts per minute
   keyGenerator: (request: FastifyRequest) =>
-    `payment_refresh:${request.ip}:${(request as any).user?.userId || 'anonymous'}`,
+    `payment_refresh:${getRequestIp(request)}:${
+      (request as any).user?.userId || 'anonymous'
+    }`,
 });
 
 // Payment retry rate limiting
@@ -45,14 +54,16 @@ export const paymentRetryRateLimit = createRateLimitHandler({
   windowMs: 10 * 60 * 1000, // 10 minutes
   maxRequests: 3, // 3 retries per 10 minutes
   keyGenerator: (request: FastifyRequest) =>
-    `payment_retry:${request.ip}:${(request as any).user?.userId || 'anonymous'}`,
+    `payment_retry:${getRequestIp(request)}:${
+      (request as any).user?.userId || 'anonymous'
+    }`,
 });
 
 // Webhook rate limiting (more restrictive)
 export const webhookRateLimit = createRateLimitHandler({
   windowMs: 1 * 60 * 1000, // 1 minute
   maxRequests: 50, // 50 webhook requests per minute (NOWPayments can send multiple)
-  keyGenerator: (request: FastifyRequest) => `webhook:${request.ip}`,
+  keyGenerator: (request: FastifyRequest) => `webhook:${getRequestIp(request)}`,
 });
 
 // Validation middleware for webhook signatures
@@ -89,7 +100,7 @@ export const validateWebhookSignature: FastifyPluginCallback =
           if (!isValidSignature) {
             Logger.error('Invalid webhook signature', {
               signature,
-              ip: request.ip,
+              ip: getRequestIp(request),
             });
             return ErrorResponses.unauthorized(
               reply,
@@ -227,7 +238,7 @@ export const auditPaymentOperations: FastifyPluginCallback = async fastify => {
             method: request.method,
             url: request.url,
             userId: user?.id,
-            ip: request.ip,
+            ip: getRequestIp(request),
             userAgent: request.headers['user-agent'],
             statusCode: reply.statusCode,
             duration,
@@ -238,7 +249,7 @@ export const auditPaymentOperations: FastifyPluginCallback = async fastify => {
         // Special logging for webhook operations
         if (request.url.includes('/webhook')) {
           Logger.info('Webhook processed', {
-            ip: request.ip,
+            ip: getRequestIp(request),
             statusCode: reply.statusCode,
             duration,
             paymentId: (request.body as any)?.payment_id,

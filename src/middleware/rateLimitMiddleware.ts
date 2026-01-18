@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply, FastifyPluginCallback } from 'fastify';
 import { rateLimitRedisClient } from '../config/redis';
 import { Logger } from '../utils/logger';
+import { getRequestIp } from '../utils/requestIp';
 
 export interface RateLimitOptions {
   windowMs?: number;
@@ -87,7 +88,7 @@ export const rateLimitMiddleware = (
   const {
     windowMs = 15 * 60 * 1000, // 15 minutes
     maxRequests = 100,
-    keyGenerator = (request: FastifyRequest): string => request.ip,
+    keyGenerator = (request: FastifyRequest): string => getRequestIp(request),
     skipFailedRequests = false,
     skipSuccessfulRequests = false,
     onLimitReached,
@@ -203,7 +204,7 @@ export const createRateLimitHandler = (options: RateLimitOptions = {}) => {
   const {
     windowMs = 15 * 60 * 1000, // 15 minutes
     maxRequests = 100,
-    keyGenerator = (request: FastifyRequest): string => request.ip,
+    keyGenerator = (request: FastifyRequest): string => getRequestIp(request),
     onLimitReached,
   } = options;
 
