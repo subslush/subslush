@@ -2,7 +2,7 @@ import netflixLogo from '$lib/assets/netflix_logo.jpg';
 import spotifyLogo from '$lib/assets/spotify_logo.png';
 import chatgptLogo from '$lib/assets/chatgpt-logo.jpg';
 import adobeccLogo from '$lib/assets/adobecc-logo.png';
-import youtubepremiumLogo from '$lib/assets/youtubepremium-logo.png';
+import youtubeLogo from '$lib/assets/youtube-logo.jpg';
 import amazonprimevideoLogo from '$lib/assets/amazonprimevideo-logo.png';
 import applemusicLogo from '$lib/assets/applemusic-logo.png';
 import appletvLogo from '$lib/assets/appletv-logo.jpg';
@@ -46,7 +46,7 @@ export const logoRegistry = {
   spotify: spotifyLogo,
   'chatgpt-logo': chatgptLogo,
   'adobecc-logo': adobeccLogo,
-  'youtubepremium-logo': youtubepremiumLogo,
+  'youtube-logo': youtubeLogo,
   'amazonprimevideo-logo': amazonprimevideoLogo,
   'applemusic-logo': applemusicLogo,
   'appletv-logo': appletvLogo,
