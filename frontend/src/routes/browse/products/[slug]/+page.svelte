@@ -6,6 +6,7 @@
   import PurchaseFlow from '$lib/components/PurchaseFlow.svelte';
   import { credits } from '$lib/stores/credits.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
+  import { trackBeginCheckout, trackViewItem } from '$lib/utils/analytics.js';
   import { Shield } from 'lucide-svelte';
   import type {
     ProductVariantOption,
@@ -107,6 +108,10 @@
   const openPurchaseFlow = (variant: ProductVariantOption) => {
     const term = resolveSelectedTerm(variant);
     if (!term) return;
+    const analyticsItem = buildProductItem(variant, term, 'Product Detail');
+    if (analyticsItem) {
+      trackBeginCheckout(analyticsItem.currency, term.total_price, [analyticsItem]);
+    }
     selectedVariant = variant;
     selectedDuration = term.months;
     selectedTotalPrice = term.total_price;
@@ -166,6 +171,44 @@
     const resolved = normalizeCurrencyCode(currency) || 'USD';
     return formatCurrency(monthly, resolved);
   };
+
+  const buildProductItem = (
+    variant?: ProductVariantOption | null,
+    term?: ProductTermOption | null,
+    listName?: string
+  ) => {
+    const itemId = product?.id || product?.slug || product?.name;
+    const itemName = product?.name || product?.slug;
+    if (!itemId && !itemName) return null;
+    return {
+      item_id: itemId,
+      item_name: itemName,
+      item_category: product?.category || product?.service_type || undefined,
+      item_variant: variant?.display_name || variant?.plan_code || variant?.name || undefined,
+      item_list_name: listName,
+      price: term?.total_price,
+      currency: variant?.currency,
+      quantity: 1
+    };
+  };
+
+  let lastViewedProductId = '';
+  $: {
+    const currentId = product?.id || product?.slug || '';
+    if (!currentId) {
+      lastViewedProductId = '';
+    } else if (currentId !== lastViewedProductId) {
+      const primaryVariant = variants[0];
+      const defaultTerm = primaryVariant
+        ? resolveSelectedTerm(primaryVariant) || resolveDefaultTerm(primaryVariant)
+        : null;
+      const analyticsItem = buildProductItem(primaryVariant, defaultTerm, 'Product Detail');
+      if (analyticsItem) {
+        trackViewItem(analyticsItem);
+      }
+      lastViewedProductId = currentId;
+    }
+  }
 
   onMount(() => {
     if (data.userCredits && data.userCredits > 0 && $credits.balance === null) {

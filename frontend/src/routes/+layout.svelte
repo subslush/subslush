@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { afterUpdate, onMount } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 	import { browser } from '$app/environment';
 	import { base } from '$app/paths';
 	import { auth } from '$lib/stores/auth';
@@ -15,6 +16,7 @@
 	import appleIcon from '$lib/assets/apple-icon.png';
 	import manifest192 from '$lib/assets/web-app-manifest-192x192.png';
 	import manifest512 from '$lib/assets/web-app-manifest-512x512.png';
+	import { trackPageView } from '$lib/utils/analytics.js';
 	import type { LayoutData } from './$types';
 	import '../app.css';
 
@@ -44,6 +46,16 @@
 		const height = bannerEl?.offsetHeight ?? 0;
 		document.documentElement.style.setProperty('--promo-banner-height', `${height}px`);
 	};
+
+	let lastTrackedPath = '';
+
+	afterNavigate(({ to }) => {
+		if (!to?.url) return;
+		const path = `${to.url.pathname}${to.url.search}${to.url.hash}`;
+		if (path === lastTrackedPath) return;
+		lastTrackedPath = path;
+		trackPageView(path);
+	});
 
 	// Hydrate auth store with server data immediately when data changes (SSR + CSR)
 	// CRITICAL: Only hydrate if server data has complete firstName/lastName or if user is null

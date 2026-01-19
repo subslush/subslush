@@ -183,7 +183,7 @@
       </div>
 
       {#if streamingProducts.length > 0}
-        <SubscriptionGrid products={streamingProducts} />
+        <SubscriptionGrid products={streamingProducts} listName="Streaming" />
       {:else}
         <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
           No streaming products yet. Check back soon.
@@ -203,7 +203,7 @@
       </div>
 
       {#if aiProducts.length > 0}
-        <SubscriptionGrid products={aiProducts} />
+        <SubscriptionGrid products={aiProducts} listName="AI" />
       {:else}
         <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
           No AI products yet. Check back soon.
@@ -223,7 +223,7 @@
       </div>
 
       {#if musicProducts.length > 0}
-        <SubscriptionGrid products={musicProducts} />
+        <SubscriptionGrid products={musicProducts} listName="Music" />
       {:else}
         <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
           No music products yet. Check back soon.

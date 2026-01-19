@@ -3,6 +3,7 @@
   import netflixNY from '$lib/assets/netflixny.jpg';
   import spotifyNY from '$lib/assets/spotifyny.jpg';
   import chatgptNY from '$lib/assets/chatgptny.jpg';
+  import { trackSelectItem } from '$lib/utils/analytics.js';
 
   const heroCards = [
     {
@@ -11,7 +12,9 @@
         'Stream endless hits, originals, and movies anytime, anywhere — entertainment without limits',
       badge: 'Save up to 75%',
       background: netflixNY,
-      link: 'https://www.subslush.com/browse/products/netflix'
+      link: 'https://www.subslush.com/browse/products/netflix',
+      itemId: 'netflix',
+      category: 'Streaming'
     },
     {
       title: 'Spotify Premium',
@@ -19,7 +22,9 @@
         'Ad-free music, offline listening, unlimited skips, and richer sound — your soundtrack, your way',
       badge: 'Save up to 65%',
       background: spotifyNY,
-      link: 'https://www.subslush.com/browse/products/spotify'
+      link: 'https://www.subslush.com/browse/products/spotify',
+      itemId: 'spotify',
+      category: 'Music'
     },
     {
       title: 'ChatGPT',
@@ -27,10 +32,23 @@
         'Get faster answers, advanced AI tools, and priority access — smarter help, every time',
       badge: 'Save up to 70%',
       background: chatgptNY,
-      link: 'https://www.subslush.com/browse/products/chatgpt'
+      link: 'https://www.subslush.com/browse/products/chatgpt',
+      itemId: 'chatgpt',
+      category: 'AI'
     }
   ];
 
+  const handleHeroSelect = (card: (typeof heroCards)[number], index: number) => {
+    trackSelectItem('Hero', [
+      {
+        item_id: card.itemId,
+        item_name: card.title,
+        item_category: card.category,
+        item_list_name: 'Hero',
+        index: index + 1
+      }
+    ]);
+  };
 </script>
 
 <section id="hero-section" class="relative overflow-hidden py-12 md:py-16">
@@ -45,7 +63,7 @@
   <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="mt-2">
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-fr">
-            {#each heroCards as card}
+            {#each heroCards as card, index}
           <article
             class="relative h-[380px] min-h-[380px] overflow-hidden rounded-2xl shadow-lg border-4 text-gray-900 border-white/70"
           >
@@ -55,6 +73,7 @@
             <a
               href={card.link}
               class="relative flex h-full flex-col justify-between gap-4 p-6 transition-transform hover:translate-y-[-2px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 rounded-2xl"
+              on:click={() => handleHeroSelect(card, index)}
             >
               <div class="flex items-start gap-3">
                 <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-gradient-to-r from-cyan-50 to-pink-50 text-cyan-700">

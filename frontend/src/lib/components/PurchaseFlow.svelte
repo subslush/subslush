@@ -15,6 +15,7 @@
   import type { UpgradeSelectionSubmission } from '$lib/types/upgradeSelection.js';
   import { loadStripe, type Stripe, type StripeElements, type StripePaymentElement } from '@stripe/stripe-js';
   import { tick, onDestroy } from 'svelte';
+  import { trackAddPaymentInfo, trackPurchase } from '$lib/utils/analytics.js';
 
   export let selectedPlan: ServicePlanDetails;
   export let selectedDuration = 1;
@@ -63,6 +64,7 @@
   type PurchaseStage = 'checkout' | 'processing' | 'selection' | 'success';
   let stage: PurchaseStage = 'checkout';
   let orderId: string | null = null;
+  let transactionId: string | null = null;
   let upgradeOptions: UpgradeOptions | null = null;
   let selectionLocked = false;
   let selectionError = '';
@@ -70,6 +72,7 @@
   let selectionSubmitting = false;
   let manualMonthlyAcknowledged = false;
   let processingError = '';
+  let lastPurchaseTrackingId = '';
   const POLL_INTERVAL_MS = 3000;
   const POLL_TIMEOUT_MS = 120000;
   let pollSequence = 0;
@@ -244,6 +247,30 @@
     return `${years} year${years > 1 ? 's' : ''} and ${remainingMonths} month${remainingMonths > 1 ? 's' : ''}`;
   }
 
+  const buildPurchaseItem = () => {
+    const itemId =
+      selectedPlan.product_id ||
+      selectedPlan.variant_id ||
+      selectedPlan.service_type ||
+      selectedPlan.display_name;
+    const itemName = selectedPlan.product_name || selectedPlan.display_name;
+    if (!itemId && !itemName) return null;
+    return {
+      item_id: itemId,
+      item_name: itemName,
+      item_category: selectedPlan.category || undefined,
+      item_variant: selectedPlan.variant_name || selectedPlan.plan || selectedPlan.service_name || undefined,
+      price: totalCost,
+      currency: resolvedCurrency,
+      quantity: 1
+    };
+  };
+
+  const getPurchaseItems = () => {
+    const item = buildPurchaseItem();
+    return item ? [item] : [];
+  };
+
   async function initStripeElements() {
     try {
       if (!stripeClientSecret) return;
@@ -345,6 +372,14 @@
     options: UpgradeOptions | null
   ): Promise<void> {
     purchaseResult = subscription;
+    const trackingId = transactionId || orderId || subscription.id;
+    if (trackingId && trackingId !== lastPurchaseTrackingId) {
+      const items = getPurchaseItems();
+      if (items.length) {
+        trackPurchase(trackingId, resolvedCurrency, totalCost, items);
+        lastPurchaseTrackingId = trackingId;
+      }
+    }
     upgradeOptions = options;
     selectionLocked = false;
     selectionError = '';
@@ -504,6 +539,7 @@
       });
 
       orderId = purchase.order_id;
+      transactionId = purchase.transaction?.transaction_id ?? null;
       await refreshCredits(true);
       await advanceAfterSubscription(
         purchase.subscription,
@@ -724,6 +760,7 @@
     if (paymentMethod === 'stripe') {
       if (!stripeFormOpen) {
         stripeFormOpen = true;
+        trackAddPaymentInfo('card', resolvedCurrency, totalCost, getPurchaseItems());
         if (!stripeClientSecret) {
           await startStripeCheckout();
         } else if (!paymentElement) {
@@ -743,6 +780,7 @@
     if (paymentMethod === 'credits') {
       await refreshCredits(true);
       if (!showCreditsConfirm) {
+        trackAddPaymentInfo('credits', resolvedCurrency, totalCost, getPurchaseItems());
         showCreditsConfirm = true;
         return;
       }

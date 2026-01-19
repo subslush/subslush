@@ -30,6 +30,7 @@
   let selectedCategory = 'all';
   let sortBy = 'recommended';
   let categoriesOpen = false;
+  let listName = 'Browse';
 
   $: products = Array.isArray(data.products) ? (data.products as BrowseProduct[]) : [];
   $: urlCategory = $page.url.searchParams.get('category')?.toLowerCase() || 'all';
@@ -43,6 +44,13 @@
   $: if (urlCategory !== selectedCategory) {
     selectedCategory = urlCategory;
   }
+
+  const resolveListName = (categoryKey: string): string => {
+    if (categoryKey === 'all') return 'Browse';
+    return categories.find(category => category.key === categoryKey)?.label || 'Browse';
+  };
+
+  $: listName = resolveListName(selectedCategory);
 
   function selectCategory(category: string) {
     selectedCategory = category;
@@ -217,7 +225,7 @@
               </button>
             </div>
           {:else}
-            <SubscriptionGrid products={filteredProducts} />
+            <SubscriptionGrid products={filteredProducts} listName={listName} />
           {/if}
         </div>
       </div>

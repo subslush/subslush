@@ -1,10 +1,12 @@
 <script lang="ts">
   import { resolveLogoKey } from '$lib/assets/logoRegistry.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
+  import { trackSelectItem, trackViewItemList } from '$lib/utils/analytics.js';
 
   import type { ProductListing } from '$lib/types/subscription.js';
 
   export let products: ProductListing[] = [];
+  export let listName = 'Browse';
 
   type ServiceStyle = {
     logo?: string;
@@ -37,10 +39,50 @@
     if (!product.slug) return '/browse';
     return `/browse/products/${encodeURIComponent(product.slug)}`;
   }
+
+  const resolveListName = (): string => (listName || 'Browse').trim() || 'Browse';
+
+  const buildAnalyticsItem = (product: ProductListing, index: number, listLabel: string) => {
+    const itemId = product.product_id || product.slug || product.name;
+    return {
+      item_id: itemId,
+      item_name: product.name,
+      item_category: product.category || product.service_type || undefined,
+      item_list_name: listLabel,
+      index: index + 1,
+      price: product.from_price,
+      currency: product.currency,
+      quantity: 1
+    };
+  };
+
+  const handleSelectItem = (product: ProductListing, index: number) => {
+    const listLabel = resolveListName();
+    trackSelectItem(listLabel, [buildAnalyticsItem(product, index, listLabel)]);
+  };
+
+  let lastListKey = '';
+  $: {
+    const listLabel = resolveListName();
+    if (!products.length) {
+      lastListKey = '';
+    } else {
+      const key = `${listLabel}:${products
+        .map(product => product.product_id || product.slug || product.name)
+        .join('|')}`;
+      if (key !== lastListKey) {
+        trackViewItemList(
+          listLabel,
+          products.map((product, index) => buildAnalyticsItem(product, index, listLabel))
+        );
+        lastListKey = key;
+      }
+    }
+  }
 </script>
 
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-  {#each products as product}
+  {#each products as product, index}
     {@const serviceType = product.service_type || product.slug || product.name}
     {@const serviceStyle = getServiceStyle(serviceType, product.logoKey ?? product.logo_key)}
 
@@ -48,6 +90,7 @@
       href={getPlanHref(product)}
       class="group block rounded-2xl border border-gray-200 bg-white overflow-hidden hover:shadow-lg hover:border-gray-300 transition"
       aria-label={`View ${product.name} details`}
+      on:click={() => handleSelectItem(product, index)}
     >
       <div class="flex flex-col h-80">
         <div class="relative flex-1 bg-gray-50 overflow-hidden">
