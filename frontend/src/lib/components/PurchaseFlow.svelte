@@ -32,6 +32,7 @@
   let validationMessage = '';
   let creditsQuoteMessage = '';
   let showCreditsAuthNotice = false;
+  let showStripeAuthNotice = false;
   let checkoutResult: CheckoutResponseStripe | null = null;
   let purchaseResult: Subscription | null = null;
   let stripe: Stripe | null = null;
@@ -153,6 +154,9 @@
     if (paymentMethod !== 'credits') {
       showCreditsAuthNotice = false;
     }
+    if (paymentMethod !== 'stripe') {
+      showStripeAuthNotice = false;
+    }
     if (paymentMethod === 'credits') {
       void refreshCredits(true);
       void refreshCreditsQuote(true);
@@ -222,8 +226,13 @@
     paymentMethod = null;
   }
 
+  $: if (!isLoggedIn && paymentMethod === 'stripe') {
+    paymentMethod = null;
+  }
+
   $: if (isLoggedIn) {
     showCreditsAuthNotice = false;
+    showStripeAuthNotice = false;
   }
 
   function formatDuration(months: number): string {
@@ -747,6 +756,12 @@
     errorMessage = '';
   }
 
+  function handleStripeAuthNotice() {
+    showStripeAuthNotice = true;
+    validationMessage = '';
+    errorMessage = '';
+  }
+
   function handleStripeBack() {
     stripeFormOpen = false;
     if (paymentElement) {
@@ -1022,19 +1037,42 @@
           {:else}
             <div class="rounded-xl border border-slate-200 p-4 space-y-3">
               <h4 class="text-sm font-semibold text-slate-900">Payment method</h4>
-              <label class="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50">
-                <input
-                  type="radio"
-                  name="payment-method"
-                  value="stripe"
-                  bind:group={paymentMethod}
-                  class="mt-1 h-4 w-4 text-slate-900 focus:ring-slate-300"
-                />
-                <div>
-                  <p class="text-sm font-semibold text-slate-900">Pay with card</p>
-                  <p class="text-xs text-slate-500">Secure checkout powered by Stripe.</p>
+              {#if isLoggedIn}
+                <label class="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50">
+                  <input
+                    type="radio"
+                    name="payment-method"
+                    value="stripe"
+                    bind:group={paymentMethod}
+                    class="mt-1 h-4 w-4 text-slate-900 focus:ring-slate-300"
+                  />
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900">Pay with card</p>
+                    <p class="text-xs text-slate-500">Secure checkout powered by Stripe.</p>
+                  </div>
+                </label>
+              {:else if !showStripeAuthNotice}
+                <button
+                  type="button"
+                  class="w-full text-left flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50"
+                  on:click={handleStripeAuthNotice}
+                >
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900">Pay with card</p>
+                    <p class="text-xs text-slate-500">Requires an account.</p>
+                  </div>
+                </button>
+              {:else}
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                  <p class="text-xs text-slate-600">
+                    To pay with card, please
+                    <a href={ROUTES.AUTH.LOGIN} class="font-semibold text-slate-900 underline">login</a>
+                    or
+                    <a href={ROUTES.AUTH.REGISTER} class="font-semibold text-slate-900 underline">register</a>
+                    an account.
+                  </p>
                 </div>
-              </label>
+              {/if}
               {#if isLoggedIn}
                 <label class="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50">
                   <input
