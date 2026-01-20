@@ -37,8 +37,26 @@ export interface PrelaunchRaffleEntry {
   updated_at?: string | null;
 }
 
+export interface PrelaunchRewardSubscription {
+  id: string;
+  status: string;
+  term_months?: number | null;
+  created_at?: string | null;
+  product_name?: string | null;
+  variant_name?: string | null;
+}
+
 export interface PrelaunchRewardsResponse {
   rewards: PrelaunchReward[];
   vouchers: PrelaunchVoucher[];
   raffleEntries: PrelaunchRaffleEntry[];
+  subscriptions?: PrelaunchRewardSubscription[];
+  firstSubscription?: PrelaunchRewardSubscription | null;
+}
+
+export interface PrelaunchRewardClaimResponse {
+  rewardId: string;
+  subscriptionId: string;
+  newEndDate: string;
+  newRenewalDate: string;
 }

@@ -27,8 +27,8 @@
 
   const rewardTypeLabels: Record<string, string> = {
     pre_launch: 'Pre-launch reward',
-    email_reward: 'Referral email reward',
-    purchase_reward: 'Referral purchase reward'
+    email_reward: 'Referral reward',
+    purchase_reward: 'Referral reward'
   };
 
   const voucherStatusStyles: Record<string, string> = {
@@ -64,6 +64,9 @@
   }
 
   function getRewardTitle(reward: PrelaunchReward): string {
+    if (reward.source_type === 'referral_reward') {
+      return 'Referral reward';
+    }
     return rewardTypeLabels[reward.reward_type] || formatLabel(reward.reward_type);
   }
 
@@ -97,6 +100,25 @@
     return months > 0 ? months : 1;
   }
 
+  function getReferralRewardSummary(reward: PrelaunchReward): string {
+    const months = getFreeMonths(reward);
+    const label = months === 1 ? 'month' : 'months';
+    return `Adds ${months} free ${label} to your subscription.`;
+  }
+
+  function getReferralRewardRequirement(reward: PrelaunchReward): string {
+    if (reward.applies_to === 'first_purchase') {
+      return 'Can only be applied to the first subscription you purchase.';
+    }
+    if (reward.applies_to === 'min_1_year') {
+      return 'Claimable on subscriptions with a minimum 12-month term.';
+    }
+    if (reward.applies_to === 'min_2_years') {
+      return 'Claimable on subscriptions with a minimum 24-month term.';
+    }
+    return 'Claimable once you have an eligible active subscription.';
+  }
+
   function formatSubscriptionLabel(subscription: PrelaunchRewardSubscription): string {
     const productName = subscription.product_name?.trim() || '';
     const variantName = subscription.variant_name?.trim() || '';
@@ -113,6 +135,11 @@
       return `${baseLabel} (${termMonths} months)`;
     }
     return baseLabel;
+  }
+
+  function formatShortId(id?: string | null): string {
+    if (!id) return '';
+    return id.slice(0, 8);
   }
 
   function getRequiredTermMonths(appliesTo?: string | null): number | null {
@@ -244,16 +271,18 @@
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <p class="text-sm font-semibold text-gray-900">{getRewardTitle(reward)}</p>
-                  {#if reward.tier || reward.applies_to}
+                  {#if reward.source_type !== 'referral_reward' && (reward.tier || reward.applies_to)}
                     <p class="text-xs text-gray-500">
                       {reward.tier ? formatLabel(reward.tier) : ''}{reward.applies_to ? ` • ${formatLabel(reward.applies_to)}` : ''}
                     </p>
                   {/if}
                 </div>
-                <span class="text-xs text-gray-500">{formatDate(reward.awarded_at)}</span>
+                {#if reward.source_type !== 'referral_reward'}
+                  <span class="text-xs text-gray-500">{formatDate(reward.awarded_at)}</span>
+                {/if}
               </div>
               <div class="flex flex-wrap gap-2 text-xs text-gray-600">
-                {#if reward.free_months}
+                {#if reward.free_months && reward.source_type !== 'referral_reward'}
                   <span class="rounded-full border border-gray-200 bg-white px-2 py-0.5">
                     +{reward.free_months} months
                   </span>
@@ -273,30 +302,25 @@
                 <p class="text-xs text-gray-500">{reward.notes}</p>
               {/if}
               {#if reward.source_type === 'referral_reward'}
-                <div class="flex items-center justify-between text-xs">
-                  <span class="text-gray-500">
-                    {#if isRewardRedeemed(reward)}
-                      {#if getRewardRedeemedAt(reward)}
-                        Claimed {formatDate(getRewardRedeemedAt(reward))}
-                      {:else}
-                        Claimed
-                      {/if}
-                    {:else}
-                      Ready to apply to a subscription
-                    {/if}
-                  </span>
-                  {#if isRewardRedeemed(reward)}
-                    <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">
-                      Used
+                <div class="space-y-2 text-xs text-gray-600">
+                  <p>{getReferralRewardSummary(reward)} {getReferralRewardRequirement(reward)}</p>
+                  <div class="flex items-center justify-between">
+                    <span class="text-gray-500">
+                      {isRewardRedeemed(reward) ? 'Claimed' : 'Available to claim'}
                     </span>
-                  {:else}
-                    <button
-                      class="text-xs font-semibold text-cyan-600"
-                      on:click={() => openClaimModal(reward)}
-                    >
-                      Claim
-                    </button>
-                  {/if}
+                    {#if isRewardRedeemed(reward)}
+                      <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                        Used
+                      </span>
+                    {:else}
+                      <button
+                        class="text-xs font-semibold text-cyan-600"
+                        on:click={() => openClaimModal(reward)}
+                      >
+                        Claim
+                      </button>
+                    {/if}
+                  </div>
                 </div>
               {/if}
             </div>
@@ -372,19 +396,19 @@
 {#if claimReward}
   <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
     <button
-      class="absolute inset-0 bg-black/40"
+      class="absolute inset-0 bg-black/40 backdrop-blur-sm"
       aria-label="Close claim modal"
       on:click={closeClaimModal}
     ></button>
     <div
-      class="relative z-10 w-full max-w-xl rounded-xl bg-white shadow-xl"
+      class="relative z-10 w-full max-w-2xl rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
       role="dialog"
       aria-modal="true"
     >
-      <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-        <div>
-          <h3 class="text-lg font-semibold text-gray-900">Claim reward</h3>
-          <p class="text-xs text-gray-500">{getRewardTitle(claimReward)}</p>
+      <div class="flex items-center justify-between border-b border-gray-200 px-6 py-5">
+        <div class="space-y-1">
+          <h3 class="text-xl font-semibold text-gray-900">Claim reward</h3>
+          <p class="text-sm text-gray-500">{getRewardTitle(claimReward)}</p>
         </div>
         <button
           class="text-sm font-semibold text-gray-500 hover:text-gray-700"
@@ -393,7 +417,26 @@
           Close
         </button>
       </div>
-      <div class="space-y-4 px-6 py-5">
+      <div class="space-y-5 px-6 py-6">
+        <div class="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="space-y-1">
+              <p class="text-xs font-semibold uppercase tracking-widest text-gray-500">Reward</p>
+              <p class="text-sm font-semibold text-gray-900">{getRewardTitle(claimReward)}</p>
+              <p class="text-xs text-gray-600">{getReferralRewardSummary(claimReward)}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-xs font-semibold uppercase tracking-widest text-gray-500">Months to add</p>
+              <p class="text-2xl font-semibold text-gray-900 leading-tight">
+                {getFreeMonths(claimReward)}
+              </p>
+              <p class="text-xs text-gray-500">
+                {getFreeMonths(claimReward) === 1 ? 'month' : 'months'}
+              </p>
+            </div>
+          </div>
+          <div class="mt-3 text-xs text-gray-600">{getReferralRewardRequirement(claimReward)}</div>
+        </div>
         {#if claimError}
           <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {claimError}
@@ -407,56 +450,85 @@
 
         {#if claimReward.applies_to === 'first_purchase'}
           {#if !firstSubscription}
-            <p class="text-sm text-gray-600">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
               You need an active subscription before you can claim this reward. Once your
               first order is delivered and activated, you can apply it.
-            </p>
+            </div>
           {:else if firstSubscription.status !== 'active'}
-            <p class="text-sm text-gray-600">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
               Your first subscription is not active yet. After activation, you can claim
               this reward.
-            </p>
+            </div>
           {:else}
-            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
-              <div class="text-sm font-semibold text-gray-900">
-                {formatSubscriptionLabel(firstSubscription)}
+            <div class="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+              <div class="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Subscription
+                  </p>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <div class="text-sm font-semibold text-gray-900">
+                      {formatSubscriptionLabel(firstSubscription)}
+                    </div>
+                    {#if firstSubscription.id}
+                      <span class="text-xs text-gray-500">
+                        ID: {formatShortId(firstSubscription.id)}
+                      </span>
+                    {/if}
+                  </div>
+                </div>
+                <button
+                  class="rounded-lg bg-gray-900 px-4 py-2 text-xs font-semibold text-white"
+                  on:click={() => {
+                    if (!firstSubscription) return;
+                    submitClaim(firstSubscription.id);
+                  }}
+                  disabled={isClaiming}
+                >
+                  {isClaiming
+                    ? 'Applying...'
+                    : `Add ${getFreeMonths(claimReward)} ${
+                        getFreeMonths(claimReward) === 1 ? 'month' : 'months'
+                      }`}
+                </button>
               </div>
-              <button
-                class="rounded-lg bg-gray-900 px-4 py-2 text-xs font-semibold text-white"
-                on:click={() => {
-                  if (!firstSubscription) return;
-                  submitClaim(firstSubscription.id);
-                }}
-                disabled={isClaiming}
-              >
-                {isClaiming
-                  ? 'Applying...'
-                  : `Add ${getFreeMonths(claimReward)} ${
-                      getFreeMonths(claimReward) === 1 ? 'month' : 'months'
-                    }`}
-              </button>
             </div>
           {/if}
         {:else}
           {#if subscriptions.length === 0}
-            <p class="text-sm text-gray-600">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
               You need an active subscription before you can claim this reward.
-            </p>
+            </div>
           {:else if eligibleSubscriptions.length === 0}
-            <p class="text-sm text-gray-600">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
               {#if requiredTermMonths}
-                This reward requires a minimum {requiredTermMonths}-month subscription.
+                This reward can only be applied to a subscription with minimum {requiredTermMonths}-month duration.
               {:else}
                 No eligible subscriptions available for this reward.
               {/if}
-            </p>
+            </div>
           {:else}
             <div class="space-y-3">
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Select subscription
+              </p>
               {#each eligibleSubscriptions as subscription}
-                <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <div class="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
                   <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div class="text-sm font-semibold text-gray-900">
-                      {formatSubscriptionLabel(subscription)}
+                    <div>
+                      <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Subscription
+                      </p>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <div class="text-sm font-semibold text-gray-900">
+                          {formatSubscriptionLabel(subscription)}
+                        </div>
+                        {#if subscription.id}
+                          <span class="text-xs text-gray-500">
+                            ID: {formatShortId(subscription.id)}
+                          </span>
+                        {/if}
+                      </div>
                     </div>
                     <button
                       class="rounded-lg bg-gray-900 px-3 py-2 text-xs font-semibold text-white"

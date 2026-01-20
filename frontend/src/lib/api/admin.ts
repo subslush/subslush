@@ -21,6 +21,7 @@ import type {
   AdminListPagination,
   AdminReward,
   AdminTask,
+  AdminPrelaunchRewardTask,
   AdminMigrationPreview,
   AdminMigrationResult,
   AdminRefund,
@@ -473,6 +474,27 @@ export class AdminService {
   async listTasks(params?: QueryParams): Promise<AdminTask[]> {
     const response = await this.client.get(API_ENDPOINTS.ADMIN.TASKS, { params });
     return unwrapItems<AdminTask>(response, 'tasks');
+  }
+
+  async listPrelaunchRewardTasks(params?: QueryParams): Promise<AdminPrelaunchRewardTask[]> {
+    const response = await this.client.get(API_ENDPOINTS.ADMIN.PRELAUNCH_REWARD_TASKS, { params });
+    return unwrapItems<AdminPrelaunchRewardTask>(response, 'tasks');
+  }
+
+  async markPrelaunchRewardTaskIssue(taskId: string): Promise<AdminPrelaunchRewardTask> {
+    const response = await this.client.post(
+      `${API_ENDPOINTS.ADMIN.PRELAUNCH_REWARD_TASKS}/${taskId}/issue`,
+      {}
+    );
+    return unwrap<AdminPrelaunchRewardTask>(response);
+  }
+
+  async markPrelaunchRewardTaskDelivered(taskId: string): Promise<AdminPrelaunchRewardTask> {
+    const response = await this.client.post(
+      `${API_ENDPOINTS.ADMIN.PRELAUNCH_REWARD_TASKS}/${taskId}/delivered`,
+      {}
+    );
+    return unwrap<AdminPrelaunchRewardTask>(response);
   }
 
   async startTask(taskId: string): Promise<AdminTask> {

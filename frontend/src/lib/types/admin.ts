@@ -511,6 +511,12 @@ export interface AdminReward {
   id: string;
   reward_type?: string | null;
   rewardType?: string | null;
+  tier?: string | null;
+  applies_to?: string | null;
+  free_months?: number | null;
+  founder_status?: boolean | null;
+  prize_won?: string | null;
+  notes?: string | null;
   status?: string | null;
   referral_code?: string | null;
   referralCode?: string | null;
@@ -518,12 +524,24 @@ export interface AdminReward {
   referredByCode?: string | null;
   user_id?: string | null;
   userId?: string | null;
+  user_email?: string | null;
+  userEmail?: string | null;
+  pre_registration_id?: string | null;
+  preRegistrationId?: string | null;
+  pre_registration_email?: string | null;
+  preRegistrationEmail?: string | null;
   redeemed_by_user_id?: string | null;
   redeemedByUserId?: string | null;
   redeemed_at?: string | null;
   redeemedAt?: string | null;
   applied_value_cents?: number | null;
   appliedValueCents?: number | null;
+  subscription_id?: string | null;
+  subscriptionId?: string | null;
+  earned_at?: string | null;
+  earnedAt?: string | null;
+  awarded_at?: string | null;
+  awardedAt?: string | null;
   created_at?: string;
   createdAt?: string | null;
 }
@@ -575,6 +593,33 @@ export interface AdminTask {
   mmuCycleIndex?: number | null;
   mmu_cycle_total?: number | null;
   mmuCycleTotal?: number | null;
+}
+
+export interface AdminPrelaunchRewardTask {
+  id: string;
+  status?: string | null;
+  user_id?: string | null;
+  userId?: string | null;
+  user_email?: string | null;
+  userEmail?: string | null;
+  user_perk_id?: string | null;
+  userPerkId?: string | null;
+  referral_reward_id?: string | null;
+  referralRewardId?: string | null;
+  subscription_id?: string | null;
+  subscriptionId?: string | null;
+  reward_tier?: string | null;
+  rewardTier?: string | null;
+  free_months?: number | null;
+  freeMonths?: number | null;
+  product_name?: string | null;
+  productName?: string | null;
+  variant_name?: string | null;
+  variantName?: string | null;
+  created_at?: string | null;
+  createdAt?: string | null;
+  updated_at?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface AdminRenewalPayment {

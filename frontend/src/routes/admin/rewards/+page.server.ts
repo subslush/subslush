@@ -8,13 +8,13 @@ export const load: PageServerLoad = async ({ fetch, cookies }) => {
     .join('; ');
   const adminService = createAdminService(fetch, { cookie: cookieHeader });
 
-  const [referralRewards, prelaunchRewards] = await Promise.all([
-    adminService.listReferralRewards({ limit: 50 }).catch(() => []),
-    adminService.listPrelaunchRewards({ limit: 50 }).catch(() => [])
+  const [claimedReferralRewards, claimedPrelaunchRewards] = await Promise.all([
+    adminService.listReferralRewards({ limit: 200, redeemed: 'true' }).catch(() => []),
+    adminService.listPrelaunchRewards({ limit: 200, redeemed: 'true' }).catch(() => [])
   ]);
 
   return {
-    referralRewards,
-    prelaunchRewards
+    claimedReferralRewards,
+    claimedPrelaunchRewards
   };
 };

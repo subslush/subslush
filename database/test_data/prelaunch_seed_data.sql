@@ -275,7 +275,7 @@ VALUES
     'cccccccc-cccc-cccc-cccc-cccccccccccc',
     'purchase_reward',
     '25_friends',
-    12,
+    6,
     'min_2_years',
     FALSE,
     NOW() - INTERVAL '8 days',

@@ -8,10 +8,13 @@ export const load: PageServerLoad = async ({ fetch, cookies }) => {
     .join('; ');
   const adminService = createAdminService(fetch, { cookie: cookieHeader });
 
-  try {
-    const tasks = await adminService.listTasks({ limit: 50, bucket: 'queue' });
-    return { tasks };
-  } catch {
-    return { tasks: [] };
-  }
+  const [tasksResult, prelaunchResult] = await Promise.allSettled([
+    adminService.listTasks({ limit: 50, bucket: 'queue' }),
+    adminService.listPrelaunchRewardTasks({ limit: 50, status: 'pending' })
+  ]);
+
+  return {
+    tasks: tasksResult.status === 'fulfilled' ? tasksResult.value : [],
+    prelaunchTasks: prelaunchResult.status === 'fulfilled' ? prelaunchResult.value : []
+  };
 };

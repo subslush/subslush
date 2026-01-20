@@ -83,6 +83,7 @@ export const API_ENDPOINTS = {
     USERS: '/admin/users',
     REWARDS: '/admin/rewards',
     TASKS: '/admin/tasks',
+    PRELAUNCH_REWARD_TASKS: '/admin/tasks/prelaunch-rewards',
     MIGRATION: '/admin/migration',
     COUPONS: '/admin/coupons',
     NOTIFICATIONS: '/admin/notifications',

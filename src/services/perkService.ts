@@ -254,6 +254,36 @@ export class PerkService {
             perk.source_id,
           ]
         );
+
+        const subscriptionInfo = await client.query(
+          `SELECT COALESCE(pv.name, s.service_plan) AS variant_name,
+                  COALESCE(p.name, s.service_type) AS product_name
+           FROM subscriptions s
+           LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
+           LEFT JOIN products p ON p.id = pv.product_id
+           WHERE s.id = $1`,
+          [subscriptionId]
+        );
+        const productName = subscriptionInfo.rows[0]?.product_name ?? null;
+        const variantName = subscriptionInfo.rows[0]?.variant_name ?? null;
+
+        await client.query(
+          `INSERT INTO prelaunch_reward_tasks
+             (user_id, user_perk_id, referral_reward_id, subscription_id,
+              reward_tier, free_months, product_name, variant_name, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+           ON CONFLICT (user_perk_id) DO NOTHING`,
+          [
+            perk.user_id,
+            perk.id,
+            perk.source_id,
+            subscriptionId,
+            perk.tier ?? null,
+            perk.free_months,
+            productName,
+            variantName,
+          ]
+        );
       } else {
         await client.query(
           `UPDATE pre_launch_rewards

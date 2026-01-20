@@ -54,6 +54,7 @@ describe('Admin reward redemption', () => {
 
     mockPool.query
       .mockResolvedValueOnce({ rows: [rewardRow] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     mockCreditService.addCredits.mockResolvedValue({

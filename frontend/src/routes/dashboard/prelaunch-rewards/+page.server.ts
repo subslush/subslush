@@ -18,6 +18,8 @@ export const load: PageServerLoad = async ({ fetch, parent }) => {
         rewards: [],
         vouchers: [],
         raffleEntries: [],
+        subscriptions: [],
+        firstSubscription: null,
         error: 'Failed to load pre-launch rewards.'
       };
     }
@@ -28,13 +30,17 @@ export const load: PageServerLoad = async ({ fetch, parent }) => {
     return {
       rewards: data.rewards || [],
       vouchers: data.vouchers || [],
-      raffleEntries: data.raffleEntries || []
+      raffleEntries: data.raffleEntries || [],
+      subscriptions: data.subscriptions || [],
+      firstSubscription: data.firstSubscription || null
     };
   } catch {
     return {
       rewards: [],
       vouchers: [],
       raffleEntries: [],
+      subscriptions: [],
+      firstSubscription: null,
       error: 'Failed to load pre-launch rewards.'
     };
   }

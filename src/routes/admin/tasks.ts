@@ -25,6 +25,20 @@ const parseBoolean = (value: unknown): boolean | undefined => {
   return undefined;
 };
 
+const prelaunchRewardStatuses = new Set(['pending', 'issue', 'delivered']);
+
+const resolvePrelaunchRewardStatus = (
+  value: unknown
+): 'pending' | 'issue' | 'delivered' | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (prelaunchRewardStatuses.has(normalized)) {
+    return normalized as 'pending' | 'issue' | 'delivered';
+  }
+  return undefined;
+};
+
 const isValidUuid = (value: string): boolean => {
   if (typeof uuidValidate === 'function') {
     return uuidValidate(value);
@@ -150,6 +164,182 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
       } catch (error) {
         Logger.error('Admin list tasks failed:', error);
         return ErrorResponses.internalError(reply, 'Failed to list tasks');
+      }
+    }
+  );
+
+  fastify.get(
+    '/prelaunch-rewards',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            limit: { type: 'number', minimum: 1, maximum: 200 },
+            offset: { type: 'number', minimum: 0 },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { status, limit = 50, offset = 0 } = request.query as {
+          status?: string;
+          limit?: number;
+          offset?: number;
+        };
+
+        const resolvedStatus = resolvePrelaunchRewardStatus(status);
+        if (status && !resolvedStatus) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Invalid pre-launch reward task status'
+          );
+        }
+
+        const pool = getDatabasePool();
+        const params: any[] = [];
+        let paramCount = 0;
+        let sql = `
+          SELECT t.*,
+            u.email AS user_email
+          FROM prelaunch_reward_tasks t
+          LEFT JOIN users u ON u.id = t.user_id
+          WHERE 1=1
+        `;
+
+        if (resolvedStatus) {
+          sql += ` AND t.status = $${++paramCount}`;
+          params.push(resolvedStatus);
+        }
+
+        sql += ' ORDER BY t.created_at DESC';
+        sql += ` LIMIT $${++paramCount} OFFSET $${++paramCount}`;
+        params.push(limit, offset);
+
+        const result = await pool.query(sql, params);
+
+        return SuccessResponses.ok(reply, { tasks: result.rows });
+      } catch (error) {
+        Logger.error('Admin list prelaunch reward tasks failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to list pre-launch reward tasks'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/prelaunch-rewards/:taskId/issue',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['taskId'],
+          properties: {
+            taskId: { type: 'string', format: 'uuid' },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { taskId } = request.params as { taskId: string };
+
+        if (!isValidUuid(taskId)) {
+          return ErrorResponses.badRequest(reply, 'Invalid task ID format');
+        }
+
+        const pool = getDatabasePool();
+        const result = await pool.query(
+          `UPDATE prelaunch_reward_tasks
+           SET status = 'issue',
+               updated_at = NOW()
+           WHERE id = $1
+           RETURNING *`,
+          [taskId]
+        );
+
+        if (result.rows.length === 0) {
+          return ErrorResponses.notFound(
+            reply,
+            'Pre-launch reward task not found'
+          );
+        }
+
+        await logAdminAction(request, {
+          action: 'prelaunch_rewards.task.issue',
+          entityType: 'prelaunch_reward_task',
+          entityId: taskId,
+        });
+
+        return SuccessResponses.ok(reply, result.rows[0]);
+      } catch (error) {
+        Logger.error('Admin update prelaunch reward task failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to update pre-launch reward task'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/prelaunch-rewards/:taskId/delivered',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['taskId'],
+          properties: {
+            taskId: { type: 'string', format: 'uuid' },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { taskId } = request.params as { taskId: string };
+
+        if (!isValidUuid(taskId)) {
+          return ErrorResponses.badRequest(reply, 'Invalid task ID format');
+        }
+
+        const pool = getDatabasePool();
+        const result = await pool.query(
+          `UPDATE prelaunch_reward_tasks
+           SET status = 'delivered',
+               updated_at = NOW()
+           WHERE id = $1
+           RETURNING *`,
+          [taskId]
+        );
+
+        if (result.rows.length === 0) {
+          return ErrorResponses.notFound(
+            reply,
+            'Pre-launch reward task not found'
+          );
+        }
+
+        await logAdminAction(request, {
+          action: 'prelaunch_rewards.task.delivered',
+          entityType: 'prelaunch_reward_task',
+          entityId: taskId,
+        });
+
+        return SuccessResponses.ok(reply, result.rows[0]);
+      } catch (error) {
+        Logger.error('Admin update prelaunch reward task failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to update pre-launch reward task'
+        );
       }
     }
   );

@@ -14,6 +14,11 @@ const deriveRewardStatus = (row: any): string => {
   return 'pending';
 };
 
+const isUuid = (value: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+
 export async function adminRewardRoutes(
   fastify: FastifyInstance
 ): Promise<void> {
@@ -25,7 +30,9 @@ export async function adminRewardRoutes(
           type: 'object',
           properties: {
             is_redeemed: { type: 'string' },
+            redeemed: { type: 'string' },
             user_id: { type: 'string' },
+            search: { type: 'string' },
             reward_type: { type: 'string' },
             limit: { type: 'number', minimum: 1, maximum: 200 },
             offset: { type: 'number', minimum: 0 },
@@ -38,13 +45,17 @@ export async function adminRewardRoutes(
       try {
         const {
           is_redeemed,
+          redeemed,
           user_id,
+          search,
           reward_type,
           limit = 50,
           offset = 0,
         } = request.query as {
           is_redeemed?: string;
+          redeemed?: string;
           user_id?: string;
+          search?: string;
           reward_type?: string;
           limit?: number;
           offset?: number;
@@ -55,9 +66,11 @@ export async function adminRewardRoutes(
         let paramCount = 0;
         let sql = `
           SELECT rr.*, pr.referral_code, pr.referred_by_code,
-                 pr.user_id as linked_user_id, pr.email as pre_registration_email
+                 pr.user_id as linked_user_id, pr.email as pre_registration_email,
+                 u.email as user_email
           FROM referral_rewards rr
           LEFT JOIN pre_registrations pr ON pr.id = rr.user_id
+          LEFT JOIN users u ON u.id = pr.user_id
           WHERE 1=1
         `;
 
@@ -66,9 +79,33 @@ export async function adminRewardRoutes(
           params.push(is_redeemed === 'true');
         }
 
+        if (redeemed !== undefined) {
+          const redeemedValue = redeemed === 'true';
+          if (redeemedValue) {
+            sql += ` AND (rr.is_redeemed = TRUE OR rr.redeemed_at IS NOT NULL OR rr.redeemed_by_user_id IS NOT NULL)`;
+          } else {
+            sql += ` AND (rr.is_redeemed = FALSE AND rr.redeemed_at IS NULL AND rr.redeemed_by_user_id IS NULL)`;
+          }
+        }
+
         if (user_id) {
           sql += ` AND pr.user_id = $${++paramCount}`;
           params.push(user_id);
+        }
+
+        if (search) {
+          const trimmed = search.trim();
+          if (trimmed) {
+            if (isUuid(trimmed)) {
+              const paramIndex = ++paramCount;
+              params.push(trimmed);
+              sql += ` AND (pr.user_id = $${paramIndex} OR rr.user_id = $${paramIndex})`;
+            } else {
+              const paramIndex = ++paramCount;
+              params.push(`%${trimmed}%`);
+              sql += ` AND (u.email ILIKE $${paramIndex} OR pr.email ILIKE $${paramIndex})`;
+            }
+          }
         }
 
         if (reward_type) {
@@ -90,6 +127,8 @@ export async function adminRewardRoutes(
           pre_registration_id: row.user_id,
           referral_code: row.referral_code,
           referred_by_code: row.referred_by_code,
+          user_email: row.user_email,
+          pre_registration_email: row.pre_registration_email,
           status: deriveRewardStatus(row),
         }));
 
@@ -112,6 +151,8 @@ export async function adminRewardRoutes(
           type: 'object',
           properties: {
             user_id: { type: 'string' },
+            search: { type: 'string' },
+            redeemed: { type: 'string' },
             limit: { type: 'number', minimum: 1, maximum: 200 },
             offset: { type: 'number', minimum: 0 },
           },
@@ -123,10 +164,14 @@ export async function adminRewardRoutes(
       try {
         const {
           user_id,
+          search,
+          redeemed,
           limit = 50,
           offset = 0,
         } = request.query as {
           user_id?: string;
+          search?: string;
+          redeemed?: string;
           limit?: number;
           offset?: number;
         };
@@ -136,15 +181,41 @@ export async function adminRewardRoutes(
         let paramCount = 0;
         let sql = `
           SELECT pl.*, pr.referral_code, pr.referred_by_code,
-                 pr.user_id as linked_user_id, pr.email as pre_registration_email
+                 pr.user_id as linked_user_id, pr.email as pre_registration_email,
+                 u.email as user_email
           FROM pre_launch_rewards pl
           LEFT JOIN pre_registrations pr ON pr.id = pl.user_id
+          LEFT JOIN users u ON u.id = pr.user_id
           WHERE 1=1
         `;
 
         if (user_id) {
           sql += ` AND pr.user_id = $${++paramCount}`;
           params.push(user_id);
+        }
+
+        if (search) {
+          const trimmed = search.trim();
+          if (trimmed) {
+            if (isUuid(trimmed)) {
+              const paramIndex = ++paramCount;
+              params.push(trimmed);
+              sql += ` AND (pr.user_id = $${paramIndex} OR pl.user_id = $${paramIndex})`;
+            } else {
+              const paramIndex = ++paramCount;
+              params.push(`%${trimmed}%`);
+              sql += ` AND (u.email ILIKE $${paramIndex} OR pr.email ILIKE $${paramIndex})`;
+            }
+          }
+        }
+
+        if (redeemed !== undefined) {
+          const redeemedValue = redeemed === 'true';
+          if (redeemedValue) {
+            sql += ` AND (pl.redeemed_at IS NOT NULL OR pl.redeemed_by_user_id IS NOT NULL)`;
+          } else {
+            sql += ` AND (pl.redeemed_at IS NULL AND pl.redeemed_by_user_id IS NULL)`;
+          }
         }
 
         sql += ' ORDER BY pl.awarded_at DESC';
@@ -160,6 +231,8 @@ export async function adminRewardRoutes(
           user_id: row.linked_user_id || row.user_id,
           pre_registration_id: row.user_id,
           reward_type: 'pre_launch',
+          user_email: row.user_email,
+          pre_registration_email: row.pre_registration_email,
           status: deriveRewardStatus(row),
         }));
 
@@ -345,6 +418,20 @@ export async function adminRewardRoutes(
               [userId, appliedValueCents ?? null, subscriptionId, rewardId]
             );
 
+            const redemptionMetadata = {
+              redeemed_at: new Date().toISOString(),
+              redeemed_by: userId,
+              subscription_id: subscriptionId,
+              redemption_type: 'subscription_extension',
+              free_months: freeMonths,
+            };
+            await client.query(
+              `UPDATE user_perks
+               SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+               WHERE source_type = 'referral_reward' AND source_id = $2`,
+              [JSON.stringify(redemptionMetadata), rewardId]
+            );
+
             await client.query('COMMIT');
             transactionOpen = false;
 
@@ -446,6 +533,19 @@ export async function adminRewardRoutes(
                applied_value_cents = $2
            WHERE id = $3`,
           [userId, appliedValueCents, rewardId]
+        );
+
+        const redemptionMetadata = {
+          redeemed_at: new Date().toISOString(),
+          redeemed_by: userId,
+          redemption_type: 'credits',
+          applied_value_cents: appliedValueCents,
+        };
+        await pool.query(
+          `UPDATE user_perks
+           SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+           WHERE source_type = 'referral_reward' AND source_id = $2`,
+          [JSON.stringify(redemptionMetadata), rewardId]
         );
 
         await logAdminAction(request, {
@@ -653,6 +753,20 @@ export async function adminRewardRoutes(
               [userId, appliedValueCents ?? null, rewardId]
             );
 
+            const redemptionMetadata = {
+              redeemed_at: new Date().toISOString(),
+              redeemed_by: userId,
+              subscription_id: subscriptionId,
+              redemption_type: 'subscription_extension',
+              free_months: freeMonths,
+            };
+            await client.query(
+              `UPDATE user_perks
+               SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+               WHERE source_type = 'pre_launch_reward' AND source_id = $2`,
+              [JSON.stringify(redemptionMetadata), rewardId]
+            );
+
             await client.query('COMMIT');
             transactionOpen = false;
 
@@ -752,6 +866,19 @@ export async function adminRewardRoutes(
                applied_value_cents = $2
            WHERE user_id = $3`,
           [userId, appliedValueCents, rewardId]
+        );
+
+        const redemptionMetadata = {
+          redeemed_at: new Date().toISOString(),
+          redeemed_by: userId,
+          redemption_type: 'credits',
+          applied_value_cents: appliedValueCents,
+        };
+        await pool.query(
+          `UPDATE user_perks
+           SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+           WHERE source_type = 'pre_launch_reward' AND source_id = $2`,
+          [JSON.stringify(redemptionMetadata), rewardId]
         );
 
         await logAdminAction(request, {
