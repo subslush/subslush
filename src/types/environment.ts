@@ -57,6 +57,9 @@ export interface EnvironmentConfig {
   PASSWORD_RESET_EMAIL_SUBJECT: string;
   CATALOG_DB_PRICING: boolean;
   COUPON_RESERVATION_MINUTES: number;
+  CHECKOUT_ABANDON_TTL_MINUTES: number;
+  CHECKOUT_ABANDON_SWEEP_INTERVAL: number;
+  CHECKOUT_ABANDON_SWEEP_BATCH_SIZE: number;
 
   // Payment Monitoring Configuration
   PAYMENT_MONITORING_INTERVAL: number;

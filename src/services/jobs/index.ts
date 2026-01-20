@@ -13,7 +13,10 @@ import {
   runPinLockoutMonitor,
   runSubscriptionDataQualityMonitor,
 } from './monitoringJobs';
-import { runNowPaymentsCurrencyRefresh } from './paymentJobs';
+import {
+  runCheckoutAbandonSweep,
+  runNowPaymentsCurrencyRefresh,
+} from './paymentJobs';
 import { runEmailVerificationSync } from './authJobs';
 
 const scheduler = new JobScheduler();
@@ -103,6 +106,15 @@ function registerJobs(): void {
     lockKey: 'jobs:nowpayments_currencies',
     lockTtlSeconds: 300,
     handler: runNowPaymentsCurrencyRefresh,
+  });
+
+  scheduler.register({
+    name: 'checkout-abandon-sweep',
+    intervalMs: env.CHECKOUT_ABANDON_SWEEP_INTERVAL,
+    initialDelayMs: 40000,
+    lockKey: 'jobs:checkout_abandon_sweep',
+    lockTtlSeconds: 300,
+    handler: runCheckoutAbandonSweep,
   });
 
   jobsRegistered = true;

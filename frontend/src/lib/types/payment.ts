@@ -100,6 +100,7 @@ export interface CheckoutResponseStripe {
   clientSecret: string;
   amount: number;
   currency: string;
+  checkoutKey?: string;
   status?: UnifiedPaymentStatus;
   upgrade_options?: UpgradeOptions | null;
 }
@@ -117,6 +118,18 @@ export interface CheckoutResponseCredits {
 }
 
 export type CheckoutResponse = CheckoutResponseStripe | CheckoutResponseCredits;
+
+export interface CheckoutCancelRequest {
+  order_id: string;
+  payment_id?: string;
+  reason?: string;
+  checkout_key?: string;
+}
+
+export interface CheckoutCancelResponse {
+  cancelled: boolean;
+  status: string;
+}
 
 export interface PaymentQuoteRequest {
   variant_id: string;

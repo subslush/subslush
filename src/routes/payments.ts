@@ -73,6 +73,28 @@ const resolveRequestCurrency = (
   });
 };
 
+const buildCheckoutKey = (params: {
+  variantId: string;
+  durationMonths: number;
+  currency: string;
+  autoRenew: boolean;
+  couponCode?: string | null;
+}): string => {
+  const duration = Number.isFinite(params.durationMonths)
+    ? Math.max(1, Math.floor(params.durationMonths))
+    : 1;
+  const normalizedCoupon = normalizeCouponCode(params.couponCode) || '';
+  const normalizedCurrency = params.currency.trim().toUpperCase();
+  const autoRenewFlag = params.autoRenew ? '1' : '0';
+  return [
+    params.variantId,
+    duration.toString(),
+    normalizedCurrency,
+    autoRenewFlag,
+    normalizedCoupon,
+  ].join('|');
+};
+
 export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
   // Quote pricing without creating an order or reserving inventory
   fastify.post(
@@ -320,6 +342,13 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           couponDiscountCents = couponResult.data.discountCents;
         }
 
+        const checkoutKey = buildCheckoutKey({
+          variantId: variant.id,
+          durationMonths: snapshot.termMonths,
+          currency,
+          autoRenew: auto_renew,
+          couponCode: normalizedCoupon,
+        });
         const finalTotalCents = Math.max(
           0,
           termTotalCents - couponDiscountCents
@@ -350,6 +379,14 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             discount_percent: snapshot.discountPercent,
             base_price_cents: snapshot.basePriceCents,
             total_price_cents: finalTotalCents,
+            checkout_key: checkoutKey,
+            checkout_context: {
+              variant_id: variant.id,
+              duration_months: snapshot.termMonths,
+              currency,
+              auto_renew,
+              coupon_code: normalizedCoupon,
+            },
             ...(upgradeOptions ? { upgrade_options: upgradeOptions } : {}),
             ...(coupon
               ? {
@@ -700,11 +737,75 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           clientSecret: stripeResult.clientSecret,
           amount: stripeResult.amount,
           currency: stripeResult.currency,
+          checkoutKey,
           upgrade_options: upgradeOptions ?? null,
         });
       } catch (error) {
         Logger.error('Error creating checkout:', error);
         return ErrorResponses.internalError(reply, 'Failed to create checkout');
+      }
+    }
+  );
+
+  // Cancel checkout
+  fastify.post(
+    '/checkout/cancel',
+    {
+      preHandler: [authPreHandler, paymentRateLimit],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['order_id'],
+          properties: {
+            order_id: { type: 'string', minLength: 1 },
+            payment_id: { type: 'string', minLength: 1 },
+            reason: { type: 'string', minLength: 1 },
+            checkout_key: { type: 'string', minLength: 1 },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const user = request.user;
+        if (!user?.userId) {
+          return ErrorResponses.unauthorized(reply, 'User not authenticated');
+        }
+
+        const { order_id, payment_id, reason } = request.body as {
+          order_id: string;
+          payment_id?: string;
+          reason?: string;
+          checkout_key?: string;
+        };
+
+        const result = await paymentService.cancelStripeCheckout({
+          orderId: order_id,
+          paymentId: payment_id ?? null,
+          userId: user.userId,
+          reason: reason || 'checkout_cancelled',
+        });
+
+        if (result.status === 'forbidden') {
+          return ErrorResponses.forbidden(reply, 'Access denied');
+        }
+        if (result.status === 'order_not_found') {
+          return ErrorResponses.notFound(reply, 'Order not found');
+        }
+        if (result.status === 'payment_mismatch') {
+          return ErrorResponses.badRequest(
+            reply,
+            'Payment does not match order'
+          );
+        }
+
+        return SuccessResponses.ok(reply, {
+          cancelled: result.cancelled,
+          status: result.status,
+        });
+      } catch (error) {
+        Logger.error('Error cancelling checkout:', error);
+        return ErrorResponses.internalError(reply, 'Failed to cancel checkout');
       }
     }
   );

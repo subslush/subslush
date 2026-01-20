@@ -79,6 +79,13 @@ describe('Stripe webhook order flow', () => {
     mockPaymentRepository.updateStatusByProviderPaymentId.mockResolvedValue(
       payment as any
     );
+    mockOrderService.getOrderById.mockResolvedValue({
+      id: 'order-1',
+      user_id: 'user-1',
+      status: 'pending_payment',
+      total_cents: 1000,
+      currency: 'USD',
+    } as any);
     mockSubscriptionService.createSubscription.mockResolvedValue({
       success: true,
       data: { id: 'sub-1' },

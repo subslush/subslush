@@ -966,6 +966,22 @@ export class OrderService {
     }
   }
 
+  async getOrderById(orderId: string): Promise<Order | null> {
+    try {
+      const pool = getDatabasePool();
+      const result = await pool.query('SELECT * FROM orders WHERE id = $1', [
+        orderId,
+      ]);
+      if (result.rows.length === 0) {
+        return null;
+      }
+      return mapOrder(result.rows[0]);
+    } catch (error) {
+      Logger.error('Failed to fetch order:', error);
+      return null;
+    }
+  }
+
   async getOrderWithItems(orderId: string): Promise<OrderWithItems | null> {
     try {
       const pool = getDatabasePool();

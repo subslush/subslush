@@ -50,6 +50,19 @@ const mockPaymentService = {
     },
   }),
 
+  cancelStripeCheckout: jest.fn().mockResolvedValue({
+    cancelled: true,
+    status: 'cancelled',
+  }),
+
+  sweepStaleStripeCheckouts: jest.fn().mockResolvedValue({
+    scanned: 0,
+    cancelled: 0,
+    reconciled: 0,
+    skipped: 0,
+    errors: 0,
+  }),
+
   retryPayment: jest.fn().mockResolvedValue({
     success: true,
     payment: {

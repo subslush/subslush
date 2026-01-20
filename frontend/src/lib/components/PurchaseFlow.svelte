@@ -8,13 +8,13 @@
   import { ordersService } from '$lib/api/orders.js';
   import { user } from '$lib/stores/auth.js';
   import { credits } from '$lib/stores/credits.js';
-  import { ROUTES } from '$lib/utils/constants.js';
+  import { API_CONFIG, API_ENDPOINTS, ROUTES } from '$lib/utils/constants.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
   import type { ServicePlanDetails, Subscription, UpgradeOptions } from '$lib/types/subscription.js';
   import type { CheckoutRequest, CheckoutResponseStripe, PaymentQuoteResponse } from '$lib/types/payment.js';
   import type { UpgradeSelectionSubmission } from '$lib/types/upgradeSelection.js';
   import { loadStripe, type Stripe, type StripeElements, type StripePaymentElement } from '@stripe/stripe-js';
-  import { tick, onDestroy } from 'svelte';
+  import { tick, onDestroy, onMount } from 'svelte';
   import { trackAddPaymentInfo, trackPurchase } from '$lib/utils/analytics.js';
 
   export let selectedPlan: ServicePlanDetails;
@@ -42,6 +42,14 @@
   let paymentElementContainer: HTMLElement | null = null;
   let stripeClientSecret: string | null = null;
   let stripeFormOpen = false;
+  let checkoutKey: string | null = null;
+  let checkoutSnapshotKey: string | null = null;
+  let currentCheckoutKey: string | null = null;
+  let checkoutPaymentId: string | null = null;
+  let checkoutCancelSent = false;
+  let cancelInFlight = false;
+  let checkoutStale = false;
+  let checkoutStaleMessage = '';
   let creditsQuoteLoading = false;
   let lastCreditsQuoteKey = '';
   let creditsQuote:
@@ -81,8 +89,31 @@
     pollSequence += 1;
   });
 
+  onMount(() => {
+    const handlePageExit = () => {
+      const payload = resolveCheckoutCancelPayload('checkout_abandoned');
+      if (!payload) return;
+      if (checkoutCancelSent) return;
+      const sent = sendCheckoutCancelBeacon(payload);
+      if (sent && payload.order_id === orderId) {
+        checkoutCancelSent = true;
+      }
+    };
+
+    window.addEventListener('pagehide', handlePageExit);
+    window.addEventListener('beforeunload', handlePageExit);
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageExit);
+      window.removeEventListener('beforeunload', handlePageExit);
+    };
+  });
+
   const RATE_LIMIT_COUPON_MESSAGE =
     'You have made too many attempts in a short time.\nPlease wait 10 minutes before trying again.';
+  const CHECKOUT_STALE_MESSAGE =
+    'Your checkout details changed. Please update checkout.';
+  const CHECKOUT_CANCEL_ENDPOINT = `${API_CONFIG.BASE_URL}${API_ENDPOINTS.PAYMENTS.CHECKOUT_CANCEL}`;
 
   const resolveRateLimitMessage = (error: unknown): string | null => {
     if (!error || typeof error !== 'object') return null;
@@ -111,6 +142,31 @@
     return null;
   };
 
+  const buildCheckoutKey = (params: {
+    variantId?: string | null;
+    duration?: number | null;
+    currency?: string | null;
+    autoRenew?: boolean;
+    couponCode?: string | null;
+  }): string | null => {
+    if (!params.variantId) return null;
+    const duration = Number.isFinite(params.duration)
+      ? Math.max(1, Math.floor(params.duration as number))
+      : 1;
+    const normalizedCoupon = params.couponCode
+      ? params.couponCode.trim().toLowerCase()
+      : '';
+    const normalizedCurrency = normalizeCurrencyCode(params.currency) || 'USD';
+    const autoRenewFlag = params.autoRenew ? '1' : '0';
+    return [
+      params.variantId,
+      duration.toString(),
+      normalizedCurrency,
+      autoRenewFlag,
+      normalizedCoupon,
+    ].join('|');
+  };
+
   $: resolvedCurrency = normalizeCurrencyCode(selectedPlan.currency) || 'USD';
   $: isLoggedIn = Boolean($user?.id);
   $: isUsdCurrency = resolvedCurrency === 'USD';
@@ -136,23 +192,22 @@
   $: creditsPurchaseBlocked = creditsQuote?.canPurchase === false;
   $: creditsCostLabel = creditsRequired ?? totalCost;
   $: topUpHref = $user?.id ? ROUTES.CREDITS : ROUTES.AUTH.REGISTER;
-
-  $: if (paymentMethod !== 'stripe') {
-    stripeClientSecret = null;
-    checkoutResult = null;
-    stripeFormOpen = false;
-    if (paymentElement) {
-      paymentElement.destroy();
-      paymentElement = null;
-    }
-    elements = null;
-  }
+  $: currentCheckoutKey = buildCheckoutKey({
+    variantId: selectedPlan?.variant_id,
+    duration: selectedDuration,
+    currency: resolvedCurrency,
+    autoRenew,
+    couponCode: appliedCouponCode,
+  });
 
   $: if (paymentMethod !== lastPaymentMethod) {
     validationMessage = '';
     errorMessage = '';
     creditsQuoteMessage = '';
     showCreditsConfirm = false;
+    if (lastPaymentMethod === 'stripe' && paymentMethod !== 'stripe') {
+      invalidateStripeCheckout('payment_method_changed');
+    }
     resetSelectionState();
     if (paymentMethod !== 'credits') {
       showCreditsAuthNotice = false;
@@ -171,6 +226,24 @@
     void initStripeElements();
   }
 
+  $: if (
+    stage === 'checkout' &&
+    checkoutSnapshotKey &&
+    currentCheckoutKey &&
+    checkoutPaymentId &&
+    orderId
+  ) {
+    if (checkoutSnapshotKey !== currentCheckoutKey) {
+      if (!checkoutStale) {
+        checkoutStale = true;
+        checkoutStaleMessage = CHECKOUT_STALE_MESSAGE;
+      }
+    } else if (checkoutStale) {
+      checkoutStale = false;
+      checkoutStaleMessage = '';
+    }
+  }
+
   $: checkoutGridClass =
     paymentMethod === 'stripe' && stripeFormOpen
       ? 'lg:grid-cols-[1fr,1.4fr]'
@@ -182,9 +255,13 @@
       : !paymentMethod
         ? 'Select a payment method'
         : paymentMethod === 'stripe'
-          ? stripeFormOpen && stripeClientSecret
-            ? 'Pay now'
-            : 'Continue to payment'
+          ? checkoutStale
+            ? stripeFormOpen
+              ? 'Update checkout'
+              : 'Restart checkout'
+            : stripeFormOpen && stripeClientSecret
+              ? 'Pay now'
+              : 'Continue to payment'
           : showCreditsConfirm
             ? 'Awaiting confirmation'
             : 'Review purchase';
@@ -306,6 +383,142 @@
     }
   }
 
+  const resetStripeCheckoutState = () => {
+    stripeClientSecret = null;
+    checkoutResult = null;
+    checkoutPaymentId = null;
+    checkoutKey = null;
+    checkoutSnapshotKey = null;
+    checkoutCancelSent = false;
+    cancelInFlight = false;
+    checkoutStale = false;
+    checkoutStaleMessage = '';
+    orderId = null;
+    stripeFormOpen = false;
+    if (paymentElement) {
+      paymentElement.destroy();
+      paymentElement = null;
+    }
+    elements = null;
+  };
+
+  const resolveCheckoutCancelPayload = (reason: string, overrides?: {
+    orderId?: string | null;
+    paymentId?: string | null;
+    checkoutKey?: string | null;
+  }): {
+    order_id: string;
+    payment_id: string;
+    reason: string;
+    checkout_key?: string;
+  } | null => {
+    const targetOrderId = overrides?.orderId ?? orderId;
+    const targetPaymentId = overrides?.paymentId ?? checkoutPaymentId;
+    const targetCheckoutKey =
+      overrides?.checkoutKey ?? checkoutKey ?? checkoutSnapshotKey;
+
+    if (!targetOrderId || !targetPaymentId) return null;
+    if (stage !== 'checkout') return null;
+    if (cancelInFlight) return null;
+
+    return {
+      order_id: targetOrderId,
+      payment_id: targetPaymentId,
+      reason,
+      ...(targetCheckoutKey ? { checkout_key: targetCheckoutKey } : {})
+    };
+  };
+
+  const sendCheckoutCancelBeacon = (payload: {
+    order_id: string;
+    payment_id: string;
+    reason: string;
+    checkout_key?: string;
+  }): boolean => {
+    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      const blob = new Blob([JSON.stringify(payload)], {
+        type: 'application/json'
+      });
+      return navigator.sendBeacon(CHECKOUT_CANCEL_ENDPOINT, blob);
+    }
+
+    if (typeof fetch !== 'undefined') {
+      void fetch(CHECKOUT_CANCEL_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+        keepalive: true
+      });
+      return true;
+    }
+
+    return false;
+  };
+
+  const cancelStripeCheckout = async (
+    reason: string,
+    overrides?: {
+      orderId?: string | null;
+      paymentId?: string | null;
+      checkoutKey?: string | null;
+      useBeacon?: boolean;
+    }
+  ): Promise<boolean> => {
+    const payload = resolveCheckoutCancelPayload(reason, overrides);
+    if (!payload) return false;
+
+    if (payload.order_id === orderId && checkoutCancelSent) {
+      return false;
+    }
+
+    if (overrides?.useBeacon) {
+      const sent = sendCheckoutCancelBeacon(payload);
+      if (sent && payload.order_id === orderId) {
+        checkoutCancelSent = true;
+      }
+      return sent;
+    }
+
+    cancelInFlight = true;
+    try {
+      await paymentService.cancelCheckout(payload);
+      if (payload.order_id === orderId) {
+        checkoutCancelSent = true;
+      }
+      return true;
+    } catch (error) {
+      console.warn('Checkout cancel failed:', error);
+      return false;
+    } finally {
+      cancelInFlight = false;
+    }
+  };
+
+  const invalidateStripeCheckout = (reason: string) => {
+    const payload = resolveCheckoutCancelPayload(reason);
+    if (payload) {
+      void cancelStripeCheckout(reason, {
+        orderId: payload.order_id,
+        paymentId: payload.payment_id,
+        checkoutKey: payload.checkout_key ?? null
+      });
+    }
+    resetStripeCheckoutState();
+  };
+
+  const restartStripeCheckout = async (reason: string) => {
+    const shouldKeepFormOpen = stripeFormOpen;
+    await cancelStripeCheckout(reason);
+    resetStripeCheckoutState();
+    if (shouldKeepFormOpen) {
+      stripeFormOpen = true;
+    }
+    await startStripeCheckout();
+  };
+
   const resetSelectionState = () => {
     orderId = null;
     upgradeOptions = null;
@@ -317,6 +530,7 @@
     processingError = '';
     purchaseResult = null;
     stage = 'checkout';
+    resetStripeCheckoutState();
   };
 
   const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -406,6 +620,13 @@
   }
 
   async function startStripeCheckout() {
+    const snapshotKey = buildCheckoutKey({
+      variantId: selectedPlan?.variant_id,
+      duration: selectedDuration,
+      currency: resolvedCurrency,
+      autoRenew,
+      couponCode: appliedCouponCode,
+    });
     if (stripeClientSecret) return;
     isProcessing = true;
     errorMessage = '';
@@ -429,6 +650,12 @@
       const response = await paymentService.createCheckout(payload);
       checkoutResult = response as CheckoutResponseStripe;
       orderId = checkoutResult.order_id;
+      checkoutPaymentId = checkoutResult.paymentId;
+      checkoutKey = checkoutResult.checkoutKey ?? currentCheckoutKey;
+      checkoutSnapshotKey = snapshotKey ?? currentCheckoutKey;
+      checkoutStale = false;
+      checkoutStaleMessage = '';
+      checkoutCancelSent = false;
       upgradeOptions = checkoutResult.upgrade_options ?? null;
       stripeClientSecret = checkoutResult.clientSecret;
       await initStripeElements();
@@ -443,6 +670,10 @@
   }
 
   async function confirmStripePayment() {
+    if (checkoutStale) {
+      errorMessage = CHECKOUT_STALE_MESSAGE;
+      return;
+    }
     if (!stripe || !elements || !stripeClientSecret) {
       errorMessage = 'Stripe is not ready yet.';
       return;
@@ -758,6 +989,11 @@
     if (!paymentMethod) return;
 
     if (paymentMethod === 'stripe') {
+      if (checkoutStale) {
+        errorMessage = '';
+        await restartStripeCheckout('checkout_updated');
+        return;
+      }
       if (!stripeFormOpen) {
         stripeFormOpen = true;
         trackAddPaymentInfo('card', resolvedCurrency, totalCost, getPurchaseItems());
@@ -802,12 +1038,25 @@
 
   function handleStripeBack() {
     stripeFormOpen = false;
+    if (checkoutStale) {
+      invalidateStripeCheckout('checkout_updated');
+      return;
+    }
     if (paymentElement) {
       paymentElement.destroy();
       paymentElement = null;
     }
     elements = null;
     errorMessage = '';
+  }
+
+  async function handleClose() {
+    if (closeDisabled) return;
+    if (paymentMethod === 'stripe' && stage === 'checkout') {
+      await cancelStripeCheckout('checkout_cancelled');
+      resetStripeCheckoutState();
+    }
+    onClose();
   }
 
   function handleDone() {
@@ -850,7 +1099,7 @@
         {/if}
       </div>
       <button
-        on:click={onClose}
+        on:click={handleClose}
         class={`p-2 rounded-full transition-colors ${
           closeDisabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-slate-100'
         }`}
@@ -1063,6 +1312,9 @@
                 <div class="rounded-lg border border-slate-200 p-4">
                   <div bind:this={paymentElementContainer}></div>
                 </div>
+                {#if checkoutStaleMessage}
+                  <p class="text-sm text-amber-600">{checkoutStaleMessage}</p>
+                {/if}
                 {#if errorMessage}
                   <p class="text-sm text-red-600 whitespace-pre-line">{errorMessage}</p>
                 {/if}
@@ -1070,6 +1322,9 @@
                 <div class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-xs text-slate-500 whitespace-pre-line">
                   {errorMessage || 'Loading the secure card form...'}
                 </div>
+                {#if checkoutStaleMessage}
+                  <p class="text-sm text-amber-600">{checkoutStaleMessage}</p>
+                {/if}
               {/if}
             </div>
           {:else}
@@ -1154,6 +1409,9 @@
                   </p>
                 </div>
               {/if}
+              {#if paymentMethod === 'stripe' && checkoutStaleMessage}
+                <p class="text-xs text-amber-700">{checkoutStaleMessage}</p>
+              {/if}
             </div>
           {/if}
 
@@ -1198,7 +1456,7 @@
 
       <div class="flex items-center justify-between px-6 pb-6">
         <button
-          on:click={onClose}
+          on:click={handleClose}
           class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           disabled={isProcessing}
         >

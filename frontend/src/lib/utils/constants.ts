@@ -16,7 +16,8 @@ export const API_ENDPOINTS = {
   },
   DASHBOARD: {
     OVERVIEW: '/dashboard/overview',
-    PRELAUNCH_REWARDS: '/dashboard/prelaunch-rewards'
+    PRELAUNCH_REWARDS: '/dashboard/prelaunch-rewards',
+    PRELAUNCH_REWARDS_CLAIM: '/dashboard/prelaunch-rewards/claim'
   },
   SUBSCRIPTIONS: {
     AVAILABLE: '/subscriptions/available',
@@ -57,6 +58,7 @@ export const API_ENDPOINTS = {
     MIN_AMOUNT: '/payments/min-amount',
     HISTORY: '/payments/history',
     CHECKOUT: '/payments/checkout',
+    CHECKOUT_CANCEL: '/payments/checkout/cancel',
     QUOTE: '/payments/quote'
   },
   USERS: {

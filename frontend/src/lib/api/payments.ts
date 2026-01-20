@@ -8,6 +8,8 @@ import type {
   Currency,
   CheckoutRequest,
   CheckoutResponse,
+  CheckoutCancelRequest,
+  CheckoutCancelResponse,
   MinDepositResponse,
   PaymentQuoteRequest,
   PaymentQuoteResponse
@@ -384,6 +386,14 @@ export class PaymentService {
   async createCheckout(request: CheckoutRequest): Promise<CheckoutResponse> {
     const response = await apiClient.post(API_ENDPOINTS.PAYMENTS.CHECKOUT, request);
     return unwrapApiData<CheckoutResponse>(response);
+  }
+
+  async cancelCheckout(request: CheckoutCancelRequest): Promise<CheckoutCancelResponse> {
+    const response = await apiClient.post(
+      API_ENDPOINTS.PAYMENTS.CHECKOUT_CANCEL,
+      request
+    );
+    return unwrapApiData<CheckoutCancelResponse>(response);
   }
 
   async getQuote(data: PaymentQuoteRequest): Promise<PaymentQuoteResponse> {

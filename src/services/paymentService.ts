@@ -617,6 +617,89 @@ export class PaymentService {
     }
   }
 
+  private async enforceStripeOrderGuard(params: {
+    orderId: string;
+    intent: any;
+    paymentId: string;
+  }): Promise<boolean> {
+    const { orderId, intent, paymentId } = params;
+    const order = await orderService.getOrderById(orderId);
+
+    if (!order) {
+      Logger.error('Stripe payment order not found', { orderId, paymentId });
+      return false;
+    }
+
+    if (order.status !== 'pending_payment') {
+      Logger.warn('Stripe payment order not pending', {
+        orderId,
+        paymentId,
+        status: order.status,
+      });
+      return false;
+    }
+
+    const intentAmount =
+      typeof intent?.amount_received === 'number'
+        ? intent.amount_received
+        : typeof intent?.amount === 'number'
+          ? intent.amount
+          : null;
+    const intentCurrency =
+      typeof intent?.currency === 'string'
+        ? intent.currency.toUpperCase()
+        : null;
+
+    const orderTotalCents =
+      order.total_cents !== null && order.total_cents !== undefined
+        ? Number(order.total_cents)
+        : null;
+    const orderCurrencyRaw =
+      typeof order.currency === 'string' ? order.currency : null;
+    const orderCurrency =
+      normalizeCurrencyCode(orderCurrencyRaw) ||
+      orderCurrencyRaw?.toUpperCase() ||
+      null;
+
+    if (
+      orderTotalCents !== null &&
+      intentAmount !== null &&
+      orderTotalCents !== intentAmount
+    ) {
+      Logger.error('Stripe payment amount mismatch', {
+        orderId,
+        paymentId,
+        orderTotalCents,
+        intentAmount,
+      });
+      await orderService.updateOrderStatus(
+        orderId,
+        'cancelled',
+        'payment_amount_mismatch'
+      );
+      await couponService.voidRedemptionForOrder(orderId);
+      return false;
+    }
+
+    if (orderCurrency && intentCurrency && orderCurrency !== intentCurrency) {
+      Logger.error('Stripe payment currency mismatch', {
+        orderId,
+        paymentId,
+        orderCurrency,
+        intentCurrency,
+      });
+      await orderService.updateOrderStatus(
+        orderId,
+        'cancelled',
+        'payment_currency_mismatch'
+      );
+      await couponService.voidRedemptionForOrder(orderId);
+      return false;
+    }
+
+    return true;
+  }
+
   private async processStripePaymentIntent(params: {
     intent: any;
     payment: UnifiedPayment;
@@ -764,6 +847,17 @@ export class PaymentService {
         'usd';
       const currency =
         typeof currencyRaw === 'string' ? currencyRaw.toLowerCase() : 'usd';
+
+      if (!isRenewal && orderId) {
+        const guardOk = await this.enforceStripeOrderGuard({
+          orderId,
+          intent,
+          paymentId,
+        });
+        if (!guardOk) {
+          return true;
+        }
+      }
 
       if (isRenewal && subscriptionId) {
         const subscriptionResult =
@@ -1423,6 +1517,230 @@ export class PaymentService {
     });
 
     return { cancelled, skipped, errors, total: pendingPayments.length };
+  }
+
+  async cancelStripeCheckout(params: {
+    orderId: string;
+    paymentId?: string | null;
+    userId?: string;
+    reason?: string;
+  }): Promise<{
+    cancelled: boolean;
+    status: string;
+    paymentStatus?: UnifiedPaymentStatus;
+  }> {
+    const { orderId, userId } = params;
+    const reason = params.reason || 'checkout_cancelled';
+
+    const order = await orderService.getOrderById(orderId);
+    if (!order) {
+      return { cancelled: false, status: 'order_not_found' };
+    }
+
+    if (userId && order.user_id !== userId) {
+      return { cancelled: false, status: 'forbidden' };
+    }
+
+    if (order.status !== 'pending_payment') {
+      return { cancelled: false, status: 'already_processed' };
+    }
+
+    if (order.payment_provider !== 'stripe') {
+      return { cancelled: false, status: 'not_stripe' };
+    }
+
+    if (
+      params.paymentId &&
+      order.payment_reference &&
+      params.paymentId !== order.payment_reference
+    ) {
+      return { cancelled: false, status: 'payment_mismatch' };
+    }
+
+    const paymentId = order.payment_reference || params.paymentId || null;
+    if (!paymentId) {
+      await orderService.updateOrderStatus(orderId, 'cancelled', reason);
+      await couponService.voidRedemptionForOrder(orderId);
+      return { cancelled: true, status: 'cancelled' };
+    }
+
+    let details: Awaited<
+      ReturnType<typeof stripeProvider.getPaymentStatus>
+    > | null = null;
+    try {
+      details = await stripeProvider.getPaymentStatus(paymentId);
+    } catch (error) {
+      const errorCode =
+        error && typeof error === 'object' && 'code' in error
+          ? (error as { code?: string }).code
+          : undefined;
+      const errorMessage = error instanceof Error ? error.message : '';
+      const isMissingIntent =
+        errorCode === 'resource_missing' ||
+        errorMessage.toLowerCase().includes('no such payment_intent');
+      if (isMissingIntent) {
+        await orderService.updateOrderStatus(orderId, 'cancelled', reason);
+        await couponService.voidRedemptionForOrder(orderId);
+        return { cancelled: true, status: 'cancelled' };
+      }
+      Logger.warn('Failed to fetch Stripe payment status for checkout cancel', {
+        orderId,
+        paymentId,
+        error,
+      });
+      return { cancelled: false, status: 'status_unavailable' };
+    }
+    if (!details) {
+      return { cancelled: false, status: 'status_unavailable' };
+    }
+
+    let normalized = this.mapStripePaymentIntentStatus(details.providerStatus);
+    if (normalized === 'succeeded' || normalized === 'processing') {
+      await this.reconcileStripePaymentIntent(paymentId);
+      return {
+        cancelled: false,
+        status: 'reconciled',
+        paymentStatus: normalized,
+      };
+    }
+
+    if (normalized !== 'canceled') {
+      try {
+        const intent = await stripeProvider.cancelPaymentIntent(paymentId);
+        normalized = this.mapStripePaymentIntentStatus(intent.status);
+      } catch (error) {
+        try {
+          const refreshed = await stripeProvider.getPaymentStatus(paymentId);
+          normalized = this.mapStripePaymentIntentStatus(
+            refreshed.providerStatus
+          );
+        } catch (statusError) {
+          Logger.warn('Failed to cancel Stripe checkout intent', {
+            orderId,
+            paymentId,
+            error,
+            statusError,
+          });
+          return { cancelled: false, status: 'cancel_failed' };
+        }
+      }
+    }
+
+    if (normalized === 'succeeded' || normalized === 'processing') {
+      await this.reconcileStripePaymentIntent(paymentId);
+      return {
+        cancelled: false,
+        status: 'reconciled',
+        paymentStatus: normalized,
+      };
+    }
+
+    if (normalized !== 'canceled') {
+      return {
+        cancelled: false,
+        status: 'cancel_failed',
+        paymentStatus: normalized,
+      };
+    }
+
+    await paymentRepository.updateStatusByProviderPaymentId(
+      'stripe',
+      paymentId,
+      'canceled',
+      normalized === 'canceled' ? 'canceled' : details.providerStatus,
+      details.metadata
+    );
+    await orderService.updateOrderStatus(orderId, 'cancelled', reason);
+    await couponService.voidRedemptionForOrder(orderId);
+
+    return { cancelled: true, status: 'cancelled', paymentStatus: 'canceled' };
+  }
+
+  async sweepStaleStripeCheckouts(params?: {
+    ttlMinutes?: number;
+    batchSize?: number;
+  }): Promise<{
+    scanned: number;
+    cancelled: number;
+    reconciled: number;
+    skipped: number;
+    errors: number;
+  }> {
+    const ttlMinutes = params?.ttlMinutes ?? env.CHECKOUT_ABANDON_TTL_MINUTES;
+    const batchSize =
+      params?.batchSize ?? env.CHECKOUT_ABANDON_SWEEP_BATCH_SIZE;
+
+    if (!ttlMinutes || ttlMinutes <= 0) {
+      return { scanned: 0, cancelled: 0, reconciled: 0, skipped: 0, errors: 0 };
+    }
+
+    const cutoff = new Date(Date.now() - ttlMinutes * 60 * 1000);
+    const pool = getDatabasePool();
+    const result = await pool.query(
+      `
+      SELECT
+        o.id AS order_id,
+        o.user_id,
+        o.payment_reference,
+        COALESCE(p.created_at, o.updated_at, o.created_at) AS started_at
+      FROM orders o
+      LEFT JOIN payments p
+        ON p.provider = 'stripe'
+       AND p.provider_payment_id = o.payment_reference
+      WHERE o.status = 'pending_payment'
+        AND o.payment_provider = 'stripe'
+        AND COALESCE(p.created_at, o.updated_at, o.created_at) <= $1
+      ORDER BY COALESCE(p.created_at, o.updated_at, o.created_at) ASC
+      LIMIT $2
+      `,
+      [cutoff, batchSize]
+    );
+
+    let cancelled = 0;
+    let reconciled = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (const row of result.rows) {
+      const orderId = row.order_id as string;
+      const paymentId = row.payment_reference as string | null;
+      try {
+        const outcome = await this.cancelStripeCheckout({
+          orderId,
+          paymentId,
+          reason: 'checkout_timeout',
+        });
+        if (outcome.status === 'cancelled') {
+          cancelled += 1;
+        } else if (outcome.status === 'reconciled') {
+          reconciled += 1;
+        } else if (
+          outcome.status === 'already_processed' ||
+          outcome.status === 'not_stripe'
+        ) {
+          skipped += 1;
+        } else if (outcome.status === 'forbidden') {
+          skipped += 1;
+        } else {
+          errors += 1;
+        }
+      } catch (error) {
+        errors += 1;
+        Logger.warn('Failed to sweep stale Stripe checkout', {
+          orderId,
+          paymentId,
+          error,
+        });
+      }
+    }
+
+    return {
+      scanned: result.rows.length,
+      cancelled,
+      reconciled,
+      skipped,
+      errors,
+    };
   }
 
   async createStripePayment(

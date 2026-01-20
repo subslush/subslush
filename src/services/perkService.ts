@@ -38,12 +38,6 @@ function mapPerk(row: any): UserPerk {
   };
 }
 
-function addMonths(date: Date, months: number): Date {
-  const result = new Date(date);
-  result.setMonth(result.getMonth() + months);
-  return result;
-}
-
 export class PerkService {
   async listUserPerks(
     userId: string,
@@ -116,10 +110,69 @@ export class PerkService {
       }
 
       const perk = mapPerk(perkResult.rows[0]);
+      const alreadyRedeemed =
+        !!perk.metadata?.['redeemed_at'] ||
+        !!perk.metadata?.['redeemedAt'] ||
+        !!perk.metadata?.['redeemed_by'] ||
+        !!perk.metadata?.['redeemed_by_user_id'] ||
+        !!perk.metadata?.['redeemedByUserId'] ||
+        perk.metadata?.['is_redeemed'] === true ||
+        perk.metadata?.['isRedeemed'] === true;
+      if (alreadyRedeemed) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult('Perk already redeemed');
+      }
       if (!perk.free_months || perk.free_months <= 0) {
         await client.query('ROLLBACK');
         transactionOpen = false;
         return createErrorResult('Perk has no free months to apply');
+      }
+
+      if (perk.source_type === 'referral_reward') {
+        const rewardLock = await client.query(
+          `SELECT is_redeemed, redeemed_at, redeemed_by_user_id
+           FROM referral_rewards
+           WHERE id = $1
+           FOR UPDATE`,
+          [perk.source_id]
+        );
+        if (rewardLock.rows.length === 0) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('Referral reward not found');
+        }
+        const rewardRow = rewardLock.rows[0];
+        if (
+          rewardRow.is_redeemed ||
+          rewardRow.redeemed_at ||
+          rewardRow.redeemed_by_user_id
+        ) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('Perk already redeemed');
+        }
+      }
+
+      if (perk.source_type === 'pre_launch_reward') {
+        const rewardLock = await client.query(
+          `SELECT redeemed_at, redeemed_by_user_id
+           FROM pre_launch_rewards
+           WHERE user_id = $1
+           FOR UPDATE`,
+          [perk.source_id]
+        );
+        if (rewardLock.rows.length === 0) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('Pre-launch reward not found');
+        }
+        const rewardRow = rewardLock.rows[0];
+        if (rewardRow.redeemed_at || rewardRow.redeemed_by_user_id) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('Perk already redeemed');
+        }
       }
 
       const subscriptionResult = await client.query(
@@ -143,34 +196,32 @@ export class PerkService {
         return createErrorResult('Perk does not belong to subscription owner');
       }
 
-      const endDate = new Date(subscription.end_date);
-      const renewalDate = new Date(subscription.renewal_date);
-      const newEndDate = addMonths(endDate, perk.free_months);
-      const newRenewalDate = addMonths(renewalDate, perk.free_months);
-      const nextBillingAt = subscription.auto_renew ? newRenewalDate : null;
-
       const rewardColumn =
         perk.source_type === 'referral_reward'
           ? 'referral_reward_id'
           : 'pre_launch_reward_id';
 
-      await client.query(
+      const subscriptionUpdate = await client.query(
         `UPDATE subscriptions
-         SET end_date = $1,
-             renewal_date = $2,
-             next_billing_at = $3,
-             status_reason = $4,
-             ${rewardColumn} = $5
-         WHERE id = $6`,
-        [
-          newEndDate,
-          newRenewalDate,
-          nextBillingAt,
-          'perk_redeemed',
-          perk.source_id,
-          subscriptionId,
-        ]
+         SET end_date = end_date + ($1 || ' months')::interval,
+             renewal_date = renewal_date + ($1 || ' months')::interval,
+             next_billing_at = CASE
+               WHEN auto_renew THEN renewal_date + ($1 || ' months')::interval
+               ELSE NULL
+             END,
+             status_reason = $2,
+             ${rewardColumn} = $3
+         WHERE id = $4
+         RETURNING end_date, renewal_date`,
+        [perk.free_months, 'perk_redeemed', perk.source_id, subscriptionId]
       );
+      if (subscriptionUpdate.rows.length === 0) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult('Failed to update subscription');
+      }
+      const newEndDate = new Date(subscriptionUpdate.rows[0].end_date);
+      const newRenewalDate = new Date(subscriptionUpdate.rows[0].renewal_date);
 
       const redemptionMetadata = {
         redeemed_at: new Date().toISOString(),
@@ -192,9 +243,16 @@ export class PerkService {
           `UPDATE referral_rewards
            SET redeemed_by_user_id = $1,
                redeemed_at = NOW(),
-               applied_value_cents = COALESCE($2, applied_value_cents)
-           WHERE id = $3`,
-          [perk.user_id, appliedValueCents ?? null, perk.source_id]
+               applied_value_cents = COALESCE($2, applied_value_cents),
+               is_redeemed = TRUE,
+               subscription_id = $3
+           WHERE id = $4`,
+          [
+            perk.user_id,
+            appliedValueCents ?? null,
+            subscriptionId,
+            perk.source_id,
+          ]
         );
       } else {
         await client.query(

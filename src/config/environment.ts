@@ -155,6 +155,13 @@ const environmentSchema = z.object({
       return true;
     }),
   COUPON_RESERVATION_MINUTES: z.coerce.number().default(30),
+  CHECKOUT_ABANDON_TTL_MINUTES: z.preprocess(
+    value =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.coerce.number().optional()
+  ),
+  CHECKOUT_ABANDON_SWEEP_INTERVAL: z.coerce.number().default(300000),
+  CHECKOUT_ABANDON_SWEEP_BATCH_SIZE: z.coerce.number().default(100),
 
   // Payment Monitoring Configuration
   PAYMENT_MONITORING_INTERVAL: z.coerce.number().default(30000),
@@ -239,6 +246,12 @@ function validateEnvironment(): EnvironmentConfig {
       ...parsed,
       REDIS_RATE_LIMIT_DB: parsed.REDIS_RATE_LIMIT_DB ?? parsed.REDIS_DB,
     };
+    const withCheckoutDefaults = {
+      ...withRedisDefaults,
+      CHECKOUT_ABANDON_TTL_MINUTES:
+        withRedisDefaults.CHECKOUT_ABANDON_TTL_MINUTES ??
+        withRedisDefaults.COUPON_RESERVATION_MINUTES,
+    };
 
     if (parsed.REDIS_RATE_LIMIT_DB === undefined) {
       process.stderr.write(
@@ -247,7 +260,7 @@ function validateEnvironment(): EnvironmentConfig {
       );
     }
 
-    const withTestOverrides = applyTestOverrides(withRedisDefaults);
+    const withTestOverrides = applyTestOverrides(withCheckoutDefaults);
 
     // Log critical configuration values for debugging in development only
     if (withTestOverrides.NODE_ENV === 'development') {
