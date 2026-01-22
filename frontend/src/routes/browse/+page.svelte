@@ -85,6 +85,16 @@
     return matchesSearch && matchesCategory;
   });
 
+  $: sortedProducts = (() => {
+    if (sortBy === 'price_low') {
+      return [...filteredProducts].sort((a, b) => a.from_price - b.from_price);
+    }
+    if (sortBy === 'price_high') {
+      return [...filteredProducts].sort((a, b) => b.from_price - a.from_price);
+    }
+    return filteredProducts;
+  })();
+
   // Count per category
   $: categoryCounts = categories.reduce<Record<string, number>>((acc, category) => {
     acc[category.key] = category.key === 'all'
@@ -203,7 +213,6 @@
                 <option value="recommended">Recommended</option>
                 <option value="price_low">Price: Low to High</option>
                 <option value="price_high">Price: High to Low</option>
-                <option value="popularity">Popularity</option>
               </select>
             </div>
           </div>
@@ -225,7 +234,7 @@
               </button>
             </div>
           {:else}
-            <SubscriptionGrid products={filteredProducts} listName={listName} />
+            <SubscriptionGrid products={sortedProducts} listName={listName} />
           {/if}
         </div>
       </div>
