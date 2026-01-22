@@ -28,6 +28,19 @@ class DashboardService {
     );
     return unwrapApiData<PrelaunchRewardClaimResponse>(response);
   }
+
+  async claimVoucher(payload: {
+    voucherId: string;
+    category?: 'streaming' | 'music' | 'gaming';
+  }): Promise<{ coupon_code: string; coupon_status: 'active' | 'used' }> {
+    const response = await apiClient.post(
+      API_ENDPOINTS.DASHBOARD.PRELAUNCH_VOUCHERS_CLAIM,
+      payload
+    );
+    return unwrapApiData<{ coupon_code: string; coupon_status: 'active' | 'used' }>(
+      response
+    );
+  }
 }
 
 export const dashboardService = new DashboardService();

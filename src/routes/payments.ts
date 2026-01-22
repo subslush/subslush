@@ -178,6 +178,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             userId: user.userId,
             product,
             subtotalCents: snapshot.totalPriceCents,
+            termMonths: snapshot.termMonths,
           });
 
           if (!couponResult.success) {
@@ -329,6 +330,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             userId: user.userId,
             product,
             subtotalCents: termTotalCents,
+            termMonths: snapshot.termMonths,
           });
 
           if (!couponResult.success) {
@@ -462,6 +464,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
               orderId: orderResult.data.id,
               product,
               subtotalCents: termTotalCents,
+              termMonths: snapshot.termMonths,
               client,
             });
 

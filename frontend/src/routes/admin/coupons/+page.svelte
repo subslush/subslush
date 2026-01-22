@@ -34,6 +34,7 @@
     percentOff: string;
     scope: 'global' | 'category' | 'product';
     status: 'active' | 'inactive';
+    termMonths: string;
     startsAt: string;
     endsAt: string;
     maxRedemptions: string;
@@ -48,6 +49,7 @@
     percentOff: '',
     scope: 'global',
     status: 'active',
+    termMonths: '',
     startsAt: '',
     endsAt: '',
     maxRedemptions: '',
@@ -124,11 +126,14 @@
     const maxRedemptionsInput = normalizeNumericInput(form.maxRedemptions);
     const maxRedemptions =
       maxRedemptionsInput === '' ? null : Number(maxRedemptionsInput);
+    const termMonthsInput = normalizeNumericInput(form.termMonths);
+    const termMonths = termMonthsInput === '' ? null : Number(termMonthsInput);
     const payload: Record<string, unknown> = {
       code: form.code.trim(),
       percent_off: percentOff,
       scope: form.scope,
       status: form.status,
+      term_months: termMonths,
       first_order_only: form.firstOrderOnly,
       starts_at: parseDateInput(form.startsAt),
       ends_at: parseDateInput(form.endsAt),
@@ -153,6 +158,13 @@
     if (form.scope === 'product' && !form.productId.trim()) {
       return 'Product ID is required for product-scoped coupons.';
     }
+    const termMonthsInput = normalizeNumericInput(form.termMonths);
+    if (termMonthsInput !== '') {
+      const parsed = Number(termMonthsInput);
+      if (!Number.isFinite(parsed) || parsed <= 0 || !Number.isInteger(parsed)) {
+        return 'Plan duration must be a positive whole number.';
+      }
+    }
     return null;
   };
 
@@ -164,6 +176,7 @@
       percentOff: String(pickValue(coupon.percentOff, coupon.percent_off) ?? ''),
       scope: (coupon.scope || 'global') as CouponForm['scope'],
       status: (coupon.status || 'active') as CouponForm['status'],
+      termMonths: String(pickValue(coupon.termMonths, coupon.term_months) ?? ''),
       startsAt: toDateInput(pickValue(coupon.startsAt, coupon.starts_at)),
       endsAt: toDateInput(pickValue(coupon.endsAt, coupon.ends_at)),
       maxRedemptions: String(pickValue(coupon.maxRedemptions, coupon.max_redemptions) ?? ''),
@@ -349,6 +362,20 @@
           <option value="inactive">Inactive</option>
         </select>
       </div>
+      <div>
+        <label class="text-sm font-medium text-gray-700" for="new-coupon-term-months">
+          Plan duration (months)
+        </label>
+        <input
+          id="new-coupon-term-months"
+          class="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          type="number"
+          min="1"
+          step="1"
+          placeholder="Leave blank for any duration"
+          bind:value={newCoupon.termMonths}
+        />
+      </div>
       {#if newCoupon.scope === 'category'}
         <div>
           <label class="text-sm font-medium text-gray-700" for="new-coupon-category">Category</label>
@@ -472,17 +499,31 @@
             <option value="product">Product</option>
           </select>
         </div>
-        <div>
-          <label class="text-sm font-medium text-gray-700" for="edit-coupon-status">Status</label>
-          <select
-            id="edit-coupon-status"
-            class="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-            bind:value={editCoupon.status}
-          >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
+      <div>
+        <label class="text-sm font-medium text-gray-700" for="edit-coupon-status">Status</label>
+        <select
+          id="edit-coupon-status"
+          class="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          bind:value={editCoupon.status}
+        >
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-sm font-medium text-gray-700" for="edit-coupon-term-months">
+          Plan duration (months)
+        </label>
+        <input
+          id="edit-coupon-term-months"
+          class="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          type="number"
+          min="1"
+          step="1"
+          placeholder="Leave blank for any duration"
+          bind:value={editCoupon.termMonths}
+        />
+      </div>
         {#if editCoupon.scope === 'category'}
           <div>
             <label class="text-sm font-medium text-gray-700" for="edit-coupon-category">Category</label>
@@ -616,6 +657,7 @@
               {@const usedRedemptions = resolveUsedRedemptions(coupon)}
               {@const maxRedemptions = resolveMaxRedemptions(coupon)}
               {@const remainingRedemptions = resolveRemainingRedemptions(coupon)}
+              {@const termMonthsValue = pickValue(coupon.termMonths, coupon.term_months)}
               <tr>
                 <td class="py-3 font-semibold text-gray-900">{coupon.code}</td>
                 <td class="py-3 text-gray-600">
@@ -642,6 +684,7 @@
                 <td class="py-3 text-gray-600">
                   <div>Max {pickValue(coupon.maxRedemptions, coupon.max_redemptions) ?? '—'}</div>
                   <div>First order {pickValue(coupon.firstOrderOnly, coupon.first_order_only) ? 'Yes' : 'No'}</div>
+                  <div>Term {termMonthsValue ? `${termMonthsValue} mo` : 'Any'}</div>
                 </td>
                 <td class="py-3 text-gray-600">
                   {#if maxRedemptions !== null}

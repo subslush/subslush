@@ -21,6 +21,7 @@ export interface Coupon {
   first_order_only: boolean;
   category?: string | null;
   product_id?: string | null;
+  term_months?: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -50,6 +51,7 @@ export interface CreateCouponInput {
   first_order_only?: boolean;
   category?: string | null;
   product_id?: string | null;
+  term_months?: number | null;
 }
 
 export interface UpdateCouponInput {
@@ -64,4 +66,5 @@ export interface UpdateCouponInput {
   first_order_only?: boolean;
   category?: string | null;
   product_id?: string | null;
+  term_months?: number | null;
 }

@@ -291,6 +291,8 @@ export interface AdminCoupon {
   category?: string | null;
   product_id?: string | null;
   productId?: string | null;
+  term_months?: number | null;
+  termMonths?: number | null;
   created_at?: string;
   createdAt?: string;
   updated_at?: string;

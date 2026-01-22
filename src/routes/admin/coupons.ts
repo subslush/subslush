@@ -30,6 +30,22 @@ const sanitizeString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const parseTermMonthsInput = (
+  value: unknown
+): { provided: boolean; value: number | null; error?: string } => {
+  if (value === undefined) return { provided: false, value: null };
+  if (value === null || value === '') return { provided: true, value: null };
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0 || !Number.isInteger(parsed)) {
+    return {
+      provided: true,
+      value: null,
+      error: 'term_months must be a positive whole number',
+    };
+  }
+  return { provided: true, value: parsed };
+};
+
 export async function adminCouponRoutes(
   fastify: FastifyInstance
 ): Promise<void> {
@@ -117,6 +133,7 @@ export async function adminCouponRoutes(
             first_order_only: { type: 'boolean' },
             category: { type: 'string' },
             product_id: { type: 'string' },
+            term_months: { type: ['integer', 'null'], minimum: 1 },
           },
         },
       },
@@ -128,12 +145,17 @@ export async function adminCouponRoutes(
         const scope = payload.scope as CouponScope;
         const category = sanitizeString(payload.category);
         const productId = sanitizeString(payload.product_id);
+        const termMonthsInput = parseTermMonthsInput(payload.term_months);
 
         if (!isValidScopeTarget(scope, category, productId)) {
           return ErrorResponses.badRequest(
             reply,
             'Coupon scope requires a matching category or product_id'
           );
+        }
+
+        if (termMonthsInput.error) {
+          return ErrorResponses.badRequest(reply, termMonthsInput.error);
         }
 
         const result = await couponService.createCoupon({
@@ -153,6 +175,7 @@ export async function adminCouponRoutes(
           first_order_only: payload.first_order_only ?? false,
           category,
           product_id: productId,
+          term_months: termMonthsInput.value,
         });
 
         if (!result.success) {
@@ -202,6 +225,7 @@ export async function adminCouponRoutes(
             first_order_only: { type: 'boolean' },
             category: { type: 'string' },
             product_id: { type: 'string' },
+            term_months: { type: ['integer', 'null'], minimum: 1 },
           },
         },
       },
@@ -226,12 +250,17 @@ export async function adminCouponRoutes(
           payload.product_id !== undefined
             ? sanitizeString(payload.product_id)
             : before.product_id;
+        const termMonthsInput = parseTermMonthsInput(payload.term_months);
 
         if (!isValidScopeTarget(nextScope, nextCategory, nextProductId)) {
           return ErrorResponses.badRequest(
             reply,
             'Coupon scope requires a matching category or product_id'
           );
+        }
+
+        if (termMonthsInput.error) {
+          return ErrorResponses.badRequest(reply, termMonthsInput.error);
         }
 
         const updates = {
@@ -270,6 +299,9 @@ export async function adminCouponRoutes(
             : {}),
           ...(payload.product_id !== undefined
             ? { product_id: sanitizeString(payload.product_id) }
+            : {}),
+          ...(termMonthsInput.provided
+            ? { term_months: termMonthsInput.value }
             : {}),
         };
 

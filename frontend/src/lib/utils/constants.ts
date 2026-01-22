@@ -17,7 +17,8 @@ export const API_ENDPOINTS = {
   DASHBOARD: {
     OVERVIEW: '/dashboard/overview',
     PRELAUNCH_REWARDS: '/dashboard/prelaunch-rewards',
-    PRELAUNCH_REWARDS_CLAIM: '/dashboard/prelaunch-rewards/claim'
+    PRELAUNCH_REWARDS_CLAIM: '/dashboard/prelaunch-rewards/claim',
+    PRELAUNCH_VOUCHERS_CLAIM: '/dashboard/prelaunch-rewards/vouchers/claim'
   },
   SUBSCRIPTIONS: {
     AVAILABLE: '/subscriptions/available',

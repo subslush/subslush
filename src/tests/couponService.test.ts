@@ -145,4 +145,20 @@ describe('couponService', () => {
 
     expect(result.success).toBe(false);
   });
+
+  it('rejects coupons when term duration does not match', async () => {
+    const coupon = buildCouponRow({ term_months: 12 });
+    const pool = buildMockPool({ coupon });
+    mockGetDatabasePool.mockReturnValue(pool as any);
+
+    const result = await couponService.validateCouponForOrder({
+      couponCode: 'SAVE10',
+      userId: 'user-1',
+      product: baseProduct as any,
+      subtotalCents: 10000,
+      termMonths: 6,
+    });
+
+    expect(result.success).toBe(false);
+  });
 });

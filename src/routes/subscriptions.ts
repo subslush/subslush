@@ -1459,6 +1459,7 @@ export async function subscriptionRoutes(
             userId,
             product,
             subtotalCents: termTotalCents,
+            termMonths: snapshot.termMonths,
           });
 
           if (!couponResult.success) {
@@ -1718,6 +1719,7 @@ export async function subscriptionRoutes(
             userId,
             product,
             subtotalCents: termTotalCents,
+            termMonths: snapshot.termMonths,
           });
 
           if (!couponResult.success) {
@@ -1835,6 +1837,7 @@ export async function subscriptionRoutes(
               orderId: orderResult.data.id,
               product,
               subtotalCents: termTotalCents,
+              termMonths: snapshot.termMonths,
               client,
             });
 

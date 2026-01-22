@@ -24,6 +24,10 @@ export interface PrelaunchVoucher {
   issued_at?: string | null;
   redeemed_at?: string | null;
   metadata?: Record<string, unknown> | null;
+  coupon_id?: string | null;
+  coupon_code?: string | null;
+  coupon_status?: 'active' | 'used' | null;
+  claim_action?: 'claim' | 'choose_category' | 'unavailable' | 'removed' | null;
 }
 
 export interface PrelaunchRaffleEntry {

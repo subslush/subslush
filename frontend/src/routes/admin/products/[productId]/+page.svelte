@@ -238,7 +238,6 @@
     description: string;
     logoKey: string;
     category: string;
-    defaultCurrency: string;
     maxSubscriptions: string;
     termsConditions: string;
     allowNewAccount: boolean;
@@ -307,7 +306,6 @@
       description: value.description || '',
       logoKey: pickValue(value.logoKey, value.logo_key) || '',
       category: value.category || '',
-      defaultCurrency: pickValue(value.defaultCurrency, value.default_currency) || '',
       maxSubscriptions:
         maxSubscriptions !== undefined && maxSubscriptions !== null
           ? String(maxSubscriptions)
@@ -481,7 +479,6 @@
           ? undefined
           : parsedMaxSubscriptions;
       const categoryValue = productForm.category.trim();
-      const defaultCurrencyValue = productForm.defaultCurrency.trim();
       const metadata = buildProductMetadata(normalizeMetadata(product.metadata), {
         termsConditions: productForm.termsConditions,
         upgradeOptions: {
@@ -497,7 +494,6 @@
         service_type: productForm.serviceType || undefined,
         logo_key: productForm.logoKey || undefined,
         category: categoryValue || undefined,
-        default_currency: defaultCurrencyValue || undefined,
         max_subscriptions: maxSubscriptions,
         status: productForm.status,
         metadata
@@ -1036,15 +1032,6 @@
           placeholder="Category"
           bind:value={productForm.category}
         />
-        <select
-          class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-          bind:value={productForm.defaultCurrency}
-        >
-          <option value="">Default currency</option>
-          {#each SUPPORTED_CURRENCIES as currencyOption}
-            <option value={currencyOption}>{currencyOption}</option>
-          {/each}
-        </select>
       </div>
       <div class="grid gap-3 md:grid-cols-2">
         <input

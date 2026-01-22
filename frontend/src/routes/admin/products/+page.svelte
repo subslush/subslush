@@ -3,7 +3,6 @@
   import AdminEmptyState from '$lib/components/admin/AdminEmptyState.svelte';
   import { adminService } from '$lib/api/admin.js';
   import { formatOptionalDate, pickValue, statusToneFromMap } from '$lib/utils/admin.js';
-  import { SUPPORTED_CURRENCIES } from '$lib/utils/currency.js';
   import type { AdminProduct, AdminProductLabel } from '$lib/types/admin.js';
   import type { PageData } from './$types';
 
@@ -24,8 +23,7 @@
     slug: '',
     serviceType: '',
     status: 'inactive',
-    description: '',
-    defaultCurrency: ''
+    description: ''
   };
 
   let newLabel: Partial<AdminProductLabel> = {
@@ -59,7 +57,6 @@
         slug: newProduct.slug,
         description: newProduct.description || undefined,
         service_type: newProduct.serviceType || undefined,
-        default_currency: newProduct.defaultCurrency || undefined,
         status: newProduct.status as 'active' | 'inactive'
       });
       products = [created, ...products];
@@ -68,8 +65,7 @@
         slug: '',
         serviceType: '',
         status: 'inactive',
-        description: '',
-        defaultCurrency: ''
+        description: ''
       };
       productMessage = 'Product created successfully.';
     } catch (error) {
@@ -140,15 +136,6 @@
             <option value="inactive">Inactive</option>
           </select>
         </div>
-        <select
-          class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-          bind:value={newProduct.defaultCurrency}
-        >
-          <option value="">Default currency</option>
-          {#each SUPPORTED_CURRENCIES as currencyOption}
-            <option value={currencyOption}>{currencyOption}</option>
-          {/each}
-        </select>
         <textarea
           class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
           rows={3}

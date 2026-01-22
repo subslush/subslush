@@ -66,6 +66,10 @@ const mapCoupon = (row: any): Coupon => ({
   first_order_only: row.first_order_only ?? false,
   category: row.category ?? null,
   product_id: row.product_id ?? null,
+  term_months:
+    row.term_months !== null && row.term_months !== undefined
+      ? Number(row.term_months)
+      : null,
   created_at: row.created_at,
   updated_at: row.updated_at,
 });
@@ -105,6 +109,17 @@ const couponAppliesToProduct = (coupon: Coupon, product: Product): boolean => {
   return false;
 };
 
+const couponAppliesToTerm = (
+  coupon: Coupon,
+  termMonths?: number | null
+): boolean => {
+  if (coupon.term_months === null || coupon.term_months === undefined) {
+    return true;
+  }
+  if (!Number.isFinite(termMonths)) return false;
+  return Number(coupon.term_months) === Number(termMonths);
+};
+
 const isCouponActiveAt = (coupon: Coupon, now: Date): boolean => {
   if (coupon.status !== 'active') return false;
   if (coupon.starts_at && now < new Date(coupon.starts_at)) return false;
@@ -123,6 +138,7 @@ type CouponValidationParams = {
   userId: string;
   product: Product;
   subtotalCents: number;
+  termMonths?: number | null;
   now?: Date;
   client?: PoolClient;
 };
@@ -133,6 +149,7 @@ type CouponReservationParams = {
   orderId: string;
   product: Product;
   subtotalCents: number;
+  termMonths?: number | null;
   now?: Date;
   client: PoolClient;
 };
@@ -231,10 +248,12 @@ class CouponService {
       const result = await db.query(
         `INSERT INTO coupons (
           code, code_normalized, percent_off, scope, status, starts_at, ends_at,
-          max_redemptions, bound_user_id, first_order_only, category, product_id
+          max_redemptions, bound_user_id, first_order_only, category, product_id,
+          term_months
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7,
-          $8, $9, $10, $11, $12
+          $8, $9, $10, $11, $12,
+          $13
         )
         RETURNING *`,
         [
@@ -250,6 +269,7 @@ class CouponService {
           input.first_order_only ?? false,
           input.category ?? null,
           input.product_id ?? null,
+          input.term_months ?? null,
         ]
       );
 
@@ -318,6 +338,9 @@ class CouponService {
       }
       if (input.product_id !== undefined) {
         addField('product_id', input.product_id ?? null);
+      }
+      if (input.term_months !== undefined) {
+        addField('term_months', input.term_months ?? null);
       }
 
       if (updates.length === 0) {
@@ -396,6 +419,10 @@ class CouponService {
       return createErrorResult('scope_mismatch');
     }
 
+    if (!couponAppliesToTerm(coupon, params.termMonths)) {
+      return createErrorResult('term_mismatch');
+    }
+
     if (coupon.first_order_only) {
       const hasPaid = await this.hasPaidOrder(params.userId, db);
       if (hasPaid) {
@@ -442,9 +469,7 @@ class CouponService {
     return createSuccessResult({ coupon, discountCents, totalCents });
   }
 
-  async reserveCouponRedemption(
-    params: CouponReservationParams
-  ): Promise<
+  async reserveCouponRedemption(params: CouponReservationParams): Promise<
     ServiceResult<{
       coupon: Coupon;
       redemption: CouponRedemption;
@@ -476,6 +501,10 @@ class CouponService {
 
     if (!couponAppliesToProduct(coupon, params.product)) {
       return createErrorResult('scope_mismatch');
+    }
+
+    if (!couponAppliesToTerm(coupon, params.termMonths)) {
+      return createErrorResult('term_mismatch');
     }
 
     if (coupon.first_order_only) {
