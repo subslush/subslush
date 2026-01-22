@@ -135,6 +135,10 @@ t_login*timestamp without time zone*
 tamp without time zone*
 |*jsonb*
 
+# Local/dev seed migrations
+database/test_data/20260122_001500_seed_voucher_products.sql
+database/test_data/20260122_003000_seed_voucher_variants.sql
+
 # Deploy secrets
 deploy/backend.env
 deploy/backup/restic.env

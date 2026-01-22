@@ -3,6 +3,7 @@
   import { User, Mail, Lock, Save, HelpCircle } from 'lucide-svelte';
   import { auth, user as authUser } from '$lib/stores/auth.js';
   import { apiClient } from '$lib/api/client.js';
+  import { API_ENDPOINTS } from '$lib/utils/constants.js';
 
   let username = '';
   let email = '';
@@ -65,7 +66,7 @@
 
   const passwordResetMutation = createMutation({
     mutationFn: async (payload: { email: string }) => {
-      const response = await apiClient.post('/auth/password-reset', payload);
+      const response = await apiClient.post(API_ENDPOINTS.AUTH.PASSWORD_RESET, payload);
       return response.data;
     },
     onSuccess: () => {

@@ -74,6 +74,23 @@ export const passwordResetSchema = z.object({
     .trim()
 });
 
+export const passwordResetConfirmSchema = z.object({
+  password: z
+    .string({ required_error: 'Password is required' })
+    .min(PASSWORD_REQUIREMENTS.MIN_LENGTH, `Password must be at least ${PASSWORD_REQUIREMENTS.MIN_LENGTH} characters long`)
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number')
+    .regex(/[^a-zA-Z0-9]/, 'Password must contain at least one special character'),
+
+  confirmPassword: z
+    .string({ required_error: 'Please confirm your password' })
+    .min(1, 'Please confirm your password')
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword']
+});
+
 export const changePasswordSchema = z.object({
   currentPassword: z
     .string({ required_error: 'Current password is required' })
@@ -98,4 +115,5 @@ export const changePasswordSchema = z.object({
 export type RegisterFormData = z.infer<typeof registerSchema>;
 export type LoginFormData = z.infer<typeof loginSchema>;
 export type PasswordResetFormData = z.infer<typeof passwordResetSchema>;
+export type PasswordResetConfirmFormData = z.infer<typeof passwordResetConfirmSchema>;
 export type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;

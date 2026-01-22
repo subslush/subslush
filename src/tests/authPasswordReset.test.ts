@@ -1,7 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { getDatabasePool } from '../config/database';
-import { emailService } from '../services/emailService';
-
 jest.mock('@supabase/supabase-js', () => ({
   createClient: jest.fn(),
 }));
@@ -10,22 +8,12 @@ jest.mock('../config/database', () => ({
   getDatabasePool: jest.fn(),
 }));
 
-jest.mock('../services/emailService', () => ({
-  emailService: {
-    sendPasswordResetEmail: jest.fn(),
-  },
-}));
-
 const mockCreateClient = createClient as jest.MockedFunction<
   typeof createClient
 >;
 const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
   typeof getDatabasePool
 >;
-const mockSendPasswordResetEmail =
-  emailService.sendPasswordResetEmail as jest.MockedFunction<
-    typeof emailService.sendPasswordResetEmail
-  >;
 
 const loadAuthService = () => {
   let authService: any;
@@ -36,7 +24,7 @@ const loadAuthService = () => {
 };
 
 describe('AuthService password reset verification gate', () => {
-  const mockGenerateLink = jest.fn();
+  const mockResetPasswordForEmail = jest.fn();
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -45,23 +33,17 @@ describe('AuthService password reset verification gate', () => {
       () =>
         ({
           auth: {
+            resetPasswordForEmail: mockResetPasswordForEmail,
             admin: {
-              generateLink: mockGenerateLink,
               deleteUser: jest.fn(),
             },
           },
         }) as any
     );
-
-    mockSendPasswordResetEmail.mockResolvedValue({ success: true });
+    mockResetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
   });
 
   it('rejects password reset for unverified users', async () => {
-    mockGenerateLink.mockResolvedValue({
-      data: { properties: { action_link: 'https://reset.example' } },
-      error: null,
-    });
-
     const mockPool = {
       query: jest.fn().mockResolvedValueOnce({
         rows: [
@@ -83,16 +65,10 @@ describe('AuthService password reset verification gate', () => {
     expect(result.error).toBe(
       'Please verify your email before requesting a password reset'
     );
-    expect(mockGenerateLink).not.toHaveBeenCalled();
-    expect(mockSendPasswordResetEmail).not.toHaveBeenCalled();
+    expect(mockResetPasswordForEmail).not.toHaveBeenCalled();
   });
 
   it('allows password reset for verified users', async () => {
-    mockGenerateLink.mockResolvedValue({
-      data: { properties: { action_link: 'https://reset.example' } },
-      error: null,
-    });
-
     const mockPool = {
       query: jest.fn().mockResolvedValueOnce({
         rows: [
@@ -112,14 +88,9 @@ describe('AuthService password reset verification gate', () => {
 
     expect(result.success).toBe(true);
     const redirectTo = process.env['PASSWORD_RESET_REDIRECT_URL'];
-    expect(mockGenerateLink).toHaveBeenCalledWith({
-      type: 'recovery',
-      email: 'user@example.com',
-      ...(redirectTo ? { options: { redirectTo } } : {}),
-    });
-    expect(mockSendPasswordResetEmail).toHaveBeenCalledWith({
-      to: 'user@example.com',
-      resetLink: 'https://reset.example',
-    });
+    expect(mockResetPasswordForEmail).toHaveBeenCalledWith(
+      'user@example.com',
+      redirectTo ? { redirectTo } : undefined
+    );
   });
 });

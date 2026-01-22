@@ -61,7 +61,7 @@
 - Create `/opt/subslush/deploy/backend.env` using `deploy/backend.env.example`.
 - Ensure:
   - `APP_BASE_URL=https://subslush.com`
-  - `PASSWORD_RESET_REDIRECT_URL=https://subslush.com/auth/login`
+  - `PASSWORD_RESET_REDIRECT_URL=https://subslush.com/auth/reset-password`
   - `NOWPAYMENTS_WEBHOOK_URL=https://api.subslush.com/api/v1/payments/webhook`
   - Set Redis password and DB creds correctly.
   - Use pooler or direct connection as planned.
@@ -85,6 +85,7 @@
 - Redirect URLs:
   - `https://subslush.com/auth/confirm`
   - `https://subslush.com/auth/login`
+  - `https://subslush.com/auth/reset-password`
 
 ## 13) Vercel rewrite
 - `frontend/vercel.json` rewrite:

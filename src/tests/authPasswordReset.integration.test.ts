@@ -2,17 +2,16 @@ import Fastify from 'fastify';
 import { randomUUID } from 'crypto';
 import { authRoutes } from '../routes/auth';
 import { getDatabasePool } from '../config/database';
-import { emailService } from '../services/emailService';
 
-var mockGenerateLink: jest.Mock;
+var mockResetPasswordForEmail: jest.Mock;
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: jest.fn(() => ({
     auth: {
+      resetPasswordForEmail: (mockResetPasswordForEmail = jest.fn()),
       admin: {
         deleteUser: jest.fn(),
         getUserById: jest.fn(),
-        generateLink: (mockGenerateLink = jest.fn()),
       },
     },
   })),
@@ -27,23 +26,11 @@ jest.mock('../middleware/rateLimitMiddleware', () => ({
 }));
 
 jest.mock('../utils/logger');
-jest.mock('../services/emailService', () => ({
-  emailService: {
-    sendPasswordResetEmail: jest.fn(),
-  },
-}));
 
 describe('Auth password reset integration', () => {
   beforeEach(() => {
-    mockGenerateLink.mockReset();
-    mockGenerateLink.mockResolvedValue({
-      data: { properties: { action_link: 'https://reset.example' } },
-      error: null,
-    });
-    (emailService.sendPasswordResetEmail as jest.Mock).mockReset();
-    (emailService.sendPasswordResetEmail as jest.Mock).mockResolvedValue({
-      success: true,
-    });
+    mockResetPasswordForEmail.mockReset();
+    mockResetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
   });
 
   it('blocks unverified users without calling reset provider', async () => {
@@ -78,8 +65,7 @@ describe('Auth password reset integration', () => {
       expect(body.message).toBe(
         'Please verify your email before requesting a password reset'
       );
-      expect(mockGenerateLink).not.toHaveBeenCalled();
-      expect(emailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+      expect(mockResetPasswordForEmail).not.toHaveBeenCalled();
       expect(mockPool.query).toHaveBeenCalledTimes(1);
     } finally {
       await app.close();

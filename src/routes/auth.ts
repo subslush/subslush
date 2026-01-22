@@ -8,6 +8,7 @@ import {
   RegisterRequestInput,
   LogoutRequestInput,
 } from '../schemas/session';
+import { validatePasswordResetConfirmInput } from '../schemas/auth';
 import { setCsrfCookie, clearCsrfCookie } from '../utils/csrf';
 import { Logger } from '../utils/logger';
 
@@ -42,6 +43,14 @@ const passwordResetRateLimit = createRateLimitHandler({
   },
 });
 
+const passwordResetConfirmRateLimit = createRateLimitHandler({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 5,
+  keyGenerator: (request: FastifyRequest) => {
+    return `password_reset_confirm:${request.ip}`;
+  },
+});
+
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.send({
@@ -57,6 +66,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         'GET /auth/sessions',
         'DELETE /auth/sessions/:sessionId',
         'POST /auth/password-reset',
+        'POST /auth/password-reset/confirm',
       ],
     });
   });
@@ -594,6 +604,68 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.send({
           error: 'Internal Server Error',
           message: 'Password reset request failed',
+        });
+      }
+    }
+  );
+
+  fastify.post<{
+    Body: {
+      accessToken: string;
+      refreshToken?: string;
+      password: string;
+      confirmPassword: string;
+    };
+  }>(
+    '/password-reset/confirm',
+    {
+      preHandler: [passwordResetConfirmRateLimit],
+    },
+    async (
+      request: FastifyRequest<{
+        Body: {
+          accessToken: string;
+          refreshToken?: string;
+          password: string;
+          confirmPassword: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const validation = validatePasswordResetConfirmInput(request.body);
+        if (!validation.success) {
+          reply.statusCode = 400;
+          return reply.send({
+            error: 'Invalid Input',
+            message: validation.error.error,
+          });
+        }
+
+        const { accessToken, refreshToken, password } = validation.data;
+        const result = await authService.confirmPasswordReset({
+          accessToken,
+          ...(refreshToken ? { refreshToken } : {}),
+          password,
+        });
+
+        if (!result.success) {
+          reply.statusCode = 400;
+          return reply.send({
+            error: 'Password Reset Failed',
+            message: result.error,
+          });
+        }
+
+        return reply.send({
+          message: 'Password updated successfully',
+        });
+      } catch (error) {
+        Logger.error('Password reset confirmation failed:', error);
+        reply.statusCode = 500;
+        return reply.send({
+          error: 'Internal Server Error',
+          message: 'Password reset confirmation failed',
         });
       }
     }

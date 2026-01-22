@@ -6,7 +6,6 @@ import { SessionCreateOptions } from '../types/session';
 import { JWTTokens } from '../types/jwt';
 import { Logger } from '../utils/logger';
 import { getDatabasePool } from '../config/database';
-import { emailService } from './emailService';
 
 const resolveAppBaseUrl = (): string | null => {
   const base = env.APP_BASE_URL?.replace(/\/$/, '');
@@ -818,11 +817,10 @@ class AuthService {
       }
 
       const redirectTo = env.PASSWORD_RESET_REDIRECT_URL;
-      const { data, error } = await this.supabaseAdmin.auth.admin.generateLink({
-        type: 'recovery',
-        email: normalizedEmail,
-        ...(redirectTo ? { options: { redirectTo } } : {}),
-      });
+      const { error } = await this.supabase.auth.resetPasswordForEmail(
+        normalizedEmail,
+        redirectTo ? { redirectTo } : undefined
+      );
 
       if (error) {
         Logger.error('Password reset request failed:', error);
@@ -832,33 +830,103 @@ class AuthService {
         };
       }
 
-      const resetLink = data?.properties?.action_link;
-      if (!resetLink) {
-        Logger.error('Password reset request failed: missing reset link');
-        return {
-          success: false,
-          error: 'Password reset request failed',
-        };
-      }
-
-      const sendResult = await emailService.sendPasswordResetEmail({
-        to: normalizedEmail,
-        resetLink,
-      });
-
-      if (!sendResult.success) {
-        return {
-          success: false,
-          error: sendResult.error || 'Failed to send password reset email',
-        };
-      }
-
       return { success: true };
     } catch (error) {
       Logger.error('Password reset request error:', error);
       return {
         success: false,
         error: 'Password reset request failed',
+      };
+    }
+  }
+
+  async confirmPasswordReset(params: {
+    accessToken: string;
+    refreshToken?: string | null;
+    password: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const accessToken = params.accessToken?.trim();
+      if (!accessToken) {
+        return {
+          success: false,
+          error: 'Password reset token is required',
+        };
+      }
+
+      const { data, error } = await this.supabase.auth.getUser(accessToken);
+      if (error || !data.user) {
+        return {
+          success: false,
+          error: 'Password reset link is invalid or expired',
+        };
+      }
+
+      const supabaseUser = data.user;
+      const userId = supabaseUser.id;
+      const userEmail = supabaseUser.email;
+      if (!userEmail) {
+        return {
+          success: false,
+          error: 'User email not found',
+        };
+      }
+
+      let accountStatus: string | null = null;
+      try {
+        const result = await this.pool.query(
+          'SELECT status FROM users WHERE id = $1',
+          [userId]
+        );
+        if (result.rows.length > 0) {
+          accountStatus = result.rows[0]?.status || null;
+        }
+      } catch (lookupError) {
+        Logger.error(
+          'Failed to lookup user during password reset confirmation:',
+          lookupError
+        );
+        return {
+          success: false,
+          error: 'Password reset failed',
+        };
+      }
+
+      if (!accountStatus) {
+        return {
+          success: false,
+          error: 'Account status could not be verified',
+        };
+      }
+
+      if (accountStatus !== 'active') {
+        return {
+          success: false,
+          error: this.mapAccountStatus(accountStatus),
+        };
+      }
+
+      const { error: updateError } =
+        await this.supabaseAdmin.auth.admin.updateUserById(userId, {
+          password: params.password,
+        });
+
+      if (updateError) {
+        Logger.error('Password reset update failed:', updateError);
+        return {
+          success: false,
+          error: this.mapSupabaseError(updateError as AuthError),
+        };
+      }
+
+      await sessionService.deleteUserSessions(userId);
+
+      return { success: true };
+    } catch (error) {
+      Logger.error('Password reset confirmation error:', error);
+      return {
+        success: false,
+        error: 'Password reset failed',
       };
     }
   }

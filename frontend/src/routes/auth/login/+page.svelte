@@ -3,6 +3,7 @@
   import { Eye, EyeOff, LogIn, Loader2 } from 'lucide-svelte';
   import { page } from '$app/stores';
   import { auth, authError, isLoading } from '$lib/stores/auth';
+  import { ROUTES } from '$lib/utils/constants.js';
 
   let showPassword = false;
   let emailInput: HTMLInputElement;
@@ -11,6 +12,9 @@
   let sessionExpired = false;
   let verificationEmail = '';
   let verificationPending = false;
+  $: forgotPasswordHref = email
+    ? `${ROUTES.AUTH.FORGOT_PASSWORD}?email=${encodeURIComponent(email)}`
+    : ROUTES.AUTH.FORGOT_PASSWORD;
   $: sessionExpired = $page.url.searchParams.get('reason') === 'session-expired';
   $: verificationPending = $page.url.searchParams.get('verify') === 'pending';
 
@@ -243,7 +247,7 @@
 
     <p class="text-sm">
       <a
-        href="/auth/forgot-password"
+        href={forgotPasswordHref}
         class="text-subslush-pink dark:text-subslush-pink-light hover:text-subslush-pink-dark dark:hover:text-subslush-pink transition-colors"
       >
         Forgot your password?

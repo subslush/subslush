@@ -12,6 +12,8 @@ export const API_ENDPOINTS = {
     LOGOUT: '/auth/logout',
     REFRESH: '/auth/refresh',
     CONFIRM_EMAIL: '/auth/confirm',
+    PASSWORD_RESET: '/auth/password-reset',
+    PASSWORD_RESET_CONFIRM: '/auth/password-reset/confirm',
     SESSIONS: '/auth/sessions'
   },
   DASHBOARD: {
@@ -97,7 +99,9 @@ export const ROUTES = {
   HOME: '/',
   AUTH: {
     LOGIN: '/auth/login',
-    REGISTER: '/auth/register'
+    REGISTER: '/auth/register',
+    FORGOT_PASSWORD: '/auth/forgot-password',
+    RESET_PASSWORD: '/auth/reset-password'
   },
   DASHBOARD: '/dashboard',
   SETTINGS: '/dashboard/settings',

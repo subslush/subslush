@@ -41,8 +41,23 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+export const passwordResetConfirmSchema = z
+  .object({
+    accessToken: z.string().min(1, 'Reset token is required'),
+    refreshToken: z.string().optional(),
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, 'Password confirmation is required'),
+  })
+  .refine(data => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type PasswordResetConfirmInput = z.infer<
+  typeof passwordResetConfirmSchema
+>;
 
 export interface AuthResponse {
   success: true;
@@ -100,6 +115,38 @@ export function validateLoginInput(
   | { success: false; error: ErrorResponse } {
   try {
     const validatedData = loginSchema.parse(data);
+    return { success: true, data: validatedData };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const firstError = error.issues[0];
+      if (firstError) {
+        return {
+          success: false,
+          error: {
+            success: false,
+            error: firstError.message,
+            details: `Field: ${firstError.path.join('.')}`,
+          },
+        };
+      }
+    }
+    return {
+      success: false,
+      error: {
+        success: false,
+        error: 'Invalid input data',
+      },
+    };
+  }
+}
+
+export function validatePasswordResetConfirmInput(
+  data: unknown
+):
+  | { success: true; data: PasswordResetConfirmInput }
+  | { success: false; error: ErrorResponse } {
+  try {
+    const validatedData = passwordResetConfirmSchema.parse(data);
     return { success: true, data: validatedData };
   } catch (error) {
     if (error instanceof z.ZodError) {

@@ -49,6 +49,25 @@ export interface LogoutRequest {
   allDevices?: boolean;
 }
 
+export interface PasswordResetRequest {
+  email: string;
+}
+
+export interface PasswordResetResponse {
+  message: string;
+}
+
+export interface PasswordResetConfirmRequest {
+  accessToken: string;
+  refreshToken?: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface PasswordResetConfirmResponse {
+  message: string;
+}
+
 export interface Session {
   id: string;
   userId: string;

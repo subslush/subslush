@@ -7,7 +7,11 @@ import type {
   LogoutRequest,
   RefreshResponse,
   ConfirmEmailRequest,
-  SessionsResponse
+  SessionsResponse,
+  PasswordResetRequest,
+  PasswordResetResponse,
+  PasswordResetConfirmRequest,
+  PasswordResetConfirmResponse
 } from '$lib/types/auth.js';
 import { unwrapApiData } from './response.js';
 
@@ -45,6 +49,18 @@ export class AuthService {
   async revokeSession(sessionId: string): Promise<{ message: string }> {
     const response = await apiClient.delete(`${API_ENDPOINTS.AUTH.SESSIONS}/${sessionId}`);
     return unwrapApiData<{ message: string }>(response);
+  }
+
+  async requestPasswordReset(payload: PasswordResetRequest): Promise<PasswordResetResponse> {
+    const response = await apiClient.post(API_ENDPOINTS.AUTH.PASSWORD_RESET, payload);
+    return unwrapApiData<PasswordResetResponse>(response);
+  }
+
+  async confirmPasswordReset(
+    payload: PasswordResetConfirmRequest
+  ): Promise<PasswordResetConfirmResponse> {
+    const response = await apiClient.post(API_ENDPOINTS.AUTH.PASSWORD_RESET_CONFIRM, payload);
+    return unwrapApiData<PasswordResetConfirmResponse>(response);
   }
 
   async logoutAllDevices(): Promise<{ message: string }> {
