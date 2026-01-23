@@ -35,6 +35,7 @@ class RedisSessionService implements SessionService {
   private readonly SESSION_PREFIX = 'session:';
   private readonly USER_SESSIONS_PREFIX = 'user_sessions:';
   private readonly ACTIVE_SESSIONS_SET = 'active_sessions';
+  private readonly SESSION_TOUCH_INTERVAL_MS = 5 * 1000;
 
   private generateSessionId(): string {
     return randomBytes(32).toString('hex');
@@ -531,6 +532,14 @@ class RedisSessionService implements SessionService {
     sessionData?: SessionData
   ): Promise<void> {
     try {
+      const now = Date.now();
+      if (
+        sessionData?.lastAccessedAt &&
+        now - sessionData.lastAccessedAt < this.SESSION_TOUCH_INTERVAL_MS
+      ) {
+        return;
+      }
+
       const sessionKey = this.getSessionKey(sessionId);
       let resolvedSession = sessionData;
 
@@ -549,9 +558,16 @@ class RedisSessionService implements SessionService {
         return;
       }
 
+      if (
+        resolvedSession.lastAccessedAt &&
+        now - resolvedSession.lastAccessedAt < this.SESSION_TOUCH_INTERVAL_MS
+      ) {
+        return;
+      }
+
       const updatedSession: SessionData = {
         ...resolvedSession,
-        lastAccessedAt: Date.now(),
+        lastAccessedAt: now,
       };
 
       const newEncryptedData = encryptionService.encryptObject(updatedSession);

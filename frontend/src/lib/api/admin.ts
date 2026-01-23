@@ -28,6 +28,7 @@ import type {
   AdminRefundStats,
   AdminCoupon,
   AdminAnnouncementResult,
+  AdminOverviewMetrics,
   AdminPinResetRequest,
   AdminPinResetConfirm,
   AdminBisInquiry,
@@ -237,6 +238,20 @@ export class AdminService {
   async listPayments(params?: QueryParams): Promise<AdminPayment[]> {
     const response = await this.client.get(API_ENDPOINTS.ADMIN.PAYMENTS, { params });
     return unwrapItems<AdminPayment>(response, 'payments');
+  }
+
+  async getOverviewMetrics(): Promise<AdminOverviewMetrics> {
+    const response = await this.client.get(API_ENDPOINTS.ADMIN.OVERVIEW);
+    const payload = unwrap<{ metrics?: AdminOverviewMetrics }>(response) || {};
+    return (
+      payload.metrics || {
+        products: 0,
+        orders: 0,
+        payments: 0,
+        subscriptions: 0,
+        tasks: 0
+      }
+    );
   }
 
   async searchUsers(params?: QueryParams): Promise<{ users: AdminUserLookup[]; pagination?: AdminListPagination }> {

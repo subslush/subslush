@@ -12,6 +12,14 @@ export interface AdminListResponse<T> {
   pagination?: AdminListPagination;
 }
 
+export interface AdminOverviewMetrics {
+  products: number;
+  orders: number;
+  payments: number;
+  subscriptions: number;
+  tasks: number;
+}
+
 export interface AdminAnnouncementResult {
   created: number;
   targetCount?: number;
@@ -233,6 +241,8 @@ export interface AdminOrderItem {
   quantity?: number | null;
   unit_price_cents?: number | null;
   unitPriceCents?: number | null;
+  term_months?: number | null;
+  termMonths?: number | null;
   currency?: string | null;
   total_price_cents?: number | null;
   totalPriceCents?: number | null;

@@ -13,10 +13,12 @@ import { adminNotificationRoutes } from './notifications';
 import { adminNewsletterRoutes } from './newsletter';
 import { adminBisRoutes } from './bis';
 import { adminPinResetRoutes } from './pinReset';
+import { adminOverviewRoutes } from './overview';
 import { adminSecurityMiddleware } from '../../middleware/adminSecurityMiddleware';
 
 export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
   adminSecurityMiddleware(fastify);
+  await fastify.register(adminOverviewRoutes, { prefix: '/overview' });
   await fastify.register(adminCatalogRoutes);
   await fastify.register(adminOrderRoutes, { prefix: '/orders' });
   await fastify.register(adminPaymentRoutes, { prefix: '/payments' });

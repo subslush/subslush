@@ -3,7 +3,7 @@
   import AdminEmptyState from '$lib/components/admin/AdminEmptyState.svelte';
   import { adminService } from '$lib/api/admin.js';
   import { formatCents, formatOptionalDate, pickValue, statusToneFromMap } from '$lib/utils/admin.js';
-  import type { AdminOrderFulfillment, AdminSubscription, AdminTask } from '$lib/types/admin.js';
+  import type { AdminOrderFulfillment, AdminOrderItem, AdminSubscription, AdminTask } from '$lib/types/admin.js';
   import type { PageData } from './$types';
 
   export let data: PageData;
@@ -39,6 +39,28 @@
   const formatNumber = (value?: number | null) => {
     if (value === null || value === undefined) return '--';
     return new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
+  };
+
+  const resolveTermMonths = (item: AdminOrderItem): number | null => {
+    const metadata = item.metadata as Record<string, unknown> | null;
+    const rawValue =
+      item.termMonths ??
+      item.term_months ??
+      (metadata?.term_months as number | string | null | undefined) ??
+      (metadata?.termMonths as number | string | null | undefined) ??
+      (metadata?.duration_months as number | string | null | undefined) ??
+      (metadata?.durationMonths as number | string | null | undefined);
+
+    if (rawValue === null || rawValue === undefined) return null;
+    const parsed = typeof rawValue === 'number' ? rawValue : Number.parseInt(String(rawValue), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return parsed;
+  };
+
+  const formatTermLabel = (item: AdminOrderItem): string => {
+    const months = resolveTermMonths(item);
+    if (!months) return '--';
+    return `${months} month${months === 1 ? '' : 's'}`;
   };
 
   const resolveOrder = () => fulfillment?.order;
@@ -397,6 +419,7 @@
               <tr>
                 <th class="py-2">Product</th>
                 <th class="py-2">Variant</th>
+                <th class="py-2">Duration</th>
                 <th class="py-2">Qty</th>
                 <th class="py-2">Unit Price</th>
                 <th class="py-2">Total</th>
@@ -406,7 +429,8 @@
               {#each resolveOrder()?.items || [] as item}
                 <tr>
                   <td class="py-3 font-semibold text-gray-900">{item.product_name || item.description || 'Item'}</td>
-                  <td class="py-3 text-gray-600">{item.variant_name || item.product_variant_id || '--'}</td>
+                  <td class="py-3 font-semibold text-orange-600">{item.variant_name || item.product_variant_id || '--'}</td>
+                  <td class="py-3 text-gray-600">{formatTermLabel(item)}</td>
                   <td class="py-3 text-gray-600">{item.quantity ?? 0}</td>
                   <td class="py-3 text-gray-600">{formatCents(item.unit_price_cents, item.currency || 'USD')}</td>
                   <td class="py-3 text-gray-600">{formatCents(item.total_price_cents, item.currency || 'USD')}</td>

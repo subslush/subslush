@@ -1148,6 +1148,10 @@
         <p class="mt-2 text-sm text-slate-600">
           Your purchase is confirmed. We'll activate your subscription shortly.
         </p>
+        <p class="mt-3 text-sm text-slate-600">
+          Orders are typically completed and delivered within 24 hours of placement; during business hours delivery
+          is often faster. While we consistently meet this window, delivery may take up to 72 hours in rare cases.
+        </p>
         <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
           <button
             on:click={handleContinueShopping}

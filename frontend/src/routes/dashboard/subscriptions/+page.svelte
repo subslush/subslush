@@ -146,6 +146,10 @@
 
   const renewalInfoText =
     'Renewal date is set 7 days before expiry so we have time to renew manually. You do not lose any subscription days.';
+  const pendingDeliveryInfoText =
+    'Orders are typically completed and delivered within 24 hours of placement; during business hours delivery is often faster. While we consistently meet this window, delivery may take up to 72 hours in rare cases.';
+  const pendingDeliverySummary =
+    "Your order is currently being processed. We'll deliver it as soon as it's ready.";
   const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
   function formatCredits(value?: number | null): string {
@@ -656,6 +660,18 @@
             <div>
               <p class="text-[11px] uppercase tracking-wide text-gray-400">Status</p>
               <p class="text-sm font-medium text-gray-700">{statusLabel(subscription.status)}</p>
+              {#if subscription.status === 'pending'}
+                <p class="mt-2 text-xs text-gray-500 leading-relaxed">
+                  {pendingDeliverySummary}
+                  <span
+                    class="ml-2 inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-500 align-middle cursor-help"
+                    title={pendingDeliveryInfoText}
+                    aria-label={pendingDeliveryInfoText}
+                  >
+                    i
+                  </span>
+                </p>
+              {/if}
             </div>
             <div>
               <p class="text-[11px] uppercase tracking-wide text-gray-400">Auto-renew</p>

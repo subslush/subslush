@@ -73,6 +73,7 @@ export const API_ENDPOINTS = {
     PIN_RESET: '/users/pin/reset-request'
   },
   ADMIN: {
+    OVERVIEW: '/admin/overview',
     PRODUCTS: '/admin/products',
     PRODUCT_VARIANTS: '/admin/product-variants',
     PRODUCT_VARIANT_TERMS: '/admin/product-variant-terms',

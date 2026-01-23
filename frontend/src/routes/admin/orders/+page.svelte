@@ -122,6 +122,28 @@
     if (variantName) return variantName;
     return (pickValue(item.productVariantId, item.product_variant_id) as string) || '--';
   };
+
+  const resolveTermMonths = (item: AdminOrderItem): number | null => {
+    const metadata = item.metadata as Record<string, unknown> | null;
+    const rawValue =
+      item.termMonths ??
+      item.term_months ??
+      (metadata?.term_months as number | string | null | undefined) ??
+      (metadata?.termMonths as number | string | null | undefined) ??
+      (metadata?.duration_months as number | string | null | undefined) ??
+      (metadata?.durationMonths as number | string | null | undefined);
+
+    if (rawValue === null || rawValue === undefined) return null;
+    const parsed = typeof rawValue === 'number' ? rawValue : Number.parseInt(String(rawValue), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return parsed;
+  };
+
+  const formatTermLabel = (item: AdminOrderItem): string => {
+    const months = resolveTermMonths(item);
+    if (!months) return '--';
+    return `${months} month${months === 1 ? '' : 's'}`;
+  };
 </script>
 
 <svelte:head>
@@ -287,6 +309,7 @@
                             <tr>
                               <th class="py-2">Product</th>
                               <th class="py-2">Variant</th>
+                              <th class="py-2">Duration</th>
                               <th class="py-2">Qty</th>
                               <th class="py-2">Unit Price</th>
                               <th class="py-2">Total</th>
@@ -296,7 +319,8 @@
                             {#each orderItems[order.id] as item}
                               <tr>
                                 <td class="py-3 font-semibold text-gray-900">{getProductLabel(item)}</td>
-                                <td class="py-3 text-gray-600">{getVariantLabel(item)}</td>
+                                <td class="py-3 font-semibold text-orange-600">{getVariantLabel(item)}</td>
+                                <td class="py-3 text-gray-600">{formatTermLabel(item)}</td>
                                 <td class="py-3 text-gray-600">{item.quantity ?? 0}</td>
                                 <td class="py-3 text-gray-600">
                                   {formatCents(
