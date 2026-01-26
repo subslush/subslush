@@ -85,19 +85,47 @@
           before delivery to ensure you approve the method used.
         </p>
 
-        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">6.2 Keys and license codes</h3>
+        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">6.2 Upgrade options for subscription products</h3>
+        <p class="mt-2">
+          Some Subscription Products allow you to choose between "Upgrade new account" and
+          "Upgrade current account." The option available will be shown on the Product page or at
+          checkout.
+        </p>
+        <p class="mt-2">
+          <span class="font-semibold">Upgrade new account:</span> We create a new, unique account on
+          the relevant Third-Party Service for your Order and deliver the credentials to you. You
+          are the sole owner of that account and we do not share its credentials with anyone else.
+          For services that only allow monthly renewals (for example, Netflix), if you purchase
+          more than one month or renew a monthly plan, we must access the account once each month to
+          renew the subscription. We handle these renewals in the background to avoid interruption
+          for as long as you remain subscribed.
+        </p>
+        <p class="mt-2">
+          <span class="font-semibold">Upgrade current account:</span> We upgrade a Third-Party
+          Service account that you already own. To complete this, you must provide the credentials
+          so we can access the account and activate the subscription. If you do not provide valid
+          credentials at checkout, or do not provide them to SubSlush shortly after purchase, we
+          will convert the selection to "Upgrade new account" and provision a new account for you.
+          We recommend (but do not require) that you change your password to a temporary strong
+          password while we process the upgrade, and then change it again once activation is
+          complete. If you are not comfortable sharing credentials, you can always choose the
+          "Upgrade new account" option instead. We offer the "Upgrade new account" option for all
+          services.
+        </p>
+
+        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">6.3 Keys and license codes</h3>
         <p class="mt-2">
           For license keys, delivery typically occurs by displaying the key in your account, sending
           it by email, or otherwise making it available digitally.
         </p>
 
-        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">6.3 Delivery timeframe</h3>
+        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">6.4 Delivery timeframe</h3>
         <p class="mt-2">
           We aim to deliver within 24 hours, but delivery can take up to 72 hours due to verification
           steps, provider constraints, availability, or technical factors.
         </p>
 
-        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">6.4 Your cooperation</h3>
+        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">6.5 Your cooperation</h3>
         <p class="mt-2">
           Some Products require your action (for example, accepting an invite or confirming account
           details). Delays caused by missing details or delayed Customer actions are not our
