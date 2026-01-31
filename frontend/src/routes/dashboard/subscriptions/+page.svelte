@@ -952,7 +952,7 @@
                       <div class="flex items-center justify-between gap-2">
                         <div>
                           <p class="text-xs uppercase text-gray-400">{label}</p>
-                          <p class="text-sm font-mono text-gray-900 break-all">{value}</p>
+                          <p class="text-sm font-mono text-gray-900 break-words sm:break-all">{value}</p>
                         </div>
                         <button
                           on:click={() => copyCredentials(subscription.id, value)}
@@ -965,7 +965,7 @@
                   {:else}
                     <div>
                       <p class="text-xs uppercase text-gray-400">Credential data</p>
-                      <pre class="text-sm font-mono text-gray-900 whitespace-pre-wrap break-all mt-1">{credentialsById[subscription.id]}</pre>
+                      <pre class="text-sm font-mono text-gray-900 whitespace-pre-wrap break-words sm:break-all mt-1">{credentialsById[subscription.id]}</pre>
                       <button
                         on:click={() => copyCredentials(subscription.id, credentialsById[subscription.id])}
                         class="mt-2 text-xs text-gray-600 hover:text-gray-900"
