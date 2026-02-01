@@ -1,5 +1,9 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authService } from '../services/auth';
+import {
+  buildTikTokRequestContext,
+  tiktokEventsService,
+} from '../services/tiktokEventsService';
 import { userService } from '../services/userService';
 import { createRateLimitHandler } from '../middleware/rateLimitMiddleware';
 import { authPreHandler } from '../middleware/authMiddleware';
@@ -122,6 +126,13 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         reply.statusCode = result.requiresEmailVerification ? 202 : 201;
+        if (result.user) {
+          void tiktokEventsService.trackCompleteRegistration({
+            userId: result.user.id,
+            email: result.user.email,
+            context: buildTikTokRequestContext(request),
+          });
+        }
         return reply.send({
           message: result.requiresEmailVerification
             ? 'Registration successful. Please verify your email before logging in.'

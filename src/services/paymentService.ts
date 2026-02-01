@@ -34,6 +34,10 @@ import {
 import { subscriptionService } from './subscriptionService';
 import { orderService } from './orderService';
 import { couponService } from './couponService';
+import {
+  buildTikTokProductProperties,
+  tiktokEventsService,
+} from './tiktokEventsService';
 import { normalizeCurrencyCode } from '../utils/currency';
 import {
   computeNextRenewalDates,
@@ -747,6 +751,7 @@ export class PaymentService {
 
     const incomingStatus = mapEventToStatus(intent.status);
     const currentStatus = payment.status;
+    const wasAlreadySucceeded = currentStatus === 'succeeded';
     if (statusPriority[incomingStatus] < statusPriority[currentStatus]) {
       Logger.info('Ignoring Stripe event due to status regression', {
         paymentId,
@@ -847,6 +852,28 @@ export class PaymentService {
         'usd';
       const currency =
         typeof currencyRaw === 'string' ? currencyRaw.toLowerCase() : 'usd';
+      const purchaseValue =
+        typeof priceCents === 'number' && Number.isFinite(priceCents)
+          ? priceCents / 100
+          : typeof subscriptionPriceCents === 'number' &&
+              Number.isFinite(subscriptionPriceCents)
+            ? subscriptionPriceCents / 100
+            : typeof payment.amount === 'number' &&
+                Number.isFinite(payment.amount)
+              ? payment.amount
+              : undefined;
+      const purchaseContentName = (mergedMetadata.product_name ||
+        mergedMetadata.productName ||
+        stripeMetadata.product_name ||
+        stripeMetadata.productName ||
+        serviceType ||
+        servicePlan ||
+        'Subscription') as string;
+      const purchaseContentCategory = (mergedMetadata.content_category ||
+        mergedMetadata.contentCategory ||
+        stripeMetadata.content_category ||
+        stripeMetadata.contentCategory ||
+        serviceType) as string | null;
 
       if (!isRenewal && orderId) {
         const guardOk = await this.enforceStripeOrderGuard({
@@ -1081,6 +1108,24 @@ export class PaymentService {
             : 'subscription_create_failed',
         });
         await couponService.finalizeRedemptionForOrder(orderId);
+      }
+      if (!isRenewal && !wasAlreadySucceeded) {
+        const properties = buildTikTokProductProperties({
+          value: purchaseValue ?? null,
+          currency: currency.toUpperCase(),
+          contentId: productVariantId || orderId || paymentId,
+          contentName: purchaseContentName,
+          contentCategory: purchaseContentCategory ?? null,
+          price: purchaseValue ?? null,
+          brand: serviceType || null,
+        });
+        void tiktokEventsService.trackPurchase({
+          userId: payment.userId,
+          eventId: orderId
+            ? `order_${orderId}_purchase`
+            : `payment_${paymentId}_purchase`,
+          properties,
+        });
       }
     } else if (
       eventType === 'payment_intent.payment_failed' ||
@@ -2618,28 +2663,93 @@ export class PaymentService {
         [nowPaymentStatus.payment_id]
       );
 
-      if (result.rows.length === 0) {
+      let payment = result.rows[0] || null;
+      let resolvedPaymentId = nowPaymentStatus.payment_id;
+      let matchedByOrderId = false;
+
+      if (!payment && nowPaymentStatus.order_id) {
+        const orderResult = await client.query(
+          `SELECT *
+           FROM credit_transactions
+           WHERE payment_provider = 'nowpayments'
+             AND (metadata->>'orderId' = $1 OR metadata->>'order_id' = $1)
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [nowPaymentStatus.order_id]
+        );
+
+        if (orderResult.rows.length > 0) {
+          payment = orderResult.rows[0];
+          resolvedPaymentId = payment.payment_id;
+          matchedByOrderId = true;
+        }
+      }
+
+      if (!payment) {
         Logger.error(
-          `Cannot sync - payment not found: ${nowPaymentStatus.payment_id}`
+          `Cannot sync - payment not found: ${nowPaymentStatus.payment_id}`,
+          { orderId: nowPaymentStatus.order_id }
         );
         await client.query('ROLLBACK');
         transactionOpen = false;
         return;
       }
 
-      const payment = result.rows[0];
       const previousStatus = payment.payment_status;
+
+      if (
+        shouldIgnoreNowPaymentsStatusRegression(
+          previousStatus,
+          nowPaymentStatus.payment_status
+        )
+      ) {
+        Logger.warn('Ignoring NOWPayments status regression in sync', {
+          paymentId: resolvedPaymentId,
+          webhookPaymentId: nowPaymentStatus.payment_id,
+          previousStatus,
+          newStatus: nowPaymentStatus.payment_status,
+        });
+        await client.query('COMMIT');
+        transactionOpen = false;
+        return;
+      }
       const metadata = payment.metadata
         ? typeof payment.metadata === 'string'
           ? JSON.parse(payment.metadata)
           : payment.metadata
         : {};
-      const updatedMetadata = {
+      const existingRelatedPaymentIds = Array.isArray(
+        metadata['relatedPaymentIds']
+      )
+        ? metadata['relatedPaymentIds']
+        : [];
+      const relatedPaymentIds = Array.from(
+        new Set(
+          [
+            ...existingRelatedPaymentIds,
+            payment.payment_id,
+            nowPaymentStatus.payment_id,
+          ].filter(Boolean)
+        )
+      );
+
+      const updatedMetadata: Record<string, any> = {
         ...metadata,
+        orderId:
+          metadata.orderId || nowPaymentStatus.order_id || metadata.order_id,
         actuallyPaid: nowPaymentStatus.actually_paid,
         blockchainHash: nowPaymentStatus.payin_hash,
         syncedManually: true,
         lastSyncedAt: new Date().toISOString(),
+        lastWebhookPaymentId: nowPaymentStatus.payment_id,
+        ...(relatedPaymentIds.length > 0 ? { relatedPaymentIds } : undefined),
+        ...(matchedByOrderId
+          ? {
+              redepositPaymentId: nowPaymentStatus.payment_id,
+              redepositStatus: nowPaymentStatus.payment_status,
+              redepositOrderId: nowPaymentStatus.order_id,
+            }
+          : undefined),
       };
 
       // Update payment record with latest status (no balance mutation here)
@@ -2654,13 +2764,13 @@ export class PaymentService {
           nowPaymentStatus.payment_status,
           nowPaymentStatus.payin_hash,
           JSON.stringify(updatedMetadata),
-          nowPaymentStatus.payment_id,
+          resolvedPaymentId,
         ]
       );
 
       await paymentRepository.updateStatusByProviderPaymentId(
         'nowpayments',
-        nowPaymentStatus.payment_id,
+        resolvedPaymentId,
         this.mapNowPaymentsStatus(nowPaymentStatus.payment_status),
         nowPaymentStatus.payment_status,
         updatedMetadata,
@@ -2687,12 +2797,12 @@ export class PaymentService {
           usdAmount <= 0
         ) {
           Logger.error('Invalid USD amount for NOWPayments sync allocation', {
-            paymentId: nowPaymentStatus.payment_id,
+            paymentId: resolvedPaymentId,
             userId: paymentUserId,
             usdAmount,
           });
           await paymentFailureService.handlePaymentFailure(
-            nowPaymentStatus.payment_id,
+            resolvedPaymentId,
             nowPaymentStatus.payment_status,
             'Invalid payment amount for allocation',
             { sync: true }
@@ -2703,30 +2813,30 @@ export class PaymentService {
         const allocationResult =
           await creditAllocationService.allocateCreditsForPayment(
             paymentUserId,
-            nowPaymentStatus.payment_id,
+            resolvedPaymentId,
             usdAmount,
             nowPaymentStatus
           );
 
         if (allocationResult.success) {
           Logger.info(`Successfully synced payment from NOWPayments`, {
-            paymentId: nowPaymentStatus.payment_id,
+            paymentId: resolvedPaymentId,
             userId: paymentUserId,
             creditAmount: allocationResult.data.creditAmount,
             balanceAfter: allocationResult.data.balanceAfter,
           });
           await paymentFailureService.resolveFailure(
-            nowPaymentStatus.payment_id,
+            resolvedPaymentId,
             'nowpayments_sync'
           );
         } else {
           Logger.error('Credit allocation failed during NOWPayments sync', {
-            paymentId: nowPaymentStatus.payment_id,
+            paymentId: resolvedPaymentId,
             userId: paymentUserId,
             error: allocationResult.error,
           });
           await paymentFailureService.handlePaymentFailure(
-            nowPaymentStatus.payment_id,
+            resolvedPaymentId,
             nowPaymentStatus.payment_status,
             allocationResult.error || 'Credit allocation failed',
             { sync: true }
@@ -2734,7 +2844,7 @@ export class PaymentService {
         }
       } else {
         Logger.info(`Synced payment status from NOWPayments`, {
-          paymentId: nowPaymentStatus.payment_id,
+          paymentId: resolvedPaymentId,
           status: nowPaymentStatus.payment_status,
           previousStatus,
         });
@@ -2777,15 +2887,55 @@ export class PaymentService {
         [payload.payment_id]
       );
 
-      if (paymentResult.rows.length === 0) {
-        Logger.error(`Payment not found for webhook: ${payload.payment_id}`);
+      let payment = paymentResult.rows[0] || null;
+      let resolvedPaymentId = payload.payment_id;
+      let matchedByOrderId = false;
+
+      if (!payment && payload.order_id) {
+        const orderResult = await client.query(
+          `SELECT *
+           FROM credit_transactions
+           WHERE payment_provider = 'nowpayments'
+             AND (metadata->>'orderId' = $1 OR metadata->>'order_id' = $1)
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [payload.order_id]
+        );
+
+        if (orderResult.rows.length > 0) {
+          payment = orderResult.rows[0];
+          resolvedPaymentId = payment.payment_id;
+          matchedByOrderId = true;
+        }
+      }
+
+      if (!payment) {
+        Logger.error(`Payment not found for webhook: ${payload.payment_id}`, {
+          orderId: payload.order_id,
+        });
         await client.query('ROLLBACK');
         transactionOpen = false;
         return false;
       }
 
-      const payment = paymentResult.rows[0];
       const previousStatus = payment.payment_status;
+
+      if (
+        shouldIgnoreNowPaymentsStatusRegression(
+          previousStatus,
+          payload.payment_status
+        )
+      ) {
+        Logger.warn('Ignoring NOWPayments status regression in webhook', {
+          paymentId: resolvedPaymentId,
+          webhookPaymentId: payload.payment_id,
+          previousStatus,
+          newStatus: payload.payment_status,
+        });
+        await client.query('COMMIT');
+        transactionOpen = false;
+        return true;
+      }
 
       // FIX: Handle metadata that might already be an object
       const metadata = payment.metadata
@@ -2793,11 +2943,36 @@ export class PaymentService {
           ? JSON.parse(payment.metadata)
           : payment.metadata
         : {};
-      const updatedMetadata = {
+      const existingRelatedPaymentIds = Array.isArray(
+        metadata['relatedPaymentIds']
+      )
+        ? metadata['relatedPaymentIds']
+        : [];
+      const relatedPaymentIds = Array.from(
+        new Set(
+          [
+            ...existingRelatedPaymentIds,
+            payment.payment_id,
+            payload.payment_id,
+          ].filter(Boolean)
+        )
+      );
+
+      const updatedMetadata: Record<string, any> = {
         ...metadata,
+        orderId: metadata.orderId || payload.order_id || metadata.order_id,
         actuallyPaid: payload.actually_paid,
         blockchainHash: payload.payin_hash,
         lastWebhookAt: new Date().toISOString(),
+        lastWebhookPaymentId: payload.payment_id,
+        ...(relatedPaymentIds.length > 0 ? { relatedPaymentIds } : undefined),
+        ...(matchedByOrderId
+          ? {
+              redepositPaymentId: payload.payment_id,
+              redepositStatus: payload.payment_status,
+              redepositOrderId: payload.order_id,
+            }
+          : undefined),
       };
 
       await client.query(
@@ -2808,14 +2983,14 @@ export class PaymentService {
           payload.payment_status,
           payload.payin_hash,
           JSON.stringify(updatedMetadata),
-          payload.payment_id,
+          resolvedPaymentId,
         ]
       );
 
       // Sync unified payment record status
       await paymentRepository.updateStatusByProviderPaymentId(
         'nowpayments',
-        payload.payment_id,
+        resolvedPaymentId,
         this.mapNowPaymentsStatus(payload.payment_status),
         payload.payment_status,
         updatedMetadata,
@@ -2843,12 +3018,12 @@ export class PaymentService {
           usdAmount <= 0
         ) {
           Logger.error('Invalid USD amount for webhook allocation', {
-            paymentId: payload.payment_id,
+            paymentId: resolvedPaymentId,
             userId: payment.user_id,
             usdAmount,
           });
           await paymentFailureService.handlePaymentFailure(
-            payload.payment_id,
+            resolvedPaymentId,
             payload.payment_status,
             'Invalid payment amount for allocation',
             { webhook: true }
@@ -2859,24 +3034,24 @@ export class PaymentService {
         const allocationResult =
           await creditAllocationService.allocateCreditsForPayment(
             payment.user_id,
-            payload.payment_id,
+            resolvedPaymentId,
             usdAmount,
             payload
           );
 
         if (allocationResult.success) {
           await paymentFailureService.resolveFailure(
-            payload.payment_id,
+            resolvedPaymentId,
             'nowpayments_webhook'
           );
         } else {
           Logger.error('Credit allocation failed for webhook payment', {
-            paymentId: payload.payment_id,
+            paymentId: resolvedPaymentId,
             userId: payment.user_id,
             error: allocationResult.error,
           });
           await paymentFailureService.handlePaymentFailure(
-            payload.payment_id,
+            resolvedPaymentId,
             payload.payment_status,
             allocationResult.error || 'Credit allocation failed',
             { webhook: true }
@@ -2885,10 +3060,12 @@ export class PaymentService {
       }
 
       Logger.info(`Processed webhook for payment ${payment.id}`, {
-        paymentId: payment.id,
+        paymentId: resolvedPaymentId,
         previousStatus,
         newStatus: payload.payment_status,
         actuallyPaid: payload.actually_paid,
+        matchedByOrderId,
+        webhookPaymentId: payload.payment_id,
       });
 
       return true;

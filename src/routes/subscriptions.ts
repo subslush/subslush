@@ -7,6 +7,11 @@ import { catalogService } from '../services/catalogService';
 import { pinService } from '../services/pinService';
 import { paymentService } from '../services/paymentService';
 import { couponService, normalizeCouponCode } from '../services/couponService';
+import {
+  buildTikTokProductProperties,
+  buildTikTokRequestContext,
+  tiktokEventsService,
+} from '../services/tiktokEventsService';
 import { getDatabasePool } from '../config/database';
 import { upgradeSelectionService } from '../services/upgradeSelectionService';
 import { authPreHandler } from '../middleware/authMiddleware';
@@ -1890,6 +1895,22 @@ export async function subscriptionRoutes(
         }
 
         const order = orderResult.data;
+        const checkoutProperties = buildTikTokProductProperties({
+          value: price,
+          currency,
+          contentId: productVariantId || product.id,
+          contentName: product.name || product.service_type || planCode,
+          contentCategory: product.category || product.service_type || null,
+          price,
+          brand: product.service_type || null,
+        });
+        void tiktokEventsService.trackInitiateCheckout({
+          userId,
+          email: request.user?.email ?? null,
+          eventId: `order_${order.id}_checkout`,
+          properties: checkoutProperties,
+          context: buildTikTokRequestContext(request),
+        });
         const startDate = new Date();
         const endDate = new Date(startDate);
         endDate.setMonth(endDate.getMonth() + snapshot.termMonths);
@@ -2043,6 +2064,13 @@ export async function subscriptionRoutes(
         if (coupon) {
           await couponService.finalizeRedemptionForOrder(order.id);
         }
+        void tiktokEventsService.trackPurchase({
+          userId,
+          email: request.user?.email ?? null,
+          eventId: `order_${order.id}_purchase`,
+          properties: checkoutProperties,
+          context: buildTikTokRequestContext(request),
+        });
 
         Logger.info('Subscription purchased successfully', {
           userId,
