@@ -19,6 +19,7 @@
   import { auth } from '$lib/stores/auth.js';
   import { currency } from '$lib/stores/currency.js';
   import { CURRENCY_OPTIONS } from '$lib/utils/currency.js';
+  import { trackSearch } from '$lib/utils/analytics.js';
   import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
 
@@ -96,6 +97,9 @@
 
   function performSearch() {
     const trimmedQuery = searchQuery.trim();
+    if (trimmedQuery) {
+      trackSearch(trimmedQuery);
+    }
     const destination = trimmedQuery
       ? `/browse?${new URLSearchParams({ search: trimmedQuery }).toString()}`
       : '/browse';

@@ -2,6 +2,7 @@ import { writable, derived, get } from 'svelte/store';
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
 import { authService } from '$lib/api/auth.js';
+import { identifyTikTokUser, trackCompleteRegistration, trackLogin } from '$lib/utils/analytics.js';
 
 export interface User {
   id: string;
@@ -207,6 +208,9 @@ function createAuthStore(initialUser: User | null = null) {
           error: null
         }));
 
+        await identifyTikTokUser(response.user);
+        trackCompleteRegistration('email');
+
         // Force a complete page refresh to ensure server gets the cookie
         console.log('🔐 [AUTH STORE] Redirecting to home with refresh...');
         if (browser) {
@@ -258,6 +262,9 @@ function createAuthStore(initialUser: User | null = null) {
           initialized: true,
           error: null
         }));
+
+        await identifyTikTokUser(response.user);
+        trackLogin('email');
 
         // Force a complete page refresh to ensure server gets the cookie
         console.log('🔐 [AUTH STORE] Redirecting to home with refresh...');

@@ -2,6 +2,11 @@
   import { onMount, onDestroy } from 'svelte';
   import { X, CreditCard, Copy, Check, AlertCircle, Loader2, Clock, ChevronDown, Search } from 'lucide-svelte';
   import { paymentService } from '$lib/api/payments.js';
+  import {
+    trackTikTokAddPaymentInfo,
+    trackTikTokInitiateCheckout,
+    trackTikTokPurchase
+  } from '$lib/utils/analytics.js';
   import type {
     CreatePaymentResponse,
     PaymentStatus,
@@ -59,6 +64,8 @@
   let expirationTime: Date | null = null;
   let timeRemaining = '';
   let resumedPaymentId: string | null = null;
+  let lastTopupTrackingId = '';
+  let lastTopupPurchaseTrackingId = '';
 
   const stableDefaultCodes = ['usdt', 'usdc'];
   const preferredCoinOrder = [
@@ -203,6 +210,14 @@
   const normalizeToken = (value?: string | null) =>
     value?.toLowerCase().replace(/[^a-z0-9]/g, '').trim() || '';
   const normalizeCode = (value?: string | null) => value?.toLowerCase().trim() || '';
+  const buildCreditsItem = (amount: number) => ({
+    item_id: 'credits_topup',
+    item_name: 'Credits Top Up',
+    item_category: 'credits',
+    price: amount,
+    currency: 'USD',
+    quantity: 1
+  });
 
   const resolveAliasBase = (baseCode: string) =>
     coinBaseAliases[baseCode] || baseCode;
@@ -788,6 +803,13 @@
 
       await generateQRCode(response.payAddress);
 
+      if (response.paymentId && response.paymentId !== lastTopupTrackingId) {
+        const item = buildCreditsItem(amount);
+        trackTikTokInitiateCheckout('USD', amount, [item]);
+        trackTikTokAddPaymentInfo('USD', amount, [item]);
+        lastTopupTrackingId = response.paymentId;
+      }
+
       currentStep = 2;
       if (onPaymentCreated) {
         onPaymentCreated(response);
@@ -842,6 +864,14 @@
 
       if (status.status === 'finished' || status.status === 'confirmed') {
         stopPolling();
+        if (paymentData?.paymentId && paymentData.paymentId !== lastTopupPurchaseTrackingId) {
+          const creditAmount = status.creditAmount;
+          if (typeof creditAmount === 'number' && Number.isFinite(creditAmount)) {
+            const item = buildCreditsItem(creditAmount);
+            trackTikTokPurchase('USD', creditAmount, [item]);
+            lastTopupPurchaseTrackingId = paymentData.paymentId;
+          }
+        }
 
         setTimeout(async () => {
           const newBalance = userBalance + status.creditAmount;

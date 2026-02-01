@@ -15,7 +15,7 @@
   import type { UpgradeSelectionSubmission } from '$lib/types/upgradeSelection.js';
   import { loadStripe, type Stripe, type StripeElements, type StripePaymentElement } from '@stripe/stripe-js';
   import { tick, onDestroy, onMount } from 'svelte';
-  import { trackAddPaymentInfo, trackPurchase } from '$lib/utils/analytics.js';
+  import { trackAddPaymentInfo, trackPlaceAnOrder, trackPurchase } from '$lib/utils/analytics.js';
 
   export let selectedPlan: ServicePlanDetails;
   export let selectedDuration = 1;
@@ -81,6 +81,7 @@
   let manualMonthlyAcknowledged = false;
   let processingError = '';
   let lastPurchaseTrackingId = '';
+  let lastPlaceOrderTrackingId = '';
   const POLL_INTERVAL_MS = 3000;
   const POLL_TIMEOUT_MS = 120000;
   let pollSequence = 0;
@@ -658,6 +659,13 @@
       checkoutCancelSent = false;
       upgradeOptions = checkoutResult.upgrade_options ?? null;
       stripeClientSecret = checkoutResult.clientSecret;
+      if (orderId && orderId !== lastPlaceOrderTrackingId) {
+        const items = getPurchaseItems();
+        if (items.length) {
+          trackPlaceAnOrder(resolvedCurrency, totalCost, items);
+          lastPlaceOrderTrackingId = orderId;
+        }
+      }
       await initStripeElements();
     } catch (err) {
       console.error('Stripe checkout failed', err);
@@ -771,6 +779,13 @@
 
       orderId = purchase.order_id;
       transactionId = purchase.transaction?.transaction_id ?? null;
+      if (orderId && orderId !== lastPlaceOrderTrackingId) {
+        const items = getPurchaseItems();
+        if (items.length) {
+          trackPlaceAnOrder(resolvedCurrency, totalCost, items);
+          lastPlaceOrderTrackingId = orderId;
+        }
+      }
       await refreshCredits(true);
       await advanceAfterSubscription(
         purchase.subscription,

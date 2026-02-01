@@ -16,7 +16,7 @@
 	import appleIcon from '$lib/assets/apple-icon.png';
 	import manifest192 from '$lib/assets/web-app-manifest-192x192.png';
 	import manifest512 from '$lib/assets/web-app-manifest-512x512.png';
-	import { trackPageView } from '$lib/utils/analytics.js';
+	import { identifyTikTokUser, trackPageView } from '$lib/utils/analytics.js';
 	import type { LayoutData } from './$types';
 	import '../app.css';
 
@@ -34,6 +34,9 @@
 	// Check if we're on a dashboard route
 	$: isDashboardRoute = $page.url.pathname.startsWith('/dashboard');
 	$: isAdminRoute = $page.url.pathname.startsWith('/admin');
+	$: if (browser) {
+		void identifyTikTokUser($auth.user);
+	}
 
 	const promoBannerExclusions = ['/auth', '/admin', '/terms', '/privacy', '/returns'];
 	$: showPromoBanner = !promoBannerExclusions.some(prefix =>
@@ -54,6 +57,7 @@
 		const path = `${to.url.pathname}${to.url.search}${to.url.hash}`;
 		if (path === lastTrackedPath) return;
 		lastTrackedPath = path;
+		void identifyTikTokUser($auth.user);
 		trackPageView(path);
 	});
 
