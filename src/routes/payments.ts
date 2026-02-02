@@ -525,7 +525,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         const checkoutProperties = buildTikTokProductProperties({
           value: price,
           currency,
-          contentId: productVariantId || product.id,
+          contentId: product.slug || productVariantId || product.id,
           contentName: product.name || product.service_type || planCode,
           contentCategory: product.category || product.service_type || null,
           price,
@@ -726,6 +726,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           {
             orderId: order.id,
             productVariantId: productVariantId ?? null,
+            productSlug: product.slug ?? null,
             priceCents,
             basePriceCents: snapshot.basePriceCents,
             discountPercent: snapshot.discountPercent,

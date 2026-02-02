@@ -1898,7 +1898,7 @@ export async function subscriptionRoutes(
         const checkoutProperties = buildTikTokProductProperties({
           value: price,
           currency,
-          contentId: productVariantId || product.id,
+          contentId: product.slug || productVariantId || product.id,
           contentName: product.name || product.service_type || planCode,
           contentCategory: product.category || product.service_type || null,
           price,

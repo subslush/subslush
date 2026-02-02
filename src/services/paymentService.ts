@@ -56,6 +56,7 @@ import {
 interface StripeOrderContext {
   orderId?: string;
   productVariantId?: string | null;
+  productSlug?: string | null;
   priceCents?: number | null;
   basePriceCents?: number | null;
   discountPercent?: number | null;
@@ -816,6 +817,10 @@ export class PaymentService {
         mergedMetadata.product_variant_id ||
         stripeMetadata.product_variant_id ||
         null;
+      const productSlug = (mergedMetadata.product_slug ||
+        mergedMetadata.productSlug ||
+        stripeMetadata.product_slug ||
+        stripeMetadata.productSlug) as string | undefined;
 
       const priceCents =
         payment.priceCents ??
@@ -1113,7 +1118,7 @@ export class PaymentService {
         const properties = buildTikTokProductProperties({
           value: purchaseValue ?? null,
           currency: currency.toUpperCase(),
-          contentId: productVariantId || orderId || paymentId,
+          contentId: productSlug || productVariantId || orderId || paymentId,
           contentName: purchaseContentName,
           contentCategory: purchaseContentCategory ?? null,
           price: purchaseValue ?? null,
@@ -1843,6 +1848,9 @@ export class PaymentService {
       if (orderContext?.productVariantId) {
         paymentMetadata['product_variant_id'] = orderContext.productVariantId;
       }
+      if (orderContext?.productSlug) {
+        paymentMetadata['product_slug'] = orderContext.productSlug;
+      }
 
       if (
         orderContext?.priceCents !== undefined &&
@@ -1899,6 +1907,9 @@ export class PaymentService {
 
       if (orderContext?.orderId) {
         unifiedPaymentMetadata['order_id'] = orderContext.orderId;
+      }
+      if (orderContext?.productSlug) {
+        unifiedPaymentMetadata['product_slug'] = orderContext.productSlug;
       }
 
       const unifiedPaymentInput: CreateUnifiedPaymentInput = {
