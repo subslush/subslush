@@ -11,7 +11,8 @@ import type {
   PasswordResetRequest,
   PasswordResetResponse,
   PasswordResetConfirmRequest,
-  PasswordResetConfirmResponse
+  PasswordResetConfirmResponse,
+  VerifiedTrackResponse
 } from '$lib/types/auth.js';
 import { unwrapApiData } from './response.js';
 
@@ -61,6 +62,11 @@ export class AuthService {
   ): Promise<PasswordResetConfirmResponse> {
     const response = await apiClient.post(API_ENDPOINTS.AUTH.PASSWORD_RESET_CONFIRM, payload);
     return unwrapApiData<PasswordResetConfirmResponse>(response);
+  }
+
+  async trackVerifiedRegistration(): Promise<VerifiedTrackResponse> {
+    const response = await apiClient.post(API_ENDPOINTS.AUTH.VERIFIED_TRACK);
+    return unwrapApiData<VerifiedTrackResponse>(response);
   }
 
   async logoutAllDevices(): Promise<{ message: string }> {

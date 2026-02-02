@@ -66,6 +66,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         'POST /auth/logout',
         'POST /auth/refresh',
         'POST /auth/confirm',
+        'POST /auth/verified/track',
         'GET /auth/profile',
         'GET /auth/sessions',
         'DELETE /auth/sessions/:sessionId',
@@ -126,13 +127,6 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         reply.statusCode = result.requiresEmailVerification ? 202 : 201;
-        if (result.user) {
-          void tiktokEventsService.trackCompleteRegistration({
-            userId: result.user.id,
-            email: result.user.email,
-            context: buildTikTokRequestContext(request),
-          });
-        }
         return reply.send({
           message: result.requiresEmailVerification
             ? 'Registration successful. Please verify your email before logging in.'
@@ -150,6 +144,45 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       }
     }
   );
+
+  // Track verified registration (requires authentication)
+  fastify.register(async fastify => {
+    fastify.post(
+      '/verified/track',
+      {
+        preHandler: [authPreHandler],
+      },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        try {
+          const user = request.user;
+          if (!user?.userId) {
+            reply.statusCode = 400;
+            return reply.send({
+              error: 'Bad Request',
+              message: 'User ID not found',
+            });
+          }
+
+          void tiktokEventsService.trackCompleteRegistration({
+            userId: user.userId,
+            email: user.email,
+            context: buildTikTokRequestContext(request),
+          });
+
+          return reply.send({
+            message: 'Verification tracked',
+          });
+        } catch (error) {
+          Logger.error('Verified tracking failed:', error);
+          reply.statusCode = 500;
+          return reply.send({
+            error: 'Internal Server Error',
+            message: 'Failed to track verification',
+          });
+        }
+      }
+    );
+  });
 
   fastify.post<{
     Body: { accessToken: string; refreshToken?: string | null };
@@ -265,6 +298,14 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             maxAge: 60 * 60 * 24, // 24 hours
           });
           setCsrfCookie(reply);
+        }
+
+        if (result.user) {
+          void tiktokEventsService.trackLogin({
+            userId: result.user.id,
+            email: result.user.email,
+            context: buildTikTokRequestContext(request),
+          });
         }
 
         return reply.send({

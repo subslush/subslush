@@ -57,6 +57,10 @@ export interface PasswordResetResponse {
   message: string;
 }
 
+export interface VerifiedTrackResponse {
+  message: string;
+}
+
 export interface PasswordResetConfirmRequest {
   accessToken: string;
   refreshToken?: string;

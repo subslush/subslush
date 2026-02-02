@@ -137,7 +137,7 @@ const trackEvent = (eventName: string, params?: AnalyticsParams): void => {
 const trackTikTokEvent = (eventName: string, params?: AnalyticsParams): void => {
   const ttq = getTtq();
   if (!ttq) return;
-  if (eventName !== 'Login') return;
+  if (eventName !== 'Login' && eventName !== 'CompleteRegistration') return;
   ttq.track(eventName, params ? cleanParams(params) : {});
 };
 

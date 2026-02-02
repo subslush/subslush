@@ -4,7 +4,11 @@ import type { FastifyRequest } from 'fastify';
 import { env } from '../config/environment';
 import { Logger } from '../utils/logger';
 
-type TikTokEventName = 'CompleteRegistration' | 'InitiateCheckout' | 'Purchase';
+type TikTokEventName =
+  | 'CompleteRegistration'
+  | 'InitiateCheckout'
+  | 'Purchase'
+  | 'Login';
 
 export type TikTokRequestContext = {
   ip?: string | null;
@@ -186,6 +190,28 @@ class TikTokEventsService {
     const payload: TikTokEventInput = {
       event: 'CompleteRegistration',
       eventId: `user_${params.userId}_registration`,
+      user: this.buildUserPayload({
+        email: params.email ?? null,
+        externalId: params.userId,
+        ip: params.context?.ip ?? null,
+        userAgent: params.context?.userAgent ?? null,
+        ttclid: params.context?.ttclid ?? null,
+        ttp: params.context?.ttp ?? null,
+      }),
+      ...(page ? { page } : {}),
+    };
+    await this.trackEvent(payload);
+  }
+
+  async trackLogin(params: {
+    userId: string;
+    email?: string | null;
+    context?: TikTokRequestContext | null;
+  }): Promise<void> {
+    const page = this.buildPage(params.context);
+    const payload: TikTokEventInput = {
+      event: 'Login',
+      eventId: `user_${params.userId}_login`,
       user: this.buildUserPayload({
         email: params.email ?? null,
         externalId: params.userId,

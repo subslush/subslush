@@ -12,6 +12,7 @@ export const API_ENDPOINTS = {
     LOGOUT: '/auth/logout',
     REFRESH: '/auth/refresh',
     CONFIRM_EMAIL: '/auth/confirm',
+    VERIFIED_TRACK: '/auth/verified/track',
     PASSWORD_RESET: '/auth/password-reset',
     PASSWORD_RESET_CONFIRM: '/auth/password-reset/confirm',
     SESSIONS: '/auth/sessions'

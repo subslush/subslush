@@ -4,9 +4,11 @@
   import { get } from 'svelte/store';
   import { CheckCircle } from 'lucide-svelte';
   import { auth } from '$lib/stores/auth.js';
+  import { authService } from '$lib/api/auth.js';
   import { identifyTikTokUser, trackCompleteRegistration } from '$lib/utils/analytics.js';
 
-  const getTrackingKey = (userId: string) => `tiktok:complete_registration:${userId}`;
+  const getTrackingKey = (userId: string) =>
+    `tiktok:complete_registration:${userId}`;
 
   const hasTracked = (storageKey: string): boolean => {
     try {
@@ -34,6 +36,11 @@
     if (hasTracked(storageKey)) return;
 
     await identifyTikTokUser(user);
+    try {
+      await authService.trackVerifiedRegistration();
+    } catch {
+      // Ignore server tracking errors to avoid blocking the UX.
+    }
     trackCompleteRegistration('email_verification');
     markTracked(storageKey);
   });
