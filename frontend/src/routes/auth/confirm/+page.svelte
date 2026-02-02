@@ -39,9 +39,9 @@
       });
       auth.setUser(response.user);
       status = 'success';
-      message = 'Email confirmed. Signing you in...';
-      detail = 'You will be redirected to your dashboard shortly.';
-      window.location.href = '/';
+      message = 'Email verified.';
+      detail = 'Redirecting you to the confirmation page...';
+      window.location.href = '/auth/verified';
     } catch (error) {
       status = 'error';
       message = 'We could not confirm your email.';

@@ -137,17 +137,14 @@ const trackEvent = (eventName: string, params?: AnalyticsParams): void => {
 const trackTikTokEvent = (eventName: string, params?: AnalyticsParams): void => {
   const ttq = getTtq();
   if (!ttq) return;
+  if (eventName !== 'Login') return;
   ttq.track(eventName, params ? cleanParams(params) : {});
 };
 
 const trackTikTokPageView = (): void => {
-  const ttq = getTtq();
-  if (!ttq || typeof ttq.page !== 'function') return;
   if (!hasTrackedTikTokPageView) {
     hasTrackedTikTokPageView = true;
-    return;
   }
-  ttq.page();
 };
 
 type TikTokContentType = 'product' | 'product_group';

@@ -184,6 +184,25 @@
             </tbody>
           </table>
         </div>
+
+        <h3 class="mt-6 text-sm font-semibold uppercase tracking-wide">10.5 Advertising pixels and hashed identifiers</h3>
+        <p class="mt-2">
+          We may use advertising pixels and similar technologies (such as TikTok, Meta, and other
+          ad platforms) to measure ad performance, attribute conversions, and improve marketing
+          effectiveness.
+        </p>
+        <p class="mt-2">
+          Where supported and permitted, we may share hashed identifiers (such as hashed email,
+          phone number, or user ID) with these platforms to improve matching and attribution.
+          Hashing means transforming the identifier into a fixed, non-reversible format before
+          sharing.
+        </p>
+        <p class="mt-2">
+          Marketing cookies and pixels are used only where consent is required and given. You can
+          opt out by adjusting your cookie preferences (where available) or by disabling cookies
+          in your browser settings. Opting out may reduce the relevance of ads you see but will
+          not affect core site functionality.
+        </p>
       </section>
 
       <section>
