@@ -161,13 +161,16 @@ export const buildTikTokProductProperties = (params: {
 class TikTokEventsService {
   private readonly accessToken: string | null;
   private readonly pixelId: string | null;
+  private readonly testEventCode: string | null;
   private readonly enabled: boolean;
 
   constructor() {
     const token = env.TIKTOK_EVENTS_ACCESS_TOKEN?.trim();
     const pixelId = env.TIKTOK_PIXEL_ID?.trim();
+    const testEventCode = env.TIKTOK_EVENTS_TEST_CODE?.trim();
     this.accessToken = token || null;
     this.pixelId = pixelId || null;
+    this.testEventCode = testEventCode || null;
     this.enabled =
       Boolean(this.accessToken) &&
       Boolean(this.pixelId) &&
@@ -305,6 +308,9 @@ class TikTokEventsService {
         body: JSON.stringify({
           event_source: 'web',
           event_source_id: this.pixelId,
+          ...(this.testEventCode
+            ? { test_event_code: this.testEventCode }
+            : {}),
           data: [dataPayload],
         }),
       });

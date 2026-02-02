@@ -92,6 +92,11 @@ const environmentSchema = z.object({
       typeof value === 'string' && value.trim() === '' ? undefined : value,
     z.string().optional()
   ),
+  TIKTOK_EVENTS_TEST_CODE: z.preprocess(
+    value =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.string().optional()
+  ),
   TIKTOK_PIXEL_ID: z
     .preprocess(
       value =>

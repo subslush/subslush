@@ -43,6 +43,7 @@ export interface EnvironmentConfig {
   PASSWORD_RESET_REDIRECT_URL?: string | undefined;
   APP_BASE_URL?: string | undefined;
   TIKTOK_EVENTS_ACCESS_TOKEN?: string | undefined;
+  TIKTOK_EVENTS_TEST_CODE?: string | undefined;
   TIKTOK_PIXEL_ID: string;
   EMAIL_PROVIDER: 'smtp' | 'console' | 'resend';
   EMAIL_FROM?: string | undefined;
