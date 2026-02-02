@@ -1,9 +1,13 @@
 <script lang="ts">
   import { PartyPopper } from 'lucide-svelte';
+
+  export let isVisible = false;
 </script>
 
 <div
   id="promo-banner"
+  hidden={!isVisible}
+  aria-hidden={!isVisible}
   class="sticky top-0 z-50 w-full bg-gradient-to-r from-pink-600 to-cyan-500 text-white text-center px-4 py-1.5"
 >
   <div class="flex items-center justify-center gap-2 text-sm font-semibold uppercase tracking-wide">

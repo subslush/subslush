@@ -9,7 +9,6 @@
 	import { initializeCurrency } from '$lib/stores/currency';
 	import { page } from '$app/stores';
 	import PromoBanner from '$lib/components/PromoBanner.svelte';
-	import BetaNoticeWidget from '$lib/components/BetaNoticeWidget.svelte';
 	import faviconIco from '$lib/assets/favicon.ico';
 	import iconSvg from '$lib/assets/icon0.svg';
 	import iconPng from '$lib/assets/icon1.png';
@@ -31,9 +30,6 @@
 		}
 	});
 
-	// Check if we're on a dashboard route
-	$: isDashboardRoute = $page.url.pathname.startsWith('/dashboard');
-	$: isAdminRoute = $page.url.pathname.startsWith('/admin');
 	$: if (browser) {
 		void identifyTikTokUser($auth.user);
 	}
@@ -130,7 +126,4 @@
 		<PromoBanner />
 	{/if}
 	<slot />
-	{#if !isAdminRoute}
-		<BetaNoticeWidget />
-	{/if}
 </QueryClientProvider>
