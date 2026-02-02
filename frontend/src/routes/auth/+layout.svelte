@@ -10,6 +10,15 @@
 
   let sessionCleared = false;
   let sessionExpired = false;
+  const authRedirectPaths = new Set([
+    '/auth/login',
+    '/auth/register',
+    '/auth/forgot-password',
+    '/auth/reset-password'
+  ]);
+
+  const normalizePath = (path: string) =>
+    path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
 
   $: sessionExpired = $page.url.searchParams.get('reason') === 'session-expired';
   $: if (!sessionExpired) {
@@ -23,7 +32,10 @@
   }
 
   $: if (browser && $isAuthenticated && !sessionExpired) {
+    const path = normalizePath($page.url.pathname);
+    if (authRedirectPaths.has(path)) {
     goto(ROUTES.HOME);
+    }
   }
 
   function handleCurrencyChange(event: Event) {
