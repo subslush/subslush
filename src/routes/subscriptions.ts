@@ -32,7 +32,11 @@ import {
   CreateSubscriptionInput,
   ServicePlanDetails,
 } from '../types/subscription';
-import type { CatalogListing, PriceHistory } from '../types/catalog';
+import type {
+  CatalogListing,
+  PriceHistory,
+  ProductVariantTerm,
+} from '../types/catalog';
 import { logCredentialRevealAttempt } from '../services/auditLogService';
 import {
   computeNextRenewalDates,
@@ -282,6 +286,11 @@ const MISSING_TERM_TASK_CATEGORY = 'catalog_missing_term_options';
 const MISSING_TERM_TASK_TYPE = 'support';
 const MISSING_TERM_TASK_PRIORITY: AdminTaskPriority = 'high';
 const MISSING_TERM_DUE_HOURS = 24;
+const CATALOG_TERMS_UNAVAILABLE_TASK_CATEGORY = 'catalog_terms_unavailable';
+const CATALOG_TERMS_UNAVAILABLE_TASK_TYPE = 'support';
+const CATALOG_TERMS_UNAVAILABLE_TASK_PRIORITY: AdminTaskPriority = 'high';
+const CATALOG_TERMS_UNAVAILABLE_DUE_HOURS = 2;
+const TERM_LOOKUP_RETRY_DELAY_MS = 150;
 
 function calculateEndDate(durationMonths: number): Date {
   const now = new Date();
@@ -320,6 +329,35 @@ function parseJsonValue(value: any): any | null {
   } catch {
     return null;
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function listVariantTermsWithRetry(
+  variantIds: string[],
+  onlyActive = true
+): Promise<{
+  termMap: Map<string, ProductVariantTerm[]>;
+  retried: boolean;
+}> {
+  const termMap = await catalogService.listVariantTermsForVariants(
+    variantIds,
+    onlyActive
+  );
+  if (variantIds.length === 0 || termMap.size > 0) {
+    return { termMap, retried: false };
+  }
+
+  await delay(TERM_LOOKUP_RETRY_DELAY_MS);
+  const retryMap = await catalogService.listVariantTermsForVariants(
+    variantIds,
+    onlyActive
+  );
+  return { termMap: retryMap, retried: true };
 }
 
 async function resolveSubscriptionBillingDetails(
@@ -549,6 +587,15 @@ function buildMissingTermTaskNotes(params: {
   return `Missing term options for product ${params.productId} variant ${params.variantId} (service_type=${params.serviceType}, plan=${params.planCode}).`;
 }
 
+function buildCatalogTermsUnavailableNotes(params: {
+  endpoint: string;
+  listings: number;
+  variants: number;
+  retried: boolean;
+}): string {
+  return `Catalog term lookup returned no terms for ${params.variants} variants (${params.listings} listings) on ${params.endpoint} (retried=${params.retried}).`;
+}
+
 async function ensureMissingPriceTask(params: {
   productId: string;
   variantId: string;
@@ -674,6 +721,48 @@ async function ensureMissingTermTask(params: {
   }
 }
 
+async function ensureCatalogTermsUnavailableTask(params: {
+  endpoint: string;
+  listings: number;
+  variants: number;
+  retried: boolean;
+}): Promise<boolean> {
+  try {
+    const pool = getDatabasePool();
+    const dueDate = new Date(
+      Date.now() + CATALOG_TERMS_UNAVAILABLE_DUE_HOURS * 60 * 60 * 1000
+    );
+    const notes = buildCatalogTermsUnavailableNotes(params);
+
+    const result = await pool.query(
+      `INSERT INTO admin_tasks
+        (subscription_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
+       SELECT NULL, NULL, NULL, $1::varchar(50), $2, $3, $4, $5::varchar(50), $6
+       WHERE NOT EXISTS (
+         SELECT 1
+         FROM admin_tasks
+         WHERE task_category = $5::varchar(50)
+           AND completed_at IS NULL
+       )
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
+      [
+        CATALOG_TERMS_UNAVAILABLE_TASK_TYPE,
+        dueDate,
+        CATALOG_TERMS_UNAVAILABLE_TASK_PRIORITY,
+        notes,
+        CATALOG_TERMS_UNAVAILABLE_TASK_CATEGORY,
+        dueDate,
+      ]
+    );
+
+    return (result.rowCount ?? 0) > 0;
+  } catch (error) {
+    Logger.error('Failed to create catalog terms unavailable admin task:', error);
+    return false;
+  }
+}
+
 // Main route handler
 export async function subscriptionRoutes(
   fastify: FastifyInstance
@@ -724,13 +813,40 @@ export async function subscriptionRoutes(
             serviceTypeFilter ? { service_type: serviceTypeFilter } : undefined
           );
         const variantIds = listings.map(listing => listing.variant.id);
-        const [currentPriceMap, termMap] = await Promise.all([
+        const [currentPriceMap, termLookup] = await Promise.all([
           catalogService.listCurrentPricesForCurrency({
             variantIds,
             currency: preferredCurrency,
           }),
-          catalogService.listVariantTermsForVariants(variantIds, true),
+          listVariantTermsWithRetry(variantIds, true),
         ]);
+        const { termMap, retried: termLookupRetried } = termLookup;
+        if (variantIds.length > 0 && termMap.size === 0) {
+          Logger.error('Catalog term lookup returned no terms for listings', {
+            listings: listings.length,
+            variants: variantIds.length,
+            retried: termLookupRetried,
+          });
+          const taskCreated = await ensureCatalogTermsUnavailableTask({
+            endpoint: '/subscriptions/available',
+            listings: listings.length,
+            variants: variantIds.length,
+            retried: termLookupRetried,
+          });
+          if (taskCreated) {
+            Logger.warn(
+              'Catalog term lookup unavailable; admin task created',
+              {
+                category: CATALOG_TERMS_UNAVAILABLE_TASK_CATEGORY,
+              }
+            );
+          }
+          reply.header('X-Catalog-Terms-Status', 'unavailable');
+          return ErrorResponses.serviceUnavailable(
+            reply,
+            'Catalog terms unavailable'
+          );
+        }
 
         const services: Record<string, AvailablePlan[]> = {};
         const missingPriceTasks: Array<Promise<boolean>> = [];
@@ -942,13 +1058,43 @@ export async function subscriptionRoutes(
           serviceTypeFilter ? { service_type: serviceTypeFilter } : undefined
         );
         const variantIds = listings.map(listing => listing.variant.id);
-        const [currentPriceMap, termMap] = await Promise.all([
+        const [currentPriceMap, termLookup] = await Promise.all([
           catalogService.listCurrentPricesForCurrency({
             variantIds,
             currency: preferredCurrency,
           }),
-          catalogService.listVariantTermsForVariants(variantIds, true),
+          listVariantTermsWithRetry(variantIds, true),
         ]);
+        const { termMap, retried: termLookupRetried } = termLookup;
+        if (variantIds.length > 0 && termMap.size === 0) {
+          Logger.error(
+            'Catalog term lookup returned no terms for product listings',
+            {
+              listings: listings.length,
+              variants: variantIds.length,
+              retried: termLookupRetried,
+            }
+          );
+          const taskCreated = await ensureCatalogTermsUnavailableTask({
+            endpoint: '/subscriptions/products/available',
+            listings: listings.length,
+            variants: variantIds.length,
+            retried: termLookupRetried,
+          });
+          if (taskCreated) {
+            Logger.warn(
+              'Catalog term lookup unavailable; admin task created',
+              {
+                category: CATALOG_TERMS_UNAVAILABLE_TASK_CATEGORY,
+              }
+            );
+          }
+          reply.header('X-Catalog-Terms-Status', 'unavailable');
+          return ErrorResponses.serviceUnavailable(
+            reply,
+            'Catalog terms unavailable'
+          );
+        }
 
         const missingPriceTasks: Array<Promise<boolean>> = [];
         const missingPlanTasks: Array<Promise<boolean>> = [];
