@@ -100,7 +100,7 @@
 					<!-- Service icon without background -->
 					<div class="w-8 h-8 flex items-center justify-center text-lg">
 						{#if serviceLogo}
-							<img src={serviceLogo} alt={serviceName} class="w-6 h-6 rounded" />
+							<img src={serviceLogo} alt={serviceName} width="24" height="24" class="w-6 h-6 rounded" />
 						{:else}
 							<span class="text-2xl">{serviceIcon}</span>
 						{/if}
@@ -139,6 +139,8 @@
 						<img
 							src={sharedByAvatar}
 							alt="{sharedBy} avatar"
+							width="24"
+							height="24"
 							class="h-6 w-6 rounded-full object-cover"
 							loading="lazy"
 						/>

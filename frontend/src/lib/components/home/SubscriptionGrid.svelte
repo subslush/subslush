@@ -1,5 +1,7 @@
 <script lang="ts">
   import { resolveLogoKey } from '$lib/assets/logoRegistry.js';
+  import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
+  import type { Picture } from 'imagetools-core';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
   import { trackSelectItem, trackViewItemList } from '$lib/utils/analytics.js';
 
@@ -9,7 +11,7 @@
   export let listName = 'Browse';
 
   type ServiceStyle = {
-    logo?: string;
+    logo?: Picture;
     icon?: string;
     color: string;
   };
@@ -95,10 +97,14 @@
       <div class="flex flex-col h-80">
         <div class="relative flex-1 bg-gray-50 overflow-hidden">
           {#if serviceStyle.logo}
-            <img
-              src={serviceStyle.logo}
-              alt="{serviceType} logo"
-              class="absolute inset-0 w-full h-full object-cover"
+            <ResponsiveImage
+              image={serviceStyle.logo}
+              alt={`${serviceType} logo`}
+              sizes="(min-width: 1024px) 360px, (min-width: 640px) 50vw, 90vw"
+              pictureClass="absolute inset-0"
+              imgClass="w-full h-full object-cover"
+              loading="lazy"
+              decoding="async"
             />
           {:else}
             <div class="flex h-full w-full items-center justify-center text-5xl">

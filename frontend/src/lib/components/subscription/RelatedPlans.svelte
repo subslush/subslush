@@ -2,13 +2,14 @@
   import { ArrowRight } from 'lucide-svelte';
   import type { RelatedPlan } from '$lib/types/subscription';
   import { resolveLogoKey } from '$lib/assets/logoRegistry.js';
+  import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
 
   export let relatedPlans: RelatedPlan[];
   export let title: string = 'Users also joined these plans';
 
-  function getServiceLogo(serviceType: string, logoKey?: string | null): string {
-    return resolveLogoKey(logoKey || serviceType) || '';
+  function getServiceLogo(serviceType: string, logoKey?: string | null) {
+    return resolveLogoKey(logoKey || serviceType);
   }
 
   function getServiceColors(serviceType: string) {
@@ -57,6 +58,7 @@
   <div class="flex space-x-4 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:gap-4 sm:space-x-0 sm:overflow-x-visible">
     {#each relatedPlans as plan}
       {@const detailSlug = resolvePlanSlug(plan)}
+      {@const planLogo = getServiceLogo(plan.serviceType, plan.logoKey ?? plan.logo_key)}
       <button
         type="button"
         class="flex-shrink-0 w-64 sm:w-auto border border-gray-200 rounded-lg p-4 hover:shadow-md hover:border-gray-300 hover:scale-105 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 focus:ring-2 focus:ring-blue-500 focus:outline-none text-left {detailSlug ? '' : 'opacity-60 cursor-not-allowed'}"
@@ -67,12 +69,15 @@
         <!-- Service Logo -->
         <div class="flex items-center justify-center mb-3">
           <div class="w-12 h-12 {getServiceColors(plan.serviceType).bg} {getServiceColors(plan.serviceType).border} border-2 rounded-lg flex items-center justify-center">
-            {#if getServiceLogo(plan.serviceType, plan.logoKey ?? plan.logo_key)}
-              <img
-                src={getServiceLogo(plan.serviceType, plan.logoKey ?? plan.logo_key)}
-                alt="{plan.serviceName} logo"
-                class="w-8 h-8 object-contain"
+            {#if planLogo}
+              <ResponsiveImage
+                image={planLogo}
+                alt={`${plan.serviceName} logo`}
+                sizes="32px"
+                pictureClass="w-8 h-8"
+                imgClass="w-8 h-8 object-contain"
                 loading="lazy"
+                decoding="async"
               />
             {:else}
               <div class="w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-gray-500 text-xs font-medium">

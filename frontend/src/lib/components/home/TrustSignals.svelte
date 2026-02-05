@@ -51,7 +51,7 @@
   ];
 </script>
 
-<section class="py-8 bg-gray-900">
+<section class="py-8 bg-gray-900 content-visibility-auto">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <!-- Heading -->
     <div class="text-center mb-8">

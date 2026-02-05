@@ -32,6 +32,13 @@ body {
 	/* Add any custom component styles here */
 }
 
+@layer utilities {
+	.content-visibility-auto {
+		content-visibility: auto;
+		contain-intrinsic-size: 1px 800px;
+	}
+}
+
 /* Custom scrollbar for modern look */
 ::-webkit-scrollbar {
 	width: 10px;

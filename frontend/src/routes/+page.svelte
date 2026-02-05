@@ -193,7 +193,7 @@
   </section>
 
   <!-- AI -->
-  <section class="py-12 bg-white">
+  <section class="py-12 bg-white content-visibility-auto">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
       <div class="flex items-center justify-between gap-3">
         <div>
@@ -213,7 +213,7 @@
   </section>
 
   <!-- Music -->
-  <section class="py-12 bg-white">
+  <section class="py-12 bg-white content-visibility-auto">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
       <div class="flex items-center justify-between gap-3">
         <div>
@@ -233,7 +233,7 @@
   </section>
 
   <!-- Explore banner -->
-  <section class="py-6 bg-white">
+  <section class="py-6 bg-white content-visibility-auto">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="rounded-2xl border border-gray-200 bg-gradient-to-r from-cyan-50 via-white to-pink-50 p-6 sm:p-8 shadow-sm">
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -260,7 +260,7 @@
 
   <!-- Newsletter CTA -->
   <div class="h-8 bg-white"></div>
-  <section class="py-8 bg-blue-100">
+  <section class="py-8 bg-blue-100 content-visibility-auto">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center text-gray-900">
         <div class="space-y-2 relative">

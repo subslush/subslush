@@ -1375,7 +1375,13 @@
                   {#if qrCodeDataUrl}
                     <div>
                       <div class="inline-block rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                        <img src={qrCodeDataUrl} alt="Payment QR Code" class="mx-auto rounded-lg" />
+                        <img
+                          src={qrCodeDataUrl}
+                          alt="Payment QR Code"
+                          width="200"
+                          height="200"
+                          class="mx-auto rounded-lg"
+                        />
                       </div>
                       <p class="mt-2 text-xs text-gray-500">Scan with your crypto wallet</p>
                     </div>

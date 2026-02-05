@@ -1,8 +1,9 @@
 <script lang="ts">
-  import pandaHero from '$lib/assets/pandabearny.webp';
-  import netflixNY from '$lib/assets/netflixny.jpg';
-  import spotifyNY from '$lib/assets/spotifyny.jpg';
-  import chatgptNY from '$lib/assets/chatgptny.jpg';
+  import pandaHero from '$lib/assets/pandabearny.webp?picture';
+  import netflixNY from '$lib/assets/netflixny.jpg?picture';
+  import spotifyNY from '$lib/assets/spotifyny.jpg?picture';
+  import chatgptNY from '$lib/assets/chatgptny.jpg?picture';
+  import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
   import { trackSelectItem } from '$lib/utils/analytics.js';
 
   const heroCards = [
@@ -49,14 +50,38 @@
       }
     ]);
   };
+
+  const buildSrcset = (sources: { src: string; w: number }[] | undefined) =>
+    sources ? sources.map(source => `${source.src} ${source.w}w`).join(', ') : '';
+
+  const heroPreloadFormat = pandaHero.sources.avif ? 'avif' : pandaHero.sources.webp ? 'webp' : undefined;
+  const heroPreloadSources = heroPreloadFormat ? pandaHero.sources[heroPreloadFormat] : undefined;
+  const heroPreloadSrcset = buildSrcset(heroPreloadSources);
 </script>
 
+<svelte:head>
+  {#if heroPreloadSrcset && heroPreloadFormat}
+    <link
+      rel="preload"
+      as="image"
+      href={pandaHero.img.src}
+      imagesrcset={heroPreloadSrcset}
+      imagesizes="100vw"
+      type={`image/${heroPreloadFormat}`}
+    />
+  {/if}
+</svelte:head>
+
 <section id="hero-section" class="relative overflow-hidden py-12 md:py-16">
-  <img
-    src={pandaHero}
+  <ResponsiveImage
+    image={pandaHero}
     alt="Panda celebrating the New Year"
-    class="absolute inset-0 h-full w-full object-cover blur-sm brightness-90 opacity-90 pointer-events-none"
-    loading="lazy"
+    sizes="100vw"
+    pictureClass="absolute inset-0"
+    imgClass="h-full w-full object-cover blur-sm brightness-90 opacity-90 pointer-events-none"
+    loading="eager"
+    fetchpriority="high"
+    decoding="async"
   />
   <div class="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70 pointer-events-none"></div>
 
@@ -68,7 +93,16 @@
             class="relative h-[380px] min-h-[380px] overflow-hidden rounded-2xl shadow-lg border-4 text-gray-900 border-white/70"
           >
             {#if card.background}
-              <div class="absolute inset-0 bg-cover bg-center" style={`background-image: url(${card.background});`}></div>
+              <ResponsiveImage
+                image={card.background}
+                alt=""
+                sizes="(min-width: 1024px) 360px, (min-width: 640px) 50vw, 90vw"
+                pictureClass="absolute inset-0 pointer-events-none"
+                imgClass="w-full h-full object-cover"
+                loading="lazy"
+                fetchpriority="low"
+                decoding="async"
+              />
             {/if}
             <a
               href={card.link}

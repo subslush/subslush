@@ -15,11 +15,11 @@
   function getServiceDisplay(serviceName: string) {
     // Normalize service name (trim, handle case variations)
     const normalizedName = serviceName.trim();
-    const logoPath = resolveLogoKeyFromName(normalizedName);
+    const logoImage = resolveLogoKeyFromName(normalizedName);
 
     return {
-      hasLogo: !!logoPath,
-      logoPath: logoPath || '',
+      hasLogo: !!logoImage,
+      logoImage,
       letter: normalizedName.charAt(0).toUpperCase(),
       fullName: normalizedName
     };

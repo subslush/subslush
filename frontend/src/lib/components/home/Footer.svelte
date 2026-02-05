@@ -1,5 +1,6 @@
 <script lang="ts">
   import TrustBar from '$lib/components/TrustBar.svelte';
+  import { openConsentPreferences } from '$lib/stores/consent.js';
   import { Instagram, Music2, Youtube, Twitter, MessageCircle, Twitch } from 'lucide-svelte';
 </script>
 
@@ -45,6 +46,15 @@
           <li><a href="/terms" class="hover:text-white transition-colors">Terms and conditions</a></li>
           <li><a href="/privacy" class="hover:text-white transition-colors">Privacy and cookie policy</a></li>
           <li><a href="/returns" class="hover:text-white transition-colors">Refund policy</a></li>
+          <li>
+            <button
+              type="button"
+              class="hover:text-white transition-colors"
+              on:click={openConsentPreferences}
+            >
+              Cookie settings
+            </button>
+          </li>
         </ul>
       </div>
 

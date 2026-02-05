@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { SubscriptionDetail } from '$lib/types/subscription';
   import { resolveLogoKey } from '$lib/assets/logoRegistry.js';
+  import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
 
   export let subscription: SubscriptionDetail;
 
@@ -14,8 +15,8 @@
     return colors[serviceType] || { bg: 'bg-surface-50', text: 'text-surface-700', border: 'border-surface-200' };
   }
 
-  function getServiceLogo(serviceType: string, logoKey?: string | null): string {
-    return resolveLogoKey(logoKey || serviceType) || '';
+  function getServiceLogo(serviceType: string, logoKey?: string | null) {
+    return resolveLogoKey(logoKey || serviceType);
   }
 
   function formatJoinDate(dateString: string) {
@@ -38,11 +39,14 @@
     <div class="flex items-center space-x-4">
       <div class="w-16 h-16 {serviceColors.bg} {serviceColors.border} border-2 rounded-lg flex items-center justify-center">
         {#if serviceLogo}
-          <img
-            src={serviceLogo}
-            alt="{subscription.serviceName} logo"
-            class="w-12 h-12 object-contain"
+          <ResponsiveImage
+            image={serviceLogo}
+            alt={`${subscription.serviceName} logo`}
+            sizes="48px"
+            pictureClass="w-12 h-12"
+            imgClass="w-12 h-12 object-contain"
             loading="lazy"
+            decoding="async"
           />
         {:else}
           <div class="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-500 text-sm font-medium">

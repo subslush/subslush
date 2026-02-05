@@ -127,5 +127,11 @@ export const handle: Handle = async ({ event, resolve }) => {
     filterSerializedResponseHeaders: (name) => name.toLowerCase() === 'content-type'
   });
 
+  if (event.url.pathname.startsWith('/_app/immutable/')) {
+    if (!response.headers.has('cache-control')) {
+      response.headers.set('cache-control', 'public, max-age=31536000, immutable');
+    }
+  }
+
   return response;
 };

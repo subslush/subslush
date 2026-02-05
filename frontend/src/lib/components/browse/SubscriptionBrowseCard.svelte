@@ -13,13 +13,12 @@
   } from 'lucide-svelte';
   import type { BrowseSubscription } from '$lib/types/browse.js';
   import { resolveLogoKey } from '$lib/assets/logoRegistry.js';
+  import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
 
   export let subscription: BrowseSubscription;
   export let isHovered = false;
   export let showCompareButton = false;
-
-  let hasLogoError = false;
 
   const dispatch = createEventDispatcher<{
     hover: BrowseSubscription;
@@ -30,15 +29,9 @@
 
   $: availabilityColor = getAvailabilityColor(subscription.availability.availableSeats);
   $: availabilityText = getAvailabilityText(subscription.availability);
-  $: logoSource = resolveLogoKey(subscription.logoKey ?? subscription.logo_key) || subscription.logoUrl || '';
+  $: logoImage = resolveLogoKey(subscription.logoKey ?? subscription.logo_key);
+  $: logoUrl = subscription.logoUrl || '';
   $: resolvedCurrency = normalizeCurrencyCode(subscription.currency) || 'USD';
-  $: if (logoSource) {
-    hasLogoError = false;
-  }
-
-  const handleLogoError = () => {
-    hasLogoError = true;
-  };
 
   function getAvailabilityColor(seats: number): string {
     if (seats <= 2) return 'text-red-600 bg-red-50 border-red-200';
@@ -135,19 +128,30 @@
   <!-- Service logo and badges -->
   <div class="flex items-start justify-between mb-4">
     <div class="flex items-center space-x-3">
-      {#if logoSource && !hasLogoError}
+      {#if logoImage}
+        <ResponsiveImage
+          image={logoImage}
+          alt={`${subscription.serviceName} logo`}
+          sizes="64px"
+          pictureClass="w-16 h-16"
+          imgClass="w-16 h-16 rounded-lg object-cover"
+          loading="lazy"
+          decoding="async"
+        />
+      {:else if logoUrl}
         <img
-          src={logoSource}
-          alt="{subscription.serviceName} logo"
+          src={logoUrl}
+          alt={`${subscription.serviceName} logo`}
+          width="64"
+          height="64"
           class="w-16 h-16 rounded-lg object-cover"
           loading="lazy"
-          on:error={handleLogoError}
         />
       {/if}
       <!-- Fallback logo -->
       <div
         class="w-16 h-16 rounded-lg bg-gradient-to-br from-cyan-500/10 to-pink-500/10 flex items-center justify-center text-2xl font-bold text-gray-700"
-        style="display: {logoSource && !hasLogoError ? 'none' : 'flex'}"
+        style="display: {logoImage || logoUrl ? 'none' : 'flex'}"
       >
         {subscription.serviceName.charAt(0)}
       </div>
