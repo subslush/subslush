@@ -758,7 +758,10 @@ async function ensureCatalogTermsUnavailableTask(params: {
 
     return (result.rowCount ?? 0) > 0;
   } catch (error) {
-    Logger.error('Failed to create catalog terms unavailable admin task:', error);
+    Logger.error(
+      'Failed to create catalog terms unavailable admin task:',
+      error
+    );
     return false;
   }
 }
@@ -834,12 +837,9 @@ export async function subscriptionRoutes(
             retried: termLookupRetried,
           });
           if (taskCreated) {
-            Logger.warn(
-              'Catalog term lookup unavailable; admin task created',
-              {
-                category: CATALOG_TERMS_UNAVAILABLE_TASK_CATEGORY,
-              }
-            );
+            Logger.warn('Catalog term lookup unavailable; admin task created', {
+              category: CATALOG_TERMS_UNAVAILABLE_TASK_CATEGORY,
+            });
           }
           reply.header('X-Catalog-Terms-Status', 'unavailable');
           return ErrorResponses.serviceUnavailable(
@@ -1082,12 +1082,9 @@ export async function subscriptionRoutes(
             retried: termLookupRetried,
           });
           if (taskCreated) {
-            Logger.warn(
-              'Catalog term lookup unavailable; admin task created',
-              {
-                category: CATALOG_TERMS_UNAVAILABLE_TASK_CATEGORY,
-              }
-            );
+            Logger.warn('Catalog term lookup unavailable; admin task created', {
+              category: CATALOG_TERMS_UNAVAILABLE_TASK_CATEGORY,
+            });
           }
           reply.header('X-Catalog-Terms-Status', 'unavailable');
           return ErrorResponses.serviceUnavailable(
@@ -2041,10 +2038,17 @@ export async function subscriptionRoutes(
         }
 
         const order = orderResult.data;
+        const contentId =
+          product.slug?.trim() ||
+          productVariantId ||
+          product.id ||
+          planCode ||
+          product.service_type ||
+          null;
         const checkoutProperties = buildTikTokProductProperties({
           value: price,
           currency,
-          contentId: product.slug || productVariantId || product.id,
+          contentId,
           contentName: product.name || product.service_type || planCode,
           contentCategory: product.category || product.service_type || null,
           price,
