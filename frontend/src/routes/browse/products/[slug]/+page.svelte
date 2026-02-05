@@ -6,7 +6,8 @@
   import PurchaseFlow from '$lib/components/PurchaseFlow.svelte';
   import { credits } from '$lib/stores/credits.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
-  import { trackBeginCheckout, trackViewItem } from '$lib/utils/analytics.js';
+  import { subscriptionService } from '$lib/api/subscriptions.js';
+  import { trackAddToCart, trackViewItem } from '$lib/utils/analytics.js';
   import { Shield } from 'lucide-svelte';
   import type {
     ProductVariantOption,
@@ -110,12 +111,39 @@
     if (!term) return;
     const analyticsItem = buildProductItem(variant, term, 'Product Detail');
     if (analyticsItem) {
-      trackBeginCheckout(analyticsItem.currency, term.total_price, [analyticsItem]);
+      trackAddToCart(analyticsItem.currency, term.total_price, [analyticsItem]);
+      void subscriptionService.trackAddToCart({
+        contentId: product.slug || product.id || variant.id,
+        contentName: product.name || product.service_type || variant.display_name,
+        contentCategory: product.category || product.service_type || undefined,
+        price: term.total_price,
+        currency: analyticsItem.currency,
+        brand: product.service_type || undefined,
+        value: term.total_price,
+        externalId: getOrCreateGuestId()
+      });
     }
     selectedVariant = variant;
     selectedDuration = term.months;
     selectedTotalPrice = term.total_price;
     showPurchaseFlow = true;
+  };
+
+  const getOrCreateGuestId = (): string => {
+    if (typeof window === 'undefined') return 'guest';
+    try {
+      const key = 'tiktok_guest_id';
+      const existing = localStorage.getItem(key);
+      if (existing) return existing;
+      const generated =
+        typeof crypto?.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `guest_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      localStorage.setItem(key, generated);
+      return generated;
+    } catch {
+      return 'guest';
+    }
   };
 
   const closePurchaseFlow = () => {

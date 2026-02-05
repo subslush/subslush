@@ -46,6 +46,21 @@ export interface PurchaseRequest {
   coupon_code?: string;
 }
 
+export interface AddToCartTrackRequest {
+  contentId: string;
+  contentName?: string;
+  contentCategory?: string;
+  price?: number;
+  currency?: string;
+  brand?: string;
+  value?: number;
+  externalId?: string;
+}
+
+export interface AddToCartTrackResponse {
+  message: string;
+}
+
 type QueryParamValue = string | number | boolean | null | undefined;
 
 export interface SubscriptionQuery extends Record<string, QueryParamValue> {

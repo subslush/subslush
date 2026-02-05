@@ -141,7 +141,12 @@ const trackTikTokEvent = (eventName: string, params?: AnalyticsParams): void => 
   if (!hasMarketingConsent()) return;
   const ttq = getTtq();
   if (!ttq) return;
-  if (eventName !== 'Login' && eventName !== 'CompleteRegistration') return;
+  if (
+    eventName !== 'Login' &&
+    eventName !== 'CompleteRegistration' &&
+    eventName !== 'AddToCart'
+  )
+    return;
   ttq.track(eventName, params ? cleanParams(params) : {});
 };
 
@@ -253,6 +258,22 @@ export const trackBeginCheckout = (
   const contents = buildTikTokContents(normalizedItems, 'product');
   if (!contents.length) return;
   trackTikTokEvent('InitiateCheckout', {
+    contents,
+    value,
+    currency: resolveCurrency(currency, normalizedItems)
+  });
+};
+
+export const trackAddToCart = (
+  currency: string | undefined,
+  value: number | undefined,
+  items: AnalyticsItem[]
+): void => {
+  const normalizedItems = cleanItems(items);
+  if (!normalizedItems.length) return;
+  const contents = buildTikTokContents(normalizedItems, 'product');
+  if (!contents.length) return;
+  trackTikTokEvent('AddToCart', {
     contents,
     value,
     currency: resolveCurrency(currency, normalizedItems)

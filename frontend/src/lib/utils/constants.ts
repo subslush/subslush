@@ -29,6 +29,7 @@ export const API_ENDPOINTS = {
     PRODUCT_DETAIL: '/subscriptions/products',
     VALIDATE: '/subscriptions/validate-purchase',
     PURCHASE: '/subscriptions/purchase',
+    ADD_TO_CART_TRACK: '/subscriptions/track/add-to-cart',
     MY_SUBSCRIPTIONS: '/subscriptions/my-subscriptions',
     DETAILS: '/subscriptions',
     AUTO_RENEW_ENABLE: '/subscriptions',

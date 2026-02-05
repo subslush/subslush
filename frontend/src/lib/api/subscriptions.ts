@@ -18,7 +18,9 @@ import type {
   AutoRenewDisableResponse,
   RenewalCheckoutResponse,
   CreditsAutoRenewResponse,
-  CreditsRenewalResponse
+  CreditsRenewalResponse,
+  AddToCartTrackRequest,
+  AddToCartTrackResponse
 } from '$lib/types/subscription.js';
 import type {
   UpgradeSelectionResponse,
@@ -66,6 +68,14 @@ export class SubscriptionService {
       data
     );
     return unwrapApiData<PurchaseResponse>(response);
+  }
+
+  async trackAddToCart(payload: AddToCartTrackRequest): Promise<AddToCartTrackResponse> {
+    const response = await apiClient.post(
+      API_ENDPOINTS.SUBSCRIPTIONS.ADD_TO_CART_TRACK,
+      payload
+    );
+    return unwrapApiData<AddToCartTrackResponse>(response);
   }
 
   async getUpgradeSelection(subscriptionId: string): Promise<UpgradeSelectionResponse> {
