@@ -8,7 +8,7 @@ import {
 import { trackPageView } from '$lib/utils/analytics.js';
 
 const ANALYTICS_ID = 'G-VQ0N792RNT';
-const TIKTOK_PIXEL_ID = 'D61V1M3C77UAR2VU7L8G';
+const TIKTOK_PIXEL_ID = 'D62CLGJC77U8OPSUBNLG';
 const CRISP_WEBSITE_ID = '68cb8ad9-b3c8-43e9-9bac-0634574c7a83';
 
 let analyticsLoaded = false;
