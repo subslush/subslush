@@ -108,10 +108,27 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (!result.success) {
           reply.statusCode = 400;
-          return reply.send({
+          const payload: {
+            error: string;
+            message?: string;
+            code?: string;
+            details?: { loginText: string; loginUrl: string };
+          } = {
             error: 'Registration Failed',
-            message: result.error,
-          });
+          };
+          if (result.error) {
+            payload.message = result.error;
+          }
+          if (result.code) {
+            payload.code = result.code;
+          }
+          if (result.login) {
+            payload.details = {
+              loginText: result.login.text,
+              loginUrl: result.login.url,
+            };
+          }
+          return reply.send(payload);
         }
 
         // Set HTTP-only cookie with access token (skip when email verification required)

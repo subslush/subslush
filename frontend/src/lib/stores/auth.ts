@@ -18,6 +18,7 @@ interface AuthState {
   user: User | null;
   isLoading: boolean;
   error: string | null;
+  errorAction: { text: string; url: string } | null;
   isAuthenticated: boolean;
   initialized: boolean;
 }
@@ -26,12 +27,31 @@ const initialState: AuthState = {
   user: null,
   isLoading: false,
   error: null,
+  errorAction: null,
   isAuthenticated: false,
   initialized: false
 };
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
+
+const getErrorAction = (
+  error: unknown
+): { text: string; url: string } | null => {
+  if (!error || typeof error !== 'object') {
+    return null;
+  }
+  const details = (error as { details?: unknown }).details;
+  if (!details || typeof details !== 'object') {
+    return null;
+  }
+  const loginText = (details as { loginText?: unknown }).loginText;
+  const loginUrl = (details as { loginUrl?: unknown }).loginUrl;
+  if (typeof loginText === 'string' && typeof loginUrl === 'string') {
+    return { text: loginText, url: loginUrl };
+  }
+  return null;
+};
 
 function createAuthStore(initialUser: User | null = null) {
   const { subscribe, set, update } = writable<AuthState>({
@@ -75,7 +95,8 @@ function createAuthStore(initialUser: User | null = null) {
           isAuthenticated: true,
           isLoading: false,
           initialized: true,
-          error: null
+          error: null,
+          errorAction: null
         }));
       } catch (error) {
         console.error('🔐 [AUTH STORE] Session refresh failed:', error);
@@ -87,7 +108,8 @@ function createAuthStore(initialUser: User | null = null) {
           isAuthenticated: false,
           isLoading: false,
           initialized: true,
-          error: null
+          error: null,
+          errorAction: null
         }));
       }
     },
@@ -100,6 +122,7 @@ function createAuthStore(initialUser: User | null = null) {
         user,
         isLoading: false,
         error: null,
+        errorAction: null,
         isAuthenticated: !!user,
         initialized: true
       });
@@ -107,17 +130,22 @@ function createAuthStore(initialUser: User | null = null) {
 
     // Set loading state
     setLoading: (isLoading: boolean) => {
-      update(state => ({ ...state, isLoading, error: null }));
+      update(state => ({ ...state, isLoading, error: null, errorAction: null }));
     },
 
     // Set error state
     setError: (error: string | null) => {
-      update(state => ({ ...state, error, isLoading: false }));
+      update(state => ({
+        ...state,
+        error,
+        errorAction: null,
+        isLoading: false
+      }));
     },
 
     // Clear error
     clearError: () => {
-      update(state => ({ ...state, error: null }));
+      update(state => ({ ...state, error: null, errorAction: null }));
     },
 
     // Logout - clear user and redirect
@@ -135,6 +163,7 @@ function createAuthStore(initialUser: User | null = null) {
           user: null,
           isLoading: false,
           error: null,
+          errorAction: null,
           isAuthenticated: false,
           initialized: false
         });
@@ -148,6 +177,7 @@ function createAuthStore(initialUser: User | null = null) {
           user: null,
           isLoading: false,
           error: null,
+          errorAction: null,
           isAuthenticated: false,
           initialized: false
         });
@@ -193,7 +223,8 @@ function createAuthStore(initialUser: User | null = null) {
             isAuthenticated: false,
             isLoading: false,
             initialized: true,
-            error: null
+            error: null,
+            errorAction: null
           }));
           return response;
         }
@@ -205,7 +236,8 @@ function createAuthStore(initialUser: User | null = null) {
           isAuthenticated: true,
           isLoading: false,
           initialized: true,
-          error: null
+          error: null,
+          errorAction: null
         }));
 
         await identifyTikTokUser(response.user);
@@ -224,10 +256,12 @@ function createAuthStore(initialUser: User | null = null) {
           error,
           'Registration failed. Please try again.'
         );
+        const errorAction = getErrorAction(error);
 
         update(state => ({
           ...state,
           error: errorMessage,
+          errorAction,
           isLoading: false
         }));
 
@@ -259,7 +293,8 @@ function createAuthStore(initialUser: User | null = null) {
           isAuthenticated: true,
           isLoading: false,
           initialized: true,
-          error: null
+          error: null,
+          errorAction: null
         }));
 
         await identifyTikTokUser(response.user);
@@ -279,10 +314,12 @@ function createAuthStore(initialUser: User | null = null) {
           error,
           'Login failed. Please try again.'
         );
+        const errorAction = getErrorAction(error);
 
         update(state => ({
           ...state,
           error: errorMessage,
+          errorAction,
           isLoading: false
         }));
 
@@ -298,6 +335,7 @@ function createAuthStore(initialUser: User | null = null) {
         user,
         isLoading: false,
         error: null,
+        errorAction: null,
         isAuthenticated: !!user,
         initialized: true
       });
@@ -313,3 +351,4 @@ export const user = derived(auth, $auth => $auth.user);
 export const isAuthenticated = derived(auth, $auth => $auth.isAuthenticated);
 export const isLoading = derived(auth, $auth => $auth.isLoading);
 export const authError = derived(auth, $auth => $auth.error);
+export const authErrorAction = derived(auth, $auth => $auth.errorAction);

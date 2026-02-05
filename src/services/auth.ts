@@ -22,6 +22,12 @@ const resolveEmailRedirectUrl = (): string | null => {
   return `${base}/auth/confirm`;
 };
 
+const resolveLoginUrl = (): string => {
+  const base = resolveAppBaseUrl();
+  if (!base) return '/auth/login';
+  return `${base}/auth/login`;
+};
+
 export interface User {
   id: string;
   email: string;
@@ -40,6 +46,8 @@ export interface AuthResult {
   tokens?: JWTTokens | undefined;
   sessionId?: string | undefined;
   error?: string | undefined;
+  code?: string | undefined;
+  login?: { text: string; url: string } | undefined;
   requiresEmailVerification?: boolean | undefined;
 }
 
@@ -77,12 +85,39 @@ class AuthService {
     return getDatabasePool();
   }
 
+  private resolveLoginAction(): { text: string; url: string } {
+    return {
+      text: 'Log in',
+      url: resolveLoginUrl(),
+    };
+  }
+
+  private async emailExists(email: string): Promise<boolean> {
+    const result = await this.pool.query(
+      'SELECT 1 FROM users WHERE lower(email) = lower($1) LIMIT 1',
+      [email]
+    );
+    return result.rowCount > 0;
+  }
+
   async register(
     data: RegisterData,
     sessionOptions: SessionCreateOptions
   ): Promise<AuthResult> {
     try {
       const { email, password, firstName, lastName } = data;
+      const trimmedEmail = email.trim();
+
+      // Guard against duplicate user registrations before creating Supabase auth record
+      const exists = await this.emailExists(trimmedEmail);
+      if (exists) {
+        return {
+          success: false,
+          error: 'An account with this email already exists',
+          code: 'EMAIL_ALREADY_EXISTS',
+          login: this.resolveLoginAction(),
+        };
+      }
 
       const emailRedirectTo = resolveEmailRedirectUrl();
       const profileData: { first_name?: string; last_name?: string } = {};
@@ -105,15 +140,18 @@ class AuthService {
 
       const { data: authData, error: authError } =
         await this.supabase.auth.signUp({
-          email,
+          email: trimmedEmail,
           password,
           options: signUpOptions,
         });
 
       if (authError) {
+        const isDuplicate = authError.message === 'User already registered';
         return {
           success: false,
           error: this.mapSupabaseError(authError),
+          code: isDuplicate ? 'EMAIL_ALREADY_EXISTS' : undefined,
+          login: isDuplicate ? this.resolveLoginAction() : undefined,
         };
       }
 
@@ -152,6 +190,11 @@ class AuthService {
         );
       } catch (dbError) {
         Logger.error('Failed to create PostgreSQL user record:', dbError);
+        const isDuplicate =
+          typeof dbError === 'object' &&
+          dbError !== null &&
+          (dbError as { code?: string }).code === '23505' &&
+          (dbError as { constraint?: string }).constraint === 'users_email_key';
         // Clean up Supabase user on PostgreSQL failure
         try {
           await this.supabaseAdmin.auth.admin.deleteUser(authData.user.id);
@@ -163,7 +206,11 @@ class AuthService {
         }
         return {
           success: false,
-          error: 'User registration incomplete - database error',
+          error: isDuplicate
+            ? 'An account with this email already exists'
+            : 'User registration incomplete - database error',
+          code: isDuplicate ? 'EMAIL_ALREADY_EXISTS' : undefined,
+          login: isDuplicate ? this.resolveLoginAction() : undefined,
         };
       }
 

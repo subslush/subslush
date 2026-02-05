@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import { Eye, EyeOff, UserPlus, Loader2, Check, X, Info } from 'lucide-svelte';
-  import { auth, authError, isLoading } from '$lib/stores/auth.js';
+  import { auth, authError, authErrorAction, isLoading } from '$lib/stores/auth.js';
   import { registerSchema, type RegisterFormData } from '$lib/validation/auth.js';
   import { getPasswordStrength, validatePasswordRequirements } from '$lib/utils/validators.js';
   import { ROUTES } from '$lib/utils/constants.js';
@@ -175,6 +175,14 @@
         <p>{$authError}</p>
       </div>
       <div class="alert-actions">
+        {#if $authErrorAction}
+          <a
+            href={$authErrorAction.url}
+            class="text-sm font-semibold underline underline-offset-2 text-white/90 hover:text-white"
+          >
+            {$authErrorAction.text}
+          </a>
+        {/if}
         <button
           type="button"
           class="btn-icon btn-icon-sm variant-filled"
