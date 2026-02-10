@@ -255,6 +255,14 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           setCsrfCookie(reply);
         }
 
+        if (result.user) {
+          void tiktokEventsService.trackCompleteRegistration({
+            userId: result.user.id,
+            email: result.user.email,
+            context: buildTikTokRequestContext(request),
+          });
+        }
+
         return reply.send({
           message: 'Email confirmed successfully',
           user: result.user,
