@@ -72,6 +72,12 @@ const normalizeExternalId = (externalId?: string | null): string | null => {
 const sha256 = (value: string): string =>
   crypto.createHash('sha256').update(value).digest('hex');
 
+const normalizeStringValue = (value?: string | null): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
+
 const cleanObject = <T extends Record<string, unknown>>(obj: T): T => {
   const entries = Object.entries(obj).filter(
     ([, value]) => value !== undefined && value !== null && value !== ''
@@ -154,13 +160,13 @@ export const buildTikTokProductProperties = (params: {
 }): Record<string, unknown> =>
   cleanObject({
     value: params.value ?? undefined,
-    currency: params.currency?.toUpperCase(),
-    content_id: params.contentId ?? undefined,
+    currency: normalizeStringValue(params.currency)?.toUpperCase(),
+    content_id: normalizeStringValue(params.contentId),
     content_type: 'product',
-    content_name: params.contentName ?? undefined,
-    content_category: params.contentCategory ?? undefined,
+    content_name: normalizeStringValue(params.contentName),
+    content_category: normalizeStringValue(params.contentCategory),
     price: params.price ?? undefined,
-    brand: params.brand ?? undefined,
+    brand: normalizeStringValue(params.brand),
   });
 
 class TikTokEventsService {
