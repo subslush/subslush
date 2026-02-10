@@ -9,14 +9,12 @@
 	import { initializeCurrency } from '$lib/stores/currency';
 	import { page } from '$app/stores';
 	import PromoBanner from '$lib/components/PromoBanner.svelte';
-	import CookieConsentBanner from '$lib/components/consent/CookieConsentBanner.svelte';
 	import faviconIco from '$lib/assets/favicon.ico';
 	import iconSvg from '$lib/assets/icon0.svg';
 	import iconPng from '$lib/assets/icon1.png';
 	import appleIcon from '$lib/assets/apple-icon.png';
 	import manifest192 from '$lib/assets/web-app-manifest-192x192.png';
 	import manifest512 from '$lib/assets/web-app-manifest-512x512.png';
-	import { initConsent } from '$lib/stores/consent.js';
 	import { initConsentSideEffects } from '$lib/consent/thirdParty.js';
 	import { identifyTikTokUser, trackPageView } from '$lib/utils/analytics.js';
 	import type { LayoutData } from './$types';
@@ -81,7 +79,6 @@
 	}
 
 	onMount(() => {
-		initConsent();
 		initConsentSideEffects();
 		updateBannerOffset();
 		window.addEventListener('resize', updateBannerOffset);
@@ -131,5 +128,4 @@
 		<PromoBanner />
 	{/if}
 	<slot />
-	<CookieConsentBanner />
 </QueryClientProvider>

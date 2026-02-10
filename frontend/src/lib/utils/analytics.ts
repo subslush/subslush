@@ -1,5 +1,4 @@
 import { browser } from '$app/environment';
-import { hasAnalyticsConsent, hasMarketingConsent } from '$lib/stores/consent.js';
 import type { User as AuthUser } from '$lib/types/auth.js';
 
 export type AnalyticsItem = {
@@ -83,7 +82,6 @@ let hasTrackedTikTokPageView = false;
 
 export const identifyTikTokUser = async (user: AuthUser | null): Promise<void> => {
   if (!browser) return;
-  if (!hasMarketingConsent()) return;
   const ttq = getTtq();
   if (!ttq || typeof ttq.identify !== 'function') return;
   if (identifyInFlight) {
@@ -131,14 +129,12 @@ const cleanItems = (items: AnalyticsItem[]): AnalyticsItem[] =>
     .map(item => cleanParams(item));
 
 const trackEvent = (eventName: string, params?: AnalyticsParams): void => {
-  if (!hasAnalyticsConsent()) return;
   const gtag = getGtag();
   if (!gtag) return;
   gtag('event', eventName, params ? cleanParams(params) : {});
 };
 
 const trackTikTokEvent = (eventName: string, params?: AnalyticsParams): void => {
-  if (!hasMarketingConsent()) return;
   const ttq = getTtq();
   if (!ttq) return;
   if (
@@ -151,7 +147,6 @@ const trackTikTokEvent = (eventName: string, params?: AnalyticsParams): void => 
 };
 
 const trackTikTokPageView = (): void => {
-  if (!hasMarketingConsent()) return;
   if (!hasTrackedTikTokPageView) {
     hasTrackedTikTokPageView = true;
   }

@@ -1,10 +1,4 @@
 import { browser } from '$app/environment';
-import { get } from 'svelte/store';
-import {
-  consentStore,
-  hasAnalyticsConsent,
-  hasMarketingConsent
-} from '$lib/stores/consent.js';
 import { trackPageView } from '$lib/utils/analytics.js';
 
 const ANALYTICS_ID = 'G-VQ0N792RNT';
@@ -40,7 +34,6 @@ const scheduleAnalytics = (): void => {
   analyticsScheduled = true;
   deferAfterLoad(() => {
     analyticsScheduled = false;
-    if (!hasAnalyticsConsent()) return;
     initAnalytics();
   });
 };
@@ -50,7 +43,6 @@ const scheduleMarketing = (): void => {
   marketingScheduled = true;
   deferAfterLoad(() => {
     marketingScheduled = false;
-    if (!hasMarketingConsent()) return;
     initTikTokPixel();
   });
 };
@@ -167,25 +159,9 @@ const initCrisp = (): void => {
   loadScript('https://client.crisp.chat/l.js', 'crisp-chat');
 };
 
-const applyConsent = (): void => {
-  if (!browser) return;
-  if (hasAnalyticsConsent()) {
-    scheduleAnalytics();
-  }
-  if (hasMarketingConsent()) {
-    scheduleMarketing();
-  }
-};
-
 export const initConsentSideEffects = (): void => {
   if (!browser) return;
   scheduleSupport();
-  const current = get(consentStore);
-  if (current) {
-    applyConsent();
-  }
-  consentStore.subscribe(state => {
-    if (!state) return;
-    applyConsent();
-  });
+  scheduleAnalytics();
+  scheduleMarketing();
 };
