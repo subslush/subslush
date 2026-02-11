@@ -41,7 +41,10 @@
     } catch {
       // Ignore server tracking errors to avoid blocking the UX.
     }
-    trackCompleteRegistration('email_verification');
+    trackCompleteRegistration(
+      'email_verification',
+      `user_${user.id}_registration`
+    );
     markTracked(storageKey);
   });
 </script>

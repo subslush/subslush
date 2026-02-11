@@ -18,6 +18,21 @@ body {
 	padding: 0;
 }
 
+/* Reserve space for the chat widget so fixed UI doesn't overlap it. */
+:root {
+	--chat-widget-offset: 96px;
+}
+
+@media (max-width: 640px) {
+	:root {
+		--chat-widget-offset: 72px;
+	}
+}
+
+.scroll-to-top-button {
+	bottom: calc(1.5rem + var(--chat-widget-offset, 0px));
+}
+
 /* Dashboard-specific layout (only used in dashboard routes) */
 .dashboard-shell {
 	@apply min-h-screen flex flex-col;

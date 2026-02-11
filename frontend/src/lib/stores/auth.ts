@@ -298,7 +298,7 @@ function createAuthStore(initialUser: User | null = null) {
         }));
 
         await identifyTikTokUser(response.user);
-        trackLogin('email');
+        trackLogin('email', `user_${response.user.id}_login`);
 
         // Force a complete page refresh to ensure server gets the cookie
         console.log('🔐 [AUTH STORE] Redirecting to home with refresh...');

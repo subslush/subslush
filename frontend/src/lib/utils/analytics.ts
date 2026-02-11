@@ -262,7 +262,8 @@ export const trackBeginCheckout = (
 export const trackAddToCart = (
   currency: string | undefined,
   value: number | undefined,
-  items: AnalyticsItem[]
+  items: AnalyticsItem[],
+  eventId?: string
 ): void => {
   const normalizedItems = cleanItems(items);
   if (!normalizedItems.length) return;
@@ -271,7 +272,8 @@ export const trackAddToCart = (
   trackTikTokEvent('AddToCart', {
     contents,
     value,
-    currency: resolveCurrency(currency, normalizedItems)
+    currency: resolveCurrency(currency, normalizedItems),
+    event_id: eventId
   });
 };
 
@@ -405,17 +407,22 @@ export const trackSearch = (searchTerm: string, items: AnalyticsItem[] = []): vo
   }));
 };
 
-export const trackCompleteRegistration = (method?: string): void => {
+export const trackCompleteRegistration = (
+  method?: string,
+  eventId?: string
+): void => {
   trackEvent('sign_up', cleanParams({ method }));
   trackTikTokEvent('CompleteRegistration', {
-    content_name: 'Account Registration'
+    content_name: 'Account Registration',
+    event_id: eventId
   });
 };
 
-export const trackLogin = (method?: string): void => {
+export const trackLogin = (method?: string, eventId?: string): void => {
   trackEvent('login', cleanParams({ method }));
   trackTikTokEvent('Login', {
-    content_name: 'Account Login'
+    content_name: 'Account Login',
+    event_id: eventId
   });
 };
 

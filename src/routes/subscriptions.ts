@@ -1050,6 +1050,7 @@ export async function subscriptionRoutes(
           brand?: string;
           value?: number;
           externalId?: string;
+          eventId?: string;
         };
       }>,
       reply: FastifyReply
@@ -1076,6 +1077,10 @@ export async function subscriptionRoutes(
             message: 'externalId is required for anonymous tracking',
           });
         }
+        const eventId =
+          typeof body.eventId === 'string' ? body.eventId.trim() : '';
+        const resolvedEventId =
+          eventId || `user_${effectiveUserId}_add_to_cart_${Date.now()}`;
 
         const properties = buildTikTokProductProperties({
           value:
@@ -1095,7 +1100,7 @@ export async function subscriptionRoutes(
         void tiktokEventsService.trackAddToCart({
           userId: effectiveUserId,
           email: user?.email ?? null,
-          eventId: `user_${effectiveUserId}_add_to_cart_${Date.now()}`,
+          eventId: resolvedEventId,
           properties,
           context: buildTikTokRequestContext(request),
         });

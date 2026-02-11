@@ -55,6 +55,7 @@ export interface AddToCartTrackRequest {
   brand?: string;
   value?: number;
   externalId?: string;
+  eventId?: string;
 }
 
 export interface AddToCartTrackResponse {

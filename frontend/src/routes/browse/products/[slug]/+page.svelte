@@ -111,7 +111,8 @@
     if (!term) return;
     const analyticsItem = buildProductItem(variant, term, 'Product Detail');
     if (analyticsItem) {
-      trackAddToCart(analyticsItem.currency, term.total_price, [analyticsItem]);
+      const eventId = buildAddToCartEventId();
+      trackAddToCart(analyticsItem.currency, term.total_price, [analyticsItem], eventId);
       void subscriptionService.trackAddToCart({
         contentId: product.slug || product.id || variant.id,
         contentName: product.name || product.service_type || variant.display_name,
@@ -120,7 +121,8 @@
         currency: analyticsItem.currency,
         brand: product.service_type || undefined,
         value: term.total_price,
-        externalId: getOrCreateGuestId()
+        externalId: getOrCreateGuestId(),
+        eventId
       });
     }
     selectedVariant = variant;
@@ -144,6 +146,12 @@
     } catch {
       return 'guest';
     }
+  };
+
+  const buildAddToCartEventId = (): string => {
+    const ownerId = getOrCreateGuestId();
+    const nonce = Math.random().toString(16).slice(2, 8);
+    return `cart_${ownerId}_${Date.now()}_${nonce}`;
   };
 
   const closePurchaseFlow = () => {

@@ -328,7 +328,7 @@
 
   {#if showScrollTop}
     <button
-      class="fixed bottom-6 right-6 flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500 text-white shadow-lg hover:bg-cyan-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      class="fixed right-6 scroll-to-top-button flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500 text-white shadow-lg hover:bg-cyan-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       aria-label="Back to top"
       on:click={scrollToTop}
     >

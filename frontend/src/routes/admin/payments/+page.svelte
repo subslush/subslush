@@ -392,6 +392,7 @@
           <thead class="text-left text-xs uppercase text-gray-500">
             <tr>
               <th class="py-2">Payment</th>
+              <th class="py-2">User</th>
               <th class="py-2">Provider</th>
               <th class="py-2">Amount</th>
               <th class="py-2">Status</th>
@@ -403,6 +404,7 @@
             {#each payments as payment}
               <tr>
                 <td class="py-3 font-semibold text-gray-900">{pickValue(payment.paymentId, payment.payment_id, payment.id)}</td>
+                <td class="py-3 text-gray-600">{pickValue(payment.userId, payment.user_id) || '--'}</td>
                 <td class="py-3 text-gray-600">{pickValue(payment.provider, payment.payment_provider) || '--'}</td>
                 <td class="py-3 text-gray-600">
                   {formatCents(pickValue(payment.amountCents, payment.amount_cents), pickValue(payment.currency, payment.currency) || 'USD')}
