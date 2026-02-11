@@ -25,6 +25,11 @@ const parseNumber = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const isValidUuid = (value: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+
 export async function adminOrderRoutes(
   fastify: FastifyInstance
 ): Promise<void> {
@@ -387,6 +392,106 @@ export async function adminOrderRoutes(
         return ErrorResponses.internalError(
           reply,
           'Failed to update order status'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/:orderId/replay-delivery',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId'],
+          properties: {
+            orderId: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          properties: {
+            recalc_dates: { type: 'boolean' },
+            resend_email: { type: 'boolean' },
+            require_credentials: { type: 'boolean' },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { orderId } = request.params as { orderId: string };
+        const body = (request.body || {}) as {
+          recalc_dates?: boolean;
+          resend_email?: boolean;
+          require_credentials?: boolean;
+        };
+
+        if (!isValidUuid(orderId)) {
+          return ErrorResponses.badRequest(reply, 'Invalid order ID format');
+        }
+
+        const order = await orderService.getOrderById(orderId);
+        if (!order) {
+          return ErrorResponses.notFound(reply, 'Order not found');
+        }
+        if (order.status !== 'delivered') {
+          return ErrorResponses.badRequest(
+            reply,
+            'Order must be delivered before replay'
+          );
+        }
+
+        const recalcDates = body.recalc_dates !== false;
+        const resendEmail = body.resend_email !== false;
+        const requireCredentials = body.require_credentials ?? true;
+        if (!recalcDates && !resendEmail) {
+          return ErrorResponses.badRequest(
+            reply,
+            'No replay action selected'
+          );
+        }
+
+        const adminUserId = request.user?.userId || 'admin';
+
+        const dateResult = recalcDates
+          ? await subscriptionService.replayDeliveryForOrder(
+              orderId,
+              adminUserId,
+              {
+                requireCredentials,
+                reason: 'order_delivered_replay',
+              }
+            )
+          : null;
+        const emailResult = resendEmail
+          ? await orderService.resendOrderDeliveredEmail(orderId)
+          : null;
+
+        await logAdminAction(request, {
+          action: 'orders.delivery.replay',
+          entityType: 'order',
+          entityId: orderId,
+          metadata: {
+            recalc_dates: recalcDates,
+            resend_email: resendEmail,
+            require_credentials: requireCredentials,
+            date_result: dateResult,
+            email_result: emailResult,
+          },
+        });
+
+        return SuccessResponses.ok(reply, {
+          order_id: orderId,
+          recalc_dates: dateResult,
+          resend_email: emailResult,
+        });
+      } catch (error) {
+        Logger.error('Admin order replay delivery failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to replay order delivery'
         );
       }
     }

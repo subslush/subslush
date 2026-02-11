@@ -288,12 +288,36 @@ export class OrderService {
     if (order.status !== 'delivered' || previousStatus === 'delivered') {
       return;
     }
+    const { payload } = await this.buildOrderDeliveredEmailPayload(
+      order,
+      userId
+    );
+    if (!payload) return;
+
+    const sendResult = await emailService.send(payload);
+    if (!sendResult.success) {
+      Logger.warn('Failed to send order delivery email', {
+        orderId: order.id,
+        error: sendResult.error,
+      });
+    }
+  }
+
+  private async buildOrderDeliveredEmailPayload(
+    order: Order,
+    userId: string
+  ): Promise<{
+    payload?: { to: string; subject: string; text: string; html: string; from?: string };
+    reason?: string;
+  }> {
     if (isRenewalOrder(order)) {
-      return;
+      return { reason: 'renewal_order' };
     }
 
     const email = await this.fetchUserEmail(userId);
-    if (!email) return;
+    if (!email) {
+      return { reason: 'user_email_missing' };
+    }
 
     const [items, subscriptions] = await Promise.all([
       this.listOrderItems(order.id),
@@ -392,13 +416,46 @@ export class OrderService {
       </html>
     `.trim();
 
-    await emailService.send({
+    return {
+      payload: {
       to: email,
       subject,
       text,
       html,
       from: 'no-reply@subslush.com',
-    });
+      },
+    };
+  }
+
+  async resendOrderDeliveredEmail(
+    orderId: string
+  ): Promise<{ success: boolean; reason?: string }> {
+    const order = await this.getOrderById(orderId);
+    if (!order) {
+      return { success: false, reason: 'order_not_found' };
+    }
+    if (order.status !== 'delivered') {
+      return { success: false, reason: 'order_not_delivered' };
+    }
+
+    const { payload, reason } = await this.buildOrderDeliveredEmailPayload(
+      order,
+      order.user_id
+    );
+    if (!payload) {
+      return { success: false, reason: reason || 'email_unavailable' };
+    }
+
+    const sendResult = await emailService.send(payload);
+    if (!sendResult.success) {
+      Logger.warn('Failed to resend order delivery email', {
+        orderId,
+        error: sendResult.error,
+      });
+      return { success: false, reason: sendResult.error || 'send_failed' };
+    }
+
+    return { success: true };
   }
 
   private async insertOrderWithItems(

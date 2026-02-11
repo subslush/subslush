@@ -783,13 +783,14 @@ export class SubscriptionService {
 
       const currentSub = this.mapRowToSubscription(currentResult.rows[0]);
 
-      if (updates.end_date || updates.renewal_date) {
+      if (updates.start_date || updates.end_date || updates.renewal_date) {
+        const startDate = updates.start_date || currentSub.start_date;
         const endDate = updates.end_date || currentSub.end_date;
         const renewalDate = updates.renewal_date || currentSub.renewal_date;
 
         if (
           !this.validateSubscriptionDates(
-            currentSub.start_date,
+            startDate,
             endDate,
             renewalDate
           )
@@ -842,6 +843,11 @@ export class SubscriptionService {
       if (updates.service_plan) {
         updateFields.push(`service_plan = $${++paramCount}`);
         updateValues.push(updates.service_plan);
+      }
+
+      if (updates.start_date) {
+        updateFields.push(`start_date = $${++paramCount}`);
+        updateValues.push(updates.start_date);
       }
 
       if (updates.end_date) {
@@ -1896,12 +1902,15 @@ export class SubscriptionService {
           durationMonths = 1;
         }
 
-        const termStartAt = row.term_start_at
+        const deliveredAtTime = !Number.isNaN(deliveredAt.getTime())
+          ? deliveredAt
+          : null;
+        const fallbackStart = row.term_start_at
           ? new Date(row.term_start_at)
-          : new Date(row.start_date || deliveredAt);
-        if (Number.isNaN(termStartAt.getTime())) {
-          termStartAt.setTime(deliveredAt.getTime());
-        }
+          : row.start_date
+            ? new Date(row.start_date)
+            : new Date();
+        const termStartAt = deliveredAtTime || fallbackStart;
 
         const endDate = new Date(termStartAt);
         endDate.setMonth(endDate.getMonth() + durationMonths);
@@ -1915,6 +1924,7 @@ export class SubscriptionService {
           reason,
           updatedBy,
           {
+            start_date: termStartAt,
             term_start_at: termStartAt,
             end_date: endDate,
             renewal_date: renewalDate,
@@ -1936,6 +1946,168 @@ export class SubscriptionService {
         error,
       });
       return { updated: 0, skipped: 0 };
+    }
+  }
+
+  async replayDeliveryForOrder(
+    orderId: string,
+    updatedBy: string,
+    options?: { requireCredentials?: boolean; reason?: string }
+  ): Promise<{ updated: number; activated: number; skipped: number }> {
+    const requireCredentials = options?.requireCredentials ?? true;
+    const reason = options?.reason || 'order_delivered_replay';
+    try {
+      const pool = getDatabasePool();
+      const orderResult = await pool.query(
+        'SELECT metadata, status, updated_at, term_months FROM orders WHERE id = $1',
+        [orderId]
+      );
+      const orderRow = orderResult.rows[0] || null;
+      if (!orderRow || orderRow.status !== 'delivered') {
+        return { updated: 0, activated: 0, skipped: 0 };
+      }
+      const orderMetadata = parseJsonValue<Record<string, any>>(
+        orderRow?.metadata,
+        {}
+      );
+      const orderUpdatedAt = orderRow?.updated_at
+        ? new Date(orderRow.updated_at)
+        : null;
+      const deliveredAt =
+        orderUpdatedAt && !Number.isNaN(orderUpdatedAt.getTime())
+          ? orderUpdatedAt
+          : new Date();
+
+      const parseDurationMonths = (value: unknown): number | null => {
+        if (value === null || value === undefined) return null;
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed <= 0) return null;
+        return Math.floor(parsed);
+      };
+
+      const orderDurationMonths =
+        parseDurationMonths(orderRow?.term_months) ??
+        parseDurationMonths(orderMetadata?.['duration_months']) ??
+        parseDurationMonths(orderMetadata?.['term_months']) ??
+        parseDurationMonths(orderMetadata?.['durationMonths']) ??
+        parseDurationMonths(orderMetadata?.['termMonths']);
+
+      const itemsResult = await pool.query(
+        'SELECT product_variant_id, metadata, term_months FROM order_items WHERE order_id = $1 ORDER BY created_at ASC',
+        [orderId]
+      );
+      let itemDurationMonths: number | null = null;
+      const durationByVariant = new Map<string, number>();
+      for (const item of itemsResult.rows) {
+        const itemMetadata = parseJsonValue<Record<string, any>>(
+          item.metadata,
+          {}
+        );
+        const candidate =
+          parseDurationMonths(item.term_months) ??
+          parseDurationMonths(itemMetadata?.['duration_months']) ??
+          parseDurationMonths(itemMetadata?.['term_months']) ??
+          parseDurationMonths(itemMetadata?.['durationMonths']) ??
+          parseDurationMonths(itemMetadata?.['termMonths']);
+        if (!candidate) {
+          continue;
+        }
+        if (!itemDurationMonths) {
+          itemDurationMonths = candidate;
+        }
+        if (item.product_variant_id) {
+          durationByVariant.set(item.product_variant_id, candidate);
+        }
+      }
+
+      const result = await pool.query(
+        `SELECT id, status, credentials_encrypted, auto_renew, product_variant_id, term_months
+         FROM subscriptions
+         WHERE order_id = $1`,
+        [orderId]
+      );
+
+      let updated = 0;
+      let activated = 0;
+      let skipped = 0;
+
+      for (const row of result.rows) {
+        if (requireCredentials && !row.credentials_encrypted) {
+          skipped += 1;
+          continue;
+        }
+
+        const variantDuration =
+          row.product_variant_id &&
+          durationByVariant.has(row.product_variant_id)
+            ? durationByVariant.get(row.product_variant_id)
+            : null;
+        let durationMonths =
+          parseDurationMonths(row.term_months) ??
+          variantDuration ??
+          orderDurationMonths ??
+          itemDurationMonths;
+        if (!durationMonths || durationMonths <= 0) {
+          Logger.warn('Invalid subscription duration, defaulting to 1 month', {
+            subscriptionId: row.id,
+            orderId,
+            durationMonths,
+          });
+          durationMonths = 1;
+        }
+
+        const termStartAt = deliveredAt;
+        const endDate = new Date(termStartAt);
+        endDate.setMonth(endDate.getMonth() + durationMonths);
+        const renewalDate = new Date(endDate);
+        renewalDate.setDate(renewalDate.getDate() - 7);
+        const nextBillingAt = row.auto_renew ? renewalDate : null;
+
+        if (row.status === 'pending') {
+          const updateResult = await this.updateSubscriptionStatus(
+            row.id,
+            'active',
+            reason,
+            updatedBy,
+            {
+              start_date: termStartAt,
+              term_start_at: termStartAt,
+              end_date: endDate,
+              renewal_date: renewalDate,
+              next_billing_at: nextBillingAt,
+              term_months: durationMonths,
+            }
+          );
+          if (updateResult.success) {
+            activated += 1;
+          } else {
+            skipped += 1;
+          }
+        } else {
+          const updateResult = await this.updateSubscriptionForAdmin(row.id, {
+            start_date: termStartAt,
+            term_start_at: termStartAt,
+            end_date: endDate,
+            renewal_date: renewalDate,
+            next_billing_at: nextBillingAt,
+            term_months: durationMonths,
+          });
+          if (updateResult.success) {
+            updated += 1;
+          } else {
+            skipped += 1;
+          }
+        }
+      }
+
+      if (updated > 0 || activated > 0) {
+        await this.clearStatsCache();
+      }
+
+      return { updated, activated, skipped };
+    } catch (error) {
+      Logger.error('Failed to replay order delivery', { orderId, error });
+      return { updated: 0, activated: 0, skipped: 0 };
     }
   }
 

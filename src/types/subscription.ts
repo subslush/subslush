@@ -111,6 +111,7 @@ export interface CreateSubscriptionInput {
 
 export interface UpdateSubscriptionInput {
   service_plan?: ServicePlan;
+  start_date?: Date;
   term_start_at?: Date | null;
   end_date?: Date;
   renewal_date?: Date;
