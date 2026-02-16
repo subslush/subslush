@@ -48,6 +48,7 @@ export interface Subscription {
   status: SubscriptionStatus;
   metadata?: SubscriptionMetadata;
   order_id?: string | null;
+  order_item_id?: string | null;
   product_variant_id?: string | null;
   price_cents?: number | null;
   base_price_cents?: number | null;
@@ -86,10 +87,13 @@ export interface CreateSubscriptionInput {
   end_date: Date;
   renewal_date: Date;
   credentials_encrypted?: string;
+  selection_provided?: boolean;
+  manual_monthly_acknowledged?: boolean;
   status?: SubscriptionStatus;
   metadata?: SubscriptionMetadata;
   auto_renew?: boolean;
   order_id?: string;
+  order_item_id?: string | null;
   product_variant_id?: string | null;
   price_cents?: number | null;
   base_price_cents?: number | null;
@@ -132,6 +136,7 @@ export interface UpdateSubscriptionInput {
   term_months?: number | null;
   currency?: string | null;
   order_id?: string | null;
+  order_item_id?: string | null;
   product_variant_id?: string | null;
   referral_reward_id?: string | null;
   pre_launch_reward_id?: string | null;
@@ -179,10 +184,15 @@ export type UpgradeSelectionType =
   | 'upgrade_new_account'
   | 'upgrade_own_account';
 
+export type OwnAccountCredentialRequirement =
+  | 'email_and_password'
+  | 'email_only';
+
 export interface UpgradeOptionsSnapshot {
   allow_new_account: boolean;
   allow_own_account: boolean;
   manual_monthly_upgrade: boolean;
+  own_account_credential_requirement?: OwnAccountCredentialRequirement | null;
 }
 
 export interface SubscriptionOperationResult {

@@ -21,6 +21,7 @@ body {
 /* Reserve space for the chat widget so fixed UI doesn't overlap it. */
 :root {
 	--chat-widget-offset: 96px;
+	--cart-sidebar-width: min(100vw, 28rem);
 }
 
 @media (max-width: 640px) {
@@ -31,6 +32,21 @@ body {
 
 .scroll-to-top-button {
 	bottom: calc(1.5rem + var(--chat-widget-offset, 0px));
+}
+
+body[data-cart-sidebar-open='true'] .crisp-client,
+body[data-cart-sidebar-open='true'] #crisp-chatbox {
+	transform: translateX(calc(-1 * var(--cart-sidebar-width))) !important;
+	transition: transform 180ms ease-out !important;
+}
+
+@media (max-width: 640px) {
+	body[data-cart-sidebar-open='true'] .crisp-client,
+	body[data-cart-sidebar-open='true'] #crisp-chatbox {
+		opacity: 0;
+		pointer-events: none;
+		transform: translateX(0);
+	}
 }
 
 /* Dashboard-specific layout (only used in dashboard routes) */

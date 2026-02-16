@@ -8,6 +8,7 @@
     Music,
     Bot,
     Headphones,
+    ShoppingCart,
     LogIn,
     LogOut,
     UserPlus,
@@ -17,11 +18,14 @@
     Settings
   } from 'lucide-svelte';
   import { auth } from '$lib/stores/auth.js';
+  import { cart, cartAddPulse } from '$lib/stores/cart.js';
+  import { cartSidebar } from '$lib/stores/cartSidebar.js';
   import { currency } from '$lib/stores/currency.js';
   import { CURRENCY_OPTIONS } from '$lib/utils/currency.js';
   import { trackSearch } from '$lib/utils/analytics.js';
   import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
+  import CartSidebar from '$lib/components/cart/CartSidebar.svelte';
 
   export let searchQuery = '';
 
@@ -47,6 +51,10 @@
   let userMenuOpen = false;
   let userMenuRef: HTMLDivElement | null = null;
   let userMenuTriggerRef: HTMLButtonElement | null = null;
+  let cartAnimating = false;
+  let lastCartPulseSeen = 0;
+  let cartAnimationTimer: ReturnType<typeof setTimeout> | null = null;
+  let cartQueryOpenKey = '';
   $: isLoggedIn = $auth.isAuthenticated;
   $: userEmail = $auth.user?.email;
 
@@ -68,6 +76,10 @@
     document.addEventListener('click', closeMenuOnOutsideClick);
     return () => {
       document.removeEventListener('click', closeMenuOnOutsideClick);
+      if (cartAnimationTimer) {
+        clearTimeout(cartAnimationTimer);
+        cartAnimationTimer = null;
+      }
     };
   });
 
@@ -111,6 +123,36 @@
     event.preventDefault();
     performSearch();
   }
+
+  $: if ($cartAddPulse > 0 && $cartAddPulse !== lastCartPulseSeen) {
+    lastCartPulseSeen = $cartAddPulse;
+    cartAnimating = false;
+    if (cartAnimationTimer) {
+      clearTimeout(cartAnimationTimer);
+      cartAnimationTimer = null;
+    }
+
+    void requestAnimationFrame(() => {
+      cartAnimating = true;
+      cartAnimationTimer = setTimeout(() => {
+        cartAnimating = false;
+        cartAnimationTimer = null;
+      }, 700);
+    });
+  }
+
+  $: {
+    const cartQuery = $page.url.searchParams.get('cart');
+    if (cartQuery !== 'open') {
+      cartQueryOpenKey = '';
+    } else {
+      const queryKey = `${$page.url.pathname}${$page.url.search}`;
+      if (queryKey !== cartQueryOpenKey) {
+        cartQueryOpenKey = queryKey;
+        cartSidebar.open();
+      }
+    }
+  }
 </script>
 
 <nav class="relative z-40 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800 text-white border-b border-slate-800">
@@ -145,6 +187,20 @@
           <Headphones size={18} class="text-white" aria-hidden="true" />
           <span class="hidden md:inline">Help</span>
         </a>
+        <button
+          type="button"
+          class={`relative inline-flex items-center gap-1 rounded-lg border border-white/30 px-2.5 py-2 text-xs font-medium text-white transition-transform hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 md:px-3 md:text-sm ${cartAnimating ? 'cart-bounce' : ''}`}
+          aria-label={$cart.length > 0 ? `Cart with ${$cart.length} item(s)` : 'Cart'}
+          on:click={() => cartSidebar.open()}
+        >
+          <ShoppingCart size={18} class="text-white" aria-hidden="true" />
+          <span class="hidden md:inline">Cart</span>
+          {#if $cart.length > 0}
+            <span class={`absolute -right-1.5 -top-1.5 inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-cyan-500 px-1 text-[10px] font-semibold text-white ${cartAnimating ? 'cart-badge-flash' : ''}`}>
+              {$cart.length > 99 ? '99+' : $cart.length}
+            </span>
+          {/if}
+        </button>
         <div class="flex flex-col items-center gap-0.5 rounded-lg md:px-3 md:py-1.5">
           <div class="relative w-full min-w-[96px] md:min-w-[120px]">
             <select
@@ -387,3 +443,47 @@
     </div>
   </div>
 </nav>
+<CartSidebar />
+
+<style>
+  @keyframes cart-bounce {
+    0% {
+      transform: scale(1);
+    }
+    20% {
+      transform: scale(1.15);
+    }
+    45% {
+      transform: scale(0.96);
+    }
+    70% {
+      transform: scale(1.05);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes cart-badge-flash {
+    0% {
+      transform: scale(1);
+      box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.5);
+    }
+    40% {
+      transform: scale(1.16);
+      box-shadow: 0 0 0 8px rgba(34, 211, 238, 0);
+    }
+    100% {
+      transform: scale(1);
+      box-shadow: 0 0 0 0 rgba(34, 211, 238, 0);
+    }
+  }
+
+  .cart-bounce {
+    animation: cart-bounce 0.7s ease;
+  }
+
+  .cart-badge-flash {
+    animation: cart-badge-flash 0.7s ease;
+  }
+</style>

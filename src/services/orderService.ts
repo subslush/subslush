@@ -17,6 +17,7 @@ import {
 } from '../types/service';
 import { notificationService } from './notificationService';
 import { emailService } from './emailService';
+import { guestCheckoutService } from './guestCheckoutService';
 import { env } from '../config/environment';
 import { formatSubscriptionDisplayName } from '../utils/subscriptionHelpers';
 
@@ -48,6 +49,10 @@ function mapOrder(row: any): Order {
     term_months: row.term_months,
     paid_with_credits: row.paid_with_credits,
     auto_renew: row.auto_renew,
+    contact_email: row.contact_email ?? null,
+    checkout_session_key: row.checkout_session_key ?? null,
+    checkout_mode: row.checkout_mode ?? null,
+    stripe_session_id: row.stripe_session_id ?? null,
     payment_provider: row.payment_provider,
     payment_reference: row.payment_reference,
     metadata: parseMetadata(row.metadata),
@@ -68,6 +73,8 @@ function mapOrderItem(row: any): OrderItem {
     base_price_cents: row.base_price_cents ?? null,
     discount_percent: row.discount_percent ?? null,
     term_months: row.term_months ?? null,
+    auto_renew: row.auto_renew ?? null,
+    coupon_discount_cents: row.coupon_discount_cents ?? null,
     currency: row.currency,
     total_price_cents: row.total_price_cents,
     description: row.description,
@@ -78,8 +85,16 @@ function mapOrderItem(row: any): OrderItem {
 
 function formatOrderNotification(
   status: OrderStatus,
-  orderId: string
+  orderId: string,
+  statusReason?: string | null
 ): { title: string; message: string } | null {
+  const normalizedReason =
+    typeof statusReason === 'string' ? statusReason.trim().toLowerCase() : '';
+  const silentCancellationReasons = new Set([
+    'checkout_timeout',
+    'checkout_cancelled',
+  ]);
+
   const shortId = orderId.slice(0, 8);
   if (status === 'delivered') {
     return {
@@ -87,7 +102,10 @@ function formatOrderNotification(
       message: `Your order ${shortId} has been delivered.`,
     };
   }
-  if (status === 'cancelled') {
+  if (
+    status === 'cancelled' &&
+    !silentCancellationReasons.has(normalizedReason)
+  ) {
     return {
       title: 'Order cancelled',
       message: `Your order ${shortId} was cancelled.`,
@@ -179,6 +197,23 @@ export class OrderService {
         error,
       });
       return null;
+    }
+  }
+
+  private async isGuestUser(userId: string): Promise<boolean> {
+    try {
+      const pool = getDatabasePool();
+      const result = await pool.query(
+        'SELECT is_guest FROM users WHERE id = $1',
+        [userId]
+      );
+      return result.rows[0]?.is_guest === true;
+    } catch (error) {
+      Logger.warn('Failed to determine guest user status for order email', {
+        userId,
+        error,
+      });
+      return false;
     }
   }
 
@@ -307,14 +342,22 @@ export class OrderService {
     order: Order,
     userId: string
   ): Promise<{
-    payload?: { to: string; subject: string; text: string; html: string; from?: string };
+    payload?: {
+      to: string;
+      subject: string;
+      text: string;
+      html: string;
+      from?: string;
+    };
     reason?: string;
   }> {
     if (isRenewalOrder(order)) {
       return { reason: 'renewal_order' };
     }
 
-    const email = await this.fetchUserEmail(userId);
+    const contactEmail =
+      typeof order.contact_email === 'string' ? order.contact_email.trim() : '';
+    const email = contactEmail || (await this.fetchUserEmail(userId));
     if (!email) {
       return { reason: 'user_email_missing' };
     }
@@ -340,6 +383,53 @@ export class OrderService {
 
     const dashboardLink = buildAppLink('/dashboard/subscriptions');
     const helpLink = buildAppLink('/help');
+    const shouldIssueClaimToken = await this.isGuestUser(userId);
+    const guestIdentityId =
+      typeof order.metadata?.['guest_identity_id'] === 'string'
+        ? order.metadata['guest_identity_id']
+        : null;
+    let claimText = '';
+    let claimHtml = '';
+
+    if (shouldIssueClaimToken && guestIdentityId && contactEmail) {
+      const claimTokenResult = await guestCheckoutService.issueClaimToken({
+        guestIdentityId,
+        email,
+        sendEmail: false,
+      });
+
+      if (claimTokenResult.success) {
+        claimText = [
+          '',
+          'To manage this order in your account:',
+          '1) Create a SubSlush account (or sign in) with this same email address.',
+          `2) Claim this order: ${claimTokenResult.data.claimLink}`,
+        ].join('\n');
+        claimHtml = `
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+            <tr>
+              <td style="padding:14px 16px;font-size:13px;color:#334155;">
+                <div style="font-weight:600;margin-bottom:8px;color:#0f172a;">Manage this order in your account</div>
+                <div style="margin-bottom:8px;">Create a SubSlush account (or sign in) with this same email address, then click claim.</div>
+                <a href="${claimTokenResult.data.claimLink}" style="display:inline-block;background-color:#111827;color:#ffffff;text-decoration:none;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                  Claim this order
+                </a>
+              </td>
+            </tr>
+          </table>
+        `.trim();
+      } else {
+        Logger.warn(
+          'Failed to generate claim token for delivered guest order',
+          {
+            orderId: order.id,
+            guestIdentityId,
+            error: claimTokenResult.error,
+          }
+        );
+      }
+    }
+
     const subject = 'Your SubSlush order is delivered';
     const text = [
       `Your order ${orderShort} has been delivered.`,
@@ -350,6 +440,7 @@ export class OrderService {
       '',
       `Open My Subscriptions: ${dashboardLink}`,
       `Need help? ${helpLink}`,
+      claimText,
     ].join('\n');
     const html = `
       <!doctype html>
@@ -398,6 +489,7 @@ export class OrderService {
                           </td>
                         </tr>
                       </table>
+                      ${claimHtml}
                       <p style="margin:0;font-size:12px;color:#6b7280;text-align:center;">
                         Need help? Visit our <a href="${helpLink}" style="color:#111827;text-decoration:underline;">help center</a>.
                       </p>
@@ -418,13 +510,213 @@ export class OrderService {
 
     return {
       payload: {
+        to: email,
+        subject,
+        text,
+        html,
+        from: 'no-reply@subslush.com',
+      },
+    };
+  }
+
+  async sendOrderPaymentConfirmationEmail(
+    orderId: string
+  ): Promise<{ success: boolean; reason?: string }> {
+    const order = await this.getOrderById(orderId);
+    if (!order) {
+      return { success: false, reason: 'order_not_found' };
+    }
+    if (isRenewalOrder(order)) {
+      return { success: false, reason: 'renewal_order' };
+    }
+
+    const alreadySent =
+      typeof order.metadata?.['payment_confirmation_email_sent_at'] ===
+      'string';
+    if (alreadySent) {
+      return { success: false, reason: 'already_sent' };
+    }
+
+    const contactEmail =
+      typeof order.contact_email === 'string' ? order.contact_email.trim() : '';
+    const email = contactEmail || (await this.fetchUserEmail(order.user_id));
+    if (!email) {
+      return { success: false, reason: 'user_email_missing' };
+    }
+
+    const [items, subscriptions] = await Promise.all([
+      this.listOrderItems(order.id),
+      this.listOrderSubscriptions(order.id),
+    ]);
+    const labels = this.resolveSubscriptionLabels(order, items, subscriptions);
+    const orderShort = order.id.slice(0, 8);
+    const subscriptionsText =
+      labels.length > 0
+        ? labels.map(label => `- ${label}`).join('\n')
+        : '- Subscription';
+    const subscriptionsHtml =
+      labels.length > 0
+        ? labels
+            .map(
+              label => `<li style="margin:0 0 6px 0;">${escapeHtml(label)}</li>`
+            )
+            .join('')
+        : '<li style="margin:0 0 6px 0;">Subscription</li>';
+
+    const helpLink = buildAppLink('/help');
+    const shouldIssueClaimToken = await this.isGuestUser(order.user_id);
+    const guestIdentityId =
+      typeof order.metadata?.['guest_identity_id'] === 'string'
+        ? order.metadata['guest_identity_id']
+        : null;
+    let claimText = '';
+    let claimHtml = '';
+
+    if (shouldIssueClaimToken && guestIdentityId && contactEmail) {
+      const claimTokenResult = await guestCheckoutService.issueClaimToken({
+        guestIdentityId,
+        email,
+        sendEmail: false,
+      });
+
+      if (claimTokenResult.success) {
+        claimText = [
+          '',
+          'To manage this order in your account:',
+          '1) Create a SubSlush account (or sign in) with this same email address.',
+          `2) Claim this order: ${claimTokenResult.data.claimLink}`,
+        ].join('\n');
+        claimHtml = `
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+            <tr>
+              <td style="padding:14px 16px;font-size:13px;color:#334155;">
+                <div style="font-weight:600;margin-bottom:8px;color:#0f172a;">Manage this order in your account</div>
+                <div style="margin-bottom:8px;">Create a SubSlush account (or sign in) with this same email address, then click claim.</div>
+                <a href="${claimTokenResult.data.claimLink}" style="display:inline-block;background-color:#111827;color:#ffffff;text-decoration:none;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                  Claim this order
+                </a>
+              </td>
+            </tr>
+          </table>
+        `.trim();
+      } else {
+        Logger.warn('Failed to generate claim token for payment confirmation', {
+          orderId: order.id,
+          guestIdentityId,
+          error: claimTokenResult.error,
+        });
+      }
+    }
+
+    const subject = 'Your SubSlush order is confirmed';
+    const text = [
+      `We received your payment for order ${orderShort}.`,
+      'Order delivery is usually completed within 24 hours during business days.',
+      'In some cases, delivery can take up to 72 hours.',
+      '',
+      'Order items:',
+      subscriptionsText,
+      '',
+      `Need help? ${helpLink}`,
+      claimText,
+    ].join('\n');
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Order confirmed</title>
+        </head>
+        <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f3f4f6;padding:24px 0;">
+            <tr>
+              <td align="center">
+                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
+                  <tr>
+                    <td style="padding:24px 32px;background-color:#0f172a;background:linear-gradient(90deg,#0f172a,#1e293b);color:#ffffff;text-align:center;">
+                      <div style="font-size:24px;font-weight:700;letter-spacing:0.5px;line-height:1.1;">
+                        <span style="display:inline-block;"><span style="color:#06B6D4;">S</span><span style="color:#27A6CC;">u</span><span style="color:#4897C3;">b</span><span style="color:#6988BB;">S</span><span style="color:#8978B2;">l</span><span style="color:#AA68AA;">u</span><span style="color:#CB59A1;">s</span><span style="color:#EC4899;">h</span></span>
+                      </div>
+                      <div style="font-size:12px;color:#d1d5db;margin-top:6px;">Premium For Less</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:28px 32px;">
+                      <h1 style="margin:0 0 12px;font-size:20px;">Payment received</h1>
+                      <p style="margin:0 0 12px;font-size:14px;color:#374151;">
+                        We received your payment for order ${orderShort}.
+                      </p>
+                      <p style="margin:0 0 16px;font-size:14px;color:#374151;">
+                        Order delivery is usually completed within 24 hours during business days.
+                        In some cases, delivery can take up to 72 hours.
+                      </p>
+                      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;">
+                        <tr>
+                          <td style="padding:14px 16px;font-size:13px;color:#111827;">
+                            <div style="font-weight:600;margin-bottom:6px;">Order items</div>
+                            <ul style="margin:0;padding-left:18px;color:#374151;">
+                              ${subscriptionsHtml}
+                            </ul>
+                          </td>
+                        </tr>
+                      </table>
+                      ${claimHtml}
+                      <p style="margin:0;font-size:12px;color:#6b7280;text-align:center;">
+                        Need help? Visit our <a href="${helpLink}" style="color:#111827;text-decoration:underline;">help center</a>.
+                      </p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:18px 32px;background-color:#f9fafb;text-align:center;font-size:12px;color:#9ca3af;">
+                      &copy; 2026 SubSlush. All rights reserved.
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
+    `.trim();
+
+    const sendResult = await emailService.send({
       to: email,
       subject,
       text,
       html,
       from: 'no-reply@subslush.com',
-      },
-    };
+    });
+    if (!sendResult.success) {
+      Logger.warn('Failed to send order payment confirmation email', {
+        orderId,
+        error: sendResult.error,
+      });
+      return { success: false, reason: sendResult.error || 'send_failed' };
+    }
+
+    try {
+      const pool = getDatabasePool();
+      await pool.query(
+        `UPDATE orders
+         SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [
+          order.id,
+          JSON.stringify({
+            payment_confirmation_email_sent_at: new Date().toISOString(),
+          }),
+        ]
+      );
+    } catch (error) {
+      Logger.warn('Failed to mark payment confirmation email metadata', {
+        orderId: order.id,
+        error,
+      });
+    }
+
+    return { success: true };
   }
 
   async resendOrderDeliveredEmail(
@@ -511,8 +803,8 @@ export class OrderService {
         `INSERT INTO order_items (
           order_id, product_variant_id, quantity, unit_price_cents,
           base_price_cents, discount_percent, term_months, currency,
-          total_price_cents, description, metadata
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          total_price_cents, description, metadata, auto_renew, coupon_discount_cents
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING *`,
         [
           order.id,
@@ -526,6 +818,8 @@ export class OrderService {
           item.total_price_cents,
           item.description || null,
           item.metadata ? JSON.stringify(item.metadata) : null,
+          item.auto_renew ?? null,
+          item.coupon_discount_cents ?? null,
         ]
       );
 
@@ -631,7 +925,11 @@ export class OrderService {
       }
 
       const order = mapOrder(result.rows[0]);
-      const notificationCopy = formatOrderNotification(status, orderId);
+      const notificationCopy = formatOrderNotification(
+        status,
+        orderId,
+        order.status_reason
+      );
 
       if (notificationCopy && previousStatus !== status) {
         try {
@@ -687,6 +985,8 @@ export class OrderService {
       payment_reference?: string | null;
       paid_with_credits?: boolean;
       auto_renew?: boolean;
+      checkout_mode?: string | null;
+      stripe_session_id?: string | null;
       status?: OrderStatus;
       status_reason?: string | null;
       metadata?: Record<string, any> | null;
@@ -726,6 +1026,14 @@ export class OrderService {
         updateFields.push(`auto_renew = $${++paramCount}`);
         values.push(updates.auto_renew);
       }
+      if (updates.checkout_mode !== undefined) {
+        updateFields.push(`checkout_mode = $${++paramCount}`);
+        values.push(updates.checkout_mode);
+      }
+      if (updates.stripe_session_id !== undefined) {
+        updateFields.push(`stripe_session_id = $${++paramCount}`);
+        values.push(updates.stripe_session_id);
+      }
       if (updates.status !== undefined) {
         updateFields.push(`status = $${++paramCount}`);
         values.push(updates.status);
@@ -762,7 +1070,8 @@ export class OrderService {
       const order = mapOrder(result.rows[0]);
       const notificationCopy = formatOrderNotification(
         updates.status as OrderStatus,
-        orderId
+        orderId,
+        order.status_reason
       );
 
       if (
@@ -915,6 +1224,7 @@ export class OrderService {
     offset?: number;
     includeItems?: boolean;
     includeCart?: boolean;
+    includeUnpaid?: boolean;
   }): Promise<{ orders: OrderListItem[]; total: number }> {
     try {
       const {
@@ -925,12 +1235,28 @@ export class OrderService {
         offset = 0,
         includeItems = false,
         includeCart = false,
+        includeUnpaid = false,
       } = options;
 
       const pool = getDatabasePool();
       const filters: string[] = ['user_id = $1'];
       const params: any[] = [userId];
       let paramCount = 1;
+      const paidVisibleStatuses: OrderStatus[] = [
+        'paid',
+        'in_process',
+        'delivered',
+      ];
+
+      if (!includeUnpaid) {
+        if (status && !paidVisibleStatuses.includes(status)) {
+          return { orders: [], total: 0 };
+        }
+        if (!status) {
+          filters.push(`status = ANY($${++paramCount}::text[])`);
+          params.push(paidVisibleStatuses);
+        }
+      }
 
       if (!includeCart && status !== 'cart') {
         filters.push("status != 'cart'");
@@ -1035,6 +1361,25 @@ export class OrderService {
       return mapOrder(result.rows[0]);
     } catch (error) {
       Logger.error('Failed to fetch order:', error);
+      return null;
+    }
+  }
+
+  async getOrderByCheckoutSessionKey(
+    checkoutSessionKey: string
+  ): Promise<Order | null> {
+    try {
+      const pool = getDatabasePool();
+      const result = await pool.query(
+        'SELECT * FROM orders WHERE checkout_session_key = $1',
+        [checkoutSessionKey]
+      );
+      if (result.rows.length === 0) {
+        return null;
+      }
+      return mapOrder(result.rows[0]);
+    } catch (error) {
+      Logger.error('Failed to fetch order by checkout session key:', error);
       return null;
     }
   }

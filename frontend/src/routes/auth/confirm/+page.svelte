@@ -7,20 +7,52 @@
   let status: 'verifying' | 'success' | 'error' = 'verifying';
   let message = 'Confirming your email...';
   let detail = 'Hold tight while we activate your account.';
+  const EMAIL_VERIFY_REDIRECT_STORAGE_KEY = 'auth:post_verify_redirect';
+
+  const sanitizeRedirectPath = (value: string | null): string | null => {
+    if (!value) return null;
+    const normalized = value.trim();
+    if (!normalized.startsWith('/') || normalized.startsWith('//')) {
+      return null;
+    }
+    return normalized;
+  };
+
+  const readStoredRedirect = (): string | null => {
+    try {
+      return sanitizeRedirectPath(
+        window.localStorage.getItem(EMAIL_VERIFY_REDIRECT_STORAGE_KEY)
+      );
+    } catch {
+      return null;
+    }
+  };
+
+  const clearStoredRedirect = (): void => {
+    try {
+      window.localStorage.removeItem(EMAIL_VERIFY_REDIRECT_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors.
+    }
+  };
 
   const extractTokens = () => {
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     const queryParams = new URLSearchParams(window.location.search);
+    const redirectFromQuery = sanitizeRedirectPath(queryParams.get('redirect'));
+    const redirectPath = redirectFromQuery || readStoredRedirect();
+
     return {
       accessToken:
         hashParams.get('access_token') || queryParams.get('access_token') || '',
       refreshToken:
         hashParams.get('refresh_token') || queryParams.get('refresh_token') || '',
+      redirectPath,
     };
   };
 
   onMount(async () => {
-    const { accessToken, refreshToken } = extractTokens();
+    const { accessToken, refreshToken, redirectPath } = extractTokens();
     if (window.history && (window.location.hash || window.location.search)) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -40,7 +72,12 @@
       auth.setUser(response.user);
       status = 'success';
       message = 'Email verified.';
-      detail = 'Redirecting you to the confirmation page...';
+      detail = 'Redirecting you now...';
+      clearStoredRedirect();
+      if (redirectPath) {
+        window.location.href = redirectPath;
+        return;
+      }
       window.location.href = '/auth/verified';
     } catch (error) {
       status = 'error';

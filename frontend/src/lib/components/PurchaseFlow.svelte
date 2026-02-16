@@ -1,20 +1,21 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { AlertCircle, CheckCircle2, CreditCard, Loader2, X } from 'lucide-svelte';
+  import { AlertCircle, CheckCircle2, Loader2, X } from 'lucide-svelte';
   import UpgradeSelectionForm from '$lib/components/subscription/UpgradeSelectionForm.svelte';
   import ManualMonthlyAcknowledgement from '$lib/components/subscription/ManualMonthlyAcknowledgement.svelte';
   import { subscriptionService } from '$lib/api/subscriptions.js';
   import { paymentService } from '$lib/api/payments.js';
-  import { ordersService } from '$lib/api/orders.js';
   import { user } from '$lib/stores/auth.js';
   import { credits } from '$lib/stores/credits.js';
   import { API_CONFIG, API_ENDPOINTS, ROUTES } from '$lib/utils/constants.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
   import type { ServicePlanDetails, Subscription, UpgradeOptions } from '$lib/types/subscription.js';
   import type { CheckoutRequest, CheckoutResponseStripe, PaymentQuoteResponse } from '$lib/types/payment.js';
-  import type { UpgradeSelectionSubmission } from '$lib/types/upgradeSelection.js';
-  import { loadStripe, type Stripe, type StripeElements, type StripePaymentElement } from '@stripe/stripe-js';
-  import { tick, onDestroy, onMount } from 'svelte';
+  import type {
+    UpgradeSelectionSubmission,
+    UpgradeSelectionType
+  } from '$lib/types/upgradeSelection.js';
+  import { onMount } from 'svelte';
   import { trackAddPaymentInfo, trackPlaceAnOrder, trackPurchase } from '$lib/utils/analytics.js';
 
   export let selectedPlan: ServicePlanDetails;
@@ -23,6 +24,8 @@
   export let userCredits = 0;
   export let onClose: () => void;
   export let onSuccess: (subscription: Subscription) => void;
+  export let preselectedUpgradeType: UpgradeSelectionType | null = null;
+  export let preselectedManualMonthlyAcknowledged = false;
 
   let paymentMethod: 'stripe' | 'credits' | null = null;
   let lastPaymentMethod: 'stripe' | 'credits' | null = null;
@@ -34,14 +37,9 @@
   let creditsQuoteMessage = '';
   let showCreditsAuthNotice = false;
   let showStripeAuthNotice = false;
+  let redirectingToStripe = false;
   let checkoutResult: CheckoutResponseStripe | null = null;
   let purchaseResult: Subscription | null = null;
-  let stripe: Stripe | null = null;
-  let elements: StripeElements | null = null;
-  let paymentElement: StripePaymentElement | null = null;
-  let paymentElementContainer: HTMLElement | null = null;
-  let stripeClientSecret: string | null = null;
-  let stripeFormOpen = false;
   let checkoutKey: string | null = null;
   let checkoutSnapshotKey: string | null = null;
   let currentCheckoutKey: string | null = null;
@@ -78,20 +76,14 @@
   let selectionError = '';
   let selectionLoading = false;
   let selectionSubmitting = false;
+  let selectionTypePreset: UpgradeSelectionType | '' = '';
   let manualMonthlyAcknowledged = false;
   let processingError = '';
   let lastPurchaseTrackingId = '';
   let lastPlaceOrderTrackingId = '';
-  const POLL_INTERVAL_MS = 3000;
-  const POLL_TIMEOUT_MS = 120000;
-  let pollSequence = 0;
-
-  onDestroy(() => {
-    pollSequence += 1;
-  });
-
   onMount(() => {
     const handlePageExit = () => {
+      if (redirectingToStripe) return;
       const payload = resolveCheckoutCancelPayload('checkout_abandoned');
       if (!payload) return;
       if (checkoutCancelSent) return;
@@ -223,10 +215,6 @@
     lastPaymentMethod = paymentMethod;
   }
 
-  $: if (stripeFormOpen && stripeClientSecret && !paymentElement) {
-    void initStripeElements();
-  }
-
   $: if (
     stage === 'checkout' &&
     checkoutSnapshotKey &&
@@ -245,10 +233,7 @@
     }
   }
 
-  $: checkoutGridClass =
-    paymentMethod === 'stripe' && stripeFormOpen
-      ? 'lg:grid-cols-[1fr,1.4fr]'
-      : 'lg:grid-cols-[1fr,1.2fr]';
+  $: checkoutGridClass = 'lg:grid-cols-[1fr,1.2fr]';
 
   $: primaryLabel =
     stage !== 'checkout'
@@ -257,12 +242,8 @@
         ? 'Select a payment method'
         : paymentMethod === 'stripe'
           ? checkoutStale
-            ? stripeFormOpen
-              ? 'Update checkout'
-              : 'Restart checkout'
-            : stripeFormOpen && stripeClientSecret
-              ? 'Pay now'
-              : 'Continue to payment'
+            ? 'Restart checkout'
+            : 'Continue to Stripe'
           : showCreditsConfirm
             ? 'Awaiting confirmation'
             : 'Review purchase';
@@ -271,6 +252,7 @@
     stage !== 'checkout' ||
     !paymentMethod ||
     isProcessing ||
+    redirectingToStripe ||
     (paymentMethod === 'credits' && (creditsRequired === null || !hasEnoughCredits)) ||
     (paymentMethod === 'credits' && creditsPurchaseBlocked) ||
     (paymentMethod === 'credits' && showCreditsConfirm);
@@ -349,43 +331,7 @@
     return item ? [item] : [];
   };
 
-  async function initStripeElements() {
-    try {
-      if (!stripeClientSecret) return;
-
-      if (!stripe) {
-        const publishableKey =
-          import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ||
-          import.meta.env.PUBLIC_VITE_STRIPE_PUBLISHABLE_KEY ||
-          '';
-        if (!publishableKey) {
-          errorMessage = 'Stripe is missing a publishable key.';
-          return;
-        }
-        stripe = await loadStripe(publishableKey);
-      }
-
-      if (!stripe) {
-        errorMessage = 'Stripe failed to initialize.';
-        return;
-      }
-
-      await tick();
-
-      elements = stripe.elements({ clientSecret: stripeClientSecret });
-      if (paymentElement) {
-        paymentElement.destroy();
-      }
-      paymentElement = elements.create('payment');
-      paymentElement.mount(paymentElementContainer as HTMLElement);
-    } catch (err) {
-      console.error('Stripe elements init failed', err);
-      errorMessage = 'Unable to load the secure payment form.';
-    }
-  }
-
   const resetStripeCheckoutState = () => {
-    stripeClientSecret = null;
     checkoutResult = null;
     checkoutPaymentId = null;
     checkoutKey = null;
@@ -395,12 +341,7 @@
     checkoutStale = false;
     checkoutStaleMessage = '';
     orderId = null;
-    stripeFormOpen = false;
-    if (paymentElement) {
-      paymentElement.destroy();
-      paymentElement = null;
-    }
-    elements = null;
+    redirectingToStripe = false;
   };
 
   const resolveCheckoutCancelPayload = (reason: string, overrides?: {
@@ -409,7 +350,7 @@
     checkoutKey?: string | null;
   }): {
     order_id: string;
-    payment_id: string;
+    payment_id?: string;
     reason: string;
     checkout_key?: string;
   } | null => {
@@ -418,21 +359,21 @@
     const targetCheckoutKey =
       overrides?.checkoutKey ?? checkoutKey ?? checkoutSnapshotKey;
 
-    if (!targetOrderId || !targetPaymentId) return null;
+    if (!targetOrderId) return null;
     if (stage !== 'checkout') return null;
     if (cancelInFlight) return null;
 
     return {
       order_id: targetOrderId,
-      payment_id: targetPaymentId,
       reason,
+      ...(targetPaymentId ? { payment_id: targetPaymentId } : {}),
       ...(targetCheckoutKey ? { checkout_key: targetCheckoutKey } : {})
     };
   };
 
   const sendCheckoutCancelBeacon = (payload: {
     order_id: string;
-    payment_id: string;
+    payment_id?: string;
     reason: string;
     checkout_key?: string;
   }): boolean => {
@@ -511,12 +452,8 @@
   };
 
   const restartStripeCheckout = async (reason: string) => {
-    const shouldKeepFormOpen = stripeFormOpen;
     await cancelStripeCheckout(reason);
     resetStripeCheckoutState();
-    if (shouldKeepFormOpen) {
-      stripeFormOpen = true;
-    }
     await startStripeCheckout();
   };
 
@@ -528,36 +465,12 @@
     selectionLoading = false;
     selectionSubmitting = false;
     manualMonthlyAcknowledged = false;
+    selectionTypePreset = '';
     processingError = '';
     purchaseResult = null;
     stage = 'checkout';
     resetStripeCheckoutState();
   };
-
-  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-  async function pollForSubscription(orderIdValue: string): Promise<Subscription | null> {
-    const sequence = ++pollSequence;
-    const start = Date.now();
-
-    while (Date.now() - start < POLL_TIMEOUT_MS) {
-      if (sequence !== pollSequence) {
-        return null;
-      }
-      try {
-        const response = await ordersService.getOrderSubscription(orderIdValue);
-        if (response.subscription) {
-          return response.subscription;
-        }
-      } catch (error) {
-        console.warn('Order subscription poll failed:', error);
-      }
-
-      await wait(POLL_INTERVAL_MS);
-    }
-
-    return null;
-  }
 
   async function loadSelection(subscriptionId: string): Promise<void> {
     selectionLoading = true;
@@ -566,9 +479,11 @@
       const response = await subscriptionService.getUpgradeSelection(subscriptionId);
       upgradeOptions = response.selection.upgrade_options_snapshot || upgradeOptions;
       selectionLocked = response.locked;
-      manualMonthlyAcknowledged = Boolean(
+      const serverAcknowledged = Boolean(
         response.selection.manual_monthly_acknowledged_at
       );
+      manualMonthlyAcknowledged =
+        serverAcknowledged || preselectedManualMonthlyAcknowledged;
       if (response.locked) {
         stage = 'success';
       }
@@ -581,6 +496,59 @@
       selectionLoading = false;
     }
   }
+
+  const resolvePresetSelection = (
+    options: UpgradeOptions | null
+  ): UpgradeSelectionType | '' => {
+    if (!preselectedUpgradeType || !options) return '';
+    if (preselectedUpgradeType === 'upgrade_new_account') {
+      return options.allow_new_account ? preselectedUpgradeType : '';
+    }
+    if (preselectedUpgradeType === 'upgrade_own_account') {
+      return options.allow_own_account ? preselectedUpgradeType : '';
+    }
+    return '';
+  };
+
+  const attemptAutoSelection = async (
+    subscription: Subscription,
+    options: UpgradeOptions | null
+  ): Promise<boolean> => {
+    const preset = resolvePresetSelection(options);
+    if (preset !== 'upgrade_new_account') return false;
+
+    const manualMonthlyRequired =
+      Boolean(options?.manual_monthly_upgrade) ||
+      subscription.status_reason === 'waiting_for_mmu_acknowledgement';
+
+    if (manualMonthlyRequired && !preselectedManualMonthlyAcknowledged) {
+      return false;
+    }
+
+    selectionSubmitting = true;
+    selectionError = '';
+    try {
+      const response = await subscriptionService.submitUpgradeSelection(
+        subscription.id,
+        {
+          selection_type: 'upgrade_new_account',
+          manual_monthly_acknowledged: manualMonthlyRequired
+            ? preselectedManualMonthlyAcknowledged
+            : undefined,
+        }
+      );
+      selectionLocked = response.locked;
+      return true;
+    } catch (error) {
+      selectionError =
+        error instanceof Error
+          ? error.message
+          : 'Unable to submit upgrade selection.';
+      return false;
+    } finally {
+      selectionSubmitting = false;
+    }
+  };
 
   async function advanceAfterSubscription(
     subscription: Subscription,
@@ -599,6 +567,7 @@
     selectionLocked = false;
     selectionError = '';
     processingError = '';
+    selectionTypePreset = resolvePresetSelection(options);
 
     const nextHasSelectionOptions = Boolean(
       options?.allow_new_account || options?.allow_own_account
@@ -616,6 +585,13 @@
       return;
     }
 
+    manualMonthlyAcknowledged = preselectedManualMonthlyAcknowledged;
+    const autoSelected = await attemptAutoSelection(subscription, options);
+    if (autoSelected) {
+      stage = 'success';
+      return;
+    }
+
     stage = 'selection';
     await loadSelection(subscription.id);
   }
@@ -628,7 +604,7 @@
       autoRenew,
       couponCode: appliedCouponCode,
     });
-    if (stripeClientSecret) return;
+    if (redirectingToStripe) return;
     isProcessing = true;
     errorMessage = '';
 
@@ -651,14 +627,13 @@
       const response = await paymentService.createCheckout(payload);
       checkoutResult = response as CheckoutResponseStripe;
       orderId = checkoutResult.order_id;
-      checkoutPaymentId = checkoutResult.paymentId;
+      checkoutPaymentId = checkoutResult.paymentId ?? null;
       checkoutKey = checkoutResult.checkoutKey ?? currentCheckoutKey;
       checkoutSnapshotKey = snapshotKey ?? currentCheckoutKey;
       checkoutStale = false;
       checkoutStaleMessage = '';
       checkoutCancelSent = false;
       upgradeOptions = checkoutResult.upgrade_options ?? null;
-      stripeClientSecret = checkoutResult.clientSecret;
       if (orderId && orderId !== lastPlaceOrderTrackingId) {
         const items = getPurchaseItems();
         if (items.length) {
@@ -666,7 +641,12 @@
           lastPlaceOrderTrackingId = orderId;
         }
       }
-      await initStripeElements();
+      if (!checkoutResult.sessionUrl) {
+        errorMessage = 'Stripe session is unavailable. Please try again.';
+        return;
+      }
+      redirectingToStripe = true;
+      window.location.assign(checkoutResult.sessionUrl);
     } catch (err) {
       console.error('Stripe checkout failed', err);
       errorMessage =
@@ -674,55 +654,6 @@
         'Unable to start card checkout. Please try again.';
     } finally {
       isProcessing = false;
-    }
-  }
-
-  async function confirmStripePayment() {
-    if (checkoutStale) {
-      errorMessage = CHECKOUT_STALE_MESSAGE;
-      return;
-    }
-    if (!stripe || !elements || !stripeClientSecret) {
-      errorMessage = 'Stripe is not ready yet.';
-      return;
-    }
-
-    isProcessing = true;
-    errorMessage = '';
-    processingError = '';
-    selectionError = '';
-
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      redirect: 'if_required'
-    });
-
-    if (error) {
-      console.error('Stripe confirm error', error);
-      errorMessage = error.message || 'Payment failed. Please try again.';
-      isProcessing = false;
-      return;
-    }
-
-    if (!orderId) {
-      errorMessage = 'Checkout is missing an order id.';
-      isProcessing = false;
-      return;
-    }
-
-    const status = paymentIntent?.status;
-    if (!status || status === 'succeeded' || status === 'processing') {
-      stage = 'processing';
-      isProcessing = false;
-      const subscription = await pollForSubscription(orderId);
-      if (!subscription) {
-        processingError =
-          'We are still processing your payment. You can close this window and finish selection later in your subscriptions.';
-        return;
-      }
-      await advanceAfterSubscription(subscription, upgradeOptions);
-    } else {
-      errorMessage = 'Payment did not complete. Please try again.';
     }
   }
 
@@ -1009,22 +940,8 @@
         await restartStripeCheckout('checkout_updated');
         return;
       }
-      if (!stripeFormOpen) {
-        stripeFormOpen = true;
-        trackAddPaymentInfo('card', resolvedCurrency, totalCost, getPurchaseItems());
-        if (!stripeClientSecret) {
-          await startStripeCheckout();
-        } else if (!paymentElement) {
-          await initStripeElements();
-        }
-        return;
-      }
-
-      if (stripeClientSecret) {
-        await confirmStripePayment();
-      } else {
-        await startStripeCheckout();
-      }
+      trackAddPaymentInfo('card', resolvedCurrency, totalCost, getPurchaseItems());
+      await startStripeCheckout();
       return;
     }
 
@@ -1048,20 +965,6 @@
   function handleStripeAuthNotice() {
     showStripeAuthNotice = true;
     validationMessage = '';
-    errorMessage = '';
-  }
-
-  function handleStripeBack() {
-    stripeFormOpen = false;
-    if (checkoutStale) {
-      invalidateStripeCheckout('checkout_updated');
-      return;
-    }
-    if (paymentElement) {
-      paymentElement.destroy();
-      paymentElement = null;
-    }
-    elements = null;
     errorMessage = '';
   }
 
@@ -1224,6 +1127,8 @@
               locked={selectionLocked}
               submitting={selectionSubmitting}
               errorMessage={selectionError}
+              selectionType={selectionTypePreset}
+              manualMonthlyAcknowledged={manualMonthlyAcknowledged}
               on:submit={handleSelectionSubmit}
             />
           {/if}
@@ -1321,118 +1226,91 @@
         </section>
 
         <section class="space-y-4">
-          {#if paymentMethod === 'stripe' && stripeFormOpen}
-            <div class="rounded-xl border border-slate-200 p-5 space-y-4">
-              <div class="flex items-center gap-2 text-sm text-slate-600">
-                <CreditCard class="h-4 w-4" />
-                <span>Card details</span>
+          <div class="rounded-xl border border-slate-200 p-4 space-y-3">
+            <h4 class="text-sm font-semibold text-slate-900">Payment method</h4>
+            {#if isLoggedIn}
+              <label class="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50">
+                <input
+                  type="radio"
+                  name="payment-method"
+                  value="stripe"
+                  bind:group={paymentMethod}
+                  class="mt-1 h-4 w-4 text-slate-900 focus:ring-slate-300"
+                />
+                <div>
+                  <p class="text-sm font-semibold text-slate-900">Pay with card</p>
+                  <p class="text-xs text-slate-500">Secure checkout powered by Stripe.</p>
+                </div>
+              </label>
+            {:else if !showStripeAuthNotice}
+              <button
+                type="button"
+                class="w-full text-left flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50"
+                on:click={handleStripeAuthNotice}
+              >
+                <div>
+                  <p class="text-sm font-semibold text-slate-900">Pay with card</p>
+                  <p class="text-xs text-slate-500">Requires an account.</p>
+                </div>
+              </button>
+            {:else}
+              <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                <p class="text-xs text-slate-600">
+                  To pay with card, please
+                  <a href={ROUTES.AUTH.LOGIN} class="font-semibold text-slate-900 underline">login</a>
+                  or
+                  <a href={ROUTES.AUTH.REGISTER} class="font-semibold text-slate-900 underline">register</a>
+                  an account.
+                </p>
               </div>
-              {#if stripeClientSecret}
-                <div class="rounded-lg border border-slate-200 p-4">
-                  <div bind:this={paymentElementContainer}></div>
-                </div>
-                {#if checkoutStaleMessage}
-                  <p class="text-sm text-amber-600">{checkoutStaleMessage}</p>
-                {/if}
-                {#if errorMessage}
-                  <p class="text-sm text-red-600 whitespace-pre-line">{errorMessage}</p>
-                {/if}
-              {:else}
-                <div class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-xs text-slate-500 whitespace-pre-line">
-                  {errorMessage || 'Loading the secure card form...'}
-                </div>
-                {#if checkoutStaleMessage}
-                  <p class="text-sm text-amber-600">{checkoutStaleMessage}</p>
-                {/if}
-              {/if}
-            </div>
-          {:else}
-            <div class="rounded-xl border border-slate-200 p-4 space-y-3">
-              <h4 class="text-sm font-semibold text-slate-900">Payment method</h4>
-              {#if isLoggedIn}
-                <label class="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50">
-                  <input
-                    type="radio"
-                    name="payment-method"
-                    value="stripe"
-                    bind:group={paymentMethod}
-                    class="mt-1 h-4 w-4 text-slate-900 focus:ring-slate-300"
-                  />
-                  <div>
-                    <p class="text-sm font-semibold text-slate-900">Pay with card</p>
-                    <p class="text-xs text-slate-500">Secure checkout powered by Stripe.</p>
-                  </div>
-                </label>
-              {:else if !showStripeAuthNotice}
-                <button
-                  type="button"
-                  class="w-full text-left flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50"
-                  on:click={handleStripeAuthNotice}
-                >
-                  <div>
-                    <p class="text-sm font-semibold text-slate-900">Pay with card</p>
-                    <p class="text-xs text-slate-500">Requires an account.</p>
-                  </div>
-                </button>
-              {:else}
-                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-                  <p class="text-xs text-slate-600">
-                    To pay with card, please
-                    <a href={ROUTES.AUTH.LOGIN} class="font-semibold text-slate-900 underline">login</a>
-                    or
-                    <a href={ROUTES.AUTH.REGISTER} class="font-semibold text-slate-900 underline">register</a>
-                    an account.
+            {/if}
+            {#if isLoggedIn}
+              <label class="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50">
+                <input
+                  type="radio"
+                  name="payment-method"
+                  value="credits"
+                  bind:group={paymentMethod}
+                  class="mt-1 h-4 w-4 text-slate-900 focus:ring-slate-300"
+                />
+                <div>
+                  <p class="text-sm font-semibold text-slate-900">Pay with crypto (credits)</p>
+                  <p class="text-xs text-slate-500">
+                    Use your available balance.
                   </p>
-                </div>
-              {/if}
-              {#if isLoggedIn}
-                <label class="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50">
-                  <input
-                    type="radio"
-                    name="payment-method"
-                    value="credits"
-                    bind:group={paymentMethod}
-                    class="mt-1 h-4 w-4 text-slate-900 focus:ring-slate-300"
-                  />
-                  <div>
-                    <p class="text-sm font-semibold text-slate-900">Pay with crypto (credits)</p>
-                    <p class="text-xs text-slate-500">
-                      Use your available balance.
+                  {#if !isUsdCurrency}
+                    <p class="mt-1 text-[11px] text-slate-500">
+                      Crypto payments are based on USD pricing.
                     </p>
-                    {#if !isUsdCurrency}
-                      <p class="mt-1 text-[11px] text-slate-500">
-                        Crypto payments are based on USD pricing.
-                      </p>
-                    {/if}
-                  </div>
-                </label>
-              {:else if !showCreditsAuthNotice}
-                <button
-                  type="button"
-                  class="w-full text-left flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50"
-                  on:click={handleCreditsAuthNotice}
-                >
-                  <div>
-                    <p class="text-sm font-semibold text-slate-900">Pay with crypto (credits)</p>
-                    <p class="text-xs text-slate-500">Requires an account.</p>
-                  </div>
-                </button>
-              {:else}
-                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-                  <p class="text-xs text-slate-600">
-                    To pay with crypto (credits), please
-                    <a href={ROUTES.AUTH.LOGIN} class="font-semibold text-slate-900 underline">login</a>
-                    or
-                    <a href={ROUTES.AUTH.REGISTER} class="font-semibold text-slate-900 underline">register</a>
-                    an account.
-                  </p>
+                  {/if}
                 </div>
-              {/if}
-              {#if paymentMethod === 'stripe' && checkoutStaleMessage}
-                <p class="text-xs text-amber-700">{checkoutStaleMessage}</p>
-              {/if}
-            </div>
-          {/if}
+              </label>
+            {:else if !showCreditsAuthNotice}
+              <button
+                type="button"
+                class="w-full text-left flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50"
+                on:click={handleCreditsAuthNotice}
+              >
+                <div>
+                  <p class="text-sm font-semibold text-slate-900">Pay with crypto (credits)</p>
+                  <p class="text-xs text-slate-500">Requires an account.</p>
+                </div>
+              </button>
+            {:else}
+              <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                <p class="text-xs text-slate-600">
+                  To pay with crypto (credits), please
+                  <a href={ROUTES.AUTH.LOGIN} class="font-semibold text-slate-900 underline">login</a>
+                  or
+                  <a href={ROUTES.AUTH.REGISTER} class="font-semibold text-slate-900 underline">register</a>
+                  an account.
+                </p>
+              </div>
+            {/if}
+            {#if paymentMethod === 'stripe' && checkoutStaleMessage}
+              <p class="text-xs text-amber-700">{checkoutStaleMessage}</p>
+            {/if}
+          </div>
 
           {#if paymentMethod === 'credits'}
             <div class="rounded-xl border border-slate-200 p-4 space-y-3">
@@ -1482,16 +1360,6 @@
           Cancel
         </button>
         <div class="flex items-center gap-3">
-          {#if paymentMethod === 'stripe' && stripeFormOpen}
-            <button
-              type="button"
-              on:click={handleStripeBack}
-              class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              disabled={isProcessing}
-            >
-              Go back
-            </button>
-          {/if}
           <button
             on:click={handlePrimaryAction}
             class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500 to-pink-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed"

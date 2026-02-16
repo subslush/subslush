@@ -16,10 +16,29 @@ const resolveAppBaseUrl = (): string | null => {
   return null;
 };
 
-const resolveEmailRedirectUrl = (): string | null => {
+const sanitizeRedirectPath = (value?: string | null): string | null => {
+  if (!value) return null;
+  const normalized = value.trim();
+  if (!normalized.startsWith('/') || normalized.startsWith('//')) {
+    return null;
+  }
+  if (normalized.length > 500) {
+    return null;
+  }
+  return normalized;
+};
+
+const resolveEmailRedirectUrl = (
+  redirectPath?: string | null
+): string | null => {
   const base = resolveAppBaseUrl();
   if (!base) return null;
-  return `${base}/auth/confirm`;
+  const baseConfirmUrl = `${base}/auth/confirm`;
+  const safeRedirectPath = sanitizeRedirectPath(redirectPath);
+  if (safeRedirectPath) {
+    return `${baseConfirmUrl}?redirect=${encodeURIComponent(safeRedirectPath)}`;
+  }
+  return baseConfirmUrl;
 };
 
 const resolveLoginUrl = (): string => {
@@ -56,6 +75,7 @@ export interface RegisterData {
   password: string;
   firstName?: string | undefined;
   lastName?: string | undefined;
+  redirect?: string | undefined;
 }
 
 export interface LoginData {
@@ -105,7 +125,7 @@ class AuthService {
     sessionOptions: SessionCreateOptions
   ): Promise<AuthResult> {
     try {
-      const { email, password, firstName, lastName } = data;
+      const { email, password, firstName, lastName, redirect } = data;
       const trimmedEmail = email.trim();
 
       // Guard against duplicate user registrations before creating Supabase auth record
@@ -119,7 +139,7 @@ class AuthService {
         };
       }
 
-      const emailRedirectTo = resolveEmailRedirectUrl();
+      const emailRedirectTo = resolveEmailRedirectUrl(redirect);
       const profileData: { first_name?: string; last_name?: string } = {};
       if (firstName) {
         profileData.first_name = firstName;

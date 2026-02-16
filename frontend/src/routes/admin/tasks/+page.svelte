@@ -3,7 +3,7 @@
   import StatusBadge from '$lib/components/admin/StatusBadge.svelte';
   import AdminEmptyState from '$lib/components/admin/AdminEmptyState.svelte';
   import { adminService } from '$lib/api/admin.js';
-  import { formatOptionalDate, pickValue, statusToneFromMap } from '$lib/utils/admin.js';
+  import { formatCents, formatOptionalDate, pickValue, statusToneFromMap } from '$lib/utils/admin.js';
   import type { AdminTask, AdminPrelaunchRewardTask } from '$lib/types/admin.js';
   import type { PageData } from './$types';
 
@@ -131,6 +131,22 @@
     const parts = [serviceType, servicePlan].filter(Boolean);
     return parts.length > 0 ? parts.join(' · ') : '--';
   };
+
+  const resolveOrderCurrency = (task: AdminTask): string =>
+    (pickValue(task.orderCurrency, task.order_currency) as string | null) || 'USD';
+
+  const resolveOrderCouponCode = (task: AdminTask): string =>
+    (pickValue(task.orderCouponCode, task.order_coupon_code) as string | null) || '';
+
+  const resolveOrderCouponDiscountCents = (task: AdminTask): number => {
+    const raw = pickValue(task.orderCouponDiscountCents, task.order_coupon_discount_cents);
+    if (raw === null || raw === undefined) return 0;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
+  };
+
+  const hasOrderCouponUsage = (task: AdminTask): boolean =>
+    resolveOrderCouponCode(task).length > 0 || resolveOrderCouponDiscountCents(task) > 0;
 
   const resolvePrelaunchStatus = (task: AdminPrelaunchRewardTask) =>
     (pickValue(task.status) as string | undefined) || 'pending';
@@ -525,6 +541,12 @@
                     <div class="text-xs text-gray-500">
                       {pickValue(task.orderStatus, task.order_status) || '--'}
                     </div>
+                    {#if hasOrderCouponUsage(task)}
+                      <div class="mt-1 text-xs text-emerald-700">
+                        Coupon {resolveOrderCouponCode(task) || 'applied'} ·
+                        {formatCents(resolveOrderCouponDiscountCents(task), resolveOrderCurrency(task))}
+                      </div>
+                    {/if}
                   </td>
                   <td class="py-3 text-gray-600">
                     <div class="font-semibold text-gray-900">{resolveSubscriptionId(task) || '--'}</div>

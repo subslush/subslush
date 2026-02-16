@@ -89,7 +89,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       reply: FastifyReply
     ) => {
       try {
-        const { email, password, firstName, lastName } = request.body;
+        const { email, password, firstName, lastName, redirect } = request.body;
 
         const sessionOptions = {
           ipAddress: request.ip,
@@ -102,6 +102,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             password,
             firstName: firstName || undefined,
             lastName: lastName || undefined,
+            redirect: redirect || undefined,
           },
           sessionOptions
         );

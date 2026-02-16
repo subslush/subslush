@@ -413,6 +413,8 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             base_price_cents: snapshot.basePriceCents,
             discount_percent: snapshot.discountPercent,
             term_months: snapshot.termMonths,
+            auto_renew,
+            coupon_discount_cents: couponDiscountCents,
             currency,
             total_price_cents: finalTotalCents,
             description: orderDescription,
@@ -684,6 +686,27 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           if (coupon) {
             await couponService.finalizeRedemptionForOrder(order.id);
           }
+          try {
+            const confirmationResult =
+              await orderService.sendOrderPaymentConfirmationEmail(order.id);
+            if (
+              !confirmationResult.success &&
+              confirmationResult.reason &&
+              !['already_sent', 'renewal_order'].includes(
+                confirmationResult.reason
+              )
+            ) {
+              Logger.warn('Failed to send order payment confirmation email', {
+                orderId: order.id,
+                reason: confirmationResult.reason,
+              });
+            }
+          } catch (emailError) {
+            Logger.warn('Order payment confirmation email call failed', {
+              orderId: order.id,
+              error: emailError,
+            });
+          }
           void tiktokEventsService.trackPurchase({
             userId: user.userId,
             email: user.email,
@@ -705,48 +728,41 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           });
         }
 
-        // Default: Stripe direct payment
-        const stripeResult = await paymentService.createStripePayment(
-          user.userId,
-          price,
-          currency,
-          orderDescription,
-          'subscription',
-          {
-            service_type: product.service_type,
-            service_plan: planCode,
-            duration_months: snapshot.termMonths,
-            discount_percent: snapshot.discountPercent,
-            base_price_cents: snapshot.basePriceCents,
-            total_price_cents: finalTotalCents,
-            subscription_price_cents: termTotalCents,
-            auto_renew,
-            ...(upgradeOptions ? { upgrade_options: upgradeOptions } : {}),
-            ...(coupon
-              ? {
-                  coupon_code: coupon.code,
-                  coupon_percent_off: coupon.percent_off,
-                  coupon_discount_cents: couponDiscountCents,
-                }
-              : {}),
-          },
-          {
-            orderId: order.id,
-            productVariantId: productVariantId ?? null,
-            productSlug: product.slug ?? null,
-            priceCents,
-            basePriceCents: snapshot.basePriceCents,
-            discountPercent: snapshot.discountPercent,
-            termMonths: snapshot.termMonths,
-            currency,
-            autoRenew: auto_renew,
-            nextBillingAt: nextBillingAt ?? null,
-            renewalMethod: 'stripe',
-            statusReason: 'checkout_started',
-          }
-        );
+        // Default: Stripe Checkout Session
+        const stripeResult = await paymentService.createStripeCheckoutSession({
+          orderId: order.id,
+        });
 
         if (!stripeResult.success) {
+          const isProviderTemporarilyUnavailable = [
+            'payment_provider_unavailable',
+            'payment_provider_rate_limited',
+            'payment_provider_misconfigured',
+          ].includes(stripeResult.error || '');
+          const isValidationError = [
+            'order_not_found',
+            'order_not_pending',
+            'payment_provider_mismatch',
+            'order_missing_items',
+            'invalid_currency',
+            'missing_app_base_url',
+            'own_account_credentials_required',
+          ].includes(stripeResult.error || '');
+
+          if (isProviderTemporarilyUnavailable) {
+            return ErrorResponses.serviceUnavailable(
+              reply,
+              'Card checkout is temporarily unavailable. Please try again later.'
+            );
+          }
+
+          if (isValidationError) {
+            return ErrorResponses.badRequest(
+              reply,
+              (stripeResult.error || 'invalid_checkout').replace(/_/g, ' ')
+            );
+          }
+
           await orderService.updateOrderStatus(
             order.id,
             'cancelled',
@@ -761,21 +777,14 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
-        await orderService.updateOrderPayment(order.id, {
-          payment_provider: 'stripe',
-          payment_reference: stripeResult.paymentId,
-          auto_renew,
-          status: 'pending_payment',
-          status_reason: 'awaiting_payment',
-        });
-
         return SuccessResponses.created(reply, {
           payment_method: 'stripe',
           order_id: order.id,
           paymentId: stripeResult.paymentId,
-          clientSecret: stripeResult.clientSecret,
-          amount: stripeResult.amount,
-          currency: stripeResult.currency,
+          sessionId: stripeResult.sessionId,
+          sessionUrl: stripeResult.sessionUrl,
+          amount: price,
+          currency,
           checkoutKey,
           upgrade_options: upgradeOptions ?? null,
         });
@@ -1063,7 +1072,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           orderId: payload.order_id,
         });
 
-        const success = await paymentService.processWebhook(payload);
+        const success = await paymentService.processWebhook(payload, rawBody);
 
         if (!success) {
           Logger.error(
@@ -1083,9 +1092,6 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
   // Get supported currencies
   fastify.get(
     '/currencies',
-    {
-      preHandler: [authPreHandler],
-    },
     async (_request: FastifyRequest, reply: FastifyReply) => {
       try {
         const currencies = await paymentService.getSupportedCurrencies();

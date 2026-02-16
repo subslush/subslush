@@ -71,3 +71,7 @@ export interface OrdersListResponse {
 export interface OrderSubscriptionResponse {
   subscription: Subscription | null;
 }
+
+export interface OrderSubscriptionsResponse {
+  subscriptions: Subscription[];
+}

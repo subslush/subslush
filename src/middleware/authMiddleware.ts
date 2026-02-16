@@ -354,4 +354,84 @@ export const authPreHandler = async (
   }
 };
 
+// Optional auth preHandler: populate request.user if valid, but don't block if missing/invalid.
+export const optionalAuthPreHandler = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> => {
+  try {
+    let token: string | undefined = request.cookies['auth_token'];
+
+    if (!token) {
+      const authHeader = request.headers.authorization;
+      const bearerToken = jwtService.extractBearerToken(authHeader);
+      token = bearerToken || undefined;
+    }
+
+    if (!token) {
+      return;
+    }
+
+    const tokenValidation = jwtService.verifyToken(token);
+    if (!tokenValidation.isValid || !tokenValidation.payload) {
+      return;
+    }
+
+    const payload = tokenValidation.payload;
+    if (!payload.sessionId) {
+      return;
+    }
+
+    const sessionValidation = await sessionService.validateSession(
+      payload.sessionId
+    );
+
+    if (!sessionValidation.isValid) {
+      return;
+    }
+
+    request.session = sessionValidation.session || undefined;
+
+    let userWithProfile = null;
+    try {
+      const { authService } = require('../services/auth');
+      const userResult = await authService.validateSession(payload.sessionId);
+      if (userResult.success && userResult.user) {
+        userWithProfile = userResult.user;
+      }
+    } catch (error) {
+      Logger.warn(
+        'Failed to get full user profile in optionalAuthPreHandler:',
+        error
+      );
+    }
+
+    request.user = {
+      userId: payload.userId,
+      email: payload.email,
+      firstName: userWithProfile?.firstName,
+      lastName: userWithProfile?.lastName,
+      role: payload.role || undefined,
+      sessionId: payload.sessionId,
+      isAdmin: payload.role === 'admin',
+    };
+
+    const activeStatus = await ensureActiveUser(
+      payload.userId,
+      payload.sessionId,
+      reply
+    );
+    if (!activeStatus) {
+      return;
+    }
+
+    const cookies = request.cookies || {};
+    if (cookies['auth_token'] && !cookies[CSRF_COOKIE_NAME]) {
+      setCsrfCookie(reply);
+    }
+  } catch {
+    return;
+  }
+};
+
 export default authMiddleware;

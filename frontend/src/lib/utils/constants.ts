@@ -66,6 +66,16 @@ export const API_ENDPOINTS = {
     CHECKOUT_CANCEL: '/payments/checkout/cancel',
     QUOTE: '/payments/quote'
   },
+  CHECKOUT: {
+    IDENTITY: '/checkout/identity',
+    DRAFT: '/checkout/draft',
+    STRIPE_SESSION: '/checkout/stripe/session',
+    STRIPE_CONFIRM: '/checkout/stripe/confirm',
+    CREDITS_COMPLETE: '/checkout/credits/complete',
+    NOWPAYMENTS_INVOICE: '/checkout/nowpayments/invoice',
+    NOWPAYMENTS_MINIMUM: '/checkout/nowpayments/minimum',
+    CLAIM: '/checkout/claim'
+  },
   USERS: {
     PROFILE: '/users/profile',
     PASSWORD: '/users/password',
@@ -112,6 +122,8 @@ export const ROUTES = {
   SUBSCRIPTIONS: {
     MY_SUBSCRIPTIONS: '/dashboard/subscriptions'
   },
+  CHECKOUT: '/checkout',
+  CHECKOUT_CLAIM: '/checkout/claim',
   CREDITS: '/dashboard/credits'
 } as const;
 

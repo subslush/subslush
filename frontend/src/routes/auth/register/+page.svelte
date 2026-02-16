@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import { Eye, EyeOff, UserPlus, Loader2, Check, X, Info } from 'lucide-svelte';
   import { auth, authError, authErrorAction, isLoading } from '$lib/stores/auth.js';
   import { registerSchema, type RegisterFormData } from '$lib/validation/auth.js';
@@ -22,9 +23,12 @@
   let showConfirmPassword = false;
   let emailInput: HTMLInputElement;
   let passwordRequirements: string[] = [];
+  let redirectTarget = '';
+  const EMAIL_VERIFY_REDIRECT_STORAGE_KEY = 'auth:post_verify_redirect';
 
   $: passwordStrength = formData.password ? getPasswordStrength(formData.password) : null;
   $: passwordRequirements = validatePasswordRequirements(formData.password);
+  $: redirectTarget = $page.url.searchParams.get('redirect') ?? '';
 
   onMount(() => {
     // Auto-focus email input
@@ -65,11 +69,13 @@
     try {
       // Prepare data for API (remove confirmPassword, acceptTerms, and empty optional fields)
       const { confirmPassword, acceptTerms, ...apiData } = formData;
+      const safeRedirect = resolveSafeRedirect();
       const cleanData = {
         email: apiData.email,
         password: apiData.password,
         firstName: apiData.firstName || '',
-        lastName: apiData.lastName || ''
+        lastName: apiData.lastName || '',
+        ...(safeRedirect ? { redirect: safeRedirect } : {}),
       };
 
       console.log('🔄 [REGISTER] Starting registration process...');
@@ -80,13 +86,20 @@
       if (result?.requiresEmailVerification) {
         auth.clearError();
         console.log('✅ [REGISTER] Verification required');
-        const params = new URLSearchParams({
-          verify: 'pending',
-          email: cleanData.email,
-        });
+        const params = new URLSearchParams();
+        params.set('verify', 'pending');
+        params.set('email', cleanData.email);
+        if (safeRedirect) {
+          persistPostVerifyRedirect(safeRedirect);
+          params.set('redirect', safeRedirect);
+        } else {
+          clearPostVerifyRedirect();
+        }
         goto(`${ROUTES.AUTH.LOGIN}?${params.toString()}`);
         return;
       }
+
+      clearPostVerifyRedirect();
 
       console.log('✅ [REGISTER] Registration successful');
 
@@ -120,7 +133,39 @@
     }
   }
 
+  function resolveSafeRedirect(): string | null {
+    const normalized = redirectTarget.trim();
+    if (!normalized) return null;
+    if (!normalized.startsWith('/') || normalized.startsWith('//')) {
+      return null;
+    }
+    return normalized;
+  }
+
+  function persistPostVerifyRedirect(path: string): void {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(EMAIL_VERIFY_REDIRECT_STORAGE_KEY, path);
+    } catch {
+      // Ignore storage errors; redirect query parameter is still present.
+    }
+  }
+
+  function clearPostVerifyRedirect(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.removeItem(EMAIL_VERIFY_REDIRECT_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors.
+    }
+  }
+
   function navigateToLogin() {
+    const safeRedirect = resolveSafeRedirect();
+    if (safeRedirect) {
+      goto(`${ROUTES.AUTH.LOGIN}?redirect=${encodeURIComponent(safeRedirect)}`);
+      return;
+    }
     goto(ROUTES.AUTH.LOGIN);
   }
 

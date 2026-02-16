@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabasePool } from '../config/database';
 import { env } from '../config/environment';
@@ -9,6 +10,7 @@ import {
   nowpaymentsClient,
 } from '../utils/nowpaymentsClient';
 import { paymentRepository } from './paymentRepository';
+import { paymentEventRepository } from './paymentEventRepository';
 import { nowPaymentsProvider } from './payments/nowPaymentsProvider';
 import { stripeProvider } from './payments/stripeProvider';
 import { Logger } from '../utils/logger';
@@ -16,6 +18,7 @@ import { paymentMonitoringService } from './paymentMonitoringService';
 import { paymentFailureService } from './paymentFailureService';
 import { shouldIgnoreNowPaymentsStatusRegression } from '../utils/nowpaymentsStatus';
 import { paymentMethodService } from './paymentMethodService';
+import { creditService } from './creditService';
 import { UserPaymentMethod } from '../types/paymentMethod';
 import {
   Payment,
@@ -32,19 +35,28 @@ import {
   UnifiedPaymentStatus,
 } from '../types/payment';
 import { subscriptionService } from './subscriptionService';
+import {
+  resolveCycleEndDate,
+  subscriptionRenewalService,
+} from './subscriptionRenewalService';
 import { orderService } from './orderService';
+import { orderItemUpgradeSelectionService } from './orderItemUpgradeSelectionService';
+import { upgradeSelectionService } from './upgradeSelectionService';
 import { couponService } from './couponService';
 import {
   buildTikTokProductProperties,
   tiktokEventsService,
 } from './tiktokEventsService';
 import { normalizeCurrencyCode } from '../utils/currency';
+import { computeTermPricing } from '../utils/termPricing';
+import { parseJsonValue } from '../utils/json';
 import {
   computeNextRenewalDates,
   getNextStripeRenewalAttemptDate,
 } from '../utils/subscriptionHelpers';
 import {
   normalizeUpgradeOptions,
+  ownAccountCredentialRequirementRequiresPassword,
   validateUpgradeOptions,
 } from '../utils/upgradeOptions';
 import {
@@ -52,6 +64,7 @@ import {
   notifyStripeRenewalFailure,
   notifyStripeRenewalSuccess,
 } from './renewalNotificationService';
+import type { OrderItem, Order, OrderWithItems } from '../types/order';
 
 interface StripeOrderContext {
   orderId?: string;
@@ -132,6 +145,16 @@ export class PaymentService {
   private readonly CURRENCY_LKG_TTL = env.NOWPAYMENTS_CURRENCY_LKG_TTL;
   private readonly CURRENCY_SANITY_MIN_COUNT = 20;
   private readonly MIN_CREDIT_AMOUNT_USD = 5;
+  private readonly STRIPE_CHECKOUT_MAX_NETWORK_ATTEMPTS = 3;
+  private readonly STRIPE_RETRYABLE_NETWORK_CODES = new Set([
+    'ENOTFOUND',
+    'EAI_AGAIN',
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+  ]);
 
   private mapNowPaymentsStatus(status: PaymentStatus): UnifiedPaymentStatus {
     switch (status) {
@@ -211,6 +234,374 @@ export class PaymentService {
     }
   }
 
+  private async recordPaymentEvent(params: {
+    provider: string;
+    eventId: string;
+    eventType: string;
+    orderId?: string | null;
+    paymentId?: string | null;
+    client?: PoolClient;
+  }): Promise<boolean> {
+    return paymentEventRepository.recordEvent(
+      {
+        provider: params.provider,
+        eventId: params.eventId,
+        eventType: params.eventType,
+        orderId: params.orderId ?? null,
+        paymentId: params.paymentId ?? null,
+      },
+      params.client
+    );
+  }
+
+  private resolveOrderItemMetadata(item: OrderItem): Record<string, any> {
+    return parseJsonValue<Record<string, any>>(item.metadata, {});
+  }
+
+  private resolveOrderItemTermMonths(
+    item: OrderItem,
+    metadata: Record<string, any>
+  ): number | null {
+    return (
+      parsePositiveInt(item.term_months) ??
+      parsePositiveInt(metadata['term_months']) ??
+      parsePositiveInt(metadata['duration_months']) ??
+      parsePositiveInt(metadata['termMonths']) ??
+      parsePositiveInt(metadata['durationMonths'])
+    );
+  }
+
+  private resolveOrderItemDisplayName(item: OrderItem): string {
+    const productName =
+      typeof item.product_name === 'string' &&
+      item.product_name.trim().length > 0
+        ? item.product_name.trim()
+        : null;
+    const variantName =
+      typeof item.variant_name === 'string' &&
+      item.variant_name.trim().length > 0
+        ? item.variant_name.trim()
+        : null;
+    const description =
+      typeof item.description === 'string' && item.description.trim().length > 0
+        ? item.description.trim()
+        : null;
+    if (productName && variantName) {
+      return `${productName} ${variantName}`;
+    }
+    return (
+      productName || variantName || description || `item ${item.id.slice(0, 8)}`
+    );
+  }
+
+  private async validateOwnAccountSelectionData(
+    order: OrderWithItems
+  ): Promise<{ valid: true } | { valid: false; missingItemLabel: string }> {
+    const selectionMap =
+      await orderItemUpgradeSelectionService.listSelectionsForOrder(order.id);
+
+    for (const item of order.items) {
+      const itemMetadata = this.resolveOrderItemMetadata(item);
+      const selectionType =
+        selectionMap[item.id]?.selection_type ??
+        (typeof itemMetadata['selection_type'] === 'string'
+          ? itemMetadata['selection_type']
+          : null);
+
+      if (selectionType !== 'upgrade_own_account') {
+        continue;
+      }
+
+      const upgradeOptions = normalizeUpgradeOptions(itemMetadata);
+      const requiresPassword =
+        ownAccountCredentialRequirementRequiresPassword(upgradeOptions);
+      const accountIdentifier =
+        selectionMap[item.id]?.account_identifier?.trim() ?? '';
+      const credentialsEncrypted =
+        selectionMap[item.id]?.credentials_encrypted?.trim() ?? '';
+
+      if (!accountIdentifier) {
+        return {
+          valid: false,
+          missingItemLabel: this.resolveOrderItemDisplayName(item),
+        };
+      }
+
+      if (requiresPassword && !credentialsEncrypted) {
+        return {
+          valid: false,
+          missingItemLabel: this.resolveOrderItemDisplayName(item),
+        };
+      }
+    }
+
+    return { valid: true };
+  }
+
+  private async createPaymentItemAllocations(params: {
+    paymentRecordId: string;
+    orderItems: OrderItem[];
+    client?: PoolClient;
+  }): Promise<void> {
+    const client = params.client ?? getDatabasePool();
+    if (params.orderItems.length === 0) {
+      return;
+    }
+
+    const existing = await client.query(
+      'SELECT 1 FROM payment_items WHERE payment_id = $1 LIMIT 1',
+      [params.paymentRecordId]
+    );
+    if (existing.rows.length > 0) {
+      return;
+    }
+
+    const values: string[] = [];
+    const args: Array<string | number> = [];
+    let index = 0;
+
+    for (const item of params.orderItems) {
+      const metadata = this.resolveOrderItemMetadata(item);
+      const termMonths = this.resolveOrderItemTermMonths(item, metadata);
+      const basePriceCents = parseNonNegativeInt(item.base_price_cents);
+      const discountPercent = parsePercent(item.discount_percent ?? 0) ?? 0;
+      const couponDiscountCents = Math.max(
+        0,
+        parseNonNegativeInt(item.coupon_discount_cents) ?? 0
+      );
+
+      let subtotalCents = Math.max(0, item.total_price_cents);
+      let discountCents = couponDiscountCents;
+
+      if (basePriceCents !== null && termMonths !== null) {
+        const snapshot = computeTermPricing({
+          basePriceCents,
+          termMonths,
+          discountPercent,
+        });
+        subtotalCents = snapshot.basePriceCents * snapshot.termMonths;
+        discountCents = snapshot.discountCents + couponDiscountCents;
+      }
+
+      const totalCents = Math.max(0, item.total_price_cents);
+
+      values.push(
+        `($${++index}, $${++index}, $${++index}, $${++index}, $${++index})`
+      );
+      args.push(
+        params.paymentRecordId,
+        item.id,
+        subtotalCents,
+        discountCents,
+        totalCents
+      );
+    }
+
+    await client.query(
+      `INSERT INTO payment_items
+        (payment_id, order_item_id, allocated_subtotal_cents, allocated_discount_cents, allocated_total_cents)
+       VALUES ${values.join(', ')}`,
+      args
+    );
+  }
+
+  private resolveAppBaseUrl(): string | null {
+    const base = env.APP_BASE_URL?.replace(/\/$/, '');
+    if (base) return base;
+    if (env.NODE_ENV !== 'production') {
+      return 'http://localhost:3000';
+    }
+    return null;
+  }
+
+  private async createSubscriptionsForOrder(params: {
+    order: Order;
+    orderItems: OrderItem[];
+    renewalMethod: string | null;
+  }): Promise<
+    Array<{
+      id: string;
+      orderItemId: string;
+      autoRenew: boolean;
+    }>
+  > {
+    if (params.orderItems.length === 0) {
+      return [];
+    }
+
+    const pool = getDatabasePool();
+    const orderItemIds = params.orderItems.map(item => item.id);
+    const existingResult = await pool.query(
+      `SELECT id, order_item_id
+       FROM subscriptions
+       WHERE order_item_id = ANY($1::uuid[])`,
+      [orderItemIds]
+    );
+    const existingByItem = new Map<string, string>();
+    for (const row of existingResult.rows) {
+      if (row.order_item_id) {
+        existingByItem.set(row.order_item_id, row.id);
+      }
+    }
+
+    const orderMetadata = parseJsonValue<Record<string, any>>(
+      params.order.metadata,
+      {}
+    );
+    const selectionByItem =
+      await orderItemUpgradeSelectionService.listSelectionsForOrder(
+        params.order.id
+      );
+
+    const created: Array<{
+      id: string;
+      orderItemId: string;
+      autoRenew: boolean;
+    }> = [];
+
+    for (const item of params.orderItems) {
+      if (existingByItem.has(item.id)) {
+        created.push({
+          id: existingByItem.get(item.id) as string,
+          orderItemId: item.id,
+          autoRenew: item.auto_renew === true,
+        });
+        continue;
+      }
+
+      const itemMetadata = this.resolveOrderItemMetadata(item);
+      const serviceType =
+        itemMetadata['service_type'] || orderMetadata['service_type'] || null;
+      const servicePlan =
+        itemMetadata['service_plan'] || orderMetadata['service_plan'] || null;
+
+      if (!serviceType || !servicePlan) {
+        Logger.error('Missing service metadata for order item', {
+          orderId: params.order.id,
+          orderItemId: item.id,
+        });
+        continue;
+      }
+
+      const termMonths =
+        this.resolveOrderItemTermMonths(item, itemMetadata) ??
+        parsePositiveInt(orderMetadata['term_months']) ??
+        parsePositiveInt(orderMetadata['duration_months']) ??
+        parsePositiveInt(params.order.term_months) ??
+        1;
+
+      const basePriceCents = parseNonNegativeInt(item.base_price_cents);
+      const discountPercent = parsePercent(item.discount_percent ?? 0) ?? 0;
+      const couponDiscountCents = Math.max(
+        0,
+        parseNonNegativeInt(item.coupon_discount_cents) ?? 0
+      );
+
+      let termTotalCents =
+        Math.max(0, item.total_price_cents) + couponDiscountCents;
+      if (basePriceCents !== null && termMonths !== null) {
+        const snapshot = computeTermPricing({
+          basePriceCents,
+          termMonths,
+          discountPercent,
+        });
+        termTotalCents = snapshot.totalPriceCents;
+      }
+
+      const upgradeOptions = normalizeUpgradeOptions(itemMetadata);
+      const selectionRow = selectionByItem[item.id];
+      const selectionType =
+        selectionRow?.selection_type ??
+        (itemMetadata['selection_type'] as string | undefined) ??
+        null;
+      const manualMonthlyAcknowledged =
+        Boolean(selectionRow?.manual_monthly_acknowledged_at) ||
+        itemMetadata['manual_monthly_acknowledged'] === true;
+      const selectionProvided =
+        Boolean(selectionType) || manualMonthlyAcknowledged;
+
+      const autoRenew = item.auto_renew === true;
+      const currency =
+        params.order.currency ||
+        item.currency ||
+        (typeof orderMetadata['currency'] === 'string'
+          ? orderMetadata['currency']
+          : null);
+
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + termMonths);
+      const renewalDate = new Date(endDate);
+      renewalDate.setDate(renewalDate.getDate() - 7);
+      const nextBillingAt = autoRenew ? renewalDate : null;
+
+      const subscriptionResult = await subscriptionService.createSubscription(
+        params.order.user_id,
+        {
+          service_type: serviceType as any,
+          service_plan: servicePlan as any,
+          start_date: startDate,
+          end_date: endDate,
+          renewal_date: renewalDate,
+          auto_renew: autoRenew,
+          order_id: params.order.id,
+          order_item_id: item.id,
+          product_variant_id: item.product_variant_id ?? null,
+          price_cents: termTotalCents,
+          base_price_cents: basePriceCents ?? null,
+          discount_percent: discountPercent ?? null,
+          term_months: termMonths,
+          currency: currency ?? null,
+          next_billing_at: nextBillingAt,
+          renewal_method: params.renewalMethod,
+          status_reason: 'payment_succeeded',
+          upgrade_options_snapshot: upgradeOptions ?? null,
+          selection_provided: selectionProvided,
+          manual_monthly_acknowledged: manualMonthlyAcknowledged,
+        }
+      );
+
+      if (!subscriptionResult.success || !subscriptionResult.data) {
+        const errorMessage = subscriptionResult.success
+          ? 'subscription_missing_data'
+          : subscriptionResult.error;
+        Logger.error('Failed to create subscription for order item', {
+          orderId: params.order.id,
+          orderItemId: item.id,
+          error: errorMessage,
+        });
+        continue;
+      }
+
+      const subscription = subscriptionResult.data;
+      created.push({
+        id: subscription.id,
+        orderItemId: item.id,
+        autoRenew,
+      });
+
+      if (selectionRow) {
+        if (selectionRow.selection_type) {
+          await upgradeSelectionService.submitSelection({
+            subscriptionId: subscription.id,
+            selectionType: selectionRow.selection_type as any,
+            accountIdentifier: selectionRow.account_identifier ?? null,
+            credentials: selectionRow.credentials_encrypted ?? null,
+            manualMonthlyAcknowledgedAt:
+              selectionRow.manual_monthly_acknowledged_at ?? null,
+          });
+        } else if (selectionRow.manual_monthly_acknowledged_at) {
+          await upgradeSelectionService.acknowledgeManualMonthly({
+            subscriptionId: subscription.id,
+            acknowledgedAt: selectionRow.manual_monthly_acknowledged_at,
+          });
+        }
+      }
+    }
+
+    return created;
+  }
+
   private parseMetadataDate(value: unknown): Date | null {
     if (!value) return null;
     if (value instanceof Date) return value;
@@ -285,7 +676,118 @@ export class PaymentService {
     };
   }
 
-  async ensureStripeCustomer(userId: string): Promise<{
+  private getStripeErrorType(error: unknown): string | null {
+    if (!error || typeof error !== 'object') {
+      return null;
+    }
+    const type = (error as { type?: unknown }).type;
+    return typeof type === 'string' ? type : null;
+  }
+
+  private getStripeNetworkCode(error: unknown): string | null {
+    if (!error || typeof error !== 'object') {
+      return null;
+    }
+
+    const directCode = (error as { code?: unknown }).code;
+    if (typeof directCode === 'string') {
+      return directCode;
+    }
+
+    const rawCode = (error as { raw?: { code?: unknown } }).raw?.code;
+    if (typeof rawCode === 'string') {
+      return rawCode;
+    }
+
+    const rawDetailCode = (error as { raw?: { detail?: { code?: unknown } } })
+      .raw?.detail?.code;
+    if (typeof rawDetailCode === 'string') {
+      return rawDetailCode;
+    }
+
+    const detailCode = (error as { detail?: { code?: unknown } }).detail?.code;
+    if (typeof detailCode === 'string') {
+      return detailCode;
+    }
+
+    const causeCode = (error as { cause?: { code?: unknown } }).cause?.code;
+    if (typeof causeCode === 'string') {
+      return causeCode;
+    }
+
+    return null;
+  }
+
+  private isStripeConnectionError(error: unknown): boolean {
+    if (this.getStripeErrorType(error) === 'StripeConnectionError') {
+      return true;
+    }
+
+    const networkCode = this.getStripeNetworkCode(error);
+    return networkCode
+      ? this.STRIPE_RETRYABLE_NETWORK_CODES.has(networkCode)
+      : false;
+  }
+
+  private isStripeRateLimitError(error: unknown): boolean {
+    return this.getStripeErrorType(error) === 'StripeRateLimitError';
+  }
+
+  private isStripeAuthenticationError(error: unknown): boolean {
+    return this.getStripeErrorType(error) === 'StripeAuthenticationError';
+  }
+
+  private async createCheckoutSessionWithRetry(
+    params: Parameters<typeof stripeProvider.createCheckoutSession>[0],
+    context: { orderId: string }
+  ): Promise<Awaited<ReturnType<typeof stripeProvider.createCheckoutSession>>> {
+    let lastError: unknown;
+
+    for (
+      let attempt = 1;
+      attempt <= this.STRIPE_CHECKOUT_MAX_NETWORK_ATTEMPTS;
+      attempt += 1
+    ) {
+      try {
+        return await stripeProvider.createCheckoutSession(params);
+      } catch (error) {
+        lastError = error;
+        const isRetryable = this.isStripeConnectionError(error);
+        const canRetry =
+          isRetryable && attempt < this.STRIPE_CHECKOUT_MAX_NETWORK_ATTEMPTS;
+
+        if (!canRetry) {
+          throw error;
+        }
+
+        const delayMs = 250 * 2 ** (attempt - 1);
+        Logger.warn(
+          'Transient Stripe connection error while creating checkout session, retrying',
+          {
+            orderId: context.orderId,
+            attempt,
+            maxAttempts: this.STRIPE_CHECKOUT_MAX_NETWORK_ATTEMPTS,
+            delayMs,
+            errorType: this.getStripeErrorType(error),
+            errorCode: this.getStripeNetworkCode(error),
+          }
+        );
+
+        await new Promise<void>(resolve => {
+          setTimeout(() => resolve(), delayMs);
+        });
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Stripe checkout session creation failed');
+  }
+
+  async ensureStripeCustomer(
+    userId: string,
+    options?: { preferredEmail?: string | null }
+  ): Promise<{
     customerId: string;
     email: string | null;
   }> {
@@ -299,12 +801,31 @@ export class PaymentService {
       throw new Error('User not found');
     }
 
-    const email = userResult.rows[0].email as string | null;
+    const userEmail = userResult.rows[0].email as string | null;
+    const preferredEmail =
+      typeof options?.preferredEmail === 'string'
+        ? options.preferredEmail.trim().toLowerCase()
+        : null;
+    const email = preferredEmail || userEmail;
     const existingCustomerId = userResult.rows[0].stripe_customer_id as
       | string
       | null;
 
     if (existingCustomerId) {
+      if (preferredEmail) {
+        try {
+          await stripeProvider.updateCustomer({
+            customerId: existingCustomerId,
+            email: preferredEmail,
+          });
+        } catch (error) {
+          Logger.warn('Failed to update Stripe customer email', {
+            userId,
+            customerId: existingCustomerId,
+            error,
+          });
+        }
+      }
       return { customerId: existingCustomerId, email };
     }
 
@@ -446,6 +967,7 @@ export class PaymentService {
   }): Promise<{
     success: boolean;
     paymentId?: string;
+    paymentRecordId?: string;
     status?: UnifiedPaymentStatus;
     providerStatus?: string;
     error?: string;
@@ -478,7 +1000,7 @@ export class PaymentService {
       });
 
       const normalizedStatus = this.mapStripePaymentIntentStatus(intent.status);
-      await paymentRepository.create({
+      const paymentRecord = await paymentRepository.create({
         userId: params.userId,
         provider: 'stripe',
         providerPaymentId: intent.id,
@@ -533,6 +1055,7 @@ export class PaymentService {
         success:
           normalizedStatus === 'succeeded' || normalizedStatus === 'processing',
         paymentId: intent.id,
+        paymentRecordId: paymentRecord.id,
         status: normalizedStatus,
         providerStatus: intent.status,
       };
@@ -549,7 +1072,7 @@ export class PaymentService {
         const fallbackCurrency =
           normalizeCurrencyCode(params.currency) || 'USD';
         try {
-          await paymentRepository.create({
+          const paymentRecord = await paymentRepository.create({
             userId: params.userId,
             provider: 'stripe',
             providerPaymentId: stripeIntent.id,
@@ -598,6 +1121,15 @@ export class PaymentService {
             subscriptionId: params.subscriptionId,
             metadata: params.metadata,
           });
+          return {
+            success: false,
+            paymentId: stripeIntent.id,
+            paymentRecordId: paymentRecord.id,
+            status: normalizedStatus,
+            providerStatus: stripeIntent.status,
+            error:
+              error instanceof Error ? error.message : 'Stripe payment failed',
+          };
         } catch (repoError) {
           Logger.error(
             'Failed to record off-session Stripe payment:',
@@ -780,6 +1312,24 @@ export class PaymentService {
         stripeMetadata.subscriptionId ||
         payment.subscriptionId) ??
       null;
+    const isSessionCheckout =
+      !isRenewal &&
+      (payment.checkoutMode === 'session' || Boolean(payment.stripeSessionId));
+
+    if (isSessionCheckout) {
+      await paymentRepository.updateStatusByProviderPaymentId(
+        'stripe',
+        paymentId,
+        incomingStatus,
+        intent.status,
+        mergedMetadata
+      );
+      Logger.info('Ignoring Stripe payment_intent event for session checkout', {
+        paymentId,
+        eventType,
+      });
+      return true;
+    }
 
     if (eventType === 'payment_intent.succeeded') {
       await paymentRepository.updateStatusByProviderPaymentId(
@@ -915,6 +1465,36 @@ export class PaymentService {
             now,
           });
           const expectedEndDate = this.extractExpectedEndDate(mergedMetadata);
+          const cycleEndDate = resolveCycleEndDate({
+            expectedEndDate,
+            endDate: subscription.end_date,
+            termStartAt: subscription.term_start_at ?? null,
+            termMonths,
+          });
+
+          if (!cycleEndDate) {
+            Logger.error('Stripe renewal missing cycle end date', {
+              paymentId,
+              subscriptionId,
+            });
+            return true;
+          }
+
+          const renewalLock =
+            await subscriptionRenewalService.beginRenewalProcessing({
+              subscriptionId,
+              cycleEndDate,
+              paymentId: payment.id ?? null,
+            });
+
+          if (!renewalLock.acquired && renewalLock.status === 'succeeded') {
+            Logger.info('Stripe renewal already processed', {
+              paymentId,
+              subscriptionId,
+              cycleEndDate: renewalLock.cycleEndDate,
+            });
+            return true;
+          }
 
           const updateResult =
             await subscriptionService.updateSubscriptionForRenewalWithGuard({
@@ -947,6 +1527,11 @@ export class PaymentService {
               subscriptionId,
               error: updateResult.error,
             });
+            await subscriptionRenewalService.markRenewalSucceeded({
+              subscriptionId,
+              cycleEndDate,
+              paymentId: payment.id ?? null,
+            });
             return true;
           }
 
@@ -955,6 +1540,11 @@ export class PaymentService {
               paymentId,
               subscriptionId,
               reason: updateResult.reason,
+            });
+            await subscriptionRenewalService.markRenewalSucceeded({
+              subscriptionId,
+              cycleEndDate,
+              paymentId: payment.id ?? null,
             });
             return true;
           }
@@ -989,6 +1579,12 @@ export class PaymentService {
               error,
             });
           }
+
+          await subscriptionRenewalService.markRenewalSucceeded({
+            subscriptionId,
+            cycleEndDate,
+            paymentId: payment.id ?? null,
+          });
         }
 
         return true;
@@ -1227,6 +1823,28 @@ export class PaymentService {
           });
         }
 
+        const expectedEndDate = this.extractExpectedEndDate(mergedMetadata);
+        const cycleEndDate = resolveCycleEndDate({
+          expectedEndDate,
+          endDate: subscription.end_date,
+          termStartAt: subscription.term_start_at ?? null,
+          termMonths: subscription.term_months ?? null,
+        });
+        if (cycleEndDate) {
+          const renewalLock =
+            await subscriptionRenewalService.beginRenewalProcessing({
+              subscriptionId,
+              cycleEndDate,
+              paymentId: payment.id ?? null,
+            });
+          if (!(renewalLock.status === 'succeeded' && !renewalLock.acquired)) {
+            await subscriptionRenewalService.markRenewalFailed({
+              subscriptionId,
+              cycleEndDate,
+            });
+          }
+        }
+
         return true;
       }
 
@@ -1334,6 +1952,28 @@ export class PaymentService {
             error,
           });
         }
+
+        const expectedEndDate = this.extractExpectedEndDate(mergedMetadata);
+        const cycleEndDate = resolveCycleEndDate({
+          expectedEndDate,
+          endDate: subscription.end_date,
+          termStartAt: subscription.term_start_at ?? null,
+          termMonths: subscription.term_months ?? null,
+        });
+        if (cycleEndDate) {
+          const renewalLock =
+            await subscriptionRenewalService.beginRenewalProcessing({
+              subscriptionId,
+              cycleEndDate,
+              paymentId: payment.id ?? null,
+            });
+          if (!(renewalLock.status === 'succeeded' && !renewalLock.acquired)) {
+            await subscriptionRenewalService.markRenewalFailed({
+              subscriptionId,
+              cycleEndDate,
+            });
+          }
+        }
       }
 
       return true;
@@ -1348,6 +1988,453 @@ export class PaymentService {
     }
 
     return true;
+  }
+
+  private async processStripeCheckoutSession(params: {
+    session: any;
+    eventType: string;
+  }): Promise<boolean> {
+    const session = params.session;
+    const orderId =
+      session?.metadata?.order_id ||
+      session?.metadata?.orderId ||
+      session?.client_reference_id ||
+      null;
+
+    if (!orderId) {
+      Logger.error('Stripe session missing order reference', {
+        sessionId: session?.id,
+      });
+      return false;
+    }
+
+    if (params.eventType !== 'checkout.session.completed') {
+      Logger.info('Ignoring Stripe session event', {
+        orderId,
+        eventType: params.eventType,
+      });
+      return true;
+    }
+
+    const paymentIntentId =
+      typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : (session.payment_intent?.id ?? null);
+
+    const lockClient = await getDatabasePool().connect();
+    let lockAcquired = false;
+    try {
+      await lockClient.query('SELECT pg_advisory_lock(hashtext($1))', [
+        orderId,
+      ]);
+      lockAcquired = true;
+    } catch (error) {
+      Logger.error('Stripe session lock acquisition failed', {
+        orderId,
+        error,
+      });
+      lockClient.release();
+      return false;
+    }
+
+    try {
+      const order = await orderService.getOrderWithItems(orderId);
+      if (!order) {
+        Logger.error('Stripe session order not found', { orderId });
+        return false;
+      }
+
+      if (!['pending_payment', 'cart'].includes(order.status)) {
+        Logger.info('Stripe session order already processed', {
+          orderId,
+          status: order.status,
+        });
+        return true;
+      }
+
+      const sessionAmount =
+        typeof session.amount_total === 'number' ? session.amount_total : null;
+      if (
+        sessionAmount !== null &&
+        order.total_cents !== null &&
+        order.total_cents !== undefined &&
+        sessionAmount !== Number(order.total_cents)
+      ) {
+        Logger.error('Stripe session amount mismatch', {
+          orderId,
+          orderTotal: order.total_cents,
+          sessionAmount,
+        });
+        await orderService.updateOrderStatus(
+          orderId,
+          'cancelled',
+          'payment_amount_mismatch'
+        );
+        await couponService.voidRedemptionForOrder(orderId);
+        return false;
+      }
+
+      const sessionCurrency =
+        typeof session.currency === 'string'
+          ? session.currency.toUpperCase()
+          : null;
+      if (
+        sessionCurrency &&
+        order.currency &&
+        sessionCurrency !== order.currency.toUpperCase()
+      ) {
+        Logger.error('Stripe session currency mismatch', {
+          orderId,
+          orderCurrency: order.currency,
+          sessionCurrency,
+        });
+        await orderService.updateOrderStatus(
+          orderId,
+          'cancelled',
+          'payment_currency_mismatch'
+        );
+        await couponService.voidRedemptionForOrder(orderId);
+        return false;
+      }
+
+      const updateResult = await getDatabasePool().query(
+        `UPDATE orders
+         SET status = 'in_process',
+             status_reason = 'payment_succeeded',
+             payment_provider = 'stripe',
+             payment_reference = COALESCE($1, payment_reference),
+             checkout_mode = 'session',
+             stripe_session_id = $2,
+             updated_at = NOW()
+         WHERE id = $3
+           AND status IN ('pending_payment', 'cart')
+         RETURNING id`,
+        [paymentIntentId, session.id, orderId]
+      );
+
+      if (updateResult.rows.length === 0) {
+        return true;
+      }
+
+      let payment: UnifiedPayment | null = null;
+      if (paymentIntentId) {
+        payment = await paymentRepository.findByProviderPaymentId(
+          'stripe',
+          paymentIntentId
+        );
+      }
+
+      if (!payment && paymentIntentId) {
+        const unifiedPayment: CreateUnifiedPaymentInput = {
+          userId: order.user_id,
+          provider: 'stripe',
+          providerPaymentId: paymentIntentId,
+          status: 'succeeded',
+          providerStatus: 'succeeded',
+          purpose: 'subscription',
+          amount: (order.total_cents ?? 0) / 100,
+          currency: (order.currency || 'USD').toLowerCase(),
+          paymentMethodType: 'card',
+          orderId: order.id,
+          checkoutMode: 'session',
+          stripeSessionId: session.id,
+          metadata: {
+            order_id: order.id,
+            checkout_mode: 'session',
+          },
+        };
+
+        const singleItem =
+          order.items.length === 1 ? (order.items[0]?.id ?? null) : null;
+        if (singleItem) {
+          unifiedPayment.orderItemId = singleItem;
+        }
+
+        payment = await paymentRepository.create(unifiedPayment);
+      } else if (payment) {
+        await getDatabasePool().query(
+          `UPDATE payments
+           SET checkout_mode = COALESCE(checkout_mode, 'session'),
+               stripe_session_id = COALESCE(stripe_session_id, $2),
+               updated_at = NOW()
+           WHERE id = $1`,
+          [payment.id, session.id]
+        );
+      }
+
+      if (payment) {
+        const singleItem =
+          order.items.length === 1 ? (order.items[0]?.id ?? null) : null;
+        if (singleItem) {
+          await getDatabasePool().query(
+            `UPDATE payments
+             SET order_item_id = COALESCE(order_item_id, $2)
+             WHERE id = $1`,
+            [payment.id, singleItem]
+          );
+        }
+
+        await this.createPaymentItemAllocations({
+          paymentRecordId: payment.id,
+          orderItems: order.items,
+        });
+      }
+
+      const createdSubscriptions = await this.createSubscriptionsForOrder({
+        order,
+        orderItems: order.items,
+        renewalMethod: 'stripe',
+      });
+
+      const autoRenewSubscriptions = createdSubscriptions.filter(
+        subscription => subscription.autoRenew
+      );
+
+      if (autoRenewSubscriptions.length > 0 && paymentIntentId) {
+        try {
+          const details =
+            await stripeProvider.getPaymentStatus(paymentIntentId);
+          const intent = details.raw as any;
+          const stripeCustomerId =
+            typeof intent.customer === 'string'
+              ? intent.customer
+              : intent.customer?.id;
+          const stripePaymentMethodId =
+            typeof intent.payment_method === 'string'
+              ? intent.payment_method
+              : intent.payment_method?.id;
+
+          if (stripeCustomerId && stripePaymentMethodId) {
+            const savedMethod = await this.saveStripePaymentMethod({
+              userId: order.user_id,
+              paymentMethodId: stripePaymentMethodId,
+              customerId: stripeCustomerId,
+            });
+
+            for (const subscription of autoRenewSubscriptions) {
+              await subscriptionService.updateSubscriptionForAdmin(
+                subscription.id,
+                {
+                  billing_payment_method_id: savedMethod.id,
+                  auto_renew: true,
+                  renewal_method: 'stripe',
+                  auto_renew_enabled_at: new Date(),
+                  auto_renew_disabled_at: null,
+                }
+              );
+            }
+          }
+        } catch (error) {
+          Logger.warn('Failed to save Stripe payment method for session', {
+            orderId,
+            paymentIntentId,
+            error,
+          });
+        }
+      }
+
+      await couponService.finalizeRedemptionForOrder(orderId);
+
+      try {
+        const confirmationResult =
+          await orderService.sendOrderPaymentConfirmationEmail(orderId);
+        if (
+          !confirmationResult.success &&
+          !['already_sent', 'renewal_order'].includes(
+            confirmationResult.reason ?? ''
+          )
+        ) {
+          Logger.warn('Failed to send order payment confirmation email', {
+            orderId,
+            reason: confirmationResult.reason,
+          });
+        }
+      } catch (error) {
+        Logger.warn('Order payment confirmation email call failed', {
+          orderId,
+          error,
+        });
+      }
+
+      return true;
+    } finally {
+      if (lockAcquired) {
+        await lockClient.query('SELECT pg_advisory_unlock(hashtext($1))', [
+          orderId,
+        ]);
+      }
+      lockClient.release();
+    }
+  }
+
+  private async processNowPaymentsOrderInvoice(
+    payload: WebhookPayload,
+    payment: UnifiedPayment
+  ): Promise<boolean> {
+    const orderId = payment.orderId || payload.order_id || null;
+    if (!orderId) {
+      Logger.error('NOWPayments invoice missing order reference', {
+        paymentId: payment.providerPaymentId,
+      });
+      return false;
+    }
+
+    const previousProviderStatus = payment.providerStatus as
+      | PaymentStatus
+      | undefined;
+    if (
+      previousProviderStatus &&
+      shouldIgnoreNowPaymentsStatusRegression(
+        previousProviderStatus,
+        payload.payment_status
+      )
+    ) {
+      Logger.warn('Ignoring NOWPayments status regression for order invoice', {
+        paymentId: payment.providerPaymentId,
+        previousStatus: previousProviderStatus,
+        newStatus: payload.payment_status,
+      });
+      return true;
+    }
+
+    const updatedMetadata: Record<string, any> = {
+      ...(payment.metadata || {}),
+      orderId,
+      actuallyPaid: payload.actually_paid ?? null,
+      invoiceStatus: payload.payment_status,
+      payCurrency: payload.pay_currency,
+      payAddress: payload.pay_address,
+      lastWebhookAt: new Date().toISOString(),
+      lastWebhookPaymentId: payload.payment_id,
+    };
+
+    await paymentRepository.updateStatusByProviderPaymentId(
+      'nowpayments',
+      payment.providerPaymentId,
+      this.mapNowPaymentsStatus(payload.payment_status),
+      payload.payment_status,
+      updatedMetadata
+    );
+
+    if (payload.payment_status !== 'finished') {
+      if (
+        ['failed', 'expired'].includes(payload.payment_status) &&
+        payment.status !== 'failed'
+      ) {
+        await orderService.updateOrderStatus(
+          orderId,
+          'cancelled',
+          payload.payment_status
+        );
+        await couponService.voidRedemptionForOrder(orderId);
+      }
+      return true;
+    }
+
+    const lockClient = await getDatabasePool().connect();
+    let lockAcquired = false;
+    try {
+      await lockClient.query('SELECT pg_advisory_lock(hashtext($1))', [
+        orderId,
+      ]);
+      lockAcquired = true;
+    } catch (error) {
+      Logger.error('NOWPayments invoice lock acquisition failed', {
+        orderId,
+        error,
+      });
+      lockClient.release();
+      return false;
+    }
+
+    try {
+      const order = await orderService.getOrderWithItems(orderId);
+      if (!order) {
+        Logger.error('NOWPayments invoice order not found', { orderId });
+        return false;
+      }
+
+      if (!['pending_payment', 'cart'].includes(order.status)) {
+        Logger.info('NOWPayments order already processed', {
+          orderId,
+          status: order.status,
+        });
+        return true;
+      }
+
+      const updateResult = await getDatabasePool().query(
+        `UPDATE orders
+         SET status = 'in_process',
+             status_reason = 'payment_succeeded',
+             payment_provider = 'nowpayments',
+             payment_reference = $1,
+             checkout_mode = 'invoice',
+             updated_at = NOW()
+         WHERE id = $2
+           AND status IN ('pending_payment', 'cart')
+         RETURNING id`,
+        [payment.providerPaymentId, orderId]
+      );
+
+      if (updateResult.rows.length === 0) {
+        return true;
+      }
+
+      if (order.items.length === 1) {
+        const singleItem = order.items[0]?.id ?? null;
+        if (singleItem) {
+          await getDatabasePool().query(
+            `UPDATE payments
+             SET order_item_id = COALESCE(order_item_id, $2)
+             WHERE id = $1`,
+            [payment.id, singleItem]
+          );
+        }
+      }
+
+      await this.createPaymentItemAllocations({
+        paymentRecordId: payment.id,
+        orderItems: order.items,
+      });
+
+      await this.createSubscriptionsForOrder({
+        order,
+        orderItems: order.items,
+        renewalMethod: null,
+      });
+
+      await couponService.finalizeRedemptionForOrder(orderId);
+
+      try {
+        const confirmationResult =
+          await orderService.sendOrderPaymentConfirmationEmail(orderId);
+        if (
+          !confirmationResult.success &&
+          !['already_sent', 'renewal_order'].includes(
+            confirmationResult.reason ?? ''
+          )
+        ) {
+          Logger.warn('Failed to send order payment confirmation email', {
+            orderId,
+            reason: confirmationResult.reason,
+          });
+        }
+      } catch (error) {
+        Logger.warn('Order payment confirmation email call failed', {
+          orderId,
+          error,
+        });
+      }
+
+      return true;
+    } finally {
+      if (lockAcquired) {
+        await lockClient.query('SELECT pg_advisory_unlock(hashtext($1))', [
+          orderId,
+        ]);
+      }
+      lockClient.release();
+    }
   }
 
   async handleStripeWebhook(
@@ -1377,8 +2464,82 @@ export class PaymentService {
         return false;
       }
 
+      if (event.type.startsWith('checkout.session.')) {
+        const session = event.data.object as any;
+        const orderId =
+          session?.metadata?.order_id ||
+          session?.metadata?.orderId ||
+          session?.client_reference_id ||
+          null;
+        const paymentIntentId =
+          typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : (session.payment_intent?.id ?? null);
+
+        const paymentRecord = paymentIntentId
+          ? await paymentRepository.findByProviderPaymentId(
+              'stripe',
+              paymentIntentId
+            )
+          : null;
+
+        const recorded = await this.recordPaymentEvent({
+          provider: 'stripe',
+          eventId: event.id,
+          eventType: event.type,
+          orderId,
+          paymentId: paymentRecord?.id ?? null,
+        });
+        if (!recorded) {
+          Logger.info('Duplicate Stripe session event ignored', {
+            eventId: event.id,
+            eventType: event.type,
+          });
+          return true;
+        }
+
+        return await this.processStripeCheckoutSession({
+          session,
+          eventType: event.type,
+        });
+      }
+
+      // Ignore non-payment_intent events for now (e.g., charges)
+      if (!event.type.startsWith('payment_intent.')) {
+        Logger.info(
+          `Ignoring Stripe event ${event.type} (not a payment_intent)`
+        );
+        return true;
+      }
+
       const intent = event.data.object as any;
       const paymentId = intent.id as string;
+
+      // Fetch payment record
+      const payment = await paymentRepository.findByProviderPaymentId(
+        'stripe',
+        paymentId
+      );
+
+      if (!payment) {
+        Logger.error('Stripe payment not found in repository', { paymentId });
+        return false;
+      }
+
+      const recorded = await this.recordPaymentEvent({
+        provider: 'stripe',
+        eventId: event.id,
+        eventType: event.type,
+        orderId: payment.orderId ?? null,
+        paymentId: payment.id,
+      });
+      if (!recorded) {
+        Logger.info('Duplicate Stripe payment_intent event ignored', {
+          eventId: event.id,
+          eventType: event.type,
+        });
+        return true;
+      }
 
       const lockClient = await getDatabasePool().connect();
       let lockAcquired = false;
@@ -1397,25 +2558,6 @@ export class PaymentService {
       }
 
       try {
-        // Ignore non-payment_intent events for now (e.g., charges)
-        if (!event.type.startsWith('payment_intent.')) {
-          Logger.info(
-            `Ignoring Stripe event ${event.type} (not a payment_intent)`
-          );
-          return true;
-        }
-
-        // Fetch payment record
-        const payment = await paymentRepository.findByProviderPaymentId(
-          'stripe',
-          paymentId
-        );
-
-        if (!payment) {
-          Logger.error('Stripe payment not found in repository', { paymentId });
-          return false;
-        }
-
         return await this.processStripePaymentIntent({
           intent,
           payment,
@@ -1496,6 +2638,50 @@ export class PaymentService {
         ]);
       }
       lockClient.release();
+    }
+  }
+
+  private async reconcileStripeCheckoutSessionForOrder(params: {
+    orderId: string;
+    stripeSessionId: string;
+  }): Promise<boolean> {
+    try {
+      const session = await stripeProvider.retrieveCheckoutSession(
+        params.stripeSessionId,
+        { expand: ['payment_intent'] }
+      );
+      const sessionMetadata = (session?.metadata || {}) as Record<string, any>;
+      const sessionOrderId =
+        sessionMetadata['order_id'] ||
+        sessionMetadata['orderId'] ||
+        session?.client_reference_id ||
+        null;
+      if (sessionOrderId && sessionOrderId !== params.orderId) {
+        Logger.error('Stripe session reconciliation order mismatch', {
+          orderId: params.orderId,
+          stripeSessionId: params.stripeSessionId,
+          sessionOrderId,
+        });
+        return false;
+      }
+
+      const sessionPaid =
+        session?.payment_status === 'paid' || session?.status === 'complete';
+      if (!sessionPaid) {
+        return false;
+      }
+
+      return await this.processStripeCheckoutSession({
+        session,
+        eventType: 'checkout.session.completed',
+      });
+    } catch (error) {
+      Logger.warn('Failed to reconcile Stripe checkout session for order', {
+        orderId: params.orderId,
+        stripeSessionId: params.stripeSessionId,
+        error,
+      });
+      return false;
     }
   }
 
@@ -1607,7 +2793,41 @@ export class PaymentService {
       return { cancelled: false, status: 'payment_mismatch' };
     }
 
-    const paymentId = order.payment_reference || params.paymentId || null;
+    const isSessionCheckout =
+      order.checkout_mode === 'session' || Boolean(order.stripe_session_id);
+    let paymentId = order.payment_reference || params.paymentId || null;
+
+    if (isSessionCheckout && order.stripe_session_id) {
+      try {
+        await stripeProvider.expireCheckoutSession(order.stripe_session_id);
+      } catch (error) {
+        Logger.warn('Failed to expire Stripe checkout session', {
+          orderId,
+          sessionId: order.stripe_session_id,
+          error,
+        });
+      }
+    }
+
+    if (isSessionCheckout && !paymentId && order.stripe_session_id) {
+      try {
+        const session = await stripeProvider.retrieveCheckoutSession(
+          order.stripe_session_id,
+          { expand: ['payment_intent'] }
+        );
+        paymentId =
+          typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : (session.payment_intent?.id ?? null);
+      } catch (error) {
+        Logger.warn('Failed to retrieve Stripe checkout session', {
+          orderId,
+          sessionId: order.stripe_session_id,
+          error,
+        });
+      }
+    }
+
     if (!paymentId) {
       await orderService.updateOrderStatus(orderId, 'cancelled', reason);
       await couponService.voidRedemptionForOrder(orderId);
@@ -1646,7 +2866,24 @@ export class PaymentService {
 
     let normalized = this.mapStripePaymentIntentStatus(details.providerStatus);
     if (normalized === 'succeeded' || normalized === 'processing') {
-      await this.reconcileStripePaymentIntent(paymentId);
+      const reconcileResult =
+        await this.reconcileStripePaymentIntent(paymentId);
+      if (!reconcileResult.handled) {
+        const sessionReconciled =
+          isSessionCheckout && order.stripe_session_id
+            ? await this.reconcileStripeCheckoutSessionForOrder({
+                orderId,
+                stripeSessionId: order.stripe_session_id,
+              })
+            : false;
+        if (!sessionReconciled) {
+          return {
+            cancelled: false,
+            status: 'reconcile_failed',
+            paymentStatus: normalized,
+          };
+        }
+      }
       return {
         cancelled: false,
         status: 'reconciled',
@@ -1677,7 +2914,24 @@ export class PaymentService {
     }
 
     if (normalized === 'succeeded' || normalized === 'processing') {
-      await this.reconcileStripePaymentIntent(paymentId);
+      const reconcileResult =
+        await this.reconcileStripePaymentIntent(paymentId);
+      if (!reconcileResult.handled) {
+        const sessionReconciled =
+          isSessionCheckout && order.stripe_session_id
+            ? await this.reconcileStripeCheckoutSessionForOrder({
+                orderId,
+                stripeSessionId: order.stripe_session_id,
+              })
+            : false;
+        if (!sessionReconciled) {
+          return {
+            cancelled: false,
+            status: 'reconcile_failed',
+            paymentStatus: normalized,
+          };
+        }
+      }
       return {
         cancelled: false,
         status: 'reconciled',
@@ -1706,6 +2960,77 @@ export class PaymentService {
     return { cancelled: true, status: 'cancelled', paymentStatus: 'canceled' };
   }
 
+  async cancelNowPaymentsCheckout(params: {
+    orderId: string;
+    userId?: string;
+    reason?: string;
+  }): Promise<{
+    cancelled: boolean;
+    status: string;
+    paymentStatus?: UnifiedPaymentStatus;
+  }> {
+    const { orderId, userId } = params;
+    const reason = params.reason || 'checkout_cancelled';
+
+    const order = await orderService.getOrderById(orderId);
+    if (!order) {
+      return { cancelled: false, status: 'order_not_found' };
+    }
+
+    if (userId && order.user_id !== userId) {
+      return { cancelled: false, status: 'forbidden' };
+    }
+
+    if (order.status !== 'pending_payment') {
+      return { cancelled: false, status: 'already_processed' };
+    }
+
+    if (order.payment_provider !== 'nowpayments') {
+      return { cancelled: false, status: 'not_nowpayments' };
+    }
+
+    const paymentReference = order.payment_reference || null;
+    if (paymentReference) {
+      const existingPayment = await paymentRepository.findByProviderPaymentId(
+        'nowpayments',
+        paymentReference
+      );
+
+      if (existingPayment) {
+        const providerStatus = (
+          existingPayment.providerStatus || ''
+        ).toLowerCase();
+        const isSettled =
+          existingPayment.status === 'succeeded' ||
+          providerStatus === 'finished';
+
+        if (isSettled) {
+          return {
+            cancelled: false,
+            status: 'reconciled',
+            paymentStatus: 'succeeded',
+          };
+        }
+
+        await paymentRepository.updateStatusByProviderPaymentId(
+          'nowpayments',
+          paymentReference,
+          'expired',
+          'expired',
+          {
+            ...(existingPayment.metadata || {}),
+            timeout_reason: reason,
+            timeout_cancelled_at: new Date().toISOString(),
+          }
+        );
+      }
+    }
+
+    await orderService.updateOrderStatus(orderId, 'cancelled', reason);
+    await couponService.voidRedemptionForOrder(orderId);
+    return { cancelled: true, status: 'cancelled', paymentStatus: 'expired' };
+  }
+
   async sweepStaleStripeCheckouts(params?: {
     ttlMinutes?: number;
     batchSize?: number;
@@ -1731,19 +3056,20 @@ export class PaymentService {
       SELECT
         o.id AS order_id,
         o.user_id,
+        o.payment_provider,
         o.payment_reference,
         COALESCE(p.created_at, o.updated_at, o.created_at) AS started_at
       FROM orders o
       LEFT JOIN payments p
-        ON p.provider = 'stripe'
+        ON p.provider = o.payment_provider
        AND p.provider_payment_id = o.payment_reference
       WHERE o.status = 'pending_payment'
-        AND o.payment_provider = 'stripe'
+        AND o.payment_provider = ANY($2::text[])
         AND COALESCE(p.created_at, o.updated_at, o.created_at) <= $1
       ORDER BY COALESCE(p.created_at, o.updated_at, o.created_at) ASC
-      LIMIT $2
+      LIMIT $3
       `,
-      [cutoff, batchSize]
+      [cutoff, ['stripe', 'nowpayments'], batchSize]
     );
 
     let cancelled = 0;
@@ -1754,19 +3080,30 @@ export class PaymentService {
     for (const row of result.rows) {
       const orderId = row.order_id as string;
       const paymentId = row.payment_reference as string | null;
+      const paymentProvider = row.payment_provider as string | null;
       try {
-        const outcome = await this.cancelStripeCheckout({
-          orderId,
-          paymentId,
-          reason: 'checkout_timeout',
-        });
+        const outcome =
+          paymentProvider === 'stripe'
+            ? await this.cancelStripeCheckout({
+                orderId,
+                paymentId,
+                reason: 'checkout_timeout',
+              })
+            : paymentProvider === 'nowpayments'
+              ? await this.cancelNowPaymentsCheckout({
+                  orderId,
+                  reason: 'checkout_timeout',
+                })
+              : { cancelled: false, status: 'unsupported_provider' };
         if (outcome.status === 'cancelled') {
           cancelled += 1;
         } else if (outcome.status === 'reconciled') {
           reconciled += 1;
         } else if (
           outcome.status === 'already_processed' ||
-          outcome.status === 'not_stripe'
+          outcome.status === 'not_stripe' ||
+          outcome.status === 'not_nowpayments' ||
+          outcome.status === 'unsupported_provider'
         ) {
           skipped += 1;
         } else if (outcome.status === 'forbidden') {
@@ -1776,8 +3113,9 @@ export class PaymentService {
         }
       } catch (error) {
         errors += 1;
-        Logger.warn('Failed to sweep stale Stripe checkout', {
+        Logger.warn('Failed to sweep stale checkout', {
           orderId,
+          paymentProvider,
           paymentId,
           error,
         });
@@ -1793,6 +3131,867 @@ export class PaymentService {
     };
   }
 
+  async createStripeCheckoutSession(params: {
+    orderId: string;
+    successUrl?: string | null;
+    cancelUrl?: string | null;
+  }): Promise<
+    | {
+        success: true;
+        sessionId: string;
+        sessionUrl: string;
+        paymentId: string | null;
+        orderId: string;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      if (!['cart', 'pending_payment'].includes(order.status)) {
+        return { success: false, error: 'order_not_pending' };
+      }
+
+      if (order.payment_provider && order.payment_provider !== 'stripe') {
+        return { success: false, error: 'payment_provider_mismatch' };
+      }
+
+      const orderCurrency =
+        normalizeCurrencyCode(order.currency) ||
+        (order.currency ? order.currency.toUpperCase() : null);
+      if (!orderCurrency) {
+        return { success: false, error: 'invalid_currency' };
+      }
+
+      const supportsCurrency =
+        await stripeProvider.supportsCurrency(orderCurrency);
+      if (!supportsCurrency) {
+        return {
+          success: false,
+          error: `Currency ${orderCurrency} is not supported by Stripe`,
+        };
+      }
+
+      const items = order.items ?? [];
+      if (items.length === 0) {
+        return { success: false, error: 'order_missing_items' };
+      }
+
+      const ownAccountValidation = await this.validateOwnAccountSelectionData(
+        order as OrderWithItems
+      );
+      if (!ownAccountValidation.valid) {
+        Logger.warn(
+          'Missing own-account credentials while creating Stripe checkout session',
+          {
+            orderId: order.id,
+            item: ownAccountValidation.missingItemLabel,
+          }
+        );
+        return { success: false, error: 'own_account_credentials_required' };
+      }
+
+      const autoRenewAny = items.some(item => item.auto_renew === true);
+      const baseUrl = this.resolveAppBaseUrl();
+      if (!baseUrl) {
+        return { success: false, error: 'missing_app_base_url' };
+      }
+
+      const defaultSuccessUrl = `${baseUrl}/checkout/stripe?status=success&order_id=${order.id}&session_id={CHECKOUT_SESSION_ID}`;
+      const defaultCancelUrl = `${baseUrl}/checkout`;
+      const successUrl = params.successUrl || defaultSuccessUrl;
+      const cancelUrl = params.cancelUrl || defaultCancelUrl;
+
+      const lineItems = items.map(item => {
+        const quantity = Math.max(1, item.quantity || 1);
+        const unitAmount = Math.max(
+          1,
+          Math.round(item.total_price_cents / quantity)
+        );
+        const name =
+          item.product_name ||
+          item.variant_name ||
+          item.description ||
+          'Subscription';
+        return {
+          price_data: {
+            currency: orderCurrency.toLowerCase(),
+            unit_amount: unitAmount,
+            product_data: {
+              name,
+              ...(item.description ? { description: item.description } : {}),
+            },
+          },
+          quantity,
+        };
+      });
+
+      const customerInfo = autoRenewAny
+        ? await this.ensureStripeCustomer(order.user_id, {
+            preferredEmail: order.contact_email ?? null,
+          })
+        : null;
+      const customerEmail = order.contact_email ?? customerInfo?.email ?? null;
+
+      if (order.checkout_mode === 'session' && order.stripe_session_id) {
+        try {
+          const existingSession = await stripeProvider.retrieveCheckoutSession(
+            order.stripe_session_id
+          );
+          if (existingSession.url) {
+            return {
+              success: true,
+              sessionId: existingSession.id,
+              sessionUrl: existingSession.url,
+              paymentId:
+                typeof existingSession.payment_intent === 'string'
+                  ? existingSession.payment_intent
+                  : (existingSession.payment_intent?.id ?? null),
+              orderId: order.id,
+            };
+          }
+        } catch (error) {
+          Logger.warn('Failed to reuse existing Stripe session', {
+            orderId: order.id,
+            sessionId: order.stripe_session_id,
+            error,
+          });
+        }
+      }
+
+      const session = await this.createCheckoutSessionWithRetry(
+        {
+          lineItems,
+          successUrl,
+          cancelUrl,
+          ...(customerInfo?.customerId
+            ? { customerId: customerInfo.customerId }
+            : {}),
+          ...(customerEmail ? { customerEmail } : {}),
+          metadata: {
+            order_id: order.id,
+            checkout_mode: 'session',
+          },
+          paymentIntentMetadata: {
+            order_id: order.id,
+            checkout_mode: 'session',
+            auto_renew_any: autoRenewAny,
+          },
+          ...(autoRenewAny ? { setupFutureUsage: 'off_session' } : {}),
+          clientReferenceId: order.id,
+          expand: ['payment_intent'],
+        },
+        { orderId: order.id }
+      );
+
+      const paymentIntentId =
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : (session.payment_intent?.id ?? null);
+
+      if (paymentIntentId) {
+        const intentStatus =
+          typeof session.payment_intent === 'string'
+            ? null
+            : (session.payment_intent?.status ?? null);
+        const existingPayment = await paymentRepository.findByProviderPaymentId(
+          'stripe',
+          paymentIntentId
+        );
+        if (!existingPayment) {
+          const unifiedPayment: CreateUnifiedPaymentInput = {
+            userId: order.user_id,
+            provider: 'stripe',
+            providerPaymentId: paymentIntentId,
+            status: this.mapStripePaymentIntentStatus(
+              intentStatus ?? 'requires_payment_method'
+            ),
+            providerStatus: intentStatus ?? 'requires_payment_method',
+            purpose: 'subscription',
+            amount: (order.total_cents ?? 0) / 100,
+            currency: orderCurrency.toLowerCase(),
+            paymentMethodType: 'card',
+            orderId: order.id,
+            checkoutMode: 'session',
+            stripeSessionId: session.id,
+            metadata: {
+              order_id: order.id,
+              checkout_mode: 'session',
+            },
+          };
+
+          const singleItem = items.length === 1 ? (items[0]?.id ?? null) : null;
+          if (singleItem) {
+            unifiedPayment.orderItemId = singleItem;
+          }
+
+          await paymentRepository.create(unifiedPayment);
+        }
+      }
+
+      await orderService.updateOrderPayment(order.id, {
+        payment_provider: 'stripe',
+        payment_reference: paymentIntentId,
+        checkout_mode: 'session',
+        stripe_session_id: session.id,
+        status: order.status === 'cart' ? 'pending_payment' : order.status,
+        status_reason:
+          order.status === 'cart'
+            ? 'awaiting_payment'
+            : (order.status_reason ?? null),
+      });
+
+      return {
+        success: true,
+        sessionId: session.id,
+        sessionUrl: session.url || '',
+        paymentId: paymentIntentId,
+        orderId: order.id,
+      };
+    } catch (error) {
+      Logger.error('Failed to create Stripe checkout session', error);
+      if (this.isStripeConnectionError(error)) {
+        return { success: false, error: 'payment_provider_unavailable' };
+      }
+      if (this.isStripeRateLimitError(error)) {
+        return { success: false, error: 'payment_provider_rate_limited' };
+      }
+      if (this.isStripeAuthenticationError(error)) {
+        return { success: false, error: 'payment_provider_misconfigured' };
+      }
+      return { success: false, error: 'stripe_session_failed' };
+    }
+  }
+
+  async createNowPaymentsOrderInvoice(params: {
+    orderId: string;
+    payCurrency?: string | null;
+    forceNewInvoice?: boolean;
+    successUrl?: string | null;
+    cancelUrl?: string | null;
+  }): Promise<
+    | {
+        success: true;
+        orderId: string;
+        invoiceId: string;
+        invoiceUrl: string;
+        payAddress?: string | null;
+        payAmount?: number | null;
+        payCurrency?: string | null;
+        status?: string | null;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      if (!['cart', 'pending_payment'].includes(order.status)) {
+        return { success: false, error: 'order_not_pending' };
+      }
+
+      if (order.payment_provider && order.payment_provider !== 'nowpayments') {
+        return { success: false, error: 'payment_provider_mismatch' };
+      }
+
+      const orderCurrency =
+        normalizeCurrencyCode(order.currency) ||
+        (order.currency ? order.currency.toUpperCase() : null);
+      if (!orderCurrency) {
+        return { success: false, error: 'invalid_currency' };
+      }
+
+      if (!order.items || order.items.length === 0) {
+        return { success: false, error: 'order_missing_items' };
+      }
+
+      const ownAccountValidation = await this.validateOwnAccountSelectionData(
+        order as OrderWithItems
+      );
+      if (!ownAccountValidation.valid) {
+        Logger.warn(
+          'Missing own-account credentials while creating NOWPayments invoice',
+          {
+            orderId: order.id,
+            item: ownAccountValidation.missingItemLabel,
+          }
+        );
+        return { success: false, error: 'own_account_credentials_required' };
+      }
+
+      const totalCents = order.total_cents ?? null;
+      if (!totalCents || totalCents <= 0) {
+        return { success: false, error: 'amount_invalid' };
+      }
+
+      const amount = totalCents / 100;
+      const payCurrency = params.payCurrency
+        ? params.payCurrency.trim().toLowerCase()
+        : null;
+
+      if (payCurrency) {
+        const supported =
+          await nowpaymentsClient.isCurrencySupported(payCurrency);
+        if (!supported) {
+          return { success: false, error: 'currency_unsupported' };
+        }
+      }
+
+      if (payCurrency) {
+        const minimumCheck = await this.getNowPaymentsOrderMinimum({
+          orderId: order.id,
+          payCurrency,
+        });
+        if (!minimumCheck.success) {
+          return { success: false, error: minimumCheck.error };
+        }
+        if (!minimumCheck.meetsMinimum) {
+          return { success: false, error: 'below_nowpayments_minimum' };
+        }
+      }
+
+      if (
+        order.payment_provider === 'nowpayments' &&
+        order.checkout_mode === 'invoice' &&
+        order.payment_reference
+      ) {
+        const existingPayment = await paymentRepository.findByProviderPaymentId(
+          'nowpayments',
+          order.payment_reference
+        );
+        if (
+          existingPayment &&
+          !['failed', 'expired'].includes(existingPayment.status)
+        ) {
+          const metadata = existingPayment.metadata || {};
+          const existingPayCurrencyRaw =
+            metadata['pay_currency'] || metadata['payCurrency'] || null;
+          const existingPayCurrency =
+            typeof existingPayCurrencyRaw === 'string'
+              ? existingPayCurrencyRaw.trim().toLowerCase()
+              : null;
+          const invoiceUrl =
+            metadata['invoice_url'] ||
+            metadata['invoiceUrl'] ||
+            metadata['invoiceURL'] ||
+            '';
+          const requestedPayCurrency =
+            payCurrency?.trim().toLowerCase() || null;
+          const shouldReuseExistingInvoice =
+            params.forceNewInvoice !== true &&
+            (!requestedPayCurrency ||
+              (existingPayCurrency &&
+                existingPayCurrency === requestedPayCurrency)) &&
+            invoiceUrl.length > 0;
+
+          if (shouldReuseExistingInvoice) {
+            return {
+              success: true,
+              orderId: order.id,
+              invoiceId: existingPayment.providerPaymentId,
+              invoiceUrl,
+              payAddress:
+                metadata['pay_address'] || metadata['payAddress'] || null,
+              payAmount:
+                metadata['pay_amount'] || metadata['payAmount'] || null,
+              payCurrency:
+                metadata['pay_currency'] || metadata['payCurrency'] || null,
+              status: existingPayment.providerStatus ?? existingPayment.status,
+            };
+          }
+        }
+      }
+
+      const itemDescriptions = order.items
+        .map(item => item.description)
+        .filter(Boolean) as string[];
+      const fallbackDescription = `Order ${order.id}`;
+      const rawDescription =
+        itemDescriptions.length > 0
+          ? itemDescriptions.join(', ')
+          : fallbackDescription;
+      const orderDescription =
+        rawDescription.length > 200
+          ? `${rawDescription.slice(0, 197)}...`
+          : rawDescription;
+
+      const invoice = await nowpaymentsClient.createInvoice({
+        price_amount: amount,
+        price_currency: orderCurrency.toLowerCase(),
+        ...(payCurrency ? { pay_currency: payCurrency } : {}),
+        order_id: order.id,
+        order_description: orderDescription,
+        ipn_callback_url: env.NOWPAYMENTS_WEBHOOK_URL,
+        ...(params.successUrl ? { success_url: params.successUrl } : {}),
+        ...(params.cancelUrl ? { cancel_url: params.cancelUrl } : {}),
+      });
+
+      const unifiedPayment: CreateUnifiedPaymentInput = {
+        userId: order.user_id,
+        provider: 'nowpayments',
+        providerPaymentId: invoice.id,
+        status: this.mapNowPaymentsStatus(invoice.payment_status),
+        providerStatus: invoice.payment_status,
+        purpose: 'subscription',
+        amount,
+        currency: orderCurrency.toLowerCase(),
+        ...(orderCurrency.toLowerCase() === 'usd' ? { amountUsd: amount } : {}),
+        paymentMethodType: 'crypto',
+        orderId: order.id,
+        checkoutMode: 'invoice',
+        metadata: {
+          order_id: order.id,
+          invoice_url: invoice.invoice_url,
+          pay_address: invoice.pay_address,
+          pay_amount: invoice.pay_amount,
+          pay_currency: invoice.pay_currency,
+          price_amount: invoice.price_amount,
+          price_currency: invoice.price_currency,
+          order_description: invoice.order_description,
+        },
+      };
+
+      const singleItem =
+        order.items.length === 1 ? (order.items[0]?.id ?? null) : null;
+      if (singleItem) {
+        unifiedPayment.orderItemId = singleItem;
+      }
+
+      await paymentRepository.create(unifiedPayment);
+
+      await orderService.updateOrderPayment(order.id, {
+        payment_provider: 'nowpayments',
+        payment_reference: invoice.id,
+        checkout_mode: 'invoice',
+        status: order.status === 'cart' ? 'pending_payment' : order.status,
+        status_reason:
+          order.status === 'cart'
+            ? 'awaiting_payment'
+            : (order.status_reason ?? null),
+      });
+
+      return {
+        success: true,
+        orderId: order.id,
+        invoiceId: invoice.id,
+        invoiceUrl: invoice.invoice_url,
+        payAddress: invoice.pay_address,
+        payAmount: invoice.pay_amount,
+        payCurrency: invoice.pay_currency,
+        status: invoice.payment_status,
+      };
+    } catch (error) {
+      Logger.error('Failed to create NOWPayments order invoice', error);
+      return { success: false, error: 'invoice_failed' };
+    }
+  }
+
+  async getNowPaymentsOrderMinimum(params: {
+    orderId: string;
+    payCurrency: string;
+  }): Promise<
+    | {
+        success: true;
+        orderId: string;
+        payCurrency: string;
+        priceCurrency: string;
+        orderTotalAmount: number;
+        minPriceAmount: number;
+        meetsMinimum: boolean;
+        shortfallAmount: number;
+        minFiatEquivalent?: number | null;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      if (!['cart', 'pending_payment'].includes(order.status)) {
+        return { success: false, error: 'order_not_pending' };
+      }
+
+      const orderCurrency =
+        normalizeCurrencyCode(order.currency) ||
+        (order.currency ? order.currency.toUpperCase() : null);
+      if (!orderCurrency) {
+        return { success: false, error: 'invalid_currency' };
+      }
+
+      const totalCents = order.total_cents ?? null;
+      if (!totalCents || totalCents <= 0) {
+        return { success: false, error: 'amount_invalid' };
+      }
+
+      const payCurrency = params.payCurrency.trim().toLowerCase();
+      if (!payCurrency) {
+        return { success: false, error: 'currency_unsupported' };
+      }
+
+      const supported =
+        await nowpaymentsClient.isCurrencySupported(payCurrency);
+      if (!supported) {
+        return { success: false, error: 'currency_unsupported' };
+      }
+
+      const orderTotalAmount = totalCents / 100;
+      const minAmountResponse = await nowpaymentsClient.getMinAmount({
+        // NOWPayments minimums are network/coin specific. Query using the
+        // selected pay currency pair, then compare in order currency.
+        currency_from: payCurrency,
+        currency_to: payCurrency,
+        fiat_equivalent: orderCurrency.toLowerCase(),
+      });
+
+      const minPayAmount = Number(minAmountResponse.min_amount);
+      if (!Number.isFinite(minPayAmount) || minPayAmount <= 0) {
+        return { success: false, error: 'minimum_amount_unavailable' };
+      }
+
+      const parsedFiatEquivalent = Number(minAmountResponse.fiat_equivalent);
+      let minPriceAmount: number | null =
+        Number.isFinite(parsedFiatEquivalent) && parsedFiatEquivalent > 0
+          ? parsedFiatEquivalent
+          : null;
+
+      // Fallback for providers that omit fiat_equivalent for some pairs.
+      if (minPriceAmount === null) {
+        const minEstimate = await nowpaymentsClient.getEstimate({
+          amount: minPayAmount,
+          currency_from: payCurrency,
+          currency_to: orderCurrency.toLowerCase(),
+        });
+        const estimated = Number(minEstimate.estimated_amount);
+        if (!Number.isFinite(estimated) || estimated <= 0) {
+          return { success: false, error: 'minimum_amount_unavailable' };
+        }
+        minPriceAmount = estimated;
+      }
+
+      const minFiatEquivalent =
+        Number.isFinite(parsedFiatEquivalent) && parsedFiatEquivalent > 0
+          ? parsedFiatEquivalent
+          : null;
+      const shortfallAmount = Math.max(0, minPriceAmount - orderTotalAmount);
+      const meetsMinimum = shortfallAmount <= 0;
+
+      return {
+        success: true,
+        orderId: order.id,
+        payCurrency,
+        priceCurrency: orderCurrency,
+        orderTotalAmount,
+        minPriceAmount,
+        meetsMinimum,
+        shortfallAmount,
+        minFiatEquivalent,
+      };
+    } catch (error) {
+      Logger.error('Failed to resolve NOWPayments minimum for order', {
+        orderId: params.orderId,
+        payCurrency: params.payCurrency,
+        error,
+      });
+      return { success: false, error: 'minimum_amount_unavailable' };
+    }
+  }
+
+  async completeCheckoutOrderWithCredits(params: {
+    orderId: string;
+    userId: string;
+  }): Promise<
+    | {
+        success: true;
+        orderId: string;
+        transactionId: string | null;
+        amountDebited: number;
+        balanceAfter: number | null;
+        fulfilledSubscriptions: number;
+      }
+    | {
+        success: false;
+        error: string;
+        detail?: string;
+        itemLabel?: string;
+      }
+  > {
+    const lockClient = await getDatabasePool().connect();
+    let lockAcquired = false;
+
+    try {
+      await lockClient.query('SELECT pg_advisory_lock(hashtext($1))', [
+        params.orderId,
+      ]);
+      lockAcquired = true;
+
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      if (order.user_id !== params.userId) {
+        return { success: false, error: 'order_forbidden' };
+      }
+
+      if (!['cart', 'pending_payment'].includes(order.status)) {
+        return { success: false, error: 'order_not_pending' };
+      }
+
+      if (order.payment_provider && order.payment_provider !== 'credits') {
+        return { success: false, error: 'payment_provider_mismatch' };
+      }
+
+      const orderCurrency =
+        normalizeCurrencyCode(order.currency) ||
+        (order.currency ? order.currency.toUpperCase() : null);
+      if (orderCurrency !== 'USD') {
+        return { success: false, error: 'invalid_currency' };
+      }
+
+      if (!order.items || order.items.length === 0) {
+        return { success: false, error: 'order_missing_items' };
+      }
+
+      const ownAccountValidation =
+        await this.validateOwnAccountSelectionData(order);
+      if (!ownAccountValidation.valid) {
+        return {
+          success: false,
+          error: 'own_account_credentials_required',
+          itemLabel: ownAccountValidation.missingItemLabel,
+        };
+      }
+
+      for (const item of order.items) {
+        if (!item.product_variant_id) {
+          return { success: false, error: 'order_item_missing_variant' };
+        }
+        const validation = await subscriptionService.canPurchaseSubscription(
+          params.userId,
+          item.product_variant_id
+        );
+        if (!validation.canPurchase) {
+          return {
+            success: false,
+            error: 'purchase_not_allowed',
+            detail: validation.reason || 'Purchase not allowed',
+            itemLabel: this.resolveOrderItemDisplayName(item),
+          };
+        }
+      }
+
+      const totalCents = order.total_cents ?? null;
+      if (!totalCents || totalCents <= 0) {
+        return { success: false, error: 'amount_invalid' };
+      }
+
+      const amountDebited = totalCents / 100;
+      const spendResult = await creditService.spendCredits(
+        params.userId,
+        amountDebited,
+        `Checkout order ${order.id} (${order.items.length} item${
+          order.items.length === 1 ? '' : 's'
+        })`,
+        {
+          checkout_source: 'checkout',
+          order_id: order.id,
+          item_count: order.items.length,
+        },
+        {
+          orderId: order.id,
+          priceCents: totalCents,
+          currency: orderCurrency,
+          autoRenew: order.auto_renew === true,
+          renewalMethod: 'credits',
+          statusReason: 'paid_with_credits',
+        }
+      );
+      const debitTransactionId = spendResult.transaction?.id ?? null;
+
+      if (!spendResult.success) {
+        if (
+          spendResult.error &&
+          spendResult.error.toLowerCase().includes('insufficient')
+        ) {
+          return {
+            success: false,
+            error: 'insufficient_credits',
+            detail: spendResult.error,
+          };
+        }
+        return {
+          success: false,
+          error: 'credit_payment_failed',
+          detail: spendResult.error || 'Unable to debit credits',
+        };
+      }
+
+      const paymentUpdate = await orderService.updateOrderPayment(order.id, {
+        payment_provider: 'credits',
+        payment_reference: debitTransactionId,
+        paid_with_credits: true,
+        auto_renew: order.auto_renew === true,
+        status: 'in_process',
+        status_reason: 'paid_with_credits',
+      });
+
+      if (!paymentUpdate.success) {
+        const refundResult = await creditService.refundCredits(
+          params.userId,
+          amountDebited,
+          'Credits checkout failed to update order - automatic refund',
+          debitTransactionId ?? undefined,
+          {
+            order_id: order.id,
+            reason: 'order_update_failed',
+          },
+          {
+            orderId: order.id,
+            priceCents: totalCents,
+            currency: orderCurrency,
+            autoRenew: order.auto_renew === true,
+            renewalMethod: 'credits',
+            statusReason: 'order_update_failed_refund',
+          }
+        );
+        if (!refundResult.success) {
+          Logger.error('Failed to refund credits after order update failure', {
+            orderId: order.id,
+            userId: params.userId,
+            transactionId: debitTransactionId,
+            error: refundResult.error,
+          });
+        }
+        Logger.error('Failed to update order after credits checkout', {
+          orderId: order.id,
+          userId: params.userId,
+          transactionId: debitTransactionId,
+          error: paymentUpdate.error,
+        });
+        return { success: false, error: 'order_update_failed' };
+      }
+
+      const createdSubscriptions = await this.createSubscriptionsForOrder({
+        order,
+        orderItems: order.items,
+        renewalMethod: 'credits',
+      });
+
+      await couponService.finalizeRedemptionForOrder(order.id);
+
+      try {
+        const confirmationResult =
+          await orderService.sendOrderPaymentConfirmationEmail(order.id);
+        if (
+          !confirmationResult.success &&
+          !['already_sent', 'renewal_order'].includes(
+            confirmationResult.reason ?? ''
+          )
+        ) {
+          Logger.warn('Failed to send order payment confirmation email', {
+            orderId: order.id,
+            reason: confirmationResult.reason,
+          });
+        }
+      } catch (error) {
+        Logger.warn('Order payment confirmation email call failed', {
+          orderId: order.id,
+          error,
+        });
+      }
+
+      return {
+        success: true,
+        orderId: order.id,
+        transactionId: debitTransactionId,
+        amountDebited,
+        balanceAfter: spendResult.balance?.availableBalance ?? null,
+        fulfilledSubscriptions: createdSubscriptions.length,
+      };
+    } catch (error) {
+      Logger.error('Failed to complete checkout order with credits', {
+        orderId: params.orderId,
+        userId: params.userId,
+        error,
+      });
+      return { success: false, error: 'credits_checkout_failed' };
+    } finally {
+      if (lockAcquired) {
+        await lockClient.query('SELECT pg_advisory_unlock(hashtext($1))', [
+          params.orderId,
+        ]);
+      }
+      lockClient.release();
+    }
+  }
+
+  async confirmStripeCheckoutSession(params: {
+    orderId: string;
+    sessionId: string;
+  }): Promise<
+    | {
+        success: true;
+        orderId: string;
+        sessionId: string;
+        orderStatus: string | null;
+        fulfilled: boolean;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      const session = await stripeProvider.retrieveCheckoutSession(
+        params.sessionId,
+        { expand: ['payment_intent'] }
+      );
+
+      const sessionOrderId =
+        session.metadata?.['order_id'] || session.client_reference_id || null;
+      if (!sessionOrderId || sessionOrderId !== params.orderId) {
+        return { success: false, error: 'checkout_session_mismatch' };
+      }
+
+      const sessionPaid =
+        session.payment_status === 'paid' || session.status === 'complete';
+      if (!sessionPaid) {
+        return { success: false, error: 'payment_not_completed' };
+      }
+
+      const processed = await this.processStripeCheckoutSession({
+        session,
+        eventType: 'checkout.session.completed',
+      });
+      if (!processed) {
+        return { success: false, error: 'fulfillment_failed' };
+      }
+
+      const updatedOrder = await orderService.getOrderById(params.orderId);
+
+      return {
+        success: true,
+        orderId: params.orderId,
+        sessionId: params.sessionId,
+        orderStatus: updatedOrder?.status ?? null,
+        fulfilled:
+          updatedOrder !== null &&
+          ['in_process', 'delivered', 'paid'].includes(updatedOrder.status),
+      };
+    } catch (error) {
+      Logger.error('Failed to confirm Stripe checkout session', {
+        orderId: params.orderId,
+        sessionId: params.sessionId,
+        error,
+      });
+      return { success: false, error: 'stripe_session_confirm_failed' };
+    }
+  }
+
   async createStripePayment(
     userId: string,
     amount: number,
@@ -1806,6 +4005,7 @@ export class PaymentService {
         success: true;
         clientSecret: string;
         paymentId: string;
+        paymentRecordId: string;
         amount: number;
         currency: string;
       }
@@ -1984,12 +4184,13 @@ export class PaymentService {
         unifiedPaymentInput.statusReason = orderContext.statusReason;
       }
 
-      await paymentRepository.create(unifiedPaymentInput);
+      const paymentRecord = await paymentRepository.create(unifiedPaymentInput);
 
       return {
         success: true,
         clientSecret: providerPayment.clientSecret,
         paymentId: providerPayment.providerPaymentId,
+        paymentRecordId: paymentRecord.id,
         amount,
         currency: resolvedCurrency,
       };
@@ -2883,7 +5084,64 @@ export class PaymentService {
   }
 
   // Process webhook from NOWPayments
-  async processWebhook(payload: WebhookPayload): Promise<boolean> {
+  async processWebhook(
+    payload: WebhookPayload,
+    rawBody?: Buffer | string
+  ): Promise<boolean> {
+    const rawBodyText =
+      rawBody === undefined || rawBody === null
+        ? null
+        : typeof rawBody === 'string'
+          ? rawBody
+          : rawBody.toString('utf8');
+    const eventId = rawBodyText
+      ? `npw_${createHash('sha256').update(rawBodyText).digest('hex')}`
+      : null;
+
+    const invoicePayment = await paymentRepository.findByProviderPaymentId(
+      'nowpayments',
+      payload.payment_id
+    );
+    let orderInvoicePayment =
+      invoicePayment && invoicePayment.purpose === 'subscription'
+        ? invoicePayment
+        : null;
+
+    if (!orderInvoicePayment && payload.order_id) {
+      const fallbackInvoice = await paymentRepository.findLatestByOrderId(
+        'nowpayments',
+        payload.order_id,
+        'subscription'
+      );
+      if (fallbackInvoice) {
+        orderInvoicePayment = fallbackInvoice;
+      }
+    }
+
+    if (eventId) {
+      const recorded = await this.recordPaymentEvent({
+        provider: 'nowpayments',
+        eventId,
+        eventType: 'nowpayments_webhook',
+        orderId: orderInvoicePayment?.orderId ?? payload.order_id ?? null,
+        paymentId: orderInvoicePayment?.id ?? null,
+      });
+      if (!recorded) {
+        Logger.info('Duplicate NOWPayments webhook ignored', {
+          eventId,
+          paymentId: payload.payment_id,
+        });
+        return true;
+      }
+    }
+
+    if (orderInvoicePayment) {
+      return await this.processNowPaymentsOrderInvoice(
+        payload,
+        orderInvoicePayment
+      );
+    }
+
     const pool = getDatabasePool();
     const client = await pool.connect();
     let transactionOpen = false;

@@ -8,7 +8,7 @@ import { getRequestIp } from '../utils/requestIp';
 // Payment-specific rate limiting middleware
 export const paymentRateLimit = createRateLimitHandler({
   windowMs: 10 * 60 * 1000, // 10 minutes
-  maxRequests: 10, // 10 payment creation attempts per 10 minutes
+  maxRequests: 15, // 15 payment creation attempts per 10 minutes
   keyGenerator: (request: FastifyRequest) =>
     `payment:${getRequestIp(request)}:${
       (request as any).user?.userId || 'anonymous'
@@ -25,7 +25,7 @@ export const paymentRateLimit = createRateLimitHandler({
 // Pricing quote rate limiting (separate from payment creation)
 export const paymentQuoteRateLimit = createRateLimitHandler({
   windowMs: 10 * 60 * 1000, // 10 minutes
-  maxRequests: 10, // 10 quote attempts per 10 minutes
+  maxRequests: 30, // 30 quote attempts per 10 minutes
   keyGenerator: (request: FastifyRequest) =>
     `payment_quote:${getRequestIp(request)}:${
       (request as any).user?.userId || 'anonymous'

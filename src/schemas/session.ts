@@ -51,6 +51,7 @@ export const registerRequestSchema = z
     email: z.string().email('Valid email is required'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirmPassword: z.string().min(1, 'Password confirmation is required'),
+    redirect: z.string().max(500, 'Redirect path is too long').optional(),
     firstName: z
       .string()
       .min(2, 'Username must be at least 2 characters')

@@ -240,6 +240,7 @@ const environmentSchema = z.object({
   MANUAL_MONTHLY_UPGRADE_INTERVAL: z.coerce.number().default(86400000),
   PIN_LOCKOUT_MONITOR_INTERVAL: z.coerce.number().default(300000),
   SUBSCRIPTION_DATA_QUALITY_INTERVAL: z.coerce.number().default(3600000),
+  ORDER_ALLOCATION_RECONCILIATION_INTERVAL: z.coerce.number().default(86400000),
   CONTEST_PRIZE_INTERVAL: z.coerce.number().default(86400000),
   VIRAL_METRICS_INTERVAL: z.coerce.number().default(86400000),
   EMAIL_VERIFICATION_SYNC_INTERVAL: z.coerce.number().default(300000),

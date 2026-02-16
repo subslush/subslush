@@ -133,9 +133,37 @@
     return false;
   };
 
+  type OwnAccountCredentialRequirement = 'email_and_password' | 'email_only';
+  type OwnAccountCredentialRequirementOption =
+    | ''
+    | OwnAccountCredentialRequirement;
+
+  const normalizeOwnAccountCredentialRequirement = (
+    value: unknown
+  ): OwnAccountCredentialRequirement | null => {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    if (
+      ['email_and_password', 'email_password', 'email+password', 'credentials_required'].includes(
+        normalized
+      )
+    ) {
+      return 'email_and_password';
+    }
+    if (['email_only', 'email'].includes(normalized)) {
+      return 'email_only';
+    }
+    return null;
+  };
+
   const readUpgradeOptions = (
     metadata: Record<string, unknown>
-  ): { allowNewAccount: boolean; allowOwnAccount: boolean; manualMonthlyUpgrade: boolean } => {
+  ): {
+    allowNewAccount: boolean;
+    allowOwnAccount: boolean;
+    manualMonthlyUpgrade: boolean;
+    ownAccountCredentialRequirement: OwnAccountCredentialRequirement | null;
+  } => {
     const raw = metadata['upgrade_options'] ?? metadata['upgradeOptions'];
     let parsed = raw;
     if (typeof raw === 'string') {
@@ -146,9 +174,21 @@
       }
     }
     if (!parsed || typeof parsed !== 'object') {
-      return { allowNewAccount: false, allowOwnAccount: false, manualMonthlyUpgrade: false };
+      return {
+        allowNewAccount: false,
+        allowOwnAccount: false,
+        manualMonthlyUpgrade: false,
+        ownAccountCredentialRequirement: null
+      };
     }
     const record = parsed as Record<string, unknown>;
+    const ownAccountCredentialRequirement =
+      normalizeOwnAccountCredentialRequirement(
+        record['own_account_credential_requirement'] ??
+          record['ownAccountCredentialRequirement'] ??
+          record['own_account_credentials_mode'] ??
+          record['ownAccountCredentialsMode']
+      );
     return {
       allowNewAccount: coerceMetadataBoolean(
         record['allow_new_account'] ?? record['allowNewAccount']
@@ -158,7 +198,8 @@
       ),
       manualMonthlyUpgrade: coerceMetadataBoolean(
         record['manual_monthly_upgrade'] ?? record['manualMonthlyUpgrade']
-      )
+      ),
+      ownAccountCredentialRequirement
     };
   };
 
@@ -200,6 +241,7 @@
         allowNewAccount: boolean;
         allowOwnAccount: boolean;
         manualMonthlyUpgrade: boolean;
+        ownAccountCredentialRequirement: OwnAccountCredentialRequirementOption;
       };
     }
   ): Record<string, unknown> => {
@@ -221,7 +263,13 @@
       next.upgrade_options = {
         allow_new_account: upgradeOptions.allowNewAccount,
         allow_own_account: upgradeOptions.allowOwnAccount,
-        manual_monthly_upgrade: upgradeOptions.manualMonthlyUpgrade
+        manual_monthly_upgrade: upgradeOptions.manualMonthlyUpgrade,
+        ...(upgradeOptions.ownAccountCredentialRequirement
+          ? {
+              own_account_credential_requirement:
+                upgradeOptions.ownAccountCredentialRequirement
+            }
+          : {})
       };
     } else {
       delete next.upgrade_options;
@@ -243,6 +291,7 @@
     allowNewAccount: boolean;
     allowOwnAccount: boolean;
     manualMonthlyUpgrade: boolean;
+    ownAccountCredentialRequirement: OwnAccountCredentialRequirementOption;
   };
 
   type VariantForm = {
@@ -294,7 +343,7 @@
     isRecommended: !!pickValue(term.isRecommended, term.is_recommended)
   });
 
-  const buildProductForm = (value: AdminProduct) => {
+  const buildProductForm = (value: AdminProduct): ProductForm => {
     const metadata = normalizeMetadata(value.metadata);
     const upgradeOptions = readUpgradeOptions(metadata);
     const maxSubscriptions = pickValue(value.maxSubscriptions, value.max_subscriptions);
@@ -315,7 +364,9 @@
       ),
       allowNewAccount: upgradeOptions.allowNewAccount,
       allowOwnAccount: upgradeOptions.allowOwnAccount,
-      manualMonthlyUpgrade: upgradeOptions.manualMonthlyUpgrade
+      manualMonthlyUpgrade: upgradeOptions.manualMonthlyUpgrade,
+      ownAccountCredentialRequirement:
+        (upgradeOptions.ownAccountCredentialRequirement ?? '') as OwnAccountCredentialRequirementOption
     };
   };
 
@@ -484,7 +535,9 @@
         upgradeOptions: {
           allowNewAccount: productForm.allowNewAccount,
           allowOwnAccount: productForm.allowOwnAccount,
-          manualMonthlyUpgrade: productForm.manualMonthlyUpgrade
+          manualMonthlyUpgrade: productForm.manualMonthlyUpgrade,
+          ownAccountCredentialRequirement:
+            productForm.ownAccountCredentialRequirement
         }
       });
       const updated = await adminService.updateProduct(product.id, {
@@ -1086,6 +1139,24 @@
           <input type="checkbox" bind:checked={productForm.allowOwnAccount} />
           Allow own account (user provides credentials)
         </label>
+        <div>
+          <label for="own-account-credential-requirement" class="text-xs font-semibold text-gray-600">
+            Own-account credential requirement (optional)
+          </label>
+          <select
+            id="own-account-credential-requirement"
+            class="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-gray-100"
+            bind:value={productForm.ownAccountCredentialRequirement}
+            disabled={!productForm.allowOwnAccount}
+          >
+            <option value="">Default (account email + password)</option>
+            <option value="email_and_password">Require account email + password</option>
+            <option value="email_only">Require account email only</option>
+          </select>
+          <p class="mt-1 text-[11px] text-gray-500">
+            Applies when customers choose “Allow own account”.
+          </p>
+        </div>
         <label class="flex items-center gap-2 text-sm text-gray-700">
           <input type="checkbox" bind:checked={productForm.manualMonthlyUpgrade} />
           Manual monthly upgrade (MMU)

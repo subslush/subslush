@@ -1,11 +1,13 @@
 import { getDatabasePool } from '../../config/database';
 import { Logger } from '../../utils/logger';
+import { auditLogService } from '../auditLogService';
 
 const PIN_LOCKOUT_TASK_CATEGORY = 'pin_lockout';
 const DATA_QUALITY_TASK_CATEGORY = 'data_quality_missing_billing_fields';
 const FALLBACK_DUE_HOURS = 24;
 const PIN_LOCKOUT_BATCH_SIZE = 200;
 const DATA_QUALITY_BATCH_SIZE = 200;
+const ORDER_ALLOCATION_BATCH_SIZE = 200;
 
 type AdminTaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
@@ -26,6 +28,17 @@ interface SubscriptionQualityCandidate {
   next_billing_at: Date | string | null;
   renewal_date: Date | string | null;
   end_date: Date | string | null;
+}
+
+interface OrderAllocationDriftRow {
+  id: string;
+  status: string;
+  order_coupon: number;
+  order_total: number;
+  items_coupon: number;
+  item_count: number;
+  payment_total: number;
+  payment_count: number;
 }
 
 function toDate(value: Date | string | null | undefined): Date | null {
@@ -302,5 +315,119 @@ export async function runSubscriptionDataQualityMonitor(): Promise<void> {
     });
   } catch (error) {
     Logger.error('Subscription data-quality monitor failed:', error);
+  }
+}
+
+export async function runOrderAllocationReconciliation(): Promise<void> {
+  Logger.info('Order allocation reconciliation started');
+  const pool = getDatabasePool();
+  let repaired = 0;
+  let flagged = 0;
+
+  try {
+    const tablesResult = await pool.query(
+      `SELECT to_regclass('public.payment_items') AS payment_items_table`
+    );
+    if (!tablesResult.rows[0]?.payment_items_table) {
+      Logger.warn(
+        'Order allocation reconciliation skipped: payment_items missing'
+      );
+      return;
+    }
+
+    const result = await pool.query(
+      `
+      WITH item_sums AS (
+        SELECT
+          order_id,
+          COALESCE(SUM(COALESCE(coupon_discount_cents, 0)), 0) AS items_coupon,
+          COUNT(*) AS item_count
+        FROM order_items
+        GROUP BY order_id
+      ),
+      payment_sums AS (
+        SELECT
+          oi.order_id,
+          COALESCE(SUM(COALESCE(pi.allocated_total_cents, 0)), 0) AS payment_total,
+          COUNT(pi.payment_id) AS payment_count
+        FROM payment_items pi
+        JOIN order_items oi ON oi.id = pi.order_item_id
+        GROUP BY oi.order_id
+      )
+      SELECT
+        o.id,
+        o.status,
+        COALESCE(o.coupon_discount_cents, 0) AS order_coupon,
+        COALESCE(o.total_cents, 0) AS order_total,
+        COALESCE(i.items_coupon, 0) AS items_coupon,
+        COALESCE(i.item_count, 0) AS item_count,
+        COALESCE(p.payment_total, 0) AS payment_total,
+        COALESCE(p.payment_count, 0) AS payment_count
+      FROM orders o
+      LEFT JOIN item_sums i ON i.order_id = o.id
+      LEFT JOIN payment_sums p ON p.order_id = o.id
+      WHERE o.status <> 'cart'
+        AND (
+          COALESCE(i.items_coupon, 0) <> COALESCE(o.coupon_discount_cents, 0)
+          OR (COALESCE(p.payment_count, 0) > 0
+              AND COALESCE(p.payment_total, 0) <> COALESCE(o.total_cents, 0))
+        )
+      ORDER BY o.updated_at DESC
+      LIMIT $1
+      `,
+      [ORDER_ALLOCATION_BATCH_SIZE]
+    );
+
+    const rows = result.rows as OrderAllocationDriftRow[];
+
+    for (const row of rows) {
+      let updatedCoupon = false;
+
+      if (row.item_count > 0 && row.items_coupon !== row.order_coupon) {
+        await pool.query(
+          `UPDATE orders
+           SET coupon_discount_cents = $1, updated_at = NOW()
+           WHERE id = $2`,
+          [row.items_coupon, row.id]
+        );
+        updatedCoupon = true;
+        repaired += 1;
+      } else {
+        flagged += 1;
+      }
+
+      await auditLogService.recordAdminAction({
+        action: updatedCoupon
+          ? 'order_allocation_reconciled'
+          : 'order_allocation_drift',
+        entityType: 'order',
+        entityId: row.id,
+        before: {
+          coupon_discount_cents: row.order_coupon,
+          total_cents: row.order_total,
+        },
+        after: {
+          coupon_discount_cents: updatedCoupon
+            ? row.items_coupon
+            : row.order_coupon,
+          total_cents: row.order_total,
+        },
+        metadata: {
+          status: row.status,
+          items_coupon: row.items_coupon,
+          payment_total: row.payment_total,
+          payment_count: row.payment_count,
+          repaired_coupon: updatedCoupon,
+        },
+      });
+    }
+
+    Logger.info('Order allocation reconciliation complete', {
+      scanned: rows.length,
+      repaired,
+      flagged,
+    });
+  } catch (error) {
+    Logger.error('Order allocation reconciliation failed:', error);
   }
 }

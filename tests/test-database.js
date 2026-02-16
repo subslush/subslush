@@ -590,6 +590,273 @@ describe('Database Test Suite', () => {
     });
 
     // =====================================================
+    // MULTI-ITEM CHECKOUT FOUNDATIONS
+    // =====================================================
+
+    describe('Multi-item checkout schema', () => {
+        test('payment_events and payment_items tables exist', async () => {
+            for (const [name, pool] of dbTest.pools) {
+                const result = await dbTest.executeTimedQuery(pool, `
+                    SELECT
+                        to_regclass('public.payment_events') AS payment_events,
+                        to_regclass('public.payment_items') AS payment_items
+                `);
+
+                assert.strictEqual(result.success, true, `${name} should query table registry`);
+                assert.ok(result.result.rows[0].payment_events, `${name} should have payment_events table`);
+                assert.ok(result.result.rows[0].payment_items, `${name} should have payment_items table`);
+            }
+        });
+
+        test('core multi-item columns exist', async () => {
+            const columnChecks = [
+                { table: 'users', column: 'is_guest' },
+                { table: 'orders', column: 'checkout_session_key' },
+                { table: 'orders', column: 'stripe_session_id' },
+                { table: 'order_items', column: 'coupon_discount_cents' },
+                { table: 'subscriptions', column: 'order_item_id' },
+                { table: 'payments', column: 'checkout_mode' },
+                { table: 'payments', column: 'order_item_id' },
+                { table: 'credit_transactions', column: 'order_item_id' },
+                { table: 'coupons', column: 'apply_scope' },
+            ];
+
+            for (const [name, pool] of dbTest.pools) {
+                for (const check of columnChecks) {
+                    const result = await dbTest.executeTimedQuery(pool, `
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = $1
+                          AND column_name = $2
+                        LIMIT 1
+                    `, [check.table, check.column]);
+
+                    assert.strictEqual(result.success, true, `${name} should query column metadata`);
+                    assert.ok(
+                        result.result.rows.length > 0,
+                        `${name} should have column ${check.table}.${check.column}`
+                    );
+                }
+            }
+        });
+
+        test('guest_claim_tokens enforce unique token hashes', async () => {
+            for (const [name, pool] of dbTest.pools) {
+                const guestId = testData.generateUUID();
+                const tokenHash = `token-${Date.now()}-${Math.random()}`;
+                const email = `guest-${Date.now()}@example.com`;
+
+                await pool.query(
+                    `INSERT INTO guest_identities (id, email) VALUES ($1, $2)`,
+                    [guestId, email]
+                );
+
+                await pool.query(
+                    `INSERT INTO guest_claim_tokens
+                     (guest_identity_id, token_hash, expires_at)
+                     VALUES ($1, $2, NOW() + INTERVAL '1 day')`,
+                    [guestId, tokenHash]
+                );
+
+                try {
+                    await pool.query(
+                        `INSERT INTO guest_claim_tokens
+                         (guest_identity_id, token_hash, expires_at)
+                         VALUES ($1, $2, NOW() + INTERVAL '1 day')`,
+                        [guestId, tokenHash]
+                    );
+                    assert.fail(`${name} should reject duplicate guest claim token hash`);
+                } catch (error) {
+                    assert.ok(
+                        error.message.includes('unique') || error.message.includes('duplicate'),
+                        `${name} should enforce guest_claim_tokens uniqueness`
+                    );
+                } finally {
+                    await pool.query('DELETE FROM guest_claim_tokens WHERE guest_identity_id = $1', [guestId]);
+                    await pool.query('DELETE FROM guest_identities WHERE id = $1', [guestId]);
+                }
+            }
+        });
+
+        test('subscription order_item_id backfill works for single-item orders', async () => {
+            for (const [name, pool] of dbTest.pools) {
+                const userId = testData.generateUUID();
+                const orderId = testData.generateUUID();
+                const orderItemId = testData.generateUUID();
+                const subscriptionId = testData.generateUUID();
+                const email = `backfill-${Date.now()}@example.com`;
+
+                await pool.query(
+                    'INSERT INTO users (id, email) VALUES ($1, $2)',
+                    [userId, email]
+                );
+
+                await pool.query(
+                    `INSERT INTO orders (id, user_id, status)
+                     VALUES ($1, $2, 'cart')`,
+                    [orderId, userId]
+                );
+
+                await pool.query(
+                    `INSERT INTO order_items
+                     (id, order_id, quantity, unit_price_cents, currency, total_price_cents)
+                     VALUES ($1, $2, 1, 1000, 'USD', 1000)`,
+                    [orderItemId, orderId]
+                );
+
+                await pool.query(
+                    `INSERT INTO subscriptions
+                     (id, user_id, service_type, service_plan, start_date, end_date, renewal_date, status, order_id)
+                     VALUES ($1, $2, 'spotify', 'premium', NOW(), NOW() + INTERVAL '30 days', NULL, 'active', $3)`,
+                    [subscriptionId, userId, orderId]
+                );
+
+                await pool.query(
+                    `
+                    WITH single_order_items AS (
+                      SELECT order_id, MIN(id) AS order_item_id
+                      FROM order_items
+                      GROUP BY order_id
+                      HAVING COUNT(*) = 1
+                    )
+                    UPDATE subscriptions s
+                    SET order_item_id = soi.order_item_id
+                    FROM single_order_items soi
+                    WHERE s.order_id = soi.order_id
+                      AND s.order_item_id IS NULL
+                    `
+                );
+
+                const result = await pool.query(
+                    'SELECT order_item_id FROM subscriptions WHERE id = $1',
+                    [subscriptionId]
+                );
+                assert.strictEqual(
+                    result.rows[0].order_item_id,
+                    orderItemId,
+                    `${name} should backfill order_item_id for single-item order`
+                );
+
+                await pool.query('DELETE FROM subscriptions WHERE id = $1', [subscriptionId]);
+                await pool.query('DELETE FROM order_items WHERE id = $1', [orderItemId]);
+                await pool.query('DELETE FROM orders WHERE id = $1', [orderId]);
+                await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+            }
+        });
+
+        test('allocation parity and payment-item enforcement triggers', async () => {
+            for (const [name, pool] of dbTest.pools) {
+                const userId = testData.generateUUID();
+                const orderId = testData.generateUUID();
+                const orderItemId = testData.generateUUID();
+                const orderItemId2 = testData.generateUUID();
+                const paymentId = testData.generateUUID();
+                const email = `allocation-${Date.now()}@example.com`;
+
+                await pool.query('INSERT INTO users (id, email) VALUES ($1, $2)', [userId, email]);
+
+                // Happy path should commit cleanly
+                {
+                    const client = await pool.connect();
+                    try {
+                        await client.query('BEGIN');
+                        await client.query(
+                            `INSERT INTO orders
+                             (id, user_id, status, currency, subtotal_cents, discount_cents, coupon_discount_cents, total_cents)
+                             VALUES ($1, $2, 'pending_payment', 'USD', 1000, 0, 100, 900)`,
+                            [orderId, userId]
+                        );
+                        await client.query(
+                            `INSERT INTO order_items
+                             (id, order_id, quantity, unit_price_cents, currency, total_price_cents, coupon_discount_cents)
+                             VALUES ($1, $2, 1, 900, 'USD', 900, 100)`,
+                            [orderItemId, orderId]
+                        );
+                        await client.query(
+                            `INSERT INTO payments
+                             (id, user_id, provider, provider_payment_id, status, purpose, amount, currency, order_item_id)
+                             VALUES ($1, $2, 'stripe', $3, 'pending', 'subscription', 9, 'USD', $4)`,
+                            [paymentId, userId, `pi_${Date.now()}`, orderItemId]
+                        );
+                        await client.query(
+                            `INSERT INTO payment_items
+                             (payment_id, order_item_id, allocated_subtotal_cents, allocated_discount_cents, allocated_total_cents)
+                             VALUES ($1, $2, 1000, 100, 900)`,
+                            [paymentId, orderItemId]
+                        );
+                        await client.query('COMMIT');
+                    } catch (error) {
+                        await client.query('ROLLBACK');
+                        throw error;
+                    } finally {
+                        client.release();
+                    }
+                }
+
+                // Mismatch should fail on commit (deferrable trigger)
+                {
+                    const client = await pool.connect();
+                    try {
+                        await client.query('BEGIN');
+                        await client.query(
+                            `UPDATE order_items SET coupon_discount_cents = 0 WHERE id = $1`,
+                            [orderItemId]
+                        );
+                        await client.query('COMMIT');
+                        assert.fail(`${name} should reject coupon allocation mismatch`);
+                    } catch (error) {
+                        await client.query('ROLLBACK');
+                        assert.ok(
+                            error.message.includes('Order coupon allocation mismatch'),
+                            `${name} should enforce coupon allocation parity`
+                        );
+                    } finally {
+                        client.release();
+                    }
+                }
+
+                // Payment items count > 1 must force payments.order_item_id = NULL
+                {
+                    const client = await pool.connect();
+                    try {
+                        await client.query('BEGIN');
+                        await client.query(
+                            `INSERT INTO order_items
+                             (id, order_id, quantity, unit_price_cents, currency, total_price_cents, coupon_discount_cents)
+                             VALUES ($1, $2, 1, 0, 'USD', 0, 0)`,
+                            [orderItemId2, orderId]
+                        );
+                        await client.query(
+                            `INSERT INTO payment_items
+                             (payment_id, order_item_id, allocated_subtotal_cents, allocated_discount_cents, allocated_total_cents)
+                             VALUES ($1, $2, 0, 0, 0)`,
+                            [paymentId, orderItemId2]
+                        );
+                        await client.query('COMMIT');
+                        assert.fail(`${name} should reject multiple items with payment order_item_id set`);
+                    } catch (error) {
+                        await client.query('ROLLBACK');
+                        assert.ok(
+                            error.message.includes('payments.order_item_id must be NULL') ||
+                            error.message.includes('payments.order_item_id must match'),
+                            `${name} should enforce payment item singleton constraint`
+                        );
+                    } finally {
+                        client.release();
+                    }
+                }
+
+                await pool.query('DELETE FROM payment_items WHERE payment_id = $1', [paymentId]);
+                await pool.query('DELETE FROM payments WHERE id = $1', [paymentId]);
+                await pool.query('DELETE FROM order_items WHERE order_id = $1', [orderId]);
+                await pool.query('DELETE FROM orders WHERE id = $1', [orderId]);
+                await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+            }
+        });
+    });
+
+    // =====================================================
     // CRUD OPERATIONS TESTING
     // =====================================================
 

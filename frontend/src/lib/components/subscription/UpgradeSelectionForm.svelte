@@ -1,7 +1,10 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import ManualMonthlyAcknowledgement from './ManualMonthlyAcknowledgement.svelte';
-  import type { UpgradeOptions } from '$lib/types/subscription.js';
+  import type {
+    OwnAccountCredentialRequirement,
+    UpgradeOptions
+  } from '$lib/types/subscription.js';
   import type {
     UpgradeSelectionSubmission,
     UpgradeSelectionType
@@ -14,19 +17,32 @@
   export let title = 'Choose your upgrade option';
   export let description = 'Select how you want us to complete this upgrade.';
   export let submitLabel = 'Submit selection';
+  export let includeCredentials = true;
+  export let showSubmit = true;
+  export let selectionType: UpgradeSelectionType | '' = '';
+  export let manualMonthlyAcknowledged = false;
 
   const dispatch = createEventDispatcher<{
     submit: UpgradeSelectionSubmission;
   }>();
 
-  let selectionType: UpgradeSelectionType | '' = '';
   let accountIdentifier = '';
   let credentials = '';
-  let manualMonthlyAcknowledged = false;
+
+  const resolveOwnAccountCredentialRequirement = (
+    options: UpgradeOptions | null | undefined
+  ): OwnAccountCredentialRequirement =>
+    options?.own_account_credential_requirement === 'email_only'
+      ? 'email_only'
+      : 'email_and_password';
 
   $: allowNew = upgradeOptions?.allow_new_account;
   $: allowOwn = upgradeOptions?.allow_own_account;
   $: requiresManualAck = Boolean(upgradeOptions?.manual_monthly_upgrade);
+  $: ownAccountCredentialRequirement =
+    resolveOwnAccountCredentialRequirement(upgradeOptions);
+  $: ownAccountRequiresPassword =
+    ownAccountCredentialRequirement === 'email_and_password';
 
   $: if (!selectionType) {
     if (allowNew && !allowOwn) {
@@ -36,13 +52,14 @@
     }
   }
 
-  $: needsCredentials = selectionType === 'upgrade_own_account';
+  $: needsCredentials = includeCredentials && selectionType === 'upgrade_own_account';
+  $: needsPassword = needsCredentials && ownAccountRequiresPassword;
   $: trimmedIdentifier = accountIdentifier.trim();
   $: trimmedCredentials = credentials.trim();
   $: canSubmit =
     !locked &&
     Boolean(selectionType) &&
-    (!needsCredentials || (trimmedIdentifier && trimmedCredentials)) &&
+    (!needsCredentials || (trimmedIdentifier && (!needsPassword || trimmedCredentials))) &&
     (!requiresManualAck || manualMonthlyAcknowledged) &&
     !submitting;
 
@@ -51,7 +68,7 @@
     dispatch('submit', {
       selection_type: selectionType,
       account_identifier: trimmedIdentifier || null,
-      credentials: trimmedCredentials || null,
+      credentials: needsPassword ? trimmedCredentials || null : null,
       manual_monthly_acknowledged: requiresManualAck ? manualMonthlyAcknowledged : undefined
     });
   };
@@ -93,7 +110,11 @@
         />
         <div>
           <p class="text-sm font-semibold text-slate-900">Upgrade my existing account</p>
-          <p class="text-xs text-slate-500">Provide credentials so we can upgrade your account.</p>
+          <p class="text-xs text-slate-500">
+            {ownAccountRequiresPassword
+              ? 'Provide account email and password so we can upgrade your account.'
+              : 'Provide your account email so we can complete the upgrade.'}
+          </p>
         </div>
       </label>
     {/if}
@@ -102,26 +123,29 @@
   {#if needsCredentials}
     <div class="space-y-3">
       <div>
-        <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="upgrade-account-identifier">Account identifier</label>
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="upgrade-account-identifier">Account email</label>
         <input
           id="upgrade-account-identifier"
           class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          placeholder="Email, username, or account ID"
+          type="email"
+          placeholder="Account email"
           bind:value={accountIdentifier}
           disabled={locked || submitting}
         />
       </div>
-      <div>
-        <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="upgrade-account-credentials">Account credentials</label>
-        <textarea
-          id="upgrade-account-credentials"
-          class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          rows={4}
-          placeholder="Enter login details or any access notes"
-          bind:value={credentials}
-          disabled={locked || submitting}
-        ></textarea>
-      </div>
+      {#if needsPassword}
+        <div>
+          <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="upgrade-account-credentials">Account password</label>
+          <textarea
+            id="upgrade-account-credentials"
+            class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            rows={4}
+            placeholder="Enter password and any login notes"
+            bind:value={credentials}
+            disabled={locked || submitting}
+          ></textarea>
+        </div>
+      {/if}
     </div>
   {/if}
 
@@ -136,15 +160,17 @@
     <p class="text-sm text-red-600">{errorMessage}</p>
   {/if}
 
-  <button
-    class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-    on:click={handleSubmit}
-    disabled={!canSubmit}
-  >
-    {#if submitting}
-      <span>Submitting...</span>
-    {:else}
-      <span>{submitLabel}</span>
-    {/if}
-  </button>
+  {#if showSubmit}
+    <button
+      class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+      on:click={handleSubmit}
+      disabled={!canSubmit}
+    >
+      {#if submitting}
+        <span>Submitting...</span>
+      {:else}
+        <span>{submitLabel}</span>
+      {/if}
+    </button>
+  {/if}
 </div>

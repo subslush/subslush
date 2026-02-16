@@ -2,11 +2,15 @@
 export type ServiceType = string;
 export type ServicePlan = string;
 export type SubscriptionStatus = 'active' | 'expired' | 'cancelled' | 'pending';
+export type OwnAccountCredentialRequirement =
+  | 'email_and_password'
+  | 'email_only';
 
 export interface UpgradeOptions {
   allow_new_account: boolean;
   allow_own_account: boolean;
   manual_monthly_upgrade: boolean;
+  own_account_credential_requirement?: OwnAccountCredentialRequirement | null;
 }
 
 // Service plan details
@@ -245,6 +249,7 @@ export interface Subscription {
   days_until_renewal?: number | null;
   metadata?: Record<string, unknown> | string | null;
   order_id?: string | null;
+  order_item_id?: string | null;
   product_variant_id?: string | null;
   created_at: string;
   updated_at?: string;

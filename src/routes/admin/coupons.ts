@@ -125,6 +125,10 @@ export async function adminCouponRoutes(
             code: { type: 'string', minLength: 1 },
             percent_off: { type: 'number', minimum: 0, maximum: 100 },
             scope: { type: 'string', enum: ['global', 'category', 'product'] },
+            apply_scope: {
+              type: 'string',
+              enum: ['highest_eligible_item', 'order_total'],
+            },
             status: { type: 'string', enum: ['active', 'inactive'] },
             starts_at: { type: 'string', format: 'date-time' },
             ends_at: { type: 'string', format: 'date-time' },
@@ -162,6 +166,7 @@ export async function adminCouponRoutes(
           code: payload.code,
           percent_off: payload.percent_off,
           scope,
+          apply_scope: payload.apply_scope,
           status: payload.status,
           starts_at: payload.starts_at ? new Date(payload.starts_at) : null,
           ends_at: payload.ends_at ? new Date(payload.ends_at) : null,
@@ -217,6 +222,10 @@ export async function adminCouponRoutes(
             code: { type: 'string', minLength: 1 },
             percent_off: { type: 'number', minimum: 0, maximum: 100 },
             scope: { type: 'string', enum: ['global', 'category', 'product'] },
+            apply_scope: {
+              type: 'string',
+              enum: ['highest_eligible_item', 'order_total'],
+            },
             status: { type: 'string', enum: ['active', 'inactive'] },
             starts_at: { type: 'string', format: 'date-time' },
             ends_at: { type: 'string', format: 'date-time' },
@@ -269,6 +278,9 @@ export async function adminCouponRoutes(
             ? { percent_off: payload.percent_off }
             : {}),
           ...(payload.scope !== undefined ? { scope: payload.scope } : {}),
+          ...(payload.apply_scope !== undefined
+            ? { apply_scope: payload.apply_scope }
+            : {}),
           ...(payload.status !== undefined ? { status: payload.status } : {}),
           ...(payload.starts_at !== undefined
             ? {

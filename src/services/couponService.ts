@@ -51,6 +51,7 @@ const mapCoupon = (row: any): Coupon => ({
   code_normalized: row.code_normalized,
   percent_off: row.percent_off !== null ? Number(row.percent_off) : 0,
   scope: row.scope,
+  apply_scope: row.apply_scope ?? null,
   status: row.status,
   starts_at: row.starts_at ?? null,
   ends_at: row.ends_at ?? null,
@@ -141,6 +142,17 @@ type CouponValidationParams = {
   termMonths?: number | null;
   now?: Date;
   client?: PoolClient;
+};
+
+type CouponCartItem = {
+  product: Product;
+  subtotalCents: number;
+  termMonths?: number | null;
+};
+
+type CouponCartValidationData = {
+  coupon: Coupon;
+  eligibleItemIndexes: number[];
 };
 
 type CouponReservationParams = {
@@ -249,11 +261,11 @@ class CouponService {
         `INSERT INTO coupons (
           code, code_normalized, percent_off, scope, status, starts_at, ends_at,
           max_redemptions, bound_user_id, first_order_only, category, product_id,
-          term_months
+          term_months, apply_scope
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7,
           $8, $9, $10, $11, $12,
-          $13
+          $13, $14
         )
         RETURNING *`,
         [
@@ -270,6 +282,7 @@ class CouponService {
           input.category ?? null,
           input.product_id ?? null,
           input.term_months ?? null,
+          input.apply_scope ?? 'highest_eligible_item',
         ]
       );
 
@@ -314,6 +327,9 @@ class CouponService {
       }
       if (input.scope !== undefined) {
         addField('scope', input.scope);
+      }
+      if (input.apply_scope !== undefined) {
+        addField('apply_scope', input.apply_scope ?? 'highest_eligible_item');
       }
       if (input.status !== undefined) {
         addField('status', input.status);
@@ -467,6 +483,87 @@ class CouponService {
     }
 
     return createSuccessResult({ coupon, discountCents, totalCents });
+  }
+
+  async validateCouponForCart(params: {
+    couponCode: string;
+    userId: string;
+    items: CouponCartItem[];
+    now?: Date;
+    client?: PoolClient;
+  }): Promise<ServiceResult<CouponCartValidationData>> {
+    const now = params.now ?? new Date();
+    const normalized = normalizeCouponCode(params.couponCode);
+    if (!normalized) {
+      return createErrorResult('invalid_code');
+    }
+
+    const db = params.client ?? getDatabasePool();
+    const coupon = await this.getCouponByNormalizedCode(
+      normalized,
+      params.client
+    );
+    if (!coupon) {
+      return createErrorResult('not_found');
+    }
+
+    if (!isCouponActiveAt(coupon, now)) {
+      return createErrorResult('inactive');
+    }
+
+    if (coupon.bound_user_id && coupon.bound_user_id !== params.userId) {
+      return createErrorResult('bound_user');
+    }
+
+    if (coupon.first_order_only) {
+      const hasPaid = await this.hasPaidOrder(params.userId, db);
+      if (hasPaid) {
+        return createErrorResult('first_order_only');
+      }
+    }
+
+    await this.expireStaleReservations(coupon.id, db, now);
+
+    if (!coupon.bound_user_id) {
+      const userUsed = await this.hasUserRedemption(
+        coupon.id,
+        params.userId,
+        db,
+        now
+      );
+      if (userUsed) {
+        return createErrorResult('already_redeemed');
+      }
+    }
+
+    if (
+      coupon.max_redemptions !== null &&
+      coupon.max_redemptions !== undefined
+    ) {
+      const used = await this.countActiveRedemptions(coupon.id, db, now);
+      if (used >= coupon.max_redemptions) {
+        return createErrorResult('max_redemptions');
+      }
+    }
+
+    const eligibleItemIndexes = params.items
+      .map((item, index) => {
+        if (
+          couponAppliesToProduct(coupon, item.product) &&
+          couponAppliesToTerm(coupon, item.termMonths) &&
+          item.subtotalCents > 0
+        ) {
+          return index;
+        }
+        return null;
+      })
+      .filter((value): value is number => value !== null);
+
+    if (eligibleItemIndexes.length === 0) {
+      return createErrorResult('scope_mismatch');
+    }
+
+    return createSuccessResult({ coupon, eligibleItemIndexes });
   }
 
   async reserveCouponRedemption(params: CouponReservationParams): Promise<

@@ -65,6 +65,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
             offset: { type: 'number', minimum: 0 },
             include_items: { type: 'string' },
             include_cart: { type: 'string' },
+            include_unpaid: { type: 'string' },
           },
         },
       },
@@ -83,12 +84,14 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           offset?: number;
           include_items?: string;
           include_cart?: string;
+          include_unpaid?: string;
         };
 
         const limit = Number(query.limit ?? 20);
         const offset = Number(query.offset ?? 0);
         const includeItems = parseBoolean(query.include_items) ?? false;
         const includeCart = parseBoolean(query.include_cart) ?? false;
+        const includeUnpaid = parseBoolean(query.include_unpaid) ?? false;
         const preferredCurrency = resolveRequestCurrency(request);
 
         const result = await orderService.listOrdersForUser({
@@ -97,6 +100,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           offset,
           includeItems,
           includeCart,
+          includeUnpaid,
           ...(query.status ? { status: query.status } : {}),
           ...(query.payment_provider
             ? { payment_provider: query.payment_provider }
@@ -307,6 +311,78 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
         return ErrorResponses.internalError(
           reply,
           'Failed to fetch order subscription'
+        );
+      }
+    }
+  );
+
+  fastify.get(
+    '/:orderId/subscriptions',
+    {
+      preHandler: [authPreHandler],
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId'],
+          properties: {
+            orderId: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const userId = request.user?.userId;
+        if (!userId) {
+          return ErrorResponses.unauthorized(reply, 'Authentication required');
+        }
+
+        const { orderId } = request.params as { orderId: string };
+        const pool = getDatabasePool();
+        const orderResult = await pool.query(
+          'SELECT id, user_id FROM orders WHERE id = $1',
+          [orderId]
+        );
+
+        if (orderResult.rows.length === 0) {
+          return ErrorResponses.notFound(reply, 'Order not found');
+        }
+
+        const order = orderResult.rows[0];
+        if (order.user_id !== userId) {
+          return ErrorResponses.notFound(reply, 'Order not found');
+        }
+
+        const subscriptionResult = await pool.query(
+          'SELECT id FROM subscriptions WHERE order_id = $1 ORDER BY created_at ASC',
+          [orderId]
+        );
+
+        if (subscriptionResult.rows.length === 0) {
+          return SuccessResponses.ok(reply, { subscriptions: [] });
+        }
+
+        const subscriptions = [];
+        for (const row of subscriptionResult.rows) {
+          const subscriptionId = row.id as string;
+          const subscriptionData =
+            await subscriptionService.getSubscriptionById(
+              subscriptionId,
+              userId
+            );
+          if (subscriptionData.success && subscriptionData.data) {
+            const { credentials_encrypted: _credentials, ...safeSubscription } =
+              subscriptionData.data;
+            subscriptions.push(safeSubscription);
+          }
+        }
+
+        return SuccessResponses.ok(reply, { subscriptions });
+      } catch (error) {
+        Logger.error('Order subscriptions lookup failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to fetch order subscriptions'
         );
       }
     }

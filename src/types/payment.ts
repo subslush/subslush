@@ -34,6 +34,8 @@ export interface UnifiedPayment {
   purpose: PaymentPurpose;
   amount: number;
   currency: string;
+  checkoutMode?: string | null;
+  stripeSessionId?: string | null;
   amountUsd?: number;
   paymentMethodType?: string;
   subscriptionId?: string;
@@ -42,6 +44,7 @@ export interface UnifiedPayment {
   metadata?: Record<string, any>;
   orderId?: string;
   productVariantId?: string;
+  orderItemId?: string;
   priceCents?: number;
   basePriceCents?: number;
   discountPercent?: number;
@@ -63,6 +66,8 @@ export interface CreateUnifiedPaymentInput {
   purpose: PaymentPurpose;
   amount: number;
   currency: string;
+  checkoutMode?: string | null;
+  stripeSessionId?: string | null;
   amountUsd?: number;
   paymentMethodType?: string;
   subscriptionId?: string;
@@ -71,6 +76,7 @@ export interface CreateUnifiedPaymentInput {
   metadata?: Record<string, any>;
   orderId?: string;
   productVariantId?: string;
+  orderItemId?: string;
   priceCents?: number;
   basePriceCents?: number;
   discountPercent?: number;

@@ -81,7 +81,7 @@
     return serviceType ? formatServiceLabel(serviceType) : '';
   }
 
-  function getOrderSummary(order: OrderListItem): string {
+  function getOrderItemsSummary(order: OrderListItem): string[] {
     const metadata = order.metadata && typeof order.metadata === 'object'
       ? (order.metadata as Record<string, unknown>)
       : null;
@@ -89,18 +89,16 @@
       ? metadata.service_type
       : undefined;
     if (order.items && order.items.length > 0) {
-      const label = formatOrderItemLabel(order.items[0], serviceType);
-      if (label) {
-        if (order.items.length > 1) {
-          return `${label} +${order.items.length - 1} more`;
-        }
-        return label;
-      }
+      const labels = order.items
+        .map(item => formatOrderItemLabel(item, serviceType))
+        .filter(label => label.length > 0);
+      if (labels.length > 0) return labels;
     }
+
     if (serviceType) {
-      return formatServiceLabel(serviceType);
+      return [formatServiceLabel(serviceType)];
     }
-    return `Order ${order.id.slice(0, 8)}`;
+    return [`Order ${order.id.slice(0, 8)}`];
   }
 
   function statusLabel(status: string): string {
@@ -199,7 +197,12 @@
         <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <div class="flex items-start justify-between gap-6">
             <div class="min-w-0">
-              <p class="text-base font-semibold text-gray-900 truncate">{getOrderSummary(order)}</p>
+              <p class="text-[11px] uppercase tracking-wide text-gray-400">Items</p>
+              <div class="mt-1 space-y-1">
+                {#each getOrderItemsSummary(order) as itemLabel}
+                  <p class="text-sm font-medium text-gray-900">{itemLabel}</p>
+                {/each}
+              </div>
               <p class="mt-1 text-xs text-gray-500">Order {order.id.slice(0, 8)}</p>
               <div class="mt-3 grid grid-cols-2 gap-3 text-xs text-gray-600 sm:grid-cols-3">
                 <div>

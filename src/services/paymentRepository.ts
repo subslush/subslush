@@ -37,6 +37,14 @@ function mapRowToUnifiedPayment(row: any): UnifiedPayment {
     payment.providerStatus = row.provider_status;
   }
 
+  if (row.checkout_mode !== undefined) {
+    payment.checkoutMode = row.checkout_mode;
+  }
+
+  if (row.stripe_session_id) {
+    payment.stripeSessionId = row.stripe_session_id;
+  }
+
   if (row.amount_usd !== null && row.amount_usd !== undefined) {
     payment.amountUsd = parseFloat(row.amount_usd);
   }
@@ -63,6 +71,10 @@ function mapRowToUnifiedPayment(row: any): UnifiedPayment {
 
   if (row.product_variant_id) {
     payment.productVariantId = row.product_variant_id;
+  }
+
+  if (row.order_item_id) {
+    payment.orderItemId = row.order_item_id;
   }
 
   if (row.price_cents !== null && row.price_cents !== undefined) {
@@ -124,6 +136,7 @@ export const paymentRepository = {
         expires_at,
         order_id,
         product_variant_id,
+        order_item_id,
         price_cents,
         base_price_cents,
         discount_percent,
@@ -132,9 +145,11 @@ export const paymentRepository = {
         next_billing_at,
         renewal_method,
         status_reason,
+        checkout_mode,
+        stripe_session_id,
         metadata
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
       RETURNING *`,
       [
         input.userId,
@@ -152,6 +167,7 @@ export const paymentRepository = {
         input.expiresAt || null,
         input.orderId || null,
         input.productVariantId || null,
+        input.orderItemId || null,
         input.priceCents ?? null,
         input.basePriceCents ?? null,
         input.discountPercent ?? null,
@@ -160,6 +176,8 @@ export const paymentRepository = {
         input.nextBillingAt || null,
         input.renewalMethod || null,
         input.statusReason || null,
+        input.checkoutMode ?? null,
+        input.stripeSessionId ?? null,
         input.metadata ? JSON.stringify(input.metadata) : '{}',
       ]
     );
@@ -203,6 +221,42 @@ export const paymentRepository = {
     } catch (error) {
       Logger.error('Failed to update payment status in payments table:', error);
       throw error;
+    }
+  },
+
+  async findLatestByOrderId(
+    provider: PaymentProvider,
+    orderId: string,
+    purpose?: string,
+    client?: PoolClient
+  ): Promise<UnifiedPayment | null> {
+    try {
+      const db = getClient(client);
+      const params: Array<string> = [provider, orderId];
+      let sql = `
+        SELECT *
+        FROM payments
+        WHERE provider = $1
+          AND order_id = $2
+      `;
+      if (purpose) {
+        sql += ` AND purpose = $3`;
+        params.push(purpose);
+      }
+      sql += ' ORDER BY created_at DESC LIMIT 1';
+      const result = await db.query(sql, params);
+      if (result.rows.length === 0) {
+        return null;
+      }
+      return mapRowToUnifiedPayment(result.rows[0]);
+    } catch (error) {
+      Logger.error('Failed to fetch payment by order id', {
+        provider,
+        orderId,
+        purpose,
+        error,
+      });
+      return null;
     }
   },
 

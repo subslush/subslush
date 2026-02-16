@@ -220,12 +220,19 @@ export class SubscriptionService {
       const manualMonthlyRequired =
         upgradeOptionsSnapshot?.manual_monthly_upgrade === true;
       const selectionRequired = hasUpgradeOptions(upgradeOptionsSnapshot);
+      const selectionProvided = input.selection_provided === true;
+      const manualMonthlyAcknowledged =
+        input.manual_monthly_acknowledged === true;
       const manualMonthlyOnly = manualMonthlyRequired && !selectionRequired;
 
       const statusReason =
-        initialStatus === 'pending' && manualMonthlyRequired
+        initialStatus === 'pending' &&
+        manualMonthlyRequired &&
+        !manualMonthlyAcknowledged
           ? 'waiting_for_mmu_acknowledgement'
-          : selectionRequired && initialStatus === 'pending'
+          : selectionRequired &&
+              initialStatus === 'pending' &&
+              !selectionProvided
             ? 'waiting_for_selection'
             : input.status_reason || null;
 
@@ -256,8 +263,8 @@ export class SubscriptionService {
         `INSERT INTO subscriptions (
           id, user_id, service_type, service_plan, start_date, term_start_at,
           end_date, renewal_date, credentials_encrypted, status, metadata, order_id,
-          product_variant_id, price_cents, base_price_cents, discount_percent, term_months,
-          currency, auto_renew, next_billing_at,
+          order_item_id, product_variant_id, price_cents, base_price_cents, discount_percent,
+          term_months, currency, auto_renew, next_billing_at,
           renewal_method, billing_payment_method_id, auto_renew_enabled_at, auto_renew_disabled_at,
           status_reason, referral_reward_id, pre_launch_reward_id
         ) VALUES (
@@ -265,7 +272,8 @@ export class SubscriptionService {
           $7, $8, $9, $10, $11, $12,
           $13, $14, $15, $16, $17,
           $18, $19, $20, $21, $22,
-          $23, $24, $25, $26, $27
+          $23, $24, $25, $26, $27,
+          $28
         )
         RETURNING *`,
         [
@@ -281,6 +289,7 @@ export class SubscriptionService {
           initialStatus,
           metadataPayload ? JSON.stringify(metadataPayload) : null,
           input.order_id || null,
+          input.order_item_id || null,
           input.product_variant_id || null,
           input.price_cents ?? null,
           input.base_price_cents ?? null,
@@ -317,7 +326,7 @@ export class SubscriptionService {
         });
       }
 
-      if (selectionRequired && upgradeOptionsSnapshot) {
+      if (selectionRequired && upgradeOptionsSnapshot && !selectionProvided) {
         const noteParts = [
           `Selection required for ${input.service_type} ${input.service_plan}.`,
           `Subscription ${subscriptionId}`,
@@ -788,13 +797,7 @@ export class SubscriptionService {
         const endDate = updates.end_date || currentSub.end_date;
         const renewalDate = updates.renewal_date || currentSub.renewal_date;
 
-        if (
-          !this.validateSubscriptionDates(
-            startDate,
-            endDate,
-            renewalDate
-          )
-        ) {
+        if (!this.validateSubscriptionDates(startDate, endDate, renewalDate)) {
           return createErrorResult('Invalid date update');
         }
       }
@@ -2511,6 +2514,7 @@ export class SubscriptionService {
       status: row.status,
       metadata,
       order_id: row.order_id ?? null,
+      order_item_id: row.order_item_id ?? null,
       product_variant_id: row.product_variant_id ?? null,
       product_name: row.product_name ?? null,
       variant_name: row.variant_name ?? null,

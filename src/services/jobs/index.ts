@@ -12,6 +12,7 @@ import {
 import {
   runPinLockoutMonitor,
   runSubscriptionDataQualityMonitor,
+  runOrderAllocationReconciliation,
 } from './monitoringJobs';
 import {
   runCheckoutAbandonSweep,
@@ -88,6 +89,15 @@ function registerJobs(): void {
     lockKey: 'jobs:subscription_data_quality',
     lockTtlSeconds: 300,
     handler: runSubscriptionDataQualityMonitor,
+  });
+
+  scheduler.register({
+    name: 'order-allocation-reconciliation',
+    intervalMs: env.ORDER_ALLOCATION_RECONCILIATION_INTERVAL,
+    initialDelayMs: 60000,
+    lockKey: 'jobs:order_allocation_reconciliation',
+    lockTtlSeconds: 600,
+    handler: runOrderAllocationReconciliation,
   });
 
   scheduler.register({

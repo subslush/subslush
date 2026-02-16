@@ -24,6 +24,7 @@ const buildCouponRow = (overrides: Partial<Coupon> = {}): Coupon => ({
   code_normalized: 'save10',
   percent_off: 10,
   scope: 'global',
+  apply_scope: 'highest_eligible_item',
   status: 'active',
   starts_at: null,
   ends_at: null,

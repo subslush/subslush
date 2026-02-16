@@ -68,6 +68,18 @@
   const resolveSubscriptions = () => fulfillment?.subscriptions || [];
   const resolveTasks = () => fulfillment?.tasks || [];
   const resolveCreditSummary = () => fulfillment?.credit?.summary || null;
+  const resolveOrderCurrency = (): string =>
+    (pickValue(resolveOrder()?.currency) as string | null) || 'USD';
+  const resolveOrderCouponCode = (): string =>
+    (pickValue(resolveOrder()?.couponCode, resolveOrder()?.coupon_code) as string | null) || '';
+  const resolveOrderCouponDiscountCents = (): number => {
+    const raw = pickValue(resolveOrder()?.couponDiscountCents, resolveOrder()?.coupon_discount_cents);
+    if (raw === null || raw === undefined) return 0;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
+  };
+  const hasOrderCouponUsage = (): boolean =>
+    resolveOrderCouponCode().length > 0 || resolveOrderCouponDiscountCents() > 0;
   const hasMissingCredentials = () =>
     resolveSubscriptions().some(subscription => !getSubscriptionCredentialsFlag(subscription));
   const isPaymentVerified = () => {
@@ -263,6 +275,16 @@
       <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-3">
         <h2 class="text-lg font-semibold text-gray-900">Order</h2>
         <p class="text-sm text-gray-600">Total: {formatCents(resolveOrder()?.total_cents, resolveOrder()?.currency || 'USD')}</p>
+        {#if hasOrderCouponUsage()}
+          <p class="text-xs text-gray-500">
+            Coupon: {resolveOrderCouponCode() || 'Applied'}
+          </p>
+          <p class="text-xs font-semibold text-emerald-700">
+            Discount applied: {formatCents(resolveOrderCouponDiscountCents(), resolveOrderCurrency())} off total
+          </p>
+        {:else}
+          <p class="text-xs text-gray-500">Coupon: Not used</p>
+        {/if}
         <p class="text-xs text-gray-500">Payment provider: {resolveOrder()?.payment_provider || '--'}</p>
         <p class="text-xs text-gray-500">Payment ref: {resolveOrder()?.payment_reference || '--'}</p>
         <p class="text-xs text-gray-500">Paid with credits: {resolveOrder()?.paid_with_credits ? 'Yes' : 'No'}</p>
@@ -270,6 +292,11 @@
 
       <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-3">
         <h2 class="text-lg font-semibold text-gray-900">Task</h2>
+        {#if hasOrderCouponUsage()}
+          <p class="text-xs text-emerald-700">
+            Coupon context: {resolveOrderCouponCode() || 'Applied'} · {formatCents(resolveOrderCouponDiscountCents(), resolveOrderCurrency())} off
+          </p>
+        {/if}
         {#if resolveTasks().length === 0}
           <p class="text-sm text-gray-500">No linked tasks.</p>
         {:else}

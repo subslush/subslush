@@ -144,6 +144,22 @@
     if (!months) return '--';
     return `${months} month${months === 1 ? '' : 's'}`;
   };
+
+  const resolveOrderCurrency = (order: AdminOrder): string =>
+    (pickValue(order.currency) as string | null) || 'USD';
+
+  const resolveCouponCode = (order: AdminOrder): string =>
+    (pickValue(order.couponCode, order.coupon_code) as string | null) || '';
+
+  const resolveCouponDiscountCents = (order: AdminOrder): number => {
+    const raw = pickValue(order.couponDiscountCents, order.coupon_discount_cents);
+    if (raw === null || raw === undefined) return 0;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
+  };
+
+  const hasCouponUsage = (order: AdminOrder): boolean =>
+    resolveCouponCode(order).length > 0 || resolveCouponDiscountCents(order) > 0;
 </script>
 
 <svelte:head>
@@ -209,6 +225,7 @@
               <th class="py-2">Order</th>
               <th class="py-2">User</th>
               <th class="py-2">Total</th>
+              <th class="py-2">Coupon</th>
               <th class="py-2">Payment</th>
               <th class="py-2">Status</th>
               <th class="py-2">Created</th>
@@ -222,6 +239,18 @@
                 <td class="py-3 text-gray-600">{pickValue(order.userId, order.user_id) || '--'}</td>
                 <td class="py-3 text-gray-600">
                   {formatCents(pickValue(order.totalCents, order.total_cents), pickValue(order.currency, order.currency) || 'USD')}
+                </td>
+                <td class="py-3 text-gray-600">
+                  {#if hasCouponUsage(order)}
+                    <div class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                      {resolveCouponCode(order) || 'Coupon applied'}
+                    </div>
+                    <div class="mt-1 text-xs text-emerald-700">
+                      Discount: {formatCents(resolveCouponDiscountCents(order), resolveOrderCurrency(order))}
+                    </div>
+                  {:else}
+                    <span class="text-xs text-gray-400">No coupon</span>
+                  {/if}
                 </td>
                 <td class="py-3 text-gray-600">
                   {pickValue(order.paymentProvider, order.payment_provider) || '--'}
@@ -257,7 +286,7 @@
               </tr>
               {#if statusUpdateOrderId === order.id}
                 <tr class="bg-gray-50">
-                  <td colspan="7" class="py-3">
+                  <td colspan="8" class="py-3">
                     <div class="grid gap-3 md:grid-cols-3">
                       <select
                         class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
@@ -295,7 +324,7 @@
               {/if}
               {#if viewItemsOrderId === order.id}
                 <tr class="bg-gray-50">
-                  <td colspan="7" class="py-3">
+                  <td colspan="8" class="py-3">
                     {#if orderItemsLoading[order.id]}
                       <p class="text-sm text-gray-500">Loading items...</p>
                     {:else if orderItemsError[order.id]}

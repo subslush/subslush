@@ -90,6 +90,10 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
           SELECT t.*,
             u.email AS user_email,
             o.status AS order_status,
+            o.currency AS order_currency,
+            o.coupon_id AS order_coupon_id,
+            o.coupon_code AS order_coupon_code,
+            o.coupon_discount_cents AS order_coupon_discount_cents,
             o.payment_provider AS order_payment_provider,
             o.payment_reference AS order_payment_reference,
             s.service_type AS subscription_service_type,
@@ -185,7 +189,11 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const { status, limit = 50, offset = 0 } = request.query as {
+        const {
+          status,
+          limit = 50,
+          offset = 0,
+        } = request.query as {
           status?: string;
           limit?: number;
           offset?: number;

@@ -33,6 +33,7 @@
     code: string;
     percentOff: string;
     scope: 'global' | 'category' | 'product';
+    applyScope: 'highest_eligible_item' | 'order_total';
     status: 'active' | 'inactive';
     termMonths: string;
     startsAt: string;
@@ -48,6 +49,7 @@
     code: '',
     percentOff: '',
     scope: 'global',
+    applyScope: 'highest_eligible_item',
     status: 'active',
     termMonths: '',
     startsAt: '',
@@ -132,6 +134,7 @@
       code: form.code.trim(),
       percent_off: percentOff,
       scope: form.scope,
+      apply_scope: form.applyScope,
       status: form.status,
       term_months: termMonths,
       first_order_only: form.firstOrderOnly,
@@ -175,6 +178,7 @@
       code: coupon.code,
       percentOff: String(pickValue(coupon.percentOff, coupon.percent_off) ?? ''),
       scope: (coupon.scope || 'global') as CouponForm['scope'],
+      applyScope: (pickValue(coupon.applyScope, coupon.apply_scope) || 'highest_eligible_item') as CouponForm['applyScope'],
       status: (coupon.status || 'active') as CouponForm['status'],
       termMonths: String(pickValue(coupon.termMonths, coupon.term_months) ?? ''),
       startsAt: toDateInput(pickValue(coupon.startsAt, coupon.starts_at)),
@@ -352,6 +356,17 @@
         </select>
       </div>
       <div>
+        <label class="text-sm font-medium text-gray-700" for="new-coupon-apply-scope">Apply scope</label>
+        <select
+          id="new-coupon-apply-scope"
+          class="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          bind:value={newCoupon.applyScope}
+        >
+          <option value="highest_eligible_item">Highest eligible item</option>
+          <option value="order_total">Order total</option>
+        </select>
+      </div>
+      <div>
         <label class="text-sm font-medium text-gray-700" for="new-coupon-status">Status</label>
         <select
           id="new-coupon-status"
@@ -497,6 +512,17 @@
             <option value="global">Global</option>
             <option value="category">Category</option>
             <option value="product">Product</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-gray-700" for="edit-coupon-apply-scope">Apply scope</label>
+          <select
+            id="edit-coupon-apply-scope"
+            class="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            bind:value={editCoupon.applyScope}
+          >
+            <option value="highest_eligible_item">Highest eligible item</option>
+            <option value="order_total">Order total</option>
           </select>
         </div>
       <div>
@@ -670,6 +696,14 @@
                   {:else if coupon.scope === 'product'}
                     <div class="text-xs text-gray-400">{coupon.product_id || '--'}</div>
                   {/if}
+                  <div class="text-xs text-gray-400">
+                    Apply
+                    {#if pickValue(coupon.applyScope, coupon.apply_scope) === 'order_total'}
+                      order total
+                    {:else}
+                      highest item
+                    {/if}
+                  </div>
                 </td>
                 <td class="py-3">
                   <StatusBadge

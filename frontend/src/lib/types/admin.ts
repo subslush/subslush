@@ -285,6 +285,8 @@ export interface AdminCoupon {
   percent_off?: number | null;
   percentOff?: number | null;
   scope?: 'global' | 'category' | 'product';
+  apply_scope?: 'highest_eligible_item' | 'order_total' | null;
+  applyScope?: 'highest_eligible_item' | 'order_total' | null;
   status?: 'active' | 'inactive';
   starts_at?: string | null;
   startsAt?: string | null;
@@ -576,6 +578,14 @@ export interface AdminTask {
   orderId?: string | null;
   order_status?: string | null;
   orderStatus?: string | null;
+  order_currency?: string | null;
+  orderCurrency?: string | null;
+  order_coupon_id?: string | null;
+  orderCouponId?: string | null;
+  order_coupon_code?: string | null;
+  orderCouponCode?: string | null;
+  order_coupon_discount_cents?: number | null;
+  orderCouponDiscountCents?: number | null;
   order_payment_provider?: string | null;
   orderPaymentProvider?: string | null;
   order_payment_reference?: string | null;

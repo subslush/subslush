@@ -94,6 +94,68 @@ export class StripeProvider implements PaymentProvider {
     return details;
   }
 
+  async createCheckoutSession(params: {
+    lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
+    successUrl: string;
+    cancelUrl: string;
+    customerId?: string;
+    customerEmail?: string | null;
+    metadata?: Record<string, any>;
+    paymentIntentMetadata?: Record<string, any>;
+    setupFutureUsage?: 'off_session';
+    clientReferenceId?: string;
+    expand?: string[];
+  }): Promise<Stripe.Checkout.Session> {
+    return stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: params.lineItems,
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+      ...(params.customerId ? { customer: params.customerId } : {}),
+      ...(params.customerId
+        ? {}
+        : params.customerEmail
+          ? { customer_email: params.customerEmail }
+          : {}),
+      ...(params.clientReferenceId
+        ? { client_reference_id: params.clientReferenceId }
+        : {}),
+      ...(params.metadata
+        ? { metadata: this.normalizeMetadata(params.metadata) }
+        : {}),
+      ...(params.paymentIntentMetadata || params.setupFutureUsage
+        ? {
+            payment_intent_data: {
+              ...(params.paymentIntentMetadata
+                ? {
+                    metadata: this.normalizeMetadata(
+                      params.paymentIntentMetadata
+                    ),
+                  }
+                : {}),
+              ...(params.setupFutureUsage
+                ? { setup_future_usage: params.setupFutureUsage }
+                : {}),
+            },
+          }
+        : {}),
+      ...(params.expand ? { expand: params.expand as any } : {}),
+    });
+  }
+
+  async expireCheckoutSession(
+    sessionId: string
+  ): Promise<Stripe.Checkout.Session> {
+    return stripe.checkout.sessions.expire(sessionId);
+  }
+
+  async retrieveCheckoutSession(
+    sessionId: string,
+    params?: Stripe.Checkout.SessionRetrieveParams
+  ): Promise<Stripe.Checkout.Session> {
+    return stripe.checkout.sessions.retrieve(sessionId, params);
+  }
+
   async getPaymentStatus(paymentId: string): Promise<ProviderPaymentDetails> {
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentId);
 
@@ -125,6 +187,19 @@ export class StripeProvider implements PaymentProvider {
     metadata?: Record<string, any>;
   }): Promise<Stripe.Customer> {
     return stripe.customers.create({
+      ...(params.email ? { email: params.email } : {}),
+      ...(params.metadata
+        ? { metadata: this.normalizeMetadata(params.metadata) }
+        : {}),
+    });
+  }
+
+  async updateCustomer(params: {
+    customerId: string;
+    email?: string | null;
+    metadata?: Record<string, any>;
+  }): Promise<Stripe.Customer> {
+    return stripe.customers.update(params.customerId, {
       ...(params.email ? { email: params.email } : {}),
       ...(params.metadata
         ? { metadata: this.normalizeMetadata(params.metadata) }

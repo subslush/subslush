@@ -6,6 +6,10 @@ import { orderService } from '../services/orderService';
 import { catalogService } from '../services/catalogService';
 import { pinService } from '../services/pinService';
 import { paymentService } from '../services/paymentService';
+import {
+  resolveCycleEndDate,
+  subscriptionRenewalService,
+} from '../services/subscriptionRenewalService';
 import { couponService, normalizeCouponCode } from '../services/couponService';
 import {
   buildTikTokProductProperties,
@@ -14,6 +18,7 @@ import {
 } from '../services/tiktokEventsService';
 import { getDatabasePool } from '../config/database';
 import { upgradeSelectionService } from '../services/upgradeSelectionService';
+import { orderItemUpgradeSelectionService } from '../services/orderItemUpgradeSelectionService';
 import { authPreHandler } from '../middleware/authMiddleware';
 import {
   ErrorResponses,
@@ -47,6 +52,7 @@ import {
 import { shouldUseHandler } from '../utils/catalogRules';
 import {
   normalizeUpgradeOptions,
+  ownAccountCredentialRequirementRequiresPassword,
   validateUpgradeOptions,
 } from '../utils/upgradeOptions';
 import {
@@ -2011,6 +2017,8 @@ export async function subscriptionRoutes(
             base_price_cents: snapshot.basePriceCents,
             discount_percent: snapshot.discountPercent,
             term_months: snapshot.termMonths,
+            auto_renew,
+            coupon_discount_cents: couponDiscountCents,
             currency,
             total_price_cents: finalTotalCents,
             description: orderDescription,
@@ -2295,6 +2303,27 @@ export async function subscriptionRoutes(
         });
         if (coupon) {
           await couponService.finalizeRedemptionForOrder(order.id);
+        }
+        try {
+          const confirmationResult =
+            await orderService.sendOrderPaymentConfirmationEmail(order.id);
+          if (
+            !confirmationResult.success &&
+            confirmationResult.reason &&
+            !['already_sent', 'renewal_order'].includes(
+              confirmationResult.reason
+            )
+          ) {
+            Logger.warn('Failed to send order payment confirmation email', {
+              orderId: order.id,
+              reason: confirmationResult.reason,
+            });
+          }
+        } catch (emailError) {
+          Logger.warn('Order payment confirmation email call failed', {
+            orderId: order.id,
+            error: emailError,
+          });
         }
         void tiktokEventsService.trackPurchase({
           userId,
@@ -2637,6 +2666,10 @@ export async function subscriptionRoutes(
           selection.upgrade_options_snapshot.allow_own_account === true;
         const manualMonthly =
           selection.upgrade_options_snapshot.manual_monthly_upgrade === true;
+        const ownAccountRequiresPassword =
+          ownAccountCredentialRequirementRequiresPassword(
+            selection.upgrade_options_snapshot
+          );
 
         if (selectionType === 'upgrade_new_account' && !allowNew) {
           return ErrorResponses.badRequest(
@@ -2660,13 +2693,13 @@ export async function subscriptionRoutes(
           if (!accountIdentifier) {
             return ErrorResponses.badRequest(
               reply,
-              'Account identifier is required for own-account upgrades'
+              'Account email is required for own-account upgrades'
             );
           }
-          if (!credentials) {
+          if (ownAccountRequiresPassword && !credentials) {
             return ErrorResponses.badRequest(
               reply,
-              'Credentials are required for own-account upgrades'
+              'Account password is required for this own-account upgrade'
             );
           }
         }
@@ -2701,14 +2734,35 @@ export async function subscriptionRoutes(
           );
         }
 
+        const orderItemId = subscriptionResult.data.order_item_id;
+        if (orderItemId) {
+          await orderItemUpgradeSelectionService.upsertSelection({
+            orderItemId,
+            selectionType: selectionType as any,
+            accountIdentifier:
+              selectionType === 'upgrade_own_account'
+                ? accountIdentifier
+                : null,
+            credentials:
+              selectionType === 'upgrade_own_account' ? credentials : null,
+            manualMonthlyAcknowledgedAt: manualMonthly ? new Date() : null,
+          });
+        }
+
         const noteParts = [
           `Selection submitted: ${selectionType}.`,
           `Subscription ${subscriptionId}.`,
         ];
         if (selectionType === 'upgrade_own_account') {
-          noteParts.push(
-            'User provided own account. Enter "User provided credentials" before delivery.'
-          );
+          if (ownAccountRequiresPassword) {
+            noteParts.push(
+              'User provided own account email and password. Enter "User provided credentials" before delivery.'
+            );
+          } else {
+            noteParts.push(
+              'User provided own account email only. Use provided email to complete delivery.'
+            );
+          }
         }
 
         await subscriptionService.createCredentialProvisionTask({
@@ -3543,6 +3597,31 @@ export async function subscriptionRoutes(
           now,
         });
 
+        const cycleEndDate = resolveCycleEndDate({
+          endDate: subscription.end_date,
+          termStartAt: subscription.term_start_at ?? null,
+          termMonths: billingDetails.termMonths,
+        });
+        if (!cycleEndDate) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Unable to determine renewal cycle'
+          );
+        }
+
+        const renewalLock = await subscriptionRenewalService.acquireRenewalLock(
+          {
+            subscriptionId,
+            cycleEndDate,
+          }
+        );
+        if (!renewalLock.acquired) {
+          return ErrorResponses.badRequest(
+            reply,
+            'A renewal is already in progress'
+          );
+        }
+
         const amountUsd = priceCents / 100;
         const creditResult = await creditService.spendCredits(
           userId,
@@ -3583,11 +3662,20 @@ export async function subscriptionRoutes(
         );
 
         if (!creditResult.success) {
+          await subscriptionRenewalService.markRenewalFailed({
+            subscriptionId,
+            cycleEndDate,
+          });
           return ErrorResponses.badRequest(
             reply,
             creditResult.error || 'Credit renewal failed'
           );
         }
+
+        await subscriptionRenewalService.markRenewalSucceeded({
+          subscriptionId,
+          cycleEndDate,
+        });
 
         const updateResult = await subscriptionService.updateSubscription(
           subscriptionId,
@@ -3758,6 +3846,31 @@ export async function subscriptionRoutes(
           billingDetails.currency || subscription.currency || 'USD';
         const amount = billingDetails.priceCents / 100;
 
+        const cycleEndDate = resolveCycleEndDate({
+          endDate: subscription.end_date,
+          termStartAt: subscription.term_start_at ?? null,
+          termMonths: billingDetails.termMonths,
+        });
+        if (!cycleEndDate) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Unable to determine renewal cycle'
+          );
+        }
+
+        const renewalLock = await subscriptionRenewalService.acquireRenewalLock(
+          {
+            subscriptionId,
+            cycleEndDate,
+          }
+        );
+        if (!renewalLock.acquired) {
+          return ErrorResponses.badRequest(
+            reply,
+            'A renewal is already in progress'
+          );
+        }
+
         const paymentResult = await paymentService.createStripePayment(
           userId,
           amount,
@@ -3804,10 +3917,28 @@ export async function subscriptionRoutes(
         );
 
         if (!paymentResult.success) {
+          await subscriptionRenewalService.markRenewalFailed({
+            subscriptionId,
+            cycleEndDate,
+          });
           return ErrorResponses.internalError(
             reply,
             paymentResult.error || 'Failed to start renewal checkout'
           );
+        }
+
+        if (paymentResult.paymentRecordId) {
+          await subscriptionRenewalService.attachPaymentToRenewal({
+            subscriptionId,
+            cycleEndDate,
+            paymentId: paymentResult.paymentRecordId,
+            status: 'processing',
+          });
+        } else {
+          await subscriptionRenewalService.beginRenewalProcessing({
+            subscriptionId,
+            cycleEndDate,
+          });
         }
 
         await subscriptionService.updateSubscription(subscriptionId, userId, {

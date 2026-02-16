@@ -96,8 +96,9 @@ export interface CheckoutRequest {
 export interface CheckoutResponseStripe {
   payment_method: 'stripe';
   order_id: string;
-  paymentId: string;
-  clientSecret: string;
+  paymentId?: string | null;
+  sessionId: string;
+  sessionUrl: string;
   amount: number;
   currency: string;
   checkoutKey?: string;

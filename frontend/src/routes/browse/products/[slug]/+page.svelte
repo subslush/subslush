@@ -1,20 +1,21 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
-  import PurchaseFlow from '$lib/components/PurchaseFlow.svelte';
-  import { credits } from '$lib/stores/credits.js';
+  import UpgradeSelectionForm from '$lib/components/subscription/UpgradeSelectionForm.svelte';
+  import { cart } from '$lib/stores/cart.js';
+  import { cartSidebar } from '$lib/stores/cartSidebar.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
   import { subscriptionService } from '$lib/api/subscriptions.js';
   import { trackAddToCart, trackViewItem } from '$lib/utils/analytics.js';
   import { Shield } from 'lucide-svelte';
   import type {
+    OwnAccountCredentialRequirement,
     ProductVariantOption,
     ProductTermOption,
-    ServicePlanDetails,
-    Subscription
+    UpgradeOptions
   } from '$lib/types/subscription.js';
+  import type { UpgradeSelectionType } from '$lib/types/upgradeSelection.js';
   import type { PageData } from './$types';
 
   export let data: PageData;
@@ -26,13 +27,33 @@
   $: variants = data.variants || [];
 
   let selectedTerms: Record<string, number> = {};
-  let showPurchaseFlow = false;
-  let selectedVariant: ProductVariantOption | null = null;
-  let selectedDuration = 1;
-  let selectedTotalPrice: number | null = null;
   let termsConditions: string[] = [];
+  let upgradeOptions: UpgradeOptions | null = null;
+  let upgradeSelectionType: UpgradeSelectionType | '' = '';
+  let manualMonthlyAcknowledged = false;
+  let selectionError = '';
 
-  $: userCredits = $credits.balance ?? data.userCredits ?? 0;
+  $: upgradeOptions = product?.upgrade_options || null;
+  $: hasUpgradeSelection =
+    Boolean(
+      upgradeOptions?.allow_new_account ||
+        upgradeOptions?.allow_own_account ||
+        upgradeOptions?.manual_monthly_upgrade
+    );
+  $: requiresManualAck = Boolean(upgradeOptions?.manual_monthly_upgrade);
+  $: selectionReady =
+    !hasUpgradeSelection ||
+    (Boolean(upgradeSelectionType) && (!requiresManualAck || manualMonthlyAcknowledged));
+  $: if (selectionReady && selectionError) {
+    selectionError = '';
+  }
+  const resolveOwnAccountCredentialRequirement = (
+    options: UpgradeOptions | null
+  ): OwnAccountCredentialRequirement =>
+    options?.own_account_credential_requirement === 'email_only'
+      ? 'email_only'
+      : 'email_and_password';
+
   $: termsConditions = (() => {
     const normalize = (value: unknown): string[] => {
       if (Array.isArray(value)) {
@@ -106,29 +127,120 @@
     selectedTerms = { ...selectedTerms, [variantId]: normalized };
   };
 
-  const openPurchaseFlow = (variant: ProductVariantOption) => {
+  const handleCheckoutNow = (variant: ProductVariantOption) => {
     const term = resolveSelectedTerm(variant);
     if (!term) return;
-    const analyticsItem = buildProductItem(variant, term, 'Product Detail');
-    if (analyticsItem) {
-      const eventId = buildAddToCartEventId();
-      trackAddToCart(analyticsItem.currency, term.total_price, [analyticsItem], eventId);
-      void subscriptionService.trackAddToCart({
-        contentId: product.slug || product.id || variant.id,
-        contentName: product.name || product.service_type || variant.display_name,
-        contentCategory: product.category || product.service_type || undefined,
-        price: term.total_price,
-        currency: analyticsItem.currency,
-        brand: product.service_type || undefined,
-        value: term.total_price,
-        externalId: getOrCreateGuestId(),
-        eventId
-      });
+    const selectionValidationError = resolveSelectionValidationError('checkout');
+    if (selectionValidationError) {
+      selectionError = selectionValidationError;
+      return;
     }
-    selectedVariant = variant;
-    selectedDuration = term.months;
-    selectedTotalPrice = term.total_price;
-    showPurchaseFlow = true;
+    trackCartIntent(variant, term);
+    cart.addItem({
+      id: buildCartItemId({
+        variantId: variant.id,
+        termMonths: term.months,
+        autoRenew: true,
+        selectionType: upgradeSelectionType,
+      }),
+      serviceType: product.service_type || product.slug || product.name,
+      serviceName: product.name,
+      plan: variant.display_name || variant.plan_code || variant.name || 'Plan',
+      price: term.total_price,
+      currency: variant.currency,
+      quantity: 1,
+      description: variant.description,
+      features: variant.features,
+      variantId: variant.id,
+      termMonths: term.months,
+      autoRenew: true,
+      upgradeSelectionType: upgradeSelectionType || null,
+      ownAccountCredentialRequirement:
+        upgradeSelectionType === 'upgrade_own_account'
+          ? resolveOwnAccountCredentialRequirement(upgradeOptions)
+          : null,
+      manualMonthlyAcknowledged,
+    });
+    void goto('/checkout');
+  };
+
+  const buildCartItemId = (params: {
+    variantId: string;
+    termMonths: number;
+    autoRenew: boolean;
+    selectionType?: UpgradeSelectionType | '';
+  }): string => {
+    const selection = params.selectionType || 'none';
+    return [
+      params.variantId,
+      params.termMonths,
+      params.autoRenew ? 'renew' : 'no-renew',
+      selection,
+    ].join('|');
+  };
+
+  const handleAddToCart = (variant: ProductVariantOption) => {
+    const term = resolveSelectedTerm(variant);
+    if (!term) return;
+    const selectionValidationError = resolveSelectionValidationError('add');
+    if (selectionValidationError) {
+      selectionError = selectionValidationError;
+      return;
+    }
+    trackCartIntent(variant, term);
+
+    cart.addItem({
+      id: buildCartItemId({
+        variantId: variant.id,
+        termMonths: term.months,
+        autoRenew: true,
+        selectionType: upgradeSelectionType,
+      }),
+      serviceType: product.service_type || product.slug || product.name,
+      serviceName: product.name,
+      plan: variant.display_name || variant.plan_code || variant.name || 'Plan',
+      price: term.total_price,
+      currency: variant.currency,
+      quantity: 1,
+      description: variant.description,
+      features: variant.features,
+      variantId: variant.id,
+      termMonths: term.months,
+      autoRenew: true,
+      upgradeSelectionType: upgradeSelectionType || null,
+      ownAccountCredentialRequirement:
+        upgradeSelectionType === 'upgrade_own_account'
+          ? resolveOwnAccountCredentialRequirement(upgradeOptions)
+          : null,
+      manualMonthlyAcknowledged,
+    });
+    cartSidebar.open();
+  };
+
+  const resolveSelectionValidationError = (
+    intent: 'add' | 'checkout'
+  ): string | null => {
+    if (!hasUpgradeSelection) return null;
+
+    const actionLabel =
+      intent === 'checkout' ? 'continue' : 'add this item';
+    const hasMultipleChoices = Boolean(
+      upgradeOptions?.allow_new_account && upgradeOptions?.allow_own_account
+    );
+
+    if (hasMultipleChoices && !upgradeSelectionType) {
+      return `Please choose an upgrade option before you ${actionLabel}.`;
+    }
+
+    if (requiresManualAck && !manualMonthlyAcknowledged) {
+      return `Please confirm the manual monthly acknowledgement before you ${actionLabel}.`;
+    }
+
+    if (!selectionReady) {
+      return `Please choose an upgrade option before you ${actionLabel}.`;
+    }
+
+    return null;
   };
 
   const getOrCreateGuestId = (): string => {
@@ -152,45 +264,6 @@
     const ownerId = getOrCreateGuestId();
     const nonce = Math.random().toString(16).slice(2, 8);
     return `cart_${ownerId}_${Date.now()}_${nonce}`;
-  };
-
-  const closePurchaseFlow = () => {
-    showPurchaseFlow = false;
-  };
-
-  $: if (selectedVariant) {
-    const updated = variants.find(item => item.id === selectedVariant?.id);
-    if (updated) {
-      selectedVariant = updated;
-      const updatedTerm = updated.term_options?.find(
-        term => normalizeMonths(term.months) === selectedDuration
-      );
-      if (updatedTerm) {
-        selectedTotalPrice = updatedTerm.total_price;
-      }
-    }
-  }
-
-  const handlePurchaseSuccess = (subscription: Subscription) => {
-    showPurchaseFlow = false;
-    goto('/dashboard/subscriptions');
-  };
-
-  const buildPlanForPurchase = (variant: ProductVariantOption): ServicePlanDetails => {
-    return {
-      service_type: product.service_type || product.slug || product.name,
-      plan: variant.plan_code,
-      variant_id: variant.id,
-      product_id: product.id,
-      product_name: product.name,
-      variant_name: variant.name || variant.display_name,
-      price: variant.base_price,
-      currency: variant.currency,
-      features: variant.features,
-      badges: variant.badges,
-      display_name: variant.display_name,
-      description: variant.description
-    };
   };
 
   const formatTermLabel = (months: number): string => {
@@ -228,6 +301,27 @@
     };
   };
 
+  const trackCartIntent = (
+    variant: ProductVariantOption,
+    term: ProductTermOption
+  ) => {
+    const analyticsItem = buildProductItem(variant, term, 'Product Detail');
+    if (!analyticsItem) return;
+    const eventId = buildAddToCartEventId();
+    trackAddToCart(analyticsItem.currency, term.total_price, [analyticsItem], eventId);
+    void subscriptionService.trackAddToCart({
+      contentId: product.slug || product.id || variant.id,
+      contentName: product.name || product.service_type || variant.display_name,
+      contentCategory: product.category || product.service_type || undefined,
+      price: term.total_price,
+      currency: analyticsItem.currency,
+      brand: product.service_type || undefined,
+      value: term.total_price,
+      externalId: getOrCreateGuestId(),
+      eventId
+    });
+  };
+
   let lastViewedProductId = '';
   $: {
     const currentId = product?.id || product?.slug || '';
@@ -246,11 +340,6 @@
     }
   }
 
-  onMount(() => {
-    if (data.userCredits && data.userCredits > 0 && $credits.balance === null) {
-      credits.setBalance(data.userCredits);
-    }
-  });
 </script>
 
 <svelte:head>
@@ -276,6 +365,25 @@
   </div>
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {#if hasUpgradeSelection && upgradeOptions}
+      <section class="mb-6">
+        <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <UpgradeSelectionForm
+            upgradeOptions={upgradeOptions}
+            title="Choose your upgrade option"
+            description="Select how you want us to complete this upgrade. We'll collect any account credentials after checkout."
+            locked={false}
+            submitting={false}
+            errorMessage={selectionError}
+            includeCredentials={false}
+            showSubmit={false}
+            bind:selectionType={upgradeSelectionType}
+            bind:manualMonthlyAcknowledged
+          />
+        </div>
+      </section>
+    {/if}
+
     <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
       {#each variants as variant}
         {@const selectedMonths = selectedTerms[variant.id]}
@@ -286,6 +394,7 @@
         {@const hasBadges = variant.badges && variant.badges.length > 0}
         {@const variantDescription = (variant.description || '').trim()}
         {@const resolvedCurrency = normalizeCurrencyCode(variant.currency) || 'USD'}
+        {@const canProceed = Boolean(selectedTerm)}
         <div class="relative rounded-xl border border-gray-200 bg-white shadow-sm p-3 flex flex-col gap-3">
           {#if hasBadges}
             <div class="absolute left-1/2 -top-3 -translate-x-1/2">
@@ -377,14 +486,24 @@
                 {selectedTerm ? formatCurrency(selectedTerm.total_price, resolvedCurrency) : '--'}
               </p>
             </div>
-            <button
-              type="button"
-              class="rounded-md bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
-              on:click={() => openPurchaseFlow(variant)}
-              disabled={!selectedTerm}
-            >
-              Continue
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                on:click={() => handleAddToCart(variant)}
+                disabled={!canProceed}
+              >
+                ADD TO CART
+              </button>
+              <button
+                type="button"
+                class="rounded-md bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                on:click={() => handleCheckoutNow(variant)}
+                disabled={!canProceed}
+              >
+                BUY NOW
+              </button>
+            </div>
           </div>
         </div>
       {/each}
@@ -420,14 +539,3 @@
 
   <Footer />
 </div>
-
-{#if showPurchaseFlow && selectedVariant}
-  <PurchaseFlow
-    selectedPlan={buildPlanForPurchase(selectedVariant)}
-    selectedDuration={selectedDuration}
-    selectedTotalPrice={selectedTotalPrice}
-    userCredits={userCredits}
-    onClose={closePurchaseFlow}
-    onSuccess={handlePurchaseSuccess}
-  />
-{/if}

@@ -12,6 +12,7 @@ import { localeRoutes } from './locale';
 import { healthRoutes } from './health';
 import { newsletterRoutes } from './newsletter';
 import { bisRoutes } from './bis';
+import { checkoutRoutes } from './checkout';
 
 export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(healthRoutes);
@@ -26,5 +27,6 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
   await fastify.register(newsletterRoutes, { prefix: '/newsletter' });
   await fastify.register(bisRoutes, { prefix: '/bis' });
   await fastify.register(localeRoutes, { prefix: '/locale' });
+  await fastify.register(checkoutRoutes, { prefix: '/checkout' });
   await fastify.register(adminRoutes, { prefix: '/admin' });
 }

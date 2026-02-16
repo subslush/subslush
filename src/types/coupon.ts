@@ -1,5 +1,6 @@
 export type CouponScope = 'global' | 'category' | 'product';
 export type CouponStatus = 'active' | 'inactive';
+export type CouponApplyScope = 'highest_eligible_item' | 'order_total';
 export type CouponRedemptionStatus =
   | 'reserved'
   | 'redeemed'
@@ -12,6 +13,7 @@ export interface Coupon {
   code_normalized: string;
   percent_off: number;
   scope: CouponScope;
+  apply_scope?: CouponApplyScope | null;
   status: CouponStatus;
   starts_at?: Date | null;
   ends_at?: Date | null;
@@ -43,6 +45,7 @@ export interface CreateCouponInput {
   code: string;
   percent_off: number;
   scope: CouponScope;
+  apply_scope?: CouponApplyScope | null;
   status?: CouponStatus;
   starts_at?: Date | null;
   ends_at?: Date | null;
@@ -58,6 +61,7 @@ export interface UpdateCouponInput {
   code?: string;
   percent_off?: number;
   scope?: CouponScope;
+  apply_scope?: CouponApplyScope | null;
   status?: CouponStatus;
   starts_at?: Date | null;
   ends_at?: Date | null;

@@ -23,6 +23,10 @@ export interface Order {
   term_months?: number | null;
   paid_with_credits: boolean;
   auto_renew: boolean;
+  contact_email?: string | null;
+  checkout_session_key?: string | null;
+  checkout_mode?: string | null;
+  stripe_session_id?: string | null;
   payment_provider?: string | null;
   payment_reference?: string | null;
   metadata?: Record<string, any> | null;
@@ -41,6 +45,8 @@ export interface OrderItem {
   base_price_cents?: number | null;
   discount_percent?: number | null;
   term_months?: number | null;
+  auto_renew?: boolean | null;
+  coupon_discount_cents?: number | null;
   currency: string;
   total_price_cents: number;
   description?: string | null;
@@ -70,6 +76,10 @@ export interface CreateOrderInput {
   term_months?: number | null;
   paid_with_credits?: boolean;
   auto_renew?: boolean;
+  contact_email?: string | null;
+  checkout_session_key?: string | null;
+  checkout_mode?: string | null;
+  stripe_session_id?: string | null;
   payment_provider?: string | null;
   payment_reference?: string | null;
   metadata?: Record<string, any> | null;
@@ -82,6 +92,8 @@ export interface CreateOrderItemInput {
   base_price_cents?: number | null;
   discount_percent?: number | null;
   term_months?: number | null;
+  auto_renew?: boolean | null;
+  coupon_discount_cents?: number | null;
   currency: string;
   total_price_cents: number;
   description?: string | null;

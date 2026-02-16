@@ -12,9 +12,16 @@
   let sessionExpired = false;
   let verificationEmail = '';
   let verificationPending = false;
+  let redirectTarget = '';
+  const EMAIL_VERIFY_REDIRECT_STORAGE_KEY = 'auth:post_verify_redirect';
   $: forgotPasswordHref = email
     ? `${ROUTES.AUTH.FORGOT_PASSWORD}?email=${encodeURIComponent(email)}`
     : ROUTES.AUTH.FORGOT_PASSWORD;
+  $: redirectTarget = $page.url.searchParams.get('redirect') ?? '';
+  $: signUpHref =
+    redirectTarget && redirectTarget.startsWith('/') && !redirectTarget.startsWith('//')
+      ? `/auth/register?redirect=${encodeURIComponent(redirectTarget)}`
+      : '/auth/register';
   $: sessionExpired = $page.url.searchParams.get('reason') === 'session-expired';
   $: verificationPending = $page.url.searchParams.get('verify') === 'pending';
 
@@ -27,6 +34,18 @@
     if (emailParam && !email) {
       email = emailParam;
       verificationEmail = emailParam;
+    }
+
+    const safeRedirect =
+      redirectTarget && redirectTarget.startsWith('/') && !redirectTarget.startsWith('//')
+        ? redirectTarget
+        : null;
+    if (verificationPending && safeRedirect) {
+      try {
+        window.localStorage.setItem(EMAIL_VERIFY_REDIRECT_STORAGE_KEY, safeRedirect);
+      } catch {
+        // Ignore storage errors.
+      }
     }
   });
 
@@ -238,7 +257,7 @@
     <p class="text-sm text-surface-600 dark:text-surface-400">
       Don't have an account?
       <a
-        href="/auth/register"
+        href={signUpHref}
         class="text-subslush-blue dark:text-subslush-blue-light hover:text-subslush-blue-dark dark:hover:text-subslush-blue font-medium transition-colors ml-1"
       >
         Sign up

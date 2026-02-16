@@ -24,6 +24,7 @@ export interface RegisterRequest {
   password: string;
   firstName?: string;
   lastName?: string;
+  redirect?: string;
 }
 
 export interface LoginRequest {

@@ -15,6 +15,10 @@ import { subscriptionService } from '../subscriptionService';
 import { paymentMethodService } from '../paymentMethodService';
 import { upgradeSelectionService } from '../upgradeSelectionService';
 import {
+  resolveCycleEndDate,
+  subscriptionRenewalService,
+} from '../subscriptionRenewalService';
+import {
   ensureRenewalTask,
   notifyCreditsRenewalSuccess,
   notifyStripeRenewalFailure,
@@ -27,6 +31,7 @@ interface RenewalCandidate {
   service_type: string;
   service_plan: string;
   start_date: Date;
+  term_start_at?: Date | null;
   end_date: Date;
   renewal_date: Date;
   auto_renew: boolean;
@@ -149,13 +154,16 @@ async function updateSubscription(
   return result.success;
 }
 
-async function findPendingStripeRenewal(
-  subscriptionId: string
-): Promise<{ paymentId: string; status: string; createdAt: Date } | null> {
+async function findPendingStripeRenewal(subscriptionId: string): Promise<{
+  paymentId: string;
+  recordId: string;
+  status: string;
+  createdAt: Date;
+} | null> {
   const pool = getDatabasePool();
   const result = await pool.query(
     `
-      SELECT provider_payment_id, status, created_at
+      SELECT id, provider_payment_id, status, created_at
       FROM payments
       WHERE provider = 'stripe'
         AND (metadata->>'subscription_id') = $1
@@ -172,6 +180,7 @@ async function findPendingStripeRenewal(
 
   return {
     paymentId: result.rows[0].provider_payment_id,
+    recordId: result.rows[0].id,
     status: result.rows[0].status,
     createdAt: result.rows[0].created_at,
   };
@@ -408,6 +417,35 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
       }
     }
 
+    const cycleEndDate = resolveCycleEndDate({
+      endDate: candidate.end_date,
+      termStartAt: candidate.term_start_at ?? null,
+      termMonths: durationMonths,
+    });
+
+    if (!cycleEndDate) {
+      await updateSubscription(
+        subscriptionId,
+        {
+          auto_renew: false,
+          auto_renew_disabled_at: new Date(),
+          next_billing_at: null,
+          status_reason: 'auto_renew_missing_cycle_end',
+        },
+        'missing_cycle_end'
+      );
+      Logger.warn('Auto-renew disabled due to missing cycle end date', {
+        subscriptionId,
+      });
+      continue;
+    }
+
+    subscriptionRenewalService.logCycleResolution({
+      subscriptionId,
+      cycleEndDate,
+      source: 'auto_renew_sweep',
+    });
+
     if (!renewalMethod) {
       await updateSubscription(
         subscriptionId,
@@ -451,6 +489,19 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
     }
 
     if (renewalMethod === 'credits') {
+      const renewalLock = await subscriptionRenewalService.acquireRenewalLock({
+        subscriptionId,
+        cycleEndDate,
+      });
+      if (!renewalLock.acquired) {
+        Logger.info('Skipping credit renewal due to active lock', {
+          subscriptionId,
+          cycleEndDate: renewalLock.cycleEndDate,
+          status: renewalLock.status,
+        });
+        continue;
+      }
+
       const amountUsd = priceCents / 100;
       const now = new Date();
       const currentEndDate = toDate(candidate.end_date);
@@ -500,6 +551,10 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
       );
 
       if (!creditResult.success) {
+        await subscriptionRenewalService.markRenewalFailed({
+          subscriptionId,
+          cycleEndDate,
+        });
         const retryAt = new Date(
           Date.now() + env.SUBSCRIPTION_RENEWAL_RETRY_MINUTES * 60 * 1000
         );
@@ -555,6 +610,11 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
         );
         continue;
       }
+
+      await subscriptionRenewalService.markRenewalSucceeded({
+        subscriptionId,
+        cycleEndDate,
+      });
 
       const updateOk = await updateSubscription(
         subscriptionId,
@@ -627,6 +687,27 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
       const pendingPayment = await findPendingStripeRenewal(subscriptionId);
 
       if (pendingPayment) {
+        const renewalLock = await subscriptionRenewalService.acquireRenewalLock(
+          {
+            subscriptionId,
+            cycleEndDate,
+          }
+        );
+        if (!renewalLock.acquired) {
+          Logger.info('Skipping Stripe renewal due to active lock', {
+            subscriptionId,
+            cycleEndDate: renewalLock.cycleEndDate,
+            status: renewalLock.status,
+          });
+          continue;
+        }
+
+        await subscriptionRenewalService.attachPaymentToRenewal({
+          subscriptionId,
+          cycleEndDate,
+          paymentId: pendingPayment.recordId,
+          status: 'processing',
+        });
         const pendingCreatedAt =
           pendingPayment.createdAt instanceof Date
             ? pendingPayment.createdAt
@@ -783,6 +864,19 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
         continue;
       }
 
+      const renewalLock = await subscriptionRenewalService.acquireRenewalLock({
+        subscriptionId,
+        cycleEndDate,
+      });
+      if (!renewalLock.acquired) {
+        Logger.info('Skipping Stripe renewal due to active lock', {
+          subscriptionId,
+          cycleEndDate: renewalLock.cycleEndDate,
+          status: renewalLock.status,
+        });
+        continue;
+      }
+
       const paymentResult =
         await paymentService.createStripeOffSessionRenewalPayment({
           userId,
@@ -832,6 +926,10 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
         });
 
       if (!paymentResult.success && !paymentResult.paymentId) {
+        await subscriptionRenewalService.markRenewalFailed({
+          subscriptionId,
+          cycleEndDate,
+        });
         const disableAutoRenew = !nextAttemptAt;
         await updateSubscription(
           subscriptionId,
@@ -871,6 +969,20 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
           });
         }
         continue;
+      }
+
+      if (paymentResult.paymentRecordId) {
+        await subscriptionRenewalService.attachPaymentToRenewal({
+          subscriptionId,
+          cycleEndDate,
+          paymentId: paymentResult.paymentRecordId,
+          status: 'processing',
+        });
+      } else {
+        await subscriptionRenewalService.beginRenewalProcessing({
+          subscriptionId,
+          cycleEndDate,
+        });
       }
 
       await updateSubscription(

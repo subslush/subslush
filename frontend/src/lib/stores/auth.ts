@@ -53,6 +53,25 @@ const getErrorAction = (
   return null;
 };
 
+const sanitizeRedirectPath = (value: string | null): string | null => {
+  if (!value) return null;
+  const normalized = value.trim();
+  if (!normalized.startsWith('/') || normalized.startsWith('//')) {
+    return null;
+  }
+  return normalized;
+};
+
+const resolvePostAuthRedirect = (): string => {
+  if (!browser) {
+    return '/';
+  }
+
+  const search = new globalThis.URLSearchParams(window.location.search);
+  const redirect = sanitizeRedirectPath(search.get('redirect'));
+  return redirect || '/';
+};
+
 function createAuthStore(initialUser: User | null = null) {
   const { subscribe, set, update } = writable<AuthState>({
     ...initialState,
@@ -204,6 +223,7 @@ function createAuthStore(initialUser: User | null = null) {
       password: string;
       firstName?: string;
       lastName?: string;
+      redirect?: string;
     }) => {
       if (!browser) return;
 
@@ -243,9 +263,10 @@ function createAuthStore(initialUser: User | null = null) {
         await identifyTikTokUser(response.user);
 
         // Force a complete page refresh to ensure server gets the cookie
-        console.log('🔐 [AUTH STORE] Redirecting to home with refresh...');
+        const redirectPath = resolvePostAuthRedirect();
+        console.log('🔐 [AUTH STORE] Redirecting after register with refresh:', redirectPath);
         if (browser) {
-          window.location.href = '/';
+          window.location.href = redirectPath;
         }
 
         return response;
@@ -301,9 +322,10 @@ function createAuthStore(initialUser: User | null = null) {
         trackLogin('email', `user_${response.user.id}_login`);
 
         // Force a complete page refresh to ensure server gets the cookie
-        console.log('🔐 [AUTH STORE] Redirecting to home with refresh...');
+        const redirectPath = resolvePostAuthRedirect();
+        console.log('🔐 [AUTH STORE] Redirecting after login with refresh:', redirectPath);
         if (browser) {
-          window.location.href = '/';
+          window.location.href = redirectPath;
         }
 
         return response;

@@ -2,6 +2,10 @@ import { paymentService } from '../services/paymentService';
 import { paymentRepository } from '../services/paymentRepository';
 import { subscriptionService } from '../services/subscriptionService';
 import { orderService } from '../services/orderService';
+import { orderItemUpgradeSelectionService } from '../services/orderItemUpgradeSelectionService';
+import { couponService } from '../services/couponService';
+import { upgradeSelectionService } from '../services/upgradeSelectionService';
+import { paymentEventRepository } from '../services/paymentEventRepository';
 import { getDatabasePool } from '../config/database';
 
 const mockConstructEvent = jest.fn();
@@ -23,6 +27,10 @@ jest.mock('../utils/nowpaymentsClient', () => ({
 jest.mock('../services/paymentRepository');
 jest.mock('../services/subscriptionService');
 jest.mock('../services/orderService');
+jest.mock('../services/orderItemUpgradeSelectionService');
+jest.mock('../services/couponService');
+jest.mock('../services/upgradeSelectionService');
+jest.mock('../services/paymentEventRepository');
 jest.mock('../utils/logger');
 jest.mock('../config/database');
 
@@ -33,6 +41,17 @@ const mockSubscriptionService = subscriptionService as jest.Mocked<
   typeof subscriptionService
 >;
 const mockOrderService = orderService as jest.Mocked<typeof orderService>;
+const mockOrderItemUpgradeSelectionService =
+  orderItemUpgradeSelectionService as jest.Mocked<
+    typeof orderItemUpgradeSelectionService
+  >;
+const mockCouponService = couponService as jest.Mocked<typeof couponService>;
+const mockUpgradeSelectionService = upgradeSelectionService as jest.Mocked<
+  typeof upgradeSelectionService
+>;
+const mockPaymentEventRepository = paymentEventRepository as jest.Mocked<
+  typeof paymentEventRepository
+>;
 const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
   typeof getDatabasePool
 >;
@@ -42,72 +61,97 @@ const mockDbClient = {
   release: jest.fn<void, []>(),
 };
 
+const mockPool = {
+  query: jest.fn<Promise<any>, [string, any[]?]>(),
+  connect: jest.fn().mockResolvedValue(mockDbClient),
+};
+
 describe('Stripe webhook order flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
     mockDbClient.query.mockResolvedValue({ rows: [] });
-    mockGetDatabasePool.mockReturnValue({
-      connect: jest.fn().mockResolvedValue(mockDbClient),
+    mockPool.query.mockResolvedValue({ rows: [] });
+    mockGetDatabasePool.mockReturnValue(mockPool as any);
+
+    mockOrderItemUpgradeSelectionService.listSelectionsForOrder.mockResolvedValue(
+      {}
+    );
+    mockOrderService.sendOrderPaymentConfirmationEmail.mockResolvedValue({
+      success: true,
     } as any);
+    mockCouponService.finalizeRedemptionForOrder.mockResolvedValue(true as any);
+    mockCouponService.voidRedemptionForOrder.mockResolvedValue(true as any);
+    mockUpgradeSelectionService.submitSelection.mockResolvedValue(null as any);
+    mockUpgradeSelectionService.acknowledgeManualMonthly.mockResolvedValue(
+      null as any
+    );
+    mockPaymentEventRepository.recordEvent.mockResolvedValue(true);
   });
 
-  it('creates subscription and updates order on Stripe success', async () => {
-    const payment = {
-      id: 'payment-1',
-      provider: 'stripe',
-      providerPaymentId: 'pi_123',
-      status: 'processing',
-      purpose: 'subscription',
-      amount: 10,
-      currency: 'usd',
-      userId: 'user-1',
-      orderId: 'order-1',
-      productVariantId: 'variant-1',
-      priceCents: 1000,
-      metadata: {
-        service_type: 'netflix',
-        service_plan: 'basic',
-        duration_months: 2,
-        auto_renew: true,
-      },
-    };
-
-    mockPaymentRepository.findByProviderPaymentId.mockResolvedValue(
-      payment as any
-    );
-    mockPaymentRepository.updateStatusByProviderPaymentId.mockResolvedValue(
-      payment as any
-    );
-    mockOrderService.getOrderById.mockResolvedValue({
+  it('creates subscriptions on checkout.session.completed', async () => {
+    const order = {
       id: 'order-1',
       user_id: 'user-1',
       status: 'pending_payment',
       total_cents: 1000,
       currency: 'USD',
+      items: [
+        {
+          id: 'item-1',
+          order_id: 'order-1',
+          product_variant_id: 'variant-1',
+          quantity: 1,
+          unit_price_cents: 1000,
+          base_price_cents: 1000,
+          discount_percent: 0,
+          term_months: 1,
+          auto_renew: false,
+          coupon_discount_cents: 0,
+          currency: 'USD',
+          total_price_cents: 1000,
+          description: 'Netflix Basic',
+          metadata: {
+            service_type: 'netflix',
+            service_plan: 'basic',
+            duration_months: 1,
+          },
+          created_at: new Date(),
+        },
+      ],
+    };
+
+    mockPaymentRepository.findByProviderPaymentId.mockResolvedValue(null);
+    mockPaymentRepository.create.mockResolvedValue({
+      id: 'payment-1',
+      providerPaymentId: 'pi_123',
+      orderId: 'order-1',
+      checkoutMode: 'session',
     } as any);
+    mockOrderService.getOrderWithItems.mockResolvedValue(order as any);
     mockSubscriptionService.createSubscription.mockResolvedValue({
       success: true,
       data: { id: 'sub-1' },
     } as any);
-    mockPaymentRepository.linkSubscription.mockResolvedValue();
-    mockOrderService.updateOrderPayment.mockResolvedValue({
-      success: true,
-      data: { id: 'order-1' },
-    } as any);
+
+    mockPool.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('UPDATE orders') && sql.includes('RETURNING')) {
+        return { rows: [{ id: 'order-1' }] };
+      }
+      return { rows: [] };
+    });
 
     mockConstructEvent.mockReturnValue({
-      type: 'payment_intent.succeeded',
+      type: 'checkout.session.completed',
       data: {
         object: {
-          id: 'pi_123',
+          id: 'cs_123',
+          payment_intent: 'pi_123',
+          amount_total: 1000,
+          currency: 'usd',
           metadata: {
-            service_type: 'netflix',
-            service_plan: 'basic',
-            duration_months: 2,
-            auto_renew: true,
+            order_id: 'order-1',
           },
-          status: 'succeeded',
         },
       },
     });
@@ -123,24 +167,60 @@ describe('Stripe webhook order flow', () => {
       expect.objectContaining({
         service_type: 'netflix',
         service_plan: 'basic',
-        auto_renew: true,
         order_id: 'order-1',
-        product_variant_id: 'variant-1',
-        renewal_method: 'stripe',
+        order_item_id: 'item-1',
       })
     );
-    expect(mockPaymentRepository.linkSubscription).toHaveBeenCalledWith(
-      'stripe',
-      'pi_123',
-      'sub-1'
+    expect(
+      mockOrderService.sendOrderPaymentConfirmationEmail
+    ).toHaveBeenCalledWith('order-1');
+  });
+
+  it('ignores payment_intent.succeeded for session checkouts', async () => {
+    const payment = {
+      id: 'payment-1',
+      provider: 'stripe',
+      providerPaymentId: 'pi_123',
+      status: 'processing',
+      purpose: 'subscription',
+      amount: 10,
+      currency: 'usd',
+      userId: 'user-1',
+      orderId: 'order-1',
+      checkoutMode: 'session',
+      stripeSessionId: 'cs_123',
+      metadata: {},
+    };
+
+    mockPaymentRepository.findByProviderPaymentId.mockResolvedValue(
+      payment as any
     );
-    expect(mockOrderService.updateOrderPayment).toHaveBeenCalledWith(
-      'order-1',
-      expect.objectContaining({
-        payment_provider: 'stripe',
-        payment_reference: 'pi_123',
-        status: 'in_process',
-      })
+    mockPaymentRepository.updateStatusByProviderPaymentId.mockResolvedValue(
+      payment as any
     );
+
+    mockConstructEvent.mockReturnValue({
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_123',
+          status: 'succeeded',
+        },
+      },
+    });
+
+    const result = await paymentService.handleStripeWebhook(
+      { rawBody: Buffer.from('') },
+      'sig'
+    );
+
+    expect(result).toBe(true);
+    expect(mockSubscriptionService.createSubscription).not.toHaveBeenCalled();
+    expect(
+      mockPaymentRepository.updateStatusByProviderPaymentId
+    ).toHaveBeenCalled();
+    expect(
+      mockOrderService.sendOrderPaymentConfirmationEmail
+    ).not.toHaveBeenCalled();
   });
 });
