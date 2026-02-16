@@ -40,10 +40,12 @@
         upgradeOptions?.allow_own_account ||
         upgradeOptions?.manual_monthly_upgrade
     );
+  $: hasSelectionChoices = Boolean(
+    upgradeOptions?.allow_new_account || upgradeOptions?.allow_own_account
+  );
   $: requiresManualAck = Boolean(upgradeOptions?.manual_monthly_upgrade);
   $: selectionReady =
-    !hasUpgradeSelection ||
-    (Boolean(upgradeSelectionType) && (!requiresManualAck || manualMonthlyAcknowledged));
+    !hasUpgradeSelection || !hasSelectionChoices || Boolean(upgradeSelectionType);
   $: if (selectionReady && selectionError) {
     selectionError = '';
   }
@@ -159,7 +161,7 @@
         upgradeSelectionType === 'upgrade_own_account'
           ? resolveOwnAccountCredentialRequirement(upgradeOptions)
           : null,
-      manualMonthlyAcknowledged,
+      manualMonthlyAcknowledged: requiresManualAck ? true : manualMonthlyAcknowledged,
     });
     void goto('/checkout');
   };
@@ -212,7 +214,7 @@
         upgradeSelectionType === 'upgrade_own_account'
           ? resolveOwnAccountCredentialRequirement(upgradeOptions)
           : null,
-      manualMonthlyAcknowledged,
+      manualMonthlyAcknowledged: requiresManualAck ? true : manualMonthlyAcknowledged,
     });
     cartSidebar.open();
   };
@@ -230,10 +232,6 @@
 
     if (hasMultipleChoices && !upgradeSelectionType) {
       return `Please choose an upgrade option before you ${actionLabel}.`;
-    }
-
-    if (requiresManualAck && !manualMonthlyAcknowledged) {
-      return `Please confirm the manual monthly acknowledgement before you ${actionLabel}.`;
     }
 
     if (!selectionReady) {
@@ -377,6 +375,7 @@
             errorMessage={selectionError}
             includeCredentials={false}
             showSubmit={false}
+            requireManualAck={false}
             bind:selectionType={upgradeSelectionType}
             bind:manualMonthlyAcknowledged
           />

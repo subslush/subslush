@@ -19,6 +19,7 @@
   export let submitLabel = 'Submit selection';
   export let includeCredentials = true;
   export let showSubmit = true;
+  export let requireManualAck = false;
   export let selectionType: UpgradeSelectionType | '' = '';
   export let manualMonthlyAcknowledged = false;
 
@@ -56,11 +57,12 @@
   $: needsPassword = needsCredentials && ownAccountRequiresPassword;
   $: trimmedIdentifier = accountIdentifier.trim();
   $: trimmedCredentials = credentials.trim();
+  $: manualAckRequiredForSubmit = requiresManualAck && requireManualAck;
   $: canSubmit =
     !locked &&
     Boolean(selectionType) &&
     (!needsCredentials || (trimmedIdentifier && (!needsPassword || trimmedCredentials))) &&
-    (!requiresManualAck || manualMonthlyAcknowledged) &&
+    (!manualAckRequiredForSubmit || manualMonthlyAcknowledged) &&
     !submitting;
 
   const handleSubmit = () => {
@@ -69,7 +71,11 @@
       selection_type: selectionType,
       account_identifier: trimmedIdentifier || null,
       credentials: needsPassword ? trimmedCredentials || null : null,
-      manual_monthly_acknowledged: requiresManualAck ? manualMonthlyAcknowledged : undefined
+      manual_monthly_acknowledged: requiresManualAck
+        ? manualAckRequiredForSubmit
+          ? manualMonthlyAcknowledged
+          : true
+        : undefined
     });
   };
 </script>
