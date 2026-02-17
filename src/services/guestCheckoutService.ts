@@ -318,6 +318,58 @@ export class GuestCheckoutService {
       const targetUser = targetUserResult.rows[0];
 
       if (existingUserId && existingUserId !== params.userId) {
+        const optionalUserTables = [
+          'payment_refunds',
+          'notifications',
+          'prelaunch_reward_tasks',
+          'user_perks',
+          'user_vouchers',
+          'user_raffle_entries',
+          'user_payment_methods',
+        ];
+
+        const optionalTableResult = await client.query(
+          `SELECT table_name
+             FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND column_name = 'user_id'
+              AND table_name = ANY($1::text[])`,
+          [optionalUserTables]
+        );
+
+        const optionalTableSet = new Set<string>(
+          optionalTableResult.rows.map(row => String(row.table_name))
+        );
+
+        const runOptionalUserUpdate = async (
+          tableName: string,
+          run: () => Promise<void>
+        ): Promise<void> => {
+          if (!optionalTableSet.has(tableName)) {
+            Logger.warn('Skipping optional guest-claim table reassignment', {
+              tableName,
+              reason: 'table_missing_or_no_user_id',
+            });
+            return;
+          }
+
+          const savepointName = 'sp_guest_claim_optional_user_reassign';
+          await client.query(`SAVEPOINT ${savepointName}`);
+          try {
+            await run();
+            await client.query(`RELEASE SAVEPOINT ${savepointName}`);
+          } catch (error) {
+            await client.query(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+            await client.query(`RELEASE SAVEPOINT ${savepointName}`);
+            Logger.warn('Optional guest-claim table reassignment failed', {
+              tableName,
+              sourceUserId: existingUserId,
+              targetUserId: params.userId,
+              error,
+            });
+          }
+        };
+
         const guestUserResult = await client.query(
           `SELECT id, is_guest, stripe_customer_id
            FROM users
@@ -355,48 +407,62 @@ export class GuestCheckoutService {
           `UPDATE credit_transactions SET user_id = $1 WHERE user_id = $2`,
           [params.userId, existingUserId]
         );
-        await client.query(
-          `UPDATE payment_refunds SET user_id = $1 WHERE user_id = $2`,
-          [params.userId, existingUserId]
-        );
-        await client.query(
-          `UPDATE notifications SET user_id = $1 WHERE user_id = $2`,
-          [params.userId, existingUserId]
-        );
-        await client.query(
-          `UPDATE prelaunch_reward_tasks SET user_id = $1 WHERE user_id = $2`,
-          [params.userId, existingUserId]
-        );
-        await client.query(
-          `UPDATE user_perks SET user_id = $1 WHERE user_id = $2`,
-          [params.userId, existingUserId]
-        );
-        await client.query(
-          `UPDATE user_vouchers SET user_id = $1 WHERE user_id = $2`,
-          [params.userId, existingUserId]
-        );
-        await client.query(
-          `UPDATE user_raffle_entries SET user_id = $1 WHERE user_id = $2`,
-          [params.userId, existingUserId]
-        );
+        await runOptionalUserUpdate('payment_refunds', async () => {
+          await client.query(
+            `UPDATE payment_refunds SET user_id = $1 WHERE user_id = $2`,
+            [params.userId, existingUserId]
+          );
+        });
+        await runOptionalUserUpdate('notifications', async () => {
+          await client.query(
+            `UPDATE notifications SET user_id = $1 WHERE user_id = $2`,
+            [params.userId, existingUserId]
+          );
+        });
+        await runOptionalUserUpdate('prelaunch_reward_tasks', async () => {
+          await client.query(
+            `UPDATE prelaunch_reward_tasks SET user_id = $1 WHERE user_id = $2`,
+            [params.userId, existingUserId]
+          );
+        });
+        await runOptionalUserUpdate('user_perks', async () => {
+          await client.query(
+            `UPDATE user_perks SET user_id = $1 WHERE user_id = $2`,
+            [params.userId, existingUserId]
+          );
+        });
+        await runOptionalUserUpdate('user_vouchers', async () => {
+          await client.query(
+            `UPDATE user_vouchers SET user_id = $1 WHERE user_id = $2`,
+            [params.userId, existingUserId]
+          );
+        });
+        await runOptionalUserUpdate('user_raffle_entries', async () => {
+          await client.query(
+            `UPDATE user_raffle_entries SET user_id = $1 WHERE user_id = $2`,
+            [params.userId, existingUserId]
+          );
+        });
 
-        const defaultMethodResult = await client.query(
-          `SELECT 1
-           FROM user_payment_methods
-           WHERE user_id = $1
-             AND provider = 'stripe'
-             AND is_default = TRUE
-           LIMIT 1`,
-          [params.userId]
-        );
-        const targetHasDefault = defaultMethodResult.rows.length > 0;
-        await client.query(
-          `UPDATE user_payment_methods
-           SET user_id = $1,
-               is_default = CASE WHEN $3 THEN FALSE ELSE is_default END
-           WHERE user_id = $2`,
-          [params.userId, existingUserId, targetHasDefault]
-        );
+        await runOptionalUserUpdate('user_payment_methods', async () => {
+          const defaultMethodResult = await client.query(
+            `SELECT 1
+             FROM user_payment_methods
+             WHERE user_id = $1
+               AND provider = 'stripe'
+               AND is_default = TRUE
+             LIMIT 1`,
+            [params.userId]
+          );
+          const targetHasDefault = defaultMethodResult.rows.length > 0;
+          await client.query(
+            `UPDATE user_payment_methods
+             SET user_id = $1,
+                 is_default = CASE WHEN $3 THEN FALSE ELSE is_default END
+             WHERE user_id = $2`,
+            [params.userId, existingUserId, targetHasDefault]
+          );
+        });
 
         if (!targetUser.stripe_customer_id && guestUser.stripe_customer_id) {
           await client.query(
