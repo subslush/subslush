@@ -319,6 +319,7 @@ export class GuestCheckoutService {
 
       if (existingUserId && existingUserId !== params.userId) {
         const optionalUserTables = [
+          'admin_tasks',
           'payment_refunds',
           'notifications',
           'prelaunch_reward_tasks',
@@ -410,6 +411,12 @@ export class GuestCheckoutService {
         await runOptionalUserUpdate('payment_refunds', async () => {
           await client.query(
             `UPDATE payment_refunds SET user_id = $1 WHERE user_id = $2`,
+            [params.userId, existingUserId]
+          );
+        });
+        await runOptionalUserUpdate('admin_tasks', async () => {
+          await client.query(
+            `UPDATE admin_tasks SET user_id = $1 WHERE user_id = $2`,
             [params.userId, existingUserId]
           );
         });

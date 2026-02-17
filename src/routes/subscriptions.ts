@@ -789,6 +789,7 @@ export async function subscriptionRoutes(
         'POST /subscriptions/validate-purchase',
         'POST /subscriptions/purchase',
         'POST /subscriptions/track/add-to-cart',
+        'POST /subscriptions/track/event',
         'GET /subscriptions/my-subscriptions',
         'GET /subscriptions/:subscriptionId',
         'POST /subscriptions/:subscriptionId/credentials/reveal',
@@ -1118,6 +1119,139 @@ export async function subscriptionRoutes(
         return reply.send({
           error: 'Internal Server Error',
           message: 'Failed to track add to cart',
+        });
+      }
+    }
+  );
+
+  fastify.post(
+    '/track/event',
+    async (
+      request: FastifyRequest<{
+        Body: {
+          event?: 'view_content' | 'search';
+          contentId?: string;
+          contentName?: string;
+          contentCategory?: string;
+          price?: number;
+          currency?: string;
+          brand?: string;
+          value?: number;
+          searchString?: string;
+          externalId?: string;
+          eventId?: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const user = request.user;
+        const body = request.body || {};
+        const event =
+          body.event === 'view_content' || body.event === 'search'
+            ? body.event
+            : null;
+        if (!event) {
+          reply.statusCode = 400;
+          return reply.send({
+            error: 'Bad Request',
+            message: 'event must be view_content or search',
+          });
+        }
+
+        const externalId =
+          typeof body.externalId === 'string' ? body.externalId.trim() : '';
+        const effectiveUserId = user?.userId || externalId;
+        if (!effectiveUserId) {
+          reply.statusCode = 400;
+          return reply.send({
+            error: 'Bad Request',
+            message: 'externalId is required for anonymous tracking',
+          });
+        }
+
+        const eventId =
+          typeof body.eventId === 'string' ? body.eventId.trim() : '';
+        const context = buildTikTokRequestContext(request);
+
+        if (event === 'view_content') {
+          const contentId =
+            typeof body.contentId === 'string' ? body.contentId.trim() : '';
+          if (!contentId) {
+            reply.statusCode = 400;
+            return reply.send({
+              error: 'Bad Request',
+              message: 'contentId is required for view_content',
+            });
+          }
+
+          const properties = buildTikTokProductProperties({
+            value:
+              typeof body.value === 'number'
+                ? body.value
+                : typeof body.price === 'number'
+                  ? body.price
+                  : null,
+            currency: body.currency ?? null,
+            contentId,
+            contentName: body.contentName ?? null,
+            contentCategory: body.contentCategory ?? null,
+            price: typeof body.price === 'number' ? body.price : null,
+            brand: body.brand ?? null,
+          });
+
+          void tiktokEventsService.trackViewContent({
+            userId: effectiveUserId,
+            email: user?.email ?? null,
+            eventId:
+              eventId || `user_${effectiveUserId}_view_content_${Date.now()}`,
+            properties,
+            context,
+          });
+
+          return reply.send({ message: 'View content tracked' });
+        }
+
+        const searchString =
+          typeof body.searchString === 'string' ? body.searchString.trim() : '';
+        if (!searchString) {
+          reply.statusCode = 400;
+          return reply.send({
+            error: 'Bad Request',
+            message: 'searchString is required for search',
+          });
+        }
+
+        const searchProperties: Record<string, unknown> = {
+          search_string: searchString,
+        };
+        if (typeof body.contentId === 'string' && body.contentId.trim()) {
+          searchProperties['content_id'] = body.contentId.trim();
+        }
+        if (typeof body.currency === 'string' && body.currency.trim()) {
+          searchProperties['currency'] = body.currency.trim().toUpperCase();
+        }
+        if (typeof body.value === 'number') {
+          searchProperties['value'] = body.value;
+        } else if (typeof body.price === 'number') {
+          searchProperties['value'] = body.price;
+        }
+
+        void tiktokEventsService.trackSearch({
+          userId: effectiveUserId,
+          email: user?.email ?? null,
+          eventId: eventId || `user_${effectiveUserId}_search_${Date.now()}`,
+          properties: searchProperties,
+          context,
+        });
+
+        return reply.send({ message: 'Search tracked' });
+      } catch (error) {
+        Logger.error('Event tracking failed:', error);
+        reply.statusCode = 500;
+        return reply.send({
+          error: 'Internal Server Error',
+          message: 'Failed to track event',
         });
       }
     }

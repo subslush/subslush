@@ -12,6 +12,10 @@ import {
 import { guestCheckoutService } from '../services/guestCheckoutService';
 import { paymentService } from '../services/paymentService';
 import { orderService } from '../services/orderService';
+import {
+  buildTikTokRequestContext,
+  tiktokEventsService,
+} from '../services/tiktokEventsService';
 import { ErrorResponses, SuccessResponses, sendError } from '../utils/response';
 import { Logger } from '../utils/logger';
 import {
@@ -22,6 +26,97 @@ import {
   authPreHandler,
   optionalAuthPreHandler,
 } from '../middleware/authMiddleware';
+import type { OrderWithItems } from '../types/order';
+
+const centsToAmount = (value?: number | null): number | null => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Number((value / 100).toFixed(2));
+};
+
+const resolveEventId = (
+  candidate: string | null | undefined,
+  fallback: string
+): string => {
+  const trimmed = typeof candidate === 'string' ? candidate.trim() : '';
+  return trimmed || fallback;
+};
+
+const resolveOrderCurrency = (order: OrderWithItems): string => {
+  const rawCurrency =
+    order.display_currency ||
+    order.currency ||
+    order.items.find(item => item.currency)?.currency ||
+    'USD';
+  return rawCurrency.toUpperCase();
+};
+
+const resolveOrderValue = (order: OrderWithItems): number => {
+  const totalCents =
+    typeof order.display_total_cents === 'number'
+      ? order.display_total_cents
+      : typeof order.total_cents === 'number'
+        ? order.total_cents
+        : order.items.reduce(
+            (sum, item) =>
+              sum +
+              (Number.isFinite(item.total_price_cents)
+                ? item.total_price_cents
+                : 0),
+            0
+          );
+  return centsToAmount(totalCents) ?? 0;
+};
+
+const resolveMetadataValue = (
+  metadata: Record<string, unknown> | null | undefined,
+  key: string
+): string | undefined => {
+  if (!metadata || typeof metadata !== 'object') return undefined;
+  const value = metadata[key];
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim();
+  return normalized || undefined;
+};
+
+const buildOrderTikTokProperties = (
+  order: OrderWithItems
+): Record<string, unknown> => {
+  const currency = resolveOrderCurrency(order);
+  const value = resolveOrderValue(order);
+  const contents = order.items.map(item => {
+    const contentName =
+      item.product_name ||
+      item.variant_name ||
+      resolveMetadataValue(item.metadata, 'service_name') ||
+      resolveMetadataValue(item.metadata, 'service_type') ||
+      item.product_variant_id ||
+      item.id;
+    const contentCategory =
+      resolveMetadataValue(item.metadata, 'category') ||
+      resolveMetadataValue(item.metadata, 'service_type');
+    return {
+      content_id: item.product_variant_id || item.id,
+      content_type: 'product',
+      content_name: contentName,
+      content_category: contentCategory,
+      quantity: item.quantity,
+      price: centsToAmount(item.unit_price_cents) ?? undefined,
+    };
+  });
+
+  const primary = contents[0];
+  return {
+    value,
+    currency,
+    content_id: `order_${order.id}`,
+    content_type: order.items.length > 1 ? 'product_group' : 'product',
+    content_name:
+      order.items.length > 1
+        ? `Order ${order.id}`
+        : (primary?.content_name as string | undefined) || `Order ${order.id}`,
+    contents,
+  };
+};
 
 export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post(
@@ -104,6 +199,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               },
             },
             coupon_code: { type: 'string' },
+            initiate_checkout_event_id: { type: 'string' },
           },
         },
       },
@@ -157,6 +253,33 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           return ErrorResponses.internalError(reply, error);
         }
 
+        if (validation.data.initiate_checkout_event_id) {
+          const orderForTracking = await orderService.getOrderWithItems(
+            draftResult.data.orderId
+          );
+          if (orderForTracking) {
+            const properties = buildOrderTikTokProperties(orderForTracking);
+            const trackingUserId =
+              orderForTracking.user_id || request.user?.userId || null;
+            if (trackingUserId) {
+              void tiktokEventsService.trackInitiateCheckout({
+                userId: trackingUserId,
+                email:
+                  request.user?.email ??
+                  orderForTracking.contact_email ??
+                  validation.data.contact_email ??
+                  null,
+                eventId: resolveEventId(
+                  validation.data.initiate_checkout_event_id,
+                  `order_${draftResult.data.orderId}_checkout`
+                ),
+                properties,
+                context: buildTikTokRequestContext(request),
+              });
+            }
+          }
+        }
+
         return SuccessResponses.ok(reply, {
           checkout_session_key: draftResult.data.checkoutSessionKey,
           order_id: draftResult.data.orderId,
@@ -186,6 +309,8 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             order_id: { type: 'string' },
             success_url: { type: 'string' },
             cancel_url: { type: 'string' },
+            initiate_checkout_event_id: { type: 'string' },
+            add_payment_info_event_id: { type: 'string' },
           },
         },
       },
@@ -204,8 +329,13 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
-        const { checkout_session_key, order_id, success_url, cancel_url } =
-          validation.data;
+        const {
+          checkout_session_key,
+          order_id,
+          success_url,
+          cancel_url,
+          add_payment_info_event_id,
+        } = validation.data;
 
         if (!checkout_session_key && !order_id) {
           return ErrorResponses.badRequest(
@@ -293,6 +423,32 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             reply,
             'Failed to create Stripe session'
           );
+        }
+
+        const orderForTracking = await orderService.getOrderWithItems(
+          sessionResult.orderId
+        );
+        if (orderForTracking) {
+          const properties = buildOrderTikTokProperties(orderForTracking);
+          const trackingUserId =
+            orderForTracking.user_id || request.user?.userId || null;
+          if (trackingUserId) {
+            const context = buildTikTokRequestContext(request);
+            void tiktokEventsService.trackAddPaymentInfo({
+              userId: trackingUserId,
+              email:
+                request.user?.email ?? orderForTracking.contact_email ?? null,
+              eventId: resolveEventId(
+                add_payment_info_event_id,
+                `order_${sessionResult.orderId}_add_payment_info_stripe`
+              ),
+              properties: {
+                ...properties,
+                payment_type: 'card',
+              },
+              context,
+            });
+          }
         }
 
         return SuccessResponses.ok(reply, {
@@ -399,6 +555,8 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             force_new_invoice: { type: 'boolean' },
             success_url: { type: 'string' },
             cancel_url: { type: 'string' },
+            initiate_checkout_event_id: { type: 'string' },
+            add_payment_info_event_id: { type: 'string' },
           },
         },
       },
@@ -426,6 +584,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           force_new_invoice,
           success_url,
           cancel_url,
+          add_payment_info_event_id,
         } = validation.data;
 
         if (!checkout_session_key && !order_id) {
@@ -499,6 +658,32 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             reply,
             'Failed to create invoice'
           );
+        }
+
+        const orderForTracking = await orderService.getOrderWithItems(
+          invoiceResult.orderId
+        );
+        if (orderForTracking) {
+          const properties = buildOrderTikTokProperties(orderForTracking);
+          const trackingUserId =
+            orderForTracking.user_id || request.user?.userId || null;
+          if (trackingUserId) {
+            const context = buildTikTokRequestContext(request);
+            void tiktokEventsService.trackAddPaymentInfo({
+              userId: trackingUserId,
+              email:
+                request.user?.email ?? orderForTracking.contact_email ?? null,
+              eventId: resolveEventId(
+                add_payment_info_event_id,
+                `order_${invoiceResult.orderId}_add_payment_info_crypto`
+              ),
+              properties: {
+                ...properties,
+                payment_type: 'crypto',
+              },
+              context,
+            });
+          }
         }
 
         return SuccessResponses.ok(reply, {
@@ -647,6 +832,9 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           properties: {
             checkout_session_key: { type: 'string' },
             order_id: { type: 'string' },
+            initiate_checkout_event_id: { type: 'string' },
+            add_payment_info_event_id: { type: 'string' },
+            purchase_event_id: { type: 'string' },
           },
         },
       },
@@ -670,7 +858,12 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           return ErrorResponses.unauthorized(reply, 'Authentication required');
         }
 
-        const { checkout_session_key, order_id } = validation.data;
+        const {
+          checkout_session_key,
+          order_id,
+          add_payment_info_event_id,
+          purchase_event_id,
+        } = validation.data;
         if (!checkout_session_key && !order_id) {
           return ErrorResponses.badRequest(
             reply,
@@ -703,6 +896,27 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (!orderId) {
           return ErrorResponses.badRequest(reply, 'Order not found');
+        }
+
+        const orderForTracking = await orderService.getOrderWithItems(orderId);
+        if (orderForTracking) {
+          const properties = buildOrderTikTokProperties(orderForTracking);
+          const trackingUserId = orderForTracking.user_id || userId;
+          const context = buildTikTokRequestContext(request);
+          void tiktokEventsService.trackAddPaymentInfo({
+            userId: trackingUserId,
+            email:
+              request.user?.email ?? orderForTracking.contact_email ?? null,
+            eventId: resolveEventId(
+              add_payment_info_event_id,
+              `order_${orderId}_add_payment_info_credits`
+            ),
+            properties: {
+              ...properties,
+              payment_type: 'credits',
+            },
+            context,
+          });
         }
 
         const creditsResult =
@@ -763,6 +977,22 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             reply,
             'Failed to complete credits checkout'
           );
+        }
+
+        if (orderForTracking) {
+          const properties = buildOrderTikTokProperties(orderForTracking);
+          const trackingUserId = orderForTracking.user_id || userId;
+          void tiktokEventsService.trackPurchase({
+            userId: trackingUserId,
+            email:
+              request.user?.email ?? orderForTracking.contact_email ?? null,
+            eventId: resolveEventId(
+              purchase_event_id,
+              `order_${creditsResult.orderId}_purchase`
+            ),
+            properties,
+            context: buildTikTokRequestContext(request),
+          });
         }
 
         return SuccessResponses.ok(reply, {

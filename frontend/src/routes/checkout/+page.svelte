@@ -11,6 +11,12 @@
   import { checkoutService } from '$lib/api/checkout.js';
   import { paymentService } from '$lib/api/payments.js';
   import {
+    trackAddPaymentInfo,
+    trackBeginCheckout,
+    trackPurchase,
+    type AnalyticsItem
+  } from '$lib/utils/analytics.js';
+  import {
     formatCurrency,
     normalizeCurrencyCode,
     type SupportedCurrency
@@ -25,6 +31,7 @@
   import { Loader2, Mail, ShieldCheck, Trash2 } from 'lucide-svelte';
 
   const DRAFT_STORAGE_KEY = 'checkout_draft_state';
+  const CHECKOUT_INITIATE_TRACKING_KEY = 'checkout_initiate_tracking';
   const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   let contactEmail = '';
@@ -41,6 +48,8 @@
   let lastIdentityEmail = '';
   let identityEmail: string | null = null;
   let draftInitialized = false;
+  let initiateCheckoutEventId: string | null = null;
+  let initiateCheckoutTracked = false;
 
   let couponCode = '';
   let appliedCouponCode: string | null = null;
@@ -218,6 +227,103 @@
       manual_monthly_acknowledged: item.manualMonthlyAcknowledged ?? null
     }));
 
+  type PaymentAnalyticsMethod = 'card' | 'crypto' | 'credits';
+
+  const buildCheckoutAnalyticsItems = (items: CartItem[]): AnalyticsItem[] =>
+    items.map((item, index) => ({
+      item_id:
+        item.variantId ||
+        `${item.serviceType || item.serviceName}-${item.plan}-${item.termMonths || 1}`,
+      item_name: item.serviceName,
+      item_category: item.serviceType,
+      item_variant: item.plan,
+      price: item.price,
+      currency: normalizeCurrencyCode(item.currency || orderCurrency) || orderCurrency,
+      quantity: item.quantity,
+      index
+    }));
+
+  const resolveCheckoutTrackingBase = (): string | null => {
+    const normalizedOrderId = orderId?.trim();
+    if (normalizedOrderId) {
+      return `order_${normalizedOrderId}`;
+    }
+    const checkoutKey = getDraftCheckoutSessionKey();
+    if (!checkoutKey) {
+      return null;
+    }
+    return `checkout_${checkoutKey}`;
+  };
+
+  const buildCheckoutEventId = (suffix: string): string | undefined => {
+    const base = resolveCheckoutTrackingBase();
+    if (!base) return undefined;
+    return `${base}_${suffix}`;
+  };
+
+  const persistInitiateCheckoutTracking = (): void => {
+    if (!browser) return;
+    if (!initiateCheckoutEventId) {
+      sessionStorage.removeItem(CHECKOUT_INITIATE_TRACKING_KEY);
+      return;
+    }
+    sessionStorage.setItem(
+      CHECKOUT_INITIATE_TRACKING_KEY,
+      JSON.stringify({
+        eventId: initiateCheckoutEventId,
+        tracked: initiateCheckoutTracked
+      })
+    );
+  };
+
+  const resetInitiateCheckoutTracking = (): void => {
+    initiateCheckoutEventId = null;
+    initiateCheckoutTracked = false;
+    if (!browser) return;
+    sessionStorage.removeItem(CHECKOUT_INITIATE_TRACKING_KEY);
+  };
+
+  const ensureInitiateCheckoutEventId = (): string | null => {
+    if (!browser) return null;
+    if (initiateCheckoutEventId) {
+      return initiateCheckoutEventId;
+    }
+    const randomPart =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+    initiateCheckoutEventId = `checkout_start_${randomPart}`;
+    persistInitiateCheckoutTracking();
+    return initiateCheckoutEventId;
+  };
+
+  const trackCheckoutPaymentStep = (
+    paymentType: PaymentAnalyticsMethod
+  ): {
+    addPaymentInfoEventId?: string;
+  } => {
+    const analyticsItems = buildCheckoutAnalyticsItems($cart);
+    if (analyticsItems.length === 0) {
+      return {};
+    }
+
+    const addPaymentInfoEventId = buildCheckoutEventId(
+      `add_payment_info_${paymentType}`
+    );
+
+    trackAddPaymentInfo(
+      paymentType,
+      orderCurrency,
+      total,
+      analyticsItems,
+      addPaymentInfoEventId
+    );
+
+    return {
+      addPaymentInfoEventId
+    };
+  };
+
   const buildDraftSignature = (
     email: string,
     currencyCode: string,
@@ -281,6 +387,7 @@
     invoice = null;
     invoiceError = '';
     invoiceDraftSignature = '';
+    resetInitiateCheckoutTracking();
     persistDraftState();
   };
 
@@ -316,6 +423,25 @@
       showDiscountCodeInput = Boolean(appliedCouponCode);
     } catch (error) {
       console.warn('Failed to read checkout draft state:', error);
+    }
+
+    try {
+      const rawTracking = sessionStorage.getItem(
+        CHECKOUT_INITIATE_TRACKING_KEY
+      );
+      if (!rawTracking) return;
+      const parsedTracking = JSON.parse(rawTracking) as {
+        eventId?: string;
+        tracked?: boolean;
+      };
+      initiateCheckoutEventId =
+        typeof parsedTracking.eventId === 'string' &&
+        parsedTracking.eventId.trim().length > 0
+          ? parsedTracking.eventId.trim()
+          : null;
+      initiateCheckoutTracked = parsedTracking.tracked === true;
+    } catch (error) {
+      console.warn('Failed to read checkout initiate tracking state:', error);
     }
   };
 
@@ -365,6 +491,11 @@
     draftLoading = true;
     draftError = '';
     actionError = '';
+    const shouldSendInitiateCheckout =
+      !initiateCheckoutTracked && browser === true;
+    const pendingInitiateCheckoutEventId = shouldSendInitiateCheckout
+      ? ensureInitiateCheckoutEventId()
+      : null;
 
     try {
       const response = await checkoutService.upsertDraft({
@@ -373,7 +504,12 @@
         contact_email: contactEmail,
         currency: currencyCode,
         items: buildDraftItems(items),
-        ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})
+        ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {}),
+        ...(pendingInitiateCheckoutEventId
+          ? {
+              initiate_checkout_event_id: pendingInitiateCheckoutEventId
+            }
+          : {})
       });
 
       checkoutSessionKey = response.checkout_session_key;
@@ -391,6 +527,31 @@
       lastCryptoMinimumKey = '';
       if (paymentMethod === 'crypto' && normalizeTicker(payCurrency)) {
         void refreshCryptoMinimum(true);
+      }
+      if (
+        pendingInitiateCheckoutEventId &&
+        !initiateCheckoutTracked &&
+        browser
+      ) {
+        const analyticsItems = buildCheckoutAnalyticsItems(items);
+        if (analyticsItems.length > 0) {
+          const resolvedValue =
+            typeof response.pricing?.order_total_cents === 'number'
+              ? Number((response.pricing.order_total_cents / 100).toFixed(2))
+              : Number(
+                  items
+                    .reduce((sum, item) => sum + item.price * item.quantity, 0)
+                    .toFixed(2)
+                );
+          trackBeginCheckout(
+            currencyCode,
+            resolvedValue,
+            analyticsItems,
+            pendingInitiateCheckoutEventId
+          );
+        }
+        initiateCheckoutTracked = true;
+        persistInitiateCheckoutTracking();
       }
       persistDraftState();
       return true;
@@ -598,21 +759,28 @@
       actionError = ownAccountValidationError;
       return;
     }
-    const startStripeSession = async (): Promise<string | null> => {
-      const response = await checkoutService.createStripeSession({
-        checkout_session_key: getDraftCheckoutSessionKey()
-      });
-      return response.session_url || null;
-    };
 
     const draftReady = await refreshDraft(true);
     if (!draftReady || !getDraftCheckoutSessionKey()) {
       actionError = 'Please review your checkout details.';
       return;
     }
+
+    const startStripeSession = async (trackingIds?: {
+      addPaymentInfoEventId?: string;
+    }): Promise<string | null> => {
+      const response = await checkoutService.createStripeSession({
+        checkout_session_key: getDraftCheckoutSessionKey(),
+        add_payment_info_event_id:
+          trackingIds?.addPaymentInfoEventId ?? null
+      });
+      return response.session_url || null;
+    };
+
     redirecting = true;
     try {
-      const sessionUrl = await startStripeSession();
+      const trackingIds = trackCheckoutPaymentStep('card');
+      const sessionUrl = await startStripeSession(trackingIds);
       if (!sessionUrl) {
         actionError = 'Stripe session unavailable. Please try again.';
         return;
@@ -627,7 +795,8 @@
         const rebuilt = await rebuildDraftForPaymentMethodChange();
         if (rebuilt) {
           try {
-            const retrySessionUrl = await startStripeSession();
+            const retryTrackingIds = trackCheckoutPaymentStep('card');
+            const retrySessionUrl = await startStripeSession(retryTrackingIds);
             if (retrySessionUrl) {
               window.location.assign(retrySessionUrl);
               return;
@@ -660,13 +829,6 @@
     }
     const shouldForceNewInvoice = false;
 
-    const createInvoice = async (): Promise<CheckoutNowPaymentsInvoiceResponse> =>
-      checkoutService.createNowPaymentsInvoice({
-        checkout_session_key: getDraftCheckoutSessionKey(),
-        pay_currency: payCurrency,
-        force_new_invoice: shouldForceNewInvoice
-      });
-
     const draftReady = await refreshDraft(true);
     if (!draftReady || !getDraftCheckoutSessionKey()) {
       invoiceError = 'Please review your checkout details.';
@@ -683,9 +845,22 @@
         'Selected coin/network requires a higher order total. Choose another option or add more items.';
       return;
     }
+
+    const createInvoice = async (trackingIds?: {
+      addPaymentInfoEventId?: string;
+    }): Promise<CheckoutNowPaymentsInvoiceResponse> =>
+      checkoutService.createNowPaymentsInvoice({
+        checkout_session_key: getDraftCheckoutSessionKey(),
+        pay_currency: payCurrency,
+        force_new_invoice: shouldForceNewInvoice,
+        add_payment_info_event_id:
+          trackingIds?.addPaymentInfoEventId ?? null
+      });
+
     invoiceLoading = true;
     try {
-      let response = await createInvoice();
+      const trackingIds = trackCheckoutPaymentStep('crypto');
+      let response = await createInvoice(trackingIds);
       invoice = response;
       invoiceDraftSignature = lastDraftSignature;
     } catch (error) {
@@ -695,7 +870,8 @@
         const rebuilt = await rebuildDraftForPaymentMethodChange();
         if (rebuilt) {
           try {
-            const response = await createInvoice();
+            const retryTrackingIds = trackCheckoutPaymentStep('crypto');
+            const response = await createInvoice(retryTrackingIds);
             invoice = response;
             invoiceDraftSignature = lastDraftSignature;
             return;
@@ -740,11 +916,26 @@
       return;
     }
 
+    const { addPaymentInfoEventId } = trackCheckoutPaymentStep('credits');
+    const purchaseEventId = buildCheckoutEventId('purchase');
+    const analyticsItems = buildCheckoutAnalyticsItems($cart);
+
     redirecting = true;
     try {
-      await checkoutService.completeCreditsCheckout({
-        checkout_session_key: getDraftCheckoutSessionKey()
+      const response = await checkoutService.completeCreditsCheckout({
+        checkout_session_key: getDraftCheckoutSessionKey(),
+        add_payment_info_event_id: addPaymentInfoEventId ?? null,
+        purchase_event_id: purchaseEventId ?? null
       });
+      if (analyticsItems.length > 0) {
+        trackPurchase(
+          response.transaction_id || response.order_id,
+          orderCurrency,
+          total,
+          analyticsItems,
+          purchaseEventId
+        );
+      }
       await credits.refresh($user?.id ?? null, { force: true });
       cart.clear();
       clearDraftState();
@@ -1228,29 +1419,31 @@
             {#if showDiscountCodeInput}
               <div class="mt-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
                 <h3 class="text-sm font-semibold text-slate-900">Discount code</h3>
-                <div class="flex items-center gap-2">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <input
-                    class="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    class="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm sm:flex-1"
                     placeholder="Enter code"
                     bind:value={couponCode}
                   />
-                  <button
-                    type="button"
-                    class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                    on:click={handleApplyCoupon}
-                    disabled={draftLoading}
-                  >
-                    APPLY
-                  </button>
-                  {#if appliedCouponCode}
+                  <div class="flex w-full gap-2 sm:w-auto">
                     <button
                       type="button"
-                      class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50"
-                      on:click={handleClearCoupon}
+                      class="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:flex-none sm:whitespace-nowrap"
+                      on:click={handleApplyCoupon}
+                      disabled={draftLoading}
                     >
-                      CLEAR
+                      APPLY
                     </button>
-                  {/if}
+                    {#if appliedCouponCode}
+                      <button
+                        type="button"
+                        class="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50 sm:flex-none sm:whitespace-nowrap"
+                        on:click={handleClearCoupon}
+                      >
+                        CLEAR
+                      </button>
+                    {/if}
+                  </div>
                 </div>
                 {#if couponMessage}
                   <p class="text-xs text-slate-500 whitespace-pre-line">{couponMessage}</p>

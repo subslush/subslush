@@ -20,7 +20,9 @@ import type {
   CreditsAutoRenewResponse,
   CreditsRenewalResponse,
   AddToCartTrackRequest,
-  AddToCartTrackResponse
+  AddToCartTrackResponse,
+  TikTokTrackEventRequest,
+  TikTokTrackEventResponse
 } from '$lib/types/subscription.js';
 import type {
   UpgradeSelectionResponse,
@@ -76,6 +78,16 @@ export class SubscriptionService {
       payload
     );
     return unwrapApiData<AddToCartTrackResponse>(response);
+  }
+
+  async trackTikTokEvent(
+    payload: TikTokTrackEventRequest
+  ): Promise<TikTokTrackEventResponse> {
+    const response = await apiClient.post(
+      API_ENDPOINTS.SUBSCRIPTIONS.EVENT_TRACK,
+      payload
+    );
+    return unwrapApiData<TikTokTrackEventResponse>(response);
   }
 
   async getUpgradeSelection(subscriptionId: string): Promise<UpgradeSelectionResponse> {

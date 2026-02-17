@@ -7,10 +7,11 @@
   import { cart } from '$lib/stores/cart.js';
   import { ordersService } from '$lib/api/orders.js';
   import { checkoutService } from '$lib/api/checkout.js';
+  import { trackPurchase, type AnalyticsItem } from '$lib/utils/analytics.js';
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
   import type { Subscription } from '$lib/types/subscription.js';
-  import { ArrowRight, CheckCircle2, Clock3, Loader2, MailCheck, ShieldCheck, XCircle } from 'lucide-svelte';
+  import { CheckCircle2, Clock3, Loader2, MailCheck, ShieldCheck, XCircle } from 'lucide-svelte';
 
   let status = '';
   let orderId: string | null = null;
@@ -22,13 +23,50 @@
   let confirmAttempted = false;
   let confirmError = '';
   let cartCleared = false;
+  let stripeCheckoutConfirmed = false;
 
   const POLL_INTERVAL_MS = 3000;
   const POLL_TIMEOUT_MS = 120000;
   const CHECKOUT_DRAFT_STORAGE_KEY = 'checkout_draft_state';
+  const PURCHASE_TRACKED_STORAGE_KEY = 'tiktok:checkout_purchase';
   let pollActive = true;
 
   const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const buildPurchaseItems = (): AnalyticsItem[] =>
+    $cart.map((item, index) => ({
+      item_id: item.variantId || `${item.serviceType}-${item.plan}`,
+      item_name: item.serviceName,
+      item_category: item.serviceType,
+      item_variant: item.plan,
+      price: item.price,
+      currency: item.currency || 'USD',
+      quantity: item.quantity,
+      index
+    }));
+
+  const hasTrackedPurchase = (orderTrackingId: string): boolean => {
+    try {
+      return (
+        sessionStorage.getItem(
+          `${PURCHASE_TRACKED_STORAGE_KEY}:${orderTrackingId}`
+        ) === '1'
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  const markPurchaseTracked = (orderTrackingId: string): void => {
+    try {
+      sessionStorage.setItem(
+        `${PURCHASE_TRACKED_STORAGE_KEY}:${orderTrackingId}`,
+        '1'
+      );
+    } catch {
+      // Ignore storage errors and keep UX uninterrupted.
+    }
+  };
 
   const confirmSession = async () => {
     if (!orderId || !sessionId) return;
@@ -38,11 +76,13 @@
         order_id: orderId,
         session_id: sessionId
       });
+      stripeCheckoutConfirmed = true;
     } catch (error) {
       confirmError =
         error instanceof Error
           ? error.message
           : 'Unable to confirm Stripe checkout status.';
+      stripeCheckoutConfirmed = false;
     }
   };
 
@@ -107,11 +147,49 @@
     }
   }
 
+  $: if (status !== 'success') {
+    stripeCheckoutConfirmed = false;
+  }
+
   $: if (browser && status === 'cancel') {
     void goto('/checkout', { replaceState: true });
   }
 
-  $: if (browser && status === 'success' && !cartCleared) {
+  $: if (
+    browser &&
+    status === 'success' &&
+    orderId &&
+    stripeCheckoutConfirmed &&
+    !hasTrackedPurchase(orderId)
+  ) {
+    const items = buildPurchaseItems();
+    if (items.length > 0) {
+      const totalValue = Number(
+        items
+          .reduce(
+            (sum, item) => sum + (item.price || 0) * (item.quantity || 1),
+            0
+          )
+          .toFixed(2)
+      );
+      const currency = items.find(item => item.currency)?.currency || 'USD';
+      trackPurchase(
+        orderId,
+        currency,
+        totalValue,
+        items,
+        `order_${orderId}_purchase`
+      );
+      markPurchaseTracked(orderId);
+    }
+  }
+
+  $: if (
+    browser &&
+    status === 'success' &&
+    stripeCheckoutConfirmed &&
+    !cartCleared
+  ) {
     cart.clear();
     localStorage.removeItem(CHECKOUT_DRAFT_STORAGE_KEY);
     cartCleared = true;
@@ -205,13 +283,6 @@
                 </p>
               {/if}
 
-              <a
-                href="/browse"
-                class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
-              >
-                Continue shopping
-                <ArrowRight class="h-4 w-4" />
-              </a>
             </div>
 
             <aside class="rounded-2xl border border-slate-200 bg-slate-50 p-5">

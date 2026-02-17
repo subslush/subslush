@@ -17,9 +17,16 @@ export type AnalyticsItem = {
 type AnalyticsParams = Record<string, unknown>;
 
 type GtagFunction = (...args: unknown[]) => void;
+type TikTokTrackOptions = {
+  event_id?: string;
+};
 type TikTokPixel = {
   page: (params?: Record<string, unknown>) => void;
-  track: (event: string, params?: Record<string, unknown>) => void;
+  track: (
+    event: string,
+    params?: Record<string, unknown>,
+    options?: TikTokTrackOptions
+  ) => void;
   identify: (params: Record<string, string>) => void;
 };
 
@@ -137,13 +144,30 @@ const trackEvent = (eventName: string, params?: AnalyticsParams): void => {
 const trackTikTokEvent = (eventName: string, params?: AnalyticsParams): void => {
   const ttq = getTtq();
   if (!ttq) return;
-  if (
-    eventName !== 'Login' &&
-    eventName !== 'CompleteRegistration' &&
-    eventName !== 'AddToCart'
-  )
+  const allowedEvents = new Set([
+    'Login',
+    'CompleteRegistration',
+    'AddToCart',
+    'ViewContent',
+    'Search',
+    'InitiateCheckout',
+    'AddPaymentInfo',
+    'Purchase',
+    'PlaceAnOrder'
+  ]);
+  if (!allowedEvents.has(eventName)) {
     return;
-  ttq.track(eventName, params ? cleanParams(params) : {});
+  }
+  const payload = params ? cleanParams(params) : {};
+  const eventIdRaw = payload.event_id;
+  const eventId =
+    typeof eventIdRaw === 'string' && eventIdRaw.trim()
+      ? eventIdRaw.trim()
+      : undefined;
+  if ('event_id' in payload) {
+    delete (payload as Record<string, unknown>).event_id;
+  }
+  ttq.track(eventName, payload, eventId ? { event_id: eventId } : undefined);
 };
 
 const trackTikTokPageView = (): void => {
@@ -214,7 +238,7 @@ export const trackSelectItem = (
   );
 };
 
-export const trackViewItem = (item: AnalyticsItem): void => {
+export const trackViewItem = (item: AnalyticsItem, eventId?: string): void => {
   const normalizedItems = cleanItems([item]);
   if (!normalizedItems.length) return;
   const primaryItem = normalizedItems[0];
@@ -231,14 +255,16 @@ export const trackViewItem = (item: AnalyticsItem): void => {
   trackTikTokEvent('ViewContent', {
     contents,
     value: primaryItem.price,
-    currency: resolveCurrency(primaryItem.currency, normalizedItems)
+    currency: resolveCurrency(primaryItem.currency, normalizedItems),
+    event_id: eventId
   });
 };
 
 export const trackBeginCheckout = (
   currency: string | undefined,
   value: number | undefined,
-  items: AnalyticsItem[]
+  items: AnalyticsItem[],
+  eventId?: string
 ): void => {
   const normalizedItems = cleanItems(items);
   if (!normalizedItems.length) return;
@@ -255,7 +281,8 @@ export const trackBeginCheckout = (
   trackTikTokEvent('InitiateCheckout', {
     contents,
     value,
-    currency: resolveCurrency(currency, normalizedItems)
+    currency: resolveCurrency(currency, normalizedItems),
+    event_id: eventId
   });
 };
 
@@ -281,7 +308,8 @@ export const trackAddPaymentInfo = (
   paymentType: string,
   currency: string | undefined,
   value: number | undefined,
-  items: AnalyticsItem[]
+  items: AnalyticsItem[],
+  eventId?: string
 ): void => {
   const normalizedItems = cleanItems(items);
   if (!normalizedItems.length) return;
@@ -299,14 +327,16 @@ export const trackAddPaymentInfo = (
   trackTikTokEvent('AddPaymentInfo', {
     contents,
     value,
-    currency: resolveCurrency(currency, normalizedItems)
+    currency: resolveCurrency(currency, normalizedItems),
+    event_id: eventId
   });
 };
 
 export const trackTikTokInitiateCheckout = (
   currency: string | undefined,
   value: number | undefined,
-  items: AnalyticsItem[]
+  items: AnalyticsItem[],
+  eventId?: string
 ): void => {
   const normalizedItems = cleanItems(items);
   if (!normalizedItems.length) return;
@@ -315,14 +345,16 @@ export const trackTikTokInitiateCheckout = (
   trackTikTokEvent('InitiateCheckout', {
     contents,
     value,
-    currency: resolveCurrency(currency, normalizedItems)
+    currency: resolveCurrency(currency, normalizedItems),
+    event_id: eventId
   });
 };
 
 export const trackTikTokAddPaymentInfo = (
   currency: string | undefined,
   value: number | undefined,
-  items: AnalyticsItem[]
+  items: AnalyticsItem[],
+  eventId?: string
 ): void => {
   const normalizedItems = cleanItems(items);
   if (!normalizedItems.length) return;
@@ -331,7 +363,8 @@ export const trackTikTokAddPaymentInfo = (
   trackTikTokEvent('AddPaymentInfo', {
     contents,
     value,
-    currency: resolveCurrency(currency, normalizedItems)
+    currency: resolveCurrency(currency, normalizedItems),
+    event_id: eventId
   });
 };
 
@@ -354,7 +387,8 @@ export const trackPlaceAnOrder = (
 export const trackTikTokPurchase = (
   currency: string | undefined,
   value: number | undefined,
-  items: AnalyticsItem[]
+  items: AnalyticsItem[],
+  eventId?: string
 ): void => {
   const normalizedItems = cleanItems(items);
   if (!normalizedItems.length) return;
@@ -363,7 +397,8 @@ export const trackTikTokPurchase = (
   trackTikTokEvent('Purchase', {
     contents,
     value,
-    currency: resolveCurrency(currency, normalizedItems)
+    currency: resolveCurrency(currency, normalizedItems),
+    event_id: eventId
   });
 };
 
@@ -371,7 +406,8 @@ export const trackPurchase = (
   transactionId: string,
   currency: string,
   value: number,
-  items: AnalyticsItem[]
+  items: AnalyticsItem[],
+  eventId?: string
 ): void => {
   const normalizedItems = cleanItems(items);
   if (!normalizedItems.length) return;
@@ -389,11 +425,16 @@ export const trackPurchase = (
   trackTikTokEvent('Purchase', {
     contents,
     value,
-    currency: resolveCurrency(currency, normalizedItems)
+    currency: resolveCurrency(currency, normalizedItems),
+    event_id: eventId
   });
 };
 
-export const trackSearch = (searchTerm: string, items: AnalyticsItem[] = []): void => {
+export const trackSearch = (
+  searchTerm: string,
+  items: AnalyticsItem[] = [],
+  eventId?: string
+): void => {
   const trimmedTerm = searchTerm.trim();
   if (!trimmedTerm) return;
   trackEvent('search', { search_term: trimmedTerm });
@@ -403,7 +444,8 @@ export const trackSearch = (searchTerm: string, items: AnalyticsItem[] = []): vo
     : [];
   trackTikTokEvent('Search', cleanParams({
     search_string: trimmedTerm,
-    contents: contents.length ? contents : undefined
+    contents: contents.length ? contents : undefined,
+    event_id: eventId
   }));
 };
 

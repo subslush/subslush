@@ -66,6 +66,26 @@ export interface AddToCartTrackResponse {
   message: string;
 }
 
+export type TikTokTrackEventType = 'view_content' | 'search';
+
+export interface TikTokTrackEventRequest {
+  event: TikTokTrackEventType;
+  contentId?: string;
+  contentName?: string;
+  contentCategory?: string;
+  price?: number;
+  currency?: string;
+  brand?: string;
+  value?: number;
+  searchString?: string;
+  externalId?: string;
+  eventId?: string;
+}
+
+export interface TikTokTrackEventResponse {
+  message: string;
+}
+
 type QueryParamValue = string | number | boolean | null | undefined;
 
 export interface SubscriptionQuery extends Record<string, QueryParamValue> {

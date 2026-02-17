@@ -30,6 +30,7 @@ export const API_ENDPOINTS = {
     VALIDATE: '/subscriptions/validate-purchase',
     PURCHASE: '/subscriptions/purchase',
     ADD_TO_CART_TRACK: '/subscriptions/track/add-to-cart',
+    EVENT_TRACK: '/subscriptions/track/event',
     MY_SUBSCRIPTIONS: '/subscriptions/my-subscriptions',
     DETAILS: '/subscriptions',
     AUTO_RENEW_ENABLE: '/subscriptions',

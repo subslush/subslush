@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
@@ -264,6 +265,12 @@
     return `cart_${ownerId}_${Date.now()}_${nonce}`;
   };
 
+  const buildViewContentEventId = (contentId: string): string => {
+    const ownerId = getOrCreateGuestId();
+    const nonce = Math.random().toString(16).slice(2, 8);
+    return `view_${ownerId}_${contentId}_${Date.now()}_${nonce}`;
+  };
+
   const formatTermLabel = (months: number): string => {
     if (months === 1) return '1 month';
     if (months % 12 === 0) {
@@ -322,19 +329,35 @@
 
   let lastViewedProductId = '';
   $: {
-    const currentId = product?.id || product?.slug || '';
-    if (!currentId) {
-      lastViewedProductId = '';
-    } else if (currentId !== lastViewedProductId) {
-      const primaryVariant = variants[0];
-      const defaultTerm = primaryVariant
-        ? resolveSelectedTerm(primaryVariant) || resolveDefaultTerm(primaryVariant)
-        : null;
-      const analyticsItem = buildProductItem(primaryVariant, defaultTerm, 'Product Detail');
-      if (analyticsItem) {
-        trackViewItem(analyticsItem);
+    if (browser) {
+      const currentId = product?.id || product?.slug || '';
+      if (!currentId) {
+        lastViewedProductId = '';
+      } else if (currentId !== lastViewedProductId) {
+        const primaryVariant = variants[0];
+        const defaultTerm = primaryVariant
+          ? resolveSelectedTerm(primaryVariant) || resolveDefaultTerm(primaryVariant)
+          : null;
+        const analyticsItem = buildProductItem(primaryVariant, defaultTerm, 'Product Detail');
+        if (analyticsItem) {
+          const contentId = product?.slug || product?.id || currentId;
+          const eventId = buildViewContentEventId(contentId);
+          trackViewItem(analyticsItem, eventId);
+          void subscriptionService.trackTikTokEvent({
+            event: 'view_content',
+            contentId,
+            contentName: product?.name || product?.service_type || undefined,
+            contentCategory: product?.category || product?.service_type || undefined,
+            price: defaultTerm?.total_price,
+            currency: analyticsItem.currency,
+            brand: product?.service_type || undefined,
+            value: defaultTerm?.total_price,
+            externalId: getOrCreateGuestId(),
+            eventId
+          });
+        }
+        lastViewedProductId = currentId;
       }
-      lastViewedProductId = currentId;
     }
   }
 

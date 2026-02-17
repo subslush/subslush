@@ -574,6 +574,10 @@ export interface AdminTask {
   userId?: string | null;
   user_email?: string | null;
   userEmail?: string | null;
+  effective_user_id?: string | null;
+  effectiveUserId?: string | null;
+  effective_user_email?: string | null;
+  effectiveUserEmail?: string | null;
   order_id?: string | null;
   orderId?: string | null;
   order_status?: string | null;

@@ -21,6 +21,7 @@ export interface CheckoutDraftRequest {
   currency: string;
   items: CheckoutDraftItemInput[];
   coupon_code?: string | null;
+  initiate_checkout_event_id?: string | null;
 }
 
 export interface CheckoutPricingSummaryItem {
@@ -61,6 +62,8 @@ export interface CheckoutStripeSessionRequest {
   order_id?: string | null;
   success_url?: string | null;
   cancel_url?: string | null;
+  initiate_checkout_event_id?: string | null;
+  add_payment_info_event_id?: string | null;
 }
 
 export interface CheckoutStripeSessionResponse {
@@ -85,6 +88,9 @@ export interface CheckoutStripeConfirmResponse {
 export interface CheckoutCreditsCompleteRequest {
   checkout_session_key?: string | null;
   order_id?: string | null;
+  initiate_checkout_event_id?: string | null;
+  add_payment_info_event_id?: string | null;
+  purchase_event_id?: string | null;
 }
 
 export interface CheckoutCreditsCompleteResponse {
@@ -103,6 +109,8 @@ export interface CheckoutNowPaymentsInvoiceRequest {
   force_new_invoice?: boolean | null;
   success_url?: string | null;
   cancel_url?: string | null;
+  initiate_checkout_event_id?: string | null;
+  add_payment_info_event_id?: string | null;
 }
 
 export interface CheckoutNowPaymentsInvoiceResponse {

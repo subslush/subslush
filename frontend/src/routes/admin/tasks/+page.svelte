@@ -119,11 +119,29 @@
   };
 
   const resolveUserLabel = (task: AdminTask) => {
-    const email = pickValue(task.userEmail, task.user_email) as string | undefined;
-    const userId = pickValue(task.userId, task.user_id) as string | undefined;
+    const email = pickValue(
+      task.effectiveUserEmail,
+      task.effective_user_email,
+      task.userEmail,
+      task.user_email
+    ) as string | undefined;
+    const userId = pickValue(
+      task.effectiveUserId,
+      task.effective_user_id,
+      task.userId,
+      task.user_id
+    ) as string | undefined;
     if (email) return email;
     return userId || '--';
   };
+
+  const resolveTaskUserId = (task: AdminTask) =>
+    (pickValue(
+      task.effectiveUserId,
+      task.effective_user_id,
+      task.userId,
+      task.user_id
+    ) as string | undefined) || '';
 
   const resolveServiceLabel = (task: AdminTask) => {
     const serviceType = pickValue(task.subscriptionServiceType, task.subscription_service_type) as string | undefined;
@@ -554,7 +572,7 @@
                   </td>
                   <td class="py-3 text-gray-600">
                     <div class="font-semibold text-gray-900">{resolveUserLabel(task)}</div>
-                    <div class="text-xs text-gray-500">{pickValue(task.userId, task.user_id) || '--'}</div>
+                    <div class="text-xs text-gray-500">{resolveTaskUserId(task) || '--'}</div>
                   </td>
                   <td class="py-3 text-gray-600">
                     <div>{formatOptionalDate(resolveDueDate(task))}</div>

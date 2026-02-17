@@ -7,9 +7,12 @@ import { Logger } from '../utils/logger';
 type TikTokEventName =
   | 'CompleteRegistration'
   | 'InitiateCheckout'
+  | 'AddPaymentInfo'
   | 'Purchase'
   | 'Login'
-  | 'AddToCart';
+  | 'AddToCart'
+  | 'ViewContent'
+  | 'Search';
 
 export type TikTokRequestContext = {
   ip?: string | null;
@@ -267,6 +270,81 @@ class TikTokEventsService {
     const page = this.buildPage(params.context);
     const payload: TikTokEventInput = {
       event: 'InitiateCheckout',
+      user: this.buildUserPayload({
+        email: params.email ?? null,
+        externalId: params.userId,
+        ip: params.context?.ip ?? null,
+        userAgent: params.context?.userAgent ?? null,
+        ttclid: params.context?.ttclid ?? null,
+        ttp: params.context?.ttp ?? null,
+      }),
+      ...(params.eventId ? { eventId: params.eventId } : {}),
+      ...(params.properties ? { properties: params.properties } : {}),
+      ...(page ? { page } : {}),
+    };
+    await this.trackEvent(payload);
+  }
+
+  async trackAddPaymentInfo(params: {
+    userId: string;
+    email?: string | null;
+    eventId?: string | null;
+    properties?: Record<string, unknown>;
+    context?: TikTokRequestContext | null;
+  }): Promise<void> {
+    const page = this.buildPage(params.context);
+    const payload: TikTokEventInput = {
+      event: 'AddPaymentInfo',
+      user: this.buildUserPayload({
+        email: params.email ?? null,
+        externalId: params.userId,
+        ip: params.context?.ip ?? null,
+        userAgent: params.context?.userAgent ?? null,
+        ttclid: params.context?.ttclid ?? null,
+        ttp: params.context?.ttp ?? null,
+      }),
+      ...(params.eventId ? { eventId: params.eventId } : {}),
+      ...(params.properties ? { properties: params.properties } : {}),
+      ...(page ? { page } : {}),
+    };
+    await this.trackEvent(payload);
+  }
+
+  async trackViewContent(params: {
+    userId: string;
+    email?: string | null;
+    eventId?: string | null;
+    properties?: Record<string, unknown>;
+    context?: TikTokRequestContext | null;
+  }): Promise<void> {
+    const page = this.buildPage(params.context);
+    const payload: TikTokEventInput = {
+      event: 'ViewContent',
+      user: this.buildUserPayload({
+        email: params.email ?? null,
+        externalId: params.userId,
+        ip: params.context?.ip ?? null,
+        userAgent: params.context?.userAgent ?? null,
+        ttclid: params.context?.ttclid ?? null,
+        ttp: params.context?.ttp ?? null,
+      }),
+      ...(params.eventId ? { eventId: params.eventId } : {}),
+      ...(params.properties ? { properties: params.properties } : {}),
+      ...(page ? { page } : {}),
+    };
+    await this.trackEvent(payload);
+  }
+
+  async trackSearch(params: {
+    userId: string;
+    email?: string | null;
+    eventId?: string | null;
+    properties?: Record<string, unknown>;
+    context?: TikTokRequestContext | null;
+  }): Promise<void> {
+    const page = this.buildPage(params.context);
+    const payload: TikTokEventInput = {
+      event: 'Search',
       user: this.buildUserPayload({
         email: params.email ?? null,
         externalId: params.userId,

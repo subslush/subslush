@@ -88,6 +88,8 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
         let paramCount = 0;
         let sql = `
           SELECT t.*,
+            COALESCE(o.user_id, s.user_id, t.user_id) AS effective_user_id,
+            u.email AS effective_user_email,
             u.email AS user_email,
             o.status AS order_status,
             o.currency AS order_currency,
@@ -106,9 +108,9 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
               ELSE 'pending'
             END as status
           FROM admin_tasks t
-          LEFT JOIN users u ON u.id = t.user_id
           LEFT JOIN orders o ON o.id = t.order_id
           LEFT JOIN subscriptions s ON s.id = t.subscription_id
+          LEFT JOIN users u ON u.id = COALESCE(o.user_id, s.user_id, t.user_id)
           WHERE 1=1
         `;
 

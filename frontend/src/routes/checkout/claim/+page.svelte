@@ -137,10 +137,10 @@
               </p>
               <div class="flex flex-wrap gap-3 pt-2">
                 <a
-                  href="/dashboard/orders"
+                  href="/dashboard/subscriptions"
                   class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
                 >
-                  View orders
+                  View subscriptions
                   <ArrowRight class="h-4 w-4" />
                 </a>
                 <a

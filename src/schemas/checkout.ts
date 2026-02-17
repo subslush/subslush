@@ -13,6 +13,16 @@ const optionalCheckoutSessionKeySchema = z.preprocess(value => {
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
 }, z.string().min(8, 'Checkout session key must be at least 8 characters').max(256, 'Checkout session key is too long').nullable().optional());
+const optionalEventIdSchema = z.preprocess(value => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    return value;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}, z.string().max(150, 'Event ID is too long').nullable().optional());
 
 export const guestIdentitySchema = z.object({
   email: z
@@ -62,6 +72,7 @@ export const guestDraftSchema = z.object({
     .max(64, 'Coupon code is too long')
     .optional()
     .nullable(),
+  initiate_checkout_event_id: optionalEventIdSchema,
 });
 
 export type GuestDraftInput = z.infer<typeof guestDraftSchema>;
@@ -73,7 +84,6 @@ export const guestClaimSchema = z.object({
 export type GuestClaimInput = z.infer<typeof guestClaimSchema>;
 
 const checkoutSessionKeySchema = optionalCheckoutSessionKeySchema;
-
 export const checkoutStripeSessionSchema = z.object({
   checkout_session_key: checkoutSessionKeySchema,
   order_id: uuidSchema.optional().nullable(),
@@ -83,6 +93,8 @@ export const checkoutStripeSessionSchema = z.object({
     .optional()
     .nullable(),
   cancel_url: z.string().url('Cancel URL must be valid').optional().nullable(),
+  initiate_checkout_event_id: optionalEventIdSchema,
+  add_payment_info_event_id: optionalEventIdSchema,
 });
 
 export type CheckoutStripeSessionInput = z.infer<
@@ -92,6 +104,9 @@ export type CheckoutStripeSessionInput = z.infer<
 export const checkoutCreditsCompleteSchema = z.object({
   checkout_session_key: checkoutSessionKeySchema,
   order_id: uuidSchema.optional().nullable(),
+  initiate_checkout_event_id: optionalEventIdSchema,
+  add_payment_info_event_id: optionalEventIdSchema,
+  purchase_event_id: optionalEventIdSchema,
 });
 
 export type CheckoutCreditsCompleteInput = z.infer<
@@ -116,6 +131,8 @@ export const checkoutNowPaymentsInvoiceSchema = z.object({
     .optional()
     .nullable(),
   cancel_url: z.string().url('Cancel URL must be valid').optional().nullable(),
+  initiate_checkout_event_id: optionalEventIdSchema,
+  add_payment_info_event_id: optionalEventIdSchema,
 });
 
 export type CheckoutNowPaymentsInvoiceInput = z.infer<

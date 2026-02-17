@@ -559,7 +559,16 @@
     if (trackingId && trackingId !== lastPurchaseTrackingId) {
       const items = getPurchaseItems();
       if (items.length) {
-        trackPurchase(trackingId, resolvedCurrency, totalCost, items);
+        const purchaseEventId = orderId
+          ? `order_${orderId}_purchase`
+          : undefined;
+        trackPurchase(
+          trackingId,
+          resolvedCurrency,
+          totalCost,
+          items,
+          purchaseEventId
+        );
         lastPurchaseTrackingId = trackingId;
       }
     }
@@ -940,7 +949,13 @@
         await restartStripeCheckout('checkout_updated');
         return;
       }
-      trackAddPaymentInfo('card', resolvedCurrency, totalCost, getPurchaseItems());
+      trackAddPaymentInfo(
+        'card',
+        resolvedCurrency,
+        totalCost,
+        getPurchaseItems(),
+        orderId ? `order_${orderId}_add_payment_info_card` : undefined
+      );
       await startStripeCheckout();
       return;
     }
@@ -948,7 +963,13 @@
     if (paymentMethod === 'credits') {
       await refreshCredits(true);
       if (!showCreditsConfirm) {
-        trackAddPaymentInfo('credits', resolvedCurrency, totalCost, getPurchaseItems());
+        trackAddPaymentInfo(
+          'credits',
+          resolvedCurrency,
+          totalCost,
+          getPurchaseItems(),
+          orderId ? `order_${orderId}_add_payment_info_credits` : undefined
+        );
         showCreditsConfirm = true;
         return;
       }

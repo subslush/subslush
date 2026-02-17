@@ -23,6 +23,7 @@
   import { currency } from '$lib/stores/currency.js';
   import { CURRENCY_OPTIONS } from '$lib/utils/currency.js';
   import { trackSearch } from '$lib/utils/analytics.js';
+  import { subscriptionService } from '$lib/api/subscriptions.js';
   import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
   import CartSidebar from '$lib/components/cart/CartSidebar.svelte';
@@ -110,13 +111,44 @@
   function performSearch() {
     const trimmedQuery = searchQuery.trim();
     if (trimmedQuery) {
-      trackSearch(trimmedQuery);
+      const externalId = getOrCreateGuestId();
+      const eventId = buildSearchEventId(trimmedQuery);
+      trackSearch(trimmedQuery, [], eventId);
+      void subscriptionService.trackTikTokEvent({
+        event: 'search',
+        searchString: trimmedQuery,
+        externalId,
+        eventId
+      });
     }
     const destination = trimmedQuery
       ? `/browse?${new URLSearchParams({ search: trimmedQuery }).toString()}`
       : '/browse';
     goto(destination);
   }
+
+  const getOrCreateGuestId = (): string => {
+    if (typeof window === 'undefined') return 'guest';
+    try {
+      const key = 'tiktok_guest_id';
+      const existing = localStorage.getItem(key);
+      if (existing) return existing;
+      const generated =
+        typeof crypto?.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `guest_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      localStorage.setItem(key, generated);
+      return generated;
+    } catch {
+      return 'guest';
+    }
+  };
+
+  const buildSearchEventId = (query: string): string => {
+    const ownerId = getOrCreateGuestId();
+    const normalizedQuery = query.trim().toLowerCase().replace(/\s+/g, '_');
+    return `search_${ownerId}_${normalizedQuery}_${Date.now()}`;
+  };
 
   function handleSearchKeydown(event: KeyboardEvent) {
     if (event.key !== 'Enter' || event.isComposing) return;

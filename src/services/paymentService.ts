@@ -2256,6 +2256,58 @@ export class PaymentService {
         });
       }
 
+      const orderCurrency = (
+        order.display_currency ||
+        order.currency ||
+        order.items.find(item => item.currency)?.currency ||
+        'USD'
+      ).toUpperCase();
+      const totalValue = Number(
+        (
+          (typeof order.display_total_cents === 'number'
+            ? order.display_total_cents
+            : typeof order.total_cents === 'number'
+              ? order.total_cents
+              : order.items.reduce(
+                  (sum, item) =>
+                    sum +
+                    (Number.isFinite(item.total_price_cents)
+                      ? item.total_price_cents
+                      : 0),
+                  0
+                )) / 100
+        ).toFixed(2)
+      );
+      const primaryItem = order.items[0];
+      const purchaseProperties = {
+        ...buildTikTokProductProperties({
+          value: totalValue,
+          currency: orderCurrency,
+          contentId:
+            primaryItem?.product_variant_id || primaryItem?.id || order.id,
+          contentName:
+            primaryItem?.product_name ||
+            primaryItem?.variant_name ||
+            `Order ${order.id}`,
+          contentCategory: primaryItem?.product_name || null,
+          price: totalValue,
+          brand: null,
+        }),
+        contents: order.items.map(item => ({
+          content_id: item.product_variant_id || item.id,
+          content_type: 'product',
+          content_name: item.product_name || item.variant_name || item.id,
+          quantity: item.quantity,
+          price: Number((item.unit_price_cents / 100).toFixed(2)),
+        })),
+      };
+      void tiktokEventsService.trackPurchase({
+        userId: order.user_id,
+        email: order.contact_email ?? null,
+        eventId: `order_${orderId}_purchase`,
+        properties: purchaseProperties,
+      });
+
       return true;
     } finally {
       if (lockAcquired) {
