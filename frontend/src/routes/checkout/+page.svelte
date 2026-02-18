@@ -45,6 +45,7 @@
   let draftError = '';
   let lastDraftSignature = '';
   let draftTimer: ReturnType<typeof setTimeout> | null = null;
+  let draftRequestCounter = 0;
   let lastIdentityEmail = '';
   let identityEmail: string | null = null;
   let draftInitialized = false;
@@ -111,6 +112,47 @@
     message.toLowerCase().includes('payment_provider_mismatch');
   const normalizeTicker = (value: string | null | undefined): string =>
     (value || '').trim().toLowerCase();
+  const mapCouponErrorMessage = (message: string): string => {
+    const normalized = message
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, ' ')
+      .replace(/\s+/g, ' ');
+
+    if (
+      normalized.includes('not found') ||
+      normalized.includes('invalid code') ||
+      normalized.includes('coupon invalid')
+    ) {
+      return 'This discount code is invalid. Please check the code and try again.';
+    }
+    if (normalized.includes('inactive') || normalized.includes('expired')) {
+      return 'This discount code is no longer active.';
+    }
+    if (normalized.includes('scope mismatch')) {
+      return 'This discount code does not apply to the items in your cart.';
+    }
+    if (normalized.includes('term mismatch')) {
+      return 'This discount code is not available for the selected subscription term.';
+    }
+    if (normalized.includes('first order only')) {
+      return 'This discount code is available for first orders only.';
+    }
+    if (normalized.includes('already redeemed')) {
+      return 'This discount code has already been used on your account.';
+    }
+    if (normalized.includes('max redemptions')) {
+      return 'This discount code has reached its usage limit.';
+    }
+    if (normalized.includes('bound user')) {
+      return 'This discount code is not assigned to your account.';
+    }
+    if (normalized.includes('zero total')) {
+      return 'This discount code cannot be applied to this order.';
+    }
+
+    return 'Unable to apply this discount code. Please review the code and try again.';
+  };
 
   const rebuildDraftForPaymentMethodChange = async (): Promise<boolean> => {
     checkoutSessionKey = null;
@@ -491,6 +533,7 @@
     draftLoading = true;
     draftError = '';
     actionError = '';
+    const requestId = ++draftRequestCounter;
     const shouldSendInitiateCheckout =
       !initiateCheckoutTracked && browser === true;
     const pendingInitiateCheckoutEventId = shouldSendInitiateCheckout
@@ -511,6 +554,11 @@
             }
           : {})
       });
+
+      if (requestId !== draftRequestCounter) {
+        // Ignore stale responses that finish after a newer draft refresh.
+        return true;
+      }
 
       checkoutSessionKey = response.checkout_session_key;
       orderId = response.order_id;
@@ -556,6 +604,10 @@
       persistDraftState();
       return true;
     } catch (error) {
+      if (requestId !== draftRequestCounter) {
+        // A newer refresh is already in progress; suppress stale errors.
+        return false;
+      }
       const message =
         error instanceof Error
           ? error.message
@@ -577,14 +629,16 @@
         return refreshDraft(true);
       }
       if (appliedCouponCode) {
-        couponMessage = message;
+        couponMessage = mapCouponErrorMessage(message);
         appliedCouponCode = null;
       } else {
         draftError = message;
       }
       return false;
     } finally {
-      draftLoading = false;
+      if (requestId === draftRequestCounter) {
+        draftLoading = false;
+      }
     }
   };
 
@@ -599,10 +653,35 @@
 
   const handleApplyCoupon = async () => {
     const next = couponCode.trim();
-    appliedCouponCode = next || null;
     couponMessage = '';
     showDiscountCodeInput = true;
-    await refreshDraft(true);
+    if (!next) {
+      couponMessage = 'Enter a discount code.';
+      return;
+    }
+
+    if (!isValidEmail(contactEmail)) {
+      emailTouched = true;
+      emailError = 'Enter a valid email address.';
+      couponMessage =
+        'Enter a valid checkout email before applying a discount code.';
+      return;
+    }
+
+    const previousCoupon = appliedCouponCode;
+    appliedCouponCode = next;
+    const refreshed = await refreshDraft(true);
+    const normalizedNext = next.toLowerCase();
+    const normalizedApplied =
+      pricing?.normalized_coupon_code?.trim().toLowerCase() ?? null;
+
+    if (!refreshed || normalizedApplied !== normalizedNext) {
+      appliedCouponCode = previousCoupon;
+      if (!couponMessage) {
+        couponMessage =
+          'This discount code is invalid or does not apply to your cart.';
+      }
+    }
   };
 
   const handleClearCoupon = async () => {
