@@ -592,6 +592,43 @@ export class OrderService {
     }
 
     const subject = 'Your SubSlush order is delivered';
+    const credentialsGuideText = !shouldIssueClaimToken
+      ? [
+          '',
+          'How to access credentials and activation instructions:',
+          'Click "Manage" on your delivered subscription.',
+          'If prompted, set a 4-digit PIN you can remember.',
+          'Use the PIN and click "Reveal" to view credentials and activation instructions.',
+          '',
+          'Important: credentials and activation instructions are NOT automatic.',
+          'You must open Manage and Reveal to finish activation.',
+        ].join('\n')
+      : '';
+    const credentialsGuideHtml = !shouldIssueClaimToken
+      ? `
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 16px;background-color:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;">
+            <tr>
+              <td style="padding:14px 16px;font-size:13px;color:#111827;">
+                <div style="font-weight:600;margin-bottom:8px;color:#0f172a;">How to access credentials and activation instructions</div>
+                <ol style="margin:0;padding-left:20px;color:#374151;">
+                  <li style="margin:0 0 8px 0;">Open <strong>My Subscriptions</strong> in your dashboard.</li>
+                  <li style="margin:0 0 8px 0;">Click <strong>Manage</strong> on your delivered subscription.</li>
+                  <li style="margin:0 0 8px 0;">If prompted, set a 4-digit PIN you can remember.</li>
+                  <li style="margin:0;">Use the PIN and click <strong>Reveal</strong> to view credentials and activation instructions.</li>
+                </ol>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 16px;background-color:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;">
+            <tr>
+              <td style="padding:14px 16px;font-size:13px;color:#1e1b4b;">
+                <strong>Important:</strong> Subscription credentials and activation instructions are not automatic.
+                You must complete <strong>Manage + Reveal</strong> to finish activation.
+              </td>
+            </tr>
+          </table>
+        `.trim()
+      : '';
     const text = [
       `Your order ${orderShort} has been delivered.`,
       'Your subscription is now active and available in My Subscriptions.',
@@ -600,6 +637,7 @@ export class OrderService {
       subscriptionsText,
       '',
       `Open My Subscriptions: ${dashboardLink}`,
+      credentialsGuideText,
       `Need help? ${helpLink}`,
       claimText,
     ].join('\n');
@@ -650,6 +688,7 @@ export class OrderService {
                           </td>
                         </tr>
                       </table>
+                      ${credentialsGuideHtml}
                       ${claimHtml}
                       <p style="margin:0;font-size:12px;color:#6b7280;text-align:center;">
                         Need help? Visit our <a href="${helpLink}" style="color:#111827;text-decoration:underline;">help center</a>.
