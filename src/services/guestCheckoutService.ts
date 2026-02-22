@@ -19,7 +19,7 @@ import type {
 } from '../types/checkout';
 
 const CLAIM_TOKEN_BYTES = 32;
-const CLAIM_TOKEN_TTL_HOURS = 24;
+const CLAIM_TOKEN_TTL_HOURS = 72;
 const CHECKOUT_KEY_BYTES = 24;
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
