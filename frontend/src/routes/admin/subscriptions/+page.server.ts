@@ -9,7 +9,7 @@ export const load: PageServerLoad = async ({ fetch, cookies }) => {
   const adminService = createAdminService(fetch, { cookie: cookieHeader });
 
   try {
-    const subscriptions = await adminService.listSubscriptions({ limit: 50 });
+    const subscriptions = await adminService.listSubscriptions();
     return { subscriptions };
   } catch {
     return { subscriptions: [] };
