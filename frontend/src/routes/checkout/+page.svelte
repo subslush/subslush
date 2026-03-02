@@ -1544,6 +1544,10 @@
               />
               <div>
                 <p class="text-sm font-semibold text-slate-900">Pay with card</p>
+                <p class="mt-1 text-xs font-medium text-rose-600">
+                  Card payments are temporarily disabled while we migrate to a new payment processor. Card
+                  checkout will be available again once this migration is complete.
+                </p>
               </div>
             </label>
 
