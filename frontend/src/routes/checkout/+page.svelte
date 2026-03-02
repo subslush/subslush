@@ -1533,13 +1533,14 @@
 
           <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
             <h3 class="text-sm font-semibold text-slate-900">Payment method</h3>
-            <label class="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 hover:bg-slate-50">
+            <label class="flex cursor-not-allowed items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 opacity-80">
               <input
                 type="radio"
                 name="payment-method"
                 value="stripe"
                 bind:group={paymentMethod}
                 class="mt-1 h-4 w-4 text-slate-900"
+                disabled
               />
               <div>
                 <p class="text-sm font-semibold text-slate-900">Pay with card</p>
