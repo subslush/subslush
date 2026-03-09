@@ -55,7 +55,7 @@
 </svelte:head>
 
 <section class="mx-auto max-w-2xl space-y-8 text-center">
-  <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-pink-500 text-white shadow-lg">
+  <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-purple-700 to-pink-600 text-white shadow-lg">
     <CheckCircle class="h-6 w-6" />
   </div>
 

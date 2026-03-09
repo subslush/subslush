@@ -324,7 +324,7 @@
             <div class="relative">
               <div class="h-2 bg-gray-200 rounded-full">
                 <div
-                  class="h-2 bg-gradient-to-r from-cyan-500 to-pink-500 rounded-full"
+                  class="h-2 bg-gradient-to-r from-purple-700 to-pink-600 rounded-full"
                   style="margin-left: {(filters.priceRange.min / 150) * 100}%; width: {((filters.priceRange.max - filters.priceRange.min) / 150) * 100}%"
                 ></div>
               </div>
@@ -370,7 +370,7 @@
         </button>
         <button
           type="button"
-          class="bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-white font-medium py-2 px-6 rounded-lg transition-all duration-200"
+          class="bg-gradient-to-r from-purple-700 to-pink-600 hover:from-purple-800 hover:to-pink-700 text-white font-medium py-2 px-6 rounded-lg transition-all duration-200"
           on:click={() => showFiltersModal = false}
         >
           Apply Filters

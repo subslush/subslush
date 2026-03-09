@@ -75,7 +75,7 @@
               ? 'text-white shadow-md'
               : 'border border-gray-300 text-gray-700 hover:bg-gray-100'
           }"
-          style={selectedDuration === option.months ? 'background: linear-gradient(45deg, #4FC3F7, #F06292)' : ''}
+          style={selectedDuration === option.months ? 'background: linear-gradient(90deg, #7e22ce 0%, #db2777 100%)' : ''}
           on:click|stopPropagation={() => onSelectDuration(option.months)}
         >
           {selectedDuration === option.months ? 'Selected' : 'Select'}

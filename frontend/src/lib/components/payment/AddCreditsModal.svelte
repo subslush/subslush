@@ -1044,7 +1044,7 @@
       <div class="w-full max-w-4xl rounded-2xl border border-gray-200 bg-white shadow-2xl max-h-[95vh] flex flex-col">
         <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100">
           <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 to-pink-500 text-white shadow-sm">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-r from-purple-700 to-pink-600 text-white shadow-sm">
               <CreditCard size={18} />
             </div>
             <div>
@@ -1300,7 +1300,7 @@
                       />
                       <button
                         on:click={copyAddress}
-                        class="px-4 py-3 bg-gradient-to-r from-cyan-500 to-pink-500 text-white hover:opacity-90 transition"
+                        class="px-4 py-3 bg-gradient-to-r from-purple-700 to-pink-600 text-white hover:opacity-90 transition"
                       >
                         {#if addressCopied}
                           <Check size={16} class="text-white" />
@@ -1326,7 +1326,7 @@
                         </div>
                         <button
                           on:click={copyAmount}
-                          class="rounded-lg bg-gradient-to-r from-cyan-500 to-pink-500 px-3 py-2 text-white hover:opacity-90 transition"
+                          class="rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-3 py-2 text-white hover:opacity-90 transition"
                         >
                           {#if amountCopied}
                             <Check size={16} class="text-white" />
@@ -1404,7 +1404,7 @@
             <button
               on:click={handleCreatePayment}
               disabled={!isValidAmount || !selectedCurrency || isCreatingPayment}
-              class="inline-flex items-center px-5 py-2.5 rounded-lg bg-gradient-to-r from-cyan-500 to-pink-500 text-sm font-semibold text-white shadow-sm hover:opacity-90
+              class="inline-flex items-center px-5 py-2.5 rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 text-sm font-semibold text-white shadow-sm hover:opacity-90
                 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {#if isCreatingPayment}

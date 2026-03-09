@@ -1,6 +1,7 @@
 <script lang="ts">
   import TrustBar from '$lib/components/TrustBar.svelte';
   import { Instagram, Music2, Youtube, Twitter, MessageCircle, Twitch } from 'lucide-svelte';
+  import { openCrispChat } from '$lib/consent/thirdParty.js';
 </script>
 
 <!-- Trust Bar -->
@@ -16,7 +17,7 @@
         <div class="mb-4">
           <span
             class="text-2xl font-extrabold bg-gradient-to-r bg-clip-text text-transparent"
-            style="background-image: linear-gradient(45deg, #4FC3F7, #F06292);"
+            style="background-image: linear-gradient(90deg, #7e22ce 0%, #db2777 100%);"
           >
             SubSlush
           </span>
@@ -31,9 +32,13 @@
           <p class="font-medium text-gray-300 mb-2">
             hello@subslush.com
           </p>
-          <p class="text-gray-400">
+          <button
+            type="button"
+            class="text-gray-400 transition-colors hover:text-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-700/40 rounded"
+            on:click={openCrispChat}
+          >
             Live chat support
-          </p>
+          </button>
         </div>
       </div>
 

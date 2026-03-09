@@ -29,7 +29,7 @@
         <div class="flex flex-col sm:flex-row items-center gap-3 pt-2">
           <a
             href="/"
-            class="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-cyan-500 to-pink-500 px-5 py-2 text-sm font-semibold text-white hover:opacity-90"
+            class="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-5 py-2 text-sm font-semibold text-white hover:opacity-90"
           >
             Home
           </a>

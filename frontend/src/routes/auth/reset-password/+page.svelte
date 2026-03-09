@@ -285,7 +285,7 @@
           type="submit"
           disabled={$resetMutation.isPending || resetComplete}
           class="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-white font-medium rounded-lg transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-subslush-blue/20 focus:ring-offset-2 min-h-[52px] shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
-          style="background: linear-gradient(45deg, #4FC3F7, #F06292);"
+          style="background: linear-gradient(90deg, #7e22ce 0%, #db2777 100%);"
           aria-label="Update password"
         >
           {#if $resetMutation.isPending}

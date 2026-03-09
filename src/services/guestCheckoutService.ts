@@ -78,18 +78,26 @@ const buildClaimLink = (token: string): string => {
 const buildPricingSummary = (
   pricing: CheckoutPricingSummary['items'] | null,
   totals: {
+    pricingSnapshotId: string;
+    displayCurrency: string;
+    settlementCurrency: string;
     orderSubtotalCents: number;
     orderDiscountCents: number;
     orderCouponDiscountCents: number;
     orderTotalCents: number;
+    orderSettlementTotalCents: number;
     normalizedCouponCode?: string | null;
   }
 ): CheckoutPricingSummary => ({
   items: pricing ?? [],
+  pricing_snapshot_id: totals.pricingSnapshotId,
+  display_currency: totals.displayCurrency,
+  settlement_currency: totals.settlementCurrency,
   order_subtotal_cents: totals.orderSubtotalCents,
   order_discount_cents: totals.orderDiscountCents,
   order_coupon_discount_cents: totals.orderCouponDiscountCents,
   order_total_cents: totals.orderTotalCents,
+  order_settlement_total_cents: totals.orderSettlementTotalCents,
   normalized_coupon_code: totals.normalizedCouponCode ?? null,
 });
 
@@ -626,6 +634,7 @@ export class GuestCheckoutService {
         variant_name: item.variant.name ?? null,
         service_plan:
           item.variant.service_plan ?? item.variant.variant_code ?? null,
+        pricing_snapshot_id: item.pricingSnapshotId,
         term_months: item.termMonths,
         currency: item.currency,
         base_price_cents: item.basePriceCents,
@@ -635,6 +644,13 @@ export class GuestCheckoutService {
         term_total_cents: item.termTotalCents,
         coupon_discount_cents: item.couponDiscountCents,
         final_total_cents: item.finalTotalCents,
+        settlement_currency: item.settlementCurrency,
+        settlement_base_price_cents: item.settlementBasePriceCents,
+        settlement_term_subtotal_cents: item.settlementTermSubtotalCents,
+        settlement_term_discount_cents: item.settlementTermDiscountCents,
+        settlement_term_total_cents: item.settlementTermTotalCents,
+        settlement_coupon_discount_cents: item.settlementCouponDiscountCents,
+        settlement_final_total_cents: item.settlementFinalTotalCents,
       }));
 
       let orderId: string | null = null;
@@ -685,10 +701,13 @@ export class GuestCheckoutService {
                subtotal_cents = $6,
                discount_cents = $7,
                total_cents = $8,
-               auto_renew = $9,
-               metadata = $10,
+               pricing_snapshot_id = $9,
+               settlement_currency = $10,
+               settlement_total_cents = $11,
+               auto_renew = $12,
+               metadata = $13,
                updated_at = NOW()
-           WHERE id = $11`,
+           WHERE id = $14`,
           [
             normalizedContact,
             currency,
@@ -698,11 +717,19 @@ export class GuestCheckoutService {
             pricing.orderSubtotalCents,
             pricing.orderDiscountCents,
             pricing.orderTotalCents,
+            pricing.pricingSnapshotId,
+            pricing.settlementCurrency,
+            pricing.orderSettlementTotalCents,
             autoRenewAll,
             JSON.stringify({
               ...existingMetadata,
               guest_identity_id: identityRow.id,
               checkout_source: 'guest',
+              display_currency: pricing.displayCurrency,
+              display_total_cents: pricing.orderTotalCents,
+              pricing_snapshot_id: pricing.pricingSnapshotId,
+              settlement_currency: pricing.settlementCurrency,
+              settlement_total_cents: pricing.orderSettlementTotalCents,
               ...(coupon
                 ? {
                     coupon_code: coupon.code,
@@ -733,9 +760,10 @@ export class GuestCheckoutService {
             const orderInsert = await client.query(
               `INSERT INTO orders
                (user_id, status, status_reason, currency, subtotal_cents, discount_cents,
-                coupon_id, coupon_code, coupon_discount_cents, total_cents, paid_with_credits,
-                auto_renew, contact_email, checkout_session_key, metadata)
-               VALUES ($1, 'cart', 'guest_draft', $2, $3, $4, $5, $6, $7, $8, FALSE, $9, $10, $11, $12)
+                coupon_id, coupon_code, coupon_discount_cents, total_cents, pricing_snapshot_id,
+                settlement_currency, settlement_total_cents, paid_with_credits, auto_renew,
+                contact_email, checkout_session_key, metadata)
+               VALUES ($1, 'cart', 'guest_draft', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, FALSE, $12, $13, $14, $15)
                RETURNING id`,
               [
                 userId,
@@ -746,11 +774,19 @@ export class GuestCheckoutService {
                 normalizedCoupon,
                 pricing.orderCouponDiscountCents,
                 pricing.orderTotalCents,
+                pricing.pricingSnapshotId,
+                pricing.settlementCurrency,
+                pricing.orderSettlementTotalCents,
                 autoRenewAll,
                 normalizedContact,
                 checkoutSessionKey,
                 JSON.stringify({
                   ...metadata,
+                  display_currency: pricing.displayCurrency,
+                  display_total_cents: pricing.orderTotalCents,
+                  pricing_snapshot_id: pricing.pricingSnapshotId,
+                  settlement_currency: pricing.settlementCurrency,
+                  settlement_total_cents: pricing.orderSettlementTotalCents,
                   ...(coupon
                     ? {
                         coupon_code: coupon.code,
@@ -806,8 +842,10 @@ export class GuestCheckoutService {
         const itemInsert = await client.query(
           `INSERT INTO order_items
            (order_id, product_variant_id, quantity, unit_price_cents, base_price_cents, discount_percent,
-            term_months, currency, total_price_cents, description, metadata, auto_renew, coupon_discount_cents)
-           VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            term_months, currency, total_price_cents, settlement_currency, settlement_unit_price_cents,
+            settlement_base_price_cents, settlement_coupon_discount_cents, settlement_total_price_cents,
+            description, metadata, auto_renew, coupon_discount_cents)
+           VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
            RETURNING id`,
           [
             orderId,
@@ -818,6 +856,11 @@ export class GuestCheckoutService {
             pricedItem.termMonths,
             pricedItem.currency,
             pricedItem.finalTotalCents,
+            pricedItem.settlementCurrency,
+            pricedItem.settlementFinalTotalCents,
+            pricedItem.settlementBasePriceCents,
+            pricedItem.settlementCouponDiscountCents,
+            pricedItem.settlementFinalTotalCents,
             orderDescription,
             JSON.stringify({
               service_type: serviceType,
@@ -826,6 +869,11 @@ export class GuestCheckoutService {
               discount_percent: pricedItem.discountPercent,
               base_price_cents: pricedItem.basePriceCents,
               total_price_cents: pricedItem.finalTotalCents,
+              settlement_currency: pricedItem.settlementCurrency,
+              settlement_base_price_cents: pricedItem.settlementBasePriceCents,
+              settlement_total_price_cents: pricedItem.settlementFinalTotalCents,
+              settlement_coupon_discount_cents:
+                pricedItem.settlementCouponDiscountCents,
               ...(pricedItem.input.selection_type
                 ? { selection_type: pricedItem.input.selection_type }
                 : {}),
@@ -883,10 +931,14 @@ export class GuestCheckoutService {
         orderId,
         checkoutSessionKey,
         pricing: buildPricingSummary(pricingSummaryItems, {
+          pricingSnapshotId: pricing.pricingSnapshotId,
+          displayCurrency: pricing.displayCurrency,
+          settlementCurrency: pricing.settlementCurrency,
           orderSubtotalCents: pricing.orderSubtotalCents,
           orderDiscountCents: pricing.orderDiscountCents,
           orderCouponDiscountCents: pricing.orderCouponDiscountCents,
           orderTotalCents: pricing.orderTotalCents,
+          orderSettlementTotalCents: pricing.orderSettlementTotalCents,
           normalizedCouponCode: pricing.normalizedCouponCode ?? null,
         }),
       });

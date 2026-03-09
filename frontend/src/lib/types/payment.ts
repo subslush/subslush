@@ -82,7 +82,7 @@ export interface MinDepositResponse {
   internalMinUsd: number;
 }
 
-export type CheckoutPaymentMethod = 'stripe' | 'credits';
+export type CheckoutPaymentMethod = 'card' | 'stripe' | 'pay4bit' | 'credits';
 
 export interface CheckoutRequest {
   variant_id: string;
@@ -93,14 +93,20 @@ export interface CheckoutRequest {
   coupon_code?: string;
 }
 
-export interface CheckoutResponseStripe {
-  payment_method: 'stripe';
+export interface CheckoutResponseCard {
+  payment_method: 'card';
+  payment_provider: 'pay4bit' | 'stripe';
   order_id: string;
   paymentId?: string | null;
   sessionId: string;
   sessionUrl: string;
   amount: number;
   currency: string;
+  pricing_snapshot_id?: string | null;
+  display_currency?: string | null;
+  display_total_cents?: number | null;
+  settlement_currency?: string | null;
+  settlement_total_cents?: number | null;
   checkoutKey?: string;
   status?: UnifiedPaymentStatus;
   upgrade_options?: UpgradeOptions | null;
@@ -109,6 +115,11 @@ export interface CheckoutResponseStripe {
 export interface CheckoutResponseCredits {
   payment_method: 'credits';
   order_id: string;
+  pricing_snapshot_id?: string | null;
+  display_currency?: string | null;
+  display_total_cents?: number | null;
+  settlement_currency?: string | null;
+  settlement_total_cents?: number | null;
   subscription: Subscription;
   transaction: {
     transaction_id: string;
@@ -118,7 +129,8 @@ export interface CheckoutResponseCredits {
   upgrade_options?: UpgradeOptions | null;
 }
 
-export type CheckoutResponse = CheckoutResponseStripe | CheckoutResponseCredits;
+export type CheckoutResponse = CheckoutResponseCard | CheckoutResponseCredits;
+export type CheckoutResponseStripe = CheckoutResponseCard;
 
 export interface CheckoutCancelRequest {
   order_id: string;
@@ -140,9 +152,13 @@ export interface PaymentQuoteRequest {
 }
 
 export interface PaymentQuoteResponse {
+  pricing_snapshot_id?: string | null;
+  display_currency?: string | null;
+  settlement_currency?: string | null;
   subtotal_cents: number;
   term_discount_cents: number;
   coupon_discount_cents: number;
   total_cents: number;
+  settlement_total_cents?: number;
   currency: string;
 }

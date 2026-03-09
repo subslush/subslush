@@ -192,13 +192,19 @@ export class SubscriptionService {
     return unwrapApiData<CreditsRenewalResponse>(response);
   }
 
-  async startStripeRenewalCheckout(
+  async startCardRenewalCheckout(
     subscriptionId: string
   ): Promise<RenewalCheckoutResponse> {
     const response = await apiClient.post(
       `${API_ENDPOINTS.SUBSCRIPTIONS.RENEWAL_CHECKOUT}/${subscriptionId}/renewal/checkout`
     );
     return unwrapApiData<RenewalCheckoutResponse>(response);
+  }
+
+  async startStripeRenewalCheckout(
+    subscriptionId: string
+  ): Promise<RenewalCheckoutResponse> {
+    return this.startCardRenewalCheckout(subscriptionId);
   }
 
   async getCreditBalance(userId: string): Promise<{ balance: number }> {

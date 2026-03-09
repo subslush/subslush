@@ -8,6 +8,7 @@ export interface ScheduledJob {
   handler: () => Promise<void>;
   runOnStart?: boolean;
   initialDelayMs?: number;
+  alignIntervalWithInitialDelay?: boolean;
   lockKey?: string;
   lockTtlSeconds?: number;
 }
@@ -49,7 +50,22 @@ export class JobScheduler {
 
     this.jobs.forEach(job => {
       const runOnStart = job.runOnStart !== false;
-      const initialDelay = job.initialDelayMs ?? 0;
+      const initialDelay = Math.max(0, job.initialDelayMs ?? 0);
+
+      if (job.alignIntervalWithInitialDelay) {
+        const timeout = global.setTimeout(() => {
+          if (runOnStart) {
+            void this.runJob(job);
+          }
+
+          const interval = global.setInterval(() => {
+            void this.runJob(job);
+          }, job.intervalMs);
+          this.timers.set(job.name, interval);
+        }, initialDelay);
+        this.startTimeouts.set(job.name, timeout);
+        return;
+      }
 
       if (runOnStart) {
         const timeout = global.setTimeout(() => {

@@ -13,6 +13,7 @@ import { paymentRepository } from './paymentRepository';
 import { paymentEventRepository } from './paymentEventRepository';
 import { nowPaymentsProvider } from './payments/nowPaymentsProvider';
 import { stripeProvider } from './payments/stripeProvider';
+import { pay4bitProvider } from './payments/pay4bitProvider';
 import { Logger } from '../utils/logger';
 import { paymentMonitoringService } from './paymentMonitoringService';
 import { paymentFailureService } from './paymentFailureService';
@@ -80,6 +81,32 @@ interface StripeOrderContext {
   renewalMethod?: string | null;
   statusReason?: string | null;
 }
+
+type Pay4bitCallbackMethod = 'check' | 'pay' | 'error';
+
+type Pay4bitCallbackPayload = {
+  method: Pay4bitCallbackMethod;
+  localpayId: string;
+  account: string;
+  sum: string;
+  amount: string;
+  currency: string;
+  description: string;
+  sign: string;
+  checkSign: string;
+  projectId?: string | null;
+  paymentType?: string | null;
+  revenue?: string | null;
+};
+
+type Pay4bitCallbackResponse = {
+  statusCode: number;
+  body: {
+    result: {
+      message: string;
+    };
+  };
+};
 
 const NETWORK_SUFFIXES: Array<{ suffix: string; label: string }> = [
   { suffix: 'trc20', label: 'TRC20' },
@@ -155,6 +182,7 @@ export class PaymentService {
     'EHOSTUNREACH',
     'ENETUNREACH',
   ]);
+  private readonly PAY4BIT_CALLBACK_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 
   private mapNowPaymentsStatus(status: PaymentStatus): UnifiedPaymentStatus {
     switch (status) {
@@ -3183,6 +3211,1153 @@ export class PaymentService {
     };
   }
 
+  private parseAmountToCents(raw: string): number | null {
+    const normalized = raw.trim().replace(',', '.');
+    if (!/^\d+(\.\d+)?$/.test(normalized)) {
+      return null;
+    }
+    const amount = Number.parseFloat(normalized);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return null;
+    }
+    return Math.round(amount * 100);
+  }
+
+  private resolveLockedSettlement(order: OrderWithItems): {
+    currency: string;
+    totalCents: number;
+  } | null {
+    const settlementCurrencyRaw =
+      order.settlement_currency || order.currency || null;
+    const settlementCurrency =
+      normalizeCurrencyCode(settlementCurrencyRaw) ||
+      settlementCurrencyRaw?.trim().toUpperCase() ||
+      null;
+    const settlementTotalCents =
+      parseNonNegativeInt(order.settlement_total_cents) ??
+      parseNonNegativeInt(order.total_cents);
+
+    if (
+      !settlementCurrency ||
+      settlementCurrency.length === 0 ||
+      settlementTotalCents === null ||
+      settlementTotalCents <= 0
+    ) {
+      return null;
+    }
+
+    return {
+      currency: settlementCurrency,
+      totalCents: settlementTotalCents,
+    };
+  }
+
+  private buildPay4bitOrderDescription(order: OrderWithItems): string {
+    const primaryItem = order.items[0];
+    const label =
+      primaryItem?.description ||
+      primaryItem?.product_name ||
+      primaryItem?.variant_name ||
+      'Subscription';
+    const suffix = `${Date.now()}-${uuidv4().split('-')[0]}`;
+    const normalizedLabel = label.replace(/\s+/g, ' ').trim();
+    return `${normalizedLabel} #${order.id.slice(0, 8)} ${suffix}`.slice(
+      0,
+      190
+    );
+  }
+
+  private isTruthyFlag(value: unknown): boolean {
+    return value === true || value === 1 || value === '1' || value === 'true';
+  }
+
+  private parsePay4bitRenewalContext(order: OrderWithItems): {
+    subscriptionId: string;
+    termMonths: number;
+    expectedEndDate: Date | null;
+    priceCents: number | null;
+    basePriceCents: number | null;
+    discountPercent: number | null;
+    currency: string | null;
+  } | null {
+    const orderMetadata = parseJsonValue<Record<string, any>>(order.metadata, {});
+    const renewalFlag =
+      this.isTruthyFlag(orderMetadata['renewal']) ||
+      this.isTruthyFlag(orderMetadata['renewal_order']) ||
+      (typeof orderMetadata['order_type'] === 'string' &&
+        orderMetadata['order_type'].toLowerCase() === 'renewal');
+    if (!renewalFlag) {
+      return null;
+    }
+
+    const subscriptionIdRaw =
+      typeof orderMetadata['subscription_id'] === 'string'
+        ? orderMetadata['subscription_id']
+        : null;
+    const subscriptionId = subscriptionIdRaw?.trim() || '';
+    if (!subscriptionId) {
+      return null;
+    }
+
+    const firstItem = order.items[0] ?? null;
+    const termMonths =
+      parsePositiveInt(orderMetadata['term_months']) ??
+      parsePositiveInt(orderMetadata['duration_months']) ??
+      parsePositiveInt(firstItem?.term_months) ??
+      1;
+    const priceCents =
+      parseNonNegativeInt(order.total_cents) ??
+      parseNonNegativeInt(firstItem?.total_price_cents) ??
+      null;
+    const basePriceCents =
+      parseNonNegativeInt(orderMetadata['base_price_cents']) ??
+      parseNonNegativeInt(firstItem?.base_price_cents) ??
+      null;
+    const discountPercent =
+      parsePercent(orderMetadata['discount_percent']) ??
+      parsePercent(firstItem?.discount_percent) ??
+      null;
+    const currencyRaw =
+      normalizeCurrencyCode(order.currency) ||
+      order.currency?.trim().toUpperCase() ||
+      (typeof orderMetadata['currency'] === 'string'
+        ? orderMetadata['currency'].trim().toUpperCase()
+        : null) ||
+      null;
+
+    return {
+      subscriptionId,
+      termMonths,
+      expectedEndDate: this.extractExpectedEndDate(orderMetadata),
+      priceCents,
+      basePriceCents,
+      discountPercent,
+      currency: currencyRaw,
+    };
+  }
+
+  private async applyPay4bitRenewal(params: {
+    order: OrderWithItems;
+    payment: UnifiedPayment;
+    localpayId: string;
+  }): Promise<boolean> {
+    const renewalContext = this.parsePay4bitRenewalContext(params.order);
+    if (!renewalContext) {
+      return false;
+    }
+
+    const subscriptionResult = await subscriptionService.getSubscriptionById(
+      renewalContext.subscriptionId
+    );
+    if (!subscriptionResult.success || !subscriptionResult.data) {
+      Logger.error('Pay4bit renewal subscription not found', {
+        orderId: params.order.id,
+        localpayId: params.localpayId,
+        subscriptionId: renewalContext.subscriptionId,
+      });
+      return false;
+    }
+
+    const subscription = subscriptionResult.data;
+    const termMonths =
+      renewalContext.termMonths ??
+      parsePositiveInt(subscription.term_months) ??
+      1;
+    const now = new Date();
+    const currentEndDate = new Date(subscription.end_date);
+    const termStartAt = currentEndDate > now ? currentEndDate : now;
+    const nextDates = computeNextRenewalDates({
+      endDate: currentEndDate,
+      termMonths,
+      autoRenew: false,
+      now,
+    });
+    const cycleEndDate = resolveCycleEndDate({
+      expectedEndDate: renewalContext.expectedEndDate,
+      endDate: subscription.end_date,
+      termStartAt: subscription.term_start_at ?? null,
+      termMonths,
+    });
+
+    if (!cycleEndDate) {
+      Logger.error('Pay4bit renewal missing cycle end date', {
+        orderId: params.order.id,
+        localpayId: params.localpayId,
+        subscriptionId: renewalContext.subscriptionId,
+      });
+      return false;
+    }
+
+    const renewalLock = await subscriptionRenewalService.beginRenewalProcessing({
+      subscriptionId: renewalContext.subscriptionId,
+      cycleEndDate,
+      paymentId: params.payment.id ?? params.localpayId,
+    });
+    if (!renewalLock.acquired && renewalLock.status === 'succeeded') {
+      Logger.info('Pay4bit renewal already processed', {
+        orderId: params.order.id,
+        localpayId: params.localpayId,
+        subscriptionId: renewalContext.subscriptionId,
+        cycleEndDate: renewalLock.cycleEndDate,
+      });
+      return true;
+    }
+
+    const updateResult = await subscriptionService.updateSubscriptionForRenewalWithGuard(
+      {
+        subscriptionId: renewalContext.subscriptionId,
+        updates: {
+          term_start_at: termStartAt,
+          end_date: nextDates.endDate,
+          renewal_date: nextDates.renewalDate,
+          next_billing_at: null,
+          auto_renew: false,
+          auto_renew_disabled_at: new Date(),
+          status_reason: 'renewal_payment_succeeded',
+          renewal_method: null,
+          ...(renewalContext.priceCents !== null
+            ? { price_cents: renewalContext.priceCents }
+            : {}),
+          ...(renewalContext.basePriceCents !== null
+            ? { base_price_cents: renewalContext.basePriceCents }
+            : {}),
+          ...(renewalContext.discountPercent !== null
+            ? { discount_percent: renewalContext.discountPercent }
+            : {}),
+          ...(termMonths ? { term_months: termMonths } : {}),
+          ...(renewalContext.currency ? { currency: renewalContext.currency } : {}),
+        },
+        expectedEndDate: renewalContext.expectedEndDate,
+      }
+    );
+    if (!updateResult.success) {
+      Logger.error('Pay4bit renewal update failed', {
+        orderId: params.order.id,
+        localpayId: params.localpayId,
+        subscriptionId: renewalContext.subscriptionId,
+        error: updateResult.error,
+      });
+      await subscriptionRenewalService.markRenewalFailed({
+        subscriptionId: renewalContext.subscriptionId,
+        cycleEndDate,
+      });
+      return false;
+    }
+
+    if (!updateResult.updated) {
+      Logger.info('Pay4bit renewal skipped', {
+        orderId: params.order.id,
+        localpayId: params.localpayId,
+        subscriptionId: renewalContext.subscriptionId,
+        reason: updateResult.reason,
+      });
+      await subscriptionRenewalService.markRenewalSucceeded({
+        subscriptionId: renewalContext.subscriptionId,
+        cycleEndDate,
+        paymentId: params.payment.id ?? params.localpayId,
+      });
+      return true;
+    }
+
+    await subscriptionRenewalService.markRenewalSucceeded({
+      subscriptionId: renewalContext.subscriptionId,
+      cycleEndDate,
+      paymentId: params.payment.id ?? params.localpayId,
+    });
+
+    try {
+      await paymentRepository.linkSubscription(
+        'pay4bit',
+        params.localpayId,
+        renewalContext.subscriptionId
+      );
+    } catch (error) {
+      Logger.warn('Failed to link Pay4bit renewal payment to subscription', {
+        orderId: params.order.id,
+        localpayId: params.localpayId,
+        subscriptionId: renewalContext.subscriptionId,
+        error,
+      });
+    }
+
+    const updatedSubscription = updateResult.data
+      ? { ...subscription, ...updateResult.data }
+      : subscription;
+    const renewalNotes = `Renewal paid. Manual renewal required for ${updatedSubscription.service_type} ${updatedSubscription.service_plan}.`;
+    const fulfillmentDueDate = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    await ensureRenewalTask({
+      subscriptionId: renewalContext.subscriptionId,
+      userId: updatedSubscription.user_id,
+      orderId: updatedSubscription.order_id ?? null,
+      dueDate: fulfillmentDueDate,
+      notes: renewalNotes,
+      priority: 'high',
+    });
+
+    return true;
+  }
+
+  private buildPay4bitCallbackIdempotencyRef(
+    localpayId: string,
+    method: Pay4bitCallbackMethod
+  ): string {
+    return `pay4bit:${localpayId}:${method}`;
+  }
+
+  private buildPay4bitCallbackResponse(
+    message: string
+  ): Pay4bitCallbackResponse['body'] {
+    return {
+      result: {
+        message,
+      },
+    };
+  }
+
+  private async getCachedPay4bitCallbackResponse(
+    idempotencyRef: string
+  ): Promise<Pay4bitCallbackResponse | null> {
+    if (!redisClient.isConnected()) {
+      return null;
+    }
+
+    try {
+      const raw = await redisClient.getClient().get(idempotencyRef);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw) as Pay4bitCallbackResponse;
+      if (
+        typeof parsed?.statusCode === 'number' &&
+        typeof parsed?.body?.result?.message === 'string'
+      ) {
+        return parsed;
+      }
+      return null;
+    } catch (error) {
+      Logger.warn('Failed to read Pay4bit callback cache', {
+        idempotencyRef,
+        error,
+      });
+      return null;
+    }
+  }
+
+  private async setCachedPay4bitCallbackResponse(
+    idempotencyRef: string,
+    response: Pay4bitCallbackResponse
+  ): Promise<void> {
+    if (!redisClient.isConnected()) {
+      return;
+    }
+
+    try {
+      await redisClient
+        .getClient()
+        .setex(
+          idempotencyRef,
+          this.PAY4BIT_CALLBACK_CACHE_TTL_SECONDS,
+          JSON.stringify(response)
+        );
+    } catch (error) {
+      Logger.warn('Failed to write Pay4bit callback cache', {
+        idempotencyRef,
+        error,
+      });
+    }
+  }
+
+  private async getStoredPay4bitCallbackResponse(params: {
+    localpayId: string;
+    method: Pay4bitCallbackMethod;
+    account: string;
+  }): Promise<Pay4bitCallbackResponse | null> {
+    const idempotencyRef = this.buildPay4bitCallbackIdempotencyRef(
+      params.localpayId,
+      params.method
+    );
+    const cached = await this.getCachedPay4bitCallbackResponse(idempotencyRef);
+    if (cached) {
+      return cached;
+    }
+
+    let payment = await paymentRepository.findByProviderPaymentId(
+      'pay4bit',
+      params.localpayId
+    );
+    if (!payment) {
+      payment = await paymentRepository.findLatestByOrderId(
+        'pay4bit',
+        params.account,
+        'subscription'
+      );
+    }
+    if (!payment) {
+      return null;
+    }
+
+    const metadata =
+      payment.metadata && typeof payment.metadata === 'object'
+        ? payment.metadata
+        : {};
+    const callbacksRaw = metadata['pay4bit_callback_responses'];
+    if (!callbacksRaw || typeof callbacksRaw !== 'object') {
+      return null;
+    }
+    const callbacks = callbacksRaw as Record<string, any>;
+    const stored = callbacks[idempotencyRef];
+    if (
+      !stored ||
+      typeof stored !== 'object' ||
+      typeof stored.statusCode !== 'number' ||
+      typeof stored.body?.result?.message !== 'string'
+    ) {
+      return null;
+    }
+
+    const resolved = stored as Pay4bitCallbackResponse;
+    await this.setCachedPay4bitCallbackResponse(idempotencyRef, resolved);
+    return resolved;
+  }
+
+  private async persistPay4bitCallbackResponse(params: {
+    payment: UnifiedPayment | null;
+    localpayId: string;
+    method: Pay4bitCallbackMethod;
+    response: Pay4bitCallbackResponse;
+  }): Promise<void> {
+    const idempotencyRef = this.buildPay4bitCallbackIdempotencyRef(
+      params.localpayId,
+      params.method
+    );
+    await this.setCachedPay4bitCallbackResponse(idempotencyRef, params.response);
+
+    if (!params.payment) {
+      return;
+    }
+
+    const metadata =
+      params.payment.metadata && typeof params.payment.metadata === 'object'
+        ? { ...params.payment.metadata }
+        : {};
+    const existingCallbacks =
+      metadata['pay4bit_callback_responses'] &&
+      typeof metadata['pay4bit_callback_responses'] === 'object'
+        ? ({ ...metadata['pay4bit_callback_responses'] } as Record<
+            string,
+            any
+          >)
+        : {};
+    existingCallbacks[idempotencyRef] = params.response;
+    metadata['pay4bit_callback_responses'] = existingCallbacks;
+
+    try {
+      await getDatabasePool().query(
+        `UPDATE payments
+         SET metadata = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [JSON.stringify(metadata), params.payment.id]
+      );
+    } catch (error) {
+      Logger.warn('Failed to persist Pay4bit callback response metadata', {
+        paymentId: params.payment.id,
+        idempotencyRef,
+        error,
+      });
+    }
+  }
+
+  private async getOrCreatePay4bitOrderPayment(params: {
+    order: OrderWithItems;
+    settlementCurrency: string;
+    settlementTotalCents: number;
+    localpayId: string;
+    description: string;
+    callbackMethod: Pay4bitCallbackMethod;
+    rawPayload: Pay4bitCallbackPayload;
+  }): Promise<UnifiedPayment> {
+    const paymentByLocalPayId = await paymentRepository.findByProviderPaymentId(
+      'pay4bit',
+      params.localpayId
+    );
+    if (paymentByLocalPayId) {
+      return paymentByLocalPayId;
+    }
+
+    const latestOrderPayment = await paymentRepository.findLatestByOrderId(
+      'pay4bit',
+      params.order.id,
+      'subscription'
+    );
+    if (latestOrderPayment) {
+      const mergedMetadata = {
+        ...(latestOrderPayment.metadata || {}),
+        pay4bit_localpay_id: params.localpayId,
+        pay4bit_account: params.order.id,
+        pay4bit_desc: params.description,
+        pay4bit_sum: params.rawPayload.sum,
+        pay4bit_amount: params.rawPayload.amount,
+        pay4bit_currency: params.rawPayload.currency,
+        last_callback_method: params.callbackMethod,
+        last_callback_at: new Date().toISOString(),
+      };
+
+      await getDatabasePool().query(
+        `UPDATE payments
+         SET provider_payment_id = $1,
+             metadata = $2,
+             provider_status = $3,
+             updated_at = NOW()
+         WHERE id = $4`,
+        [
+          params.localpayId,
+          JSON.stringify(mergedMetadata),
+          params.callbackMethod,
+          latestOrderPayment.id,
+        ]
+      );
+
+      const refreshed = await paymentRepository.findByProviderPaymentId(
+        'pay4bit',
+        params.localpayId
+      );
+      if (refreshed) {
+        return refreshed;
+      }
+    }
+
+    const createdPaymentInput: CreateUnifiedPaymentInput = {
+      userId: params.order.user_id,
+      provider: 'pay4bit',
+      providerPaymentId: params.localpayId,
+      status: 'pending',
+      providerStatus: params.callbackMethod,
+      purpose: 'subscription',
+      amount: params.settlementTotalCents / 100,
+      currency: params.settlementCurrency.toLowerCase(),
+      paymentMethodType: 'card',
+      orderId: params.order.id,
+      checkoutMode: 'session',
+      metadata: {
+        order_id: params.order.id,
+        checkout_mode: 'session',
+        pay4bit_localpay_id: params.localpayId,
+        pay4bit_account: params.order.id,
+        pay4bit_desc: params.description,
+        pay4bit_sum: params.rawPayload.sum,
+        pay4bit_amount: params.rawPayload.amount,
+        pay4bit_currency: params.rawPayload.currency,
+        callback_url: env.PAY4BIT_CALLBACK_URL,
+        last_callback_method: params.callbackMethod,
+        last_callback_at: new Date().toISOString(),
+      },
+    };
+
+    const singleItemId =
+      params.order.items.length === 1 ? params.order.items[0]?.id : null;
+    if (singleItemId) {
+      createdPaymentInput.orderItemId = singleItemId;
+    }
+
+    return paymentRepository.create(createdPaymentInput);
+  }
+
+  private async processPay4bitOrderPayment(params: {
+    orderId: string;
+    localpayId: string;
+    payment: UnifiedPayment;
+  }): Promise<boolean> {
+    await paymentRepository.updateStatusByProviderPaymentId(
+      'pay4bit',
+      params.localpayId,
+      'succeeded',
+      'pay',
+      {
+        ...(params.payment.metadata || {}),
+        last_callback_method: 'pay',
+        last_callback_at: new Date().toISOString(),
+      }
+    );
+
+    const lockClient = await getDatabasePool().connect();
+    let lockAcquired = false;
+    try {
+      await lockClient.query('SELECT pg_advisory_lock(hashtext($1))', [
+        params.orderId,
+      ]);
+      lockAcquired = true;
+    } catch (error) {
+      Logger.error('Pay4bit PAY lock acquisition failed', {
+        orderId: params.orderId,
+        localpayId: params.localpayId,
+        error,
+      });
+      lockClient.release();
+      return false;
+    }
+
+    try {
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        Logger.error('Pay4bit PAY order not found', {
+          orderId: params.orderId,
+          localpayId: params.localpayId,
+        });
+        return false;
+      }
+
+      if (['in_process', 'paid', 'delivered'].includes(order.status)) {
+        return true;
+      }
+
+      if (!['pending_payment', 'cart'].includes(order.status)) {
+        Logger.warn('Pay4bit PAY ignored for non-payable order', {
+          orderId: params.orderId,
+          localpayId: params.localpayId,
+          status: order.status,
+        });
+        return false;
+      }
+
+      const updateResult = await getDatabasePool().query(
+        `UPDATE orders
+         SET status = 'in_process',
+             status_reason = 'payment_succeeded',
+             payment_provider = 'pay4bit',
+             payment_reference = $1,
+             checkout_mode = 'session',
+             updated_at = NOW()
+         WHERE id = $2
+           AND status IN ('pending_payment', 'cart')
+         RETURNING id`,
+        [params.localpayId, params.orderId]
+      );
+
+      if (updateResult.rows.length === 0) {
+        return true;
+      }
+
+      if (order.items.length === 1) {
+        const singleItem = order.items[0]?.id ?? null;
+        if (singleItem) {
+          await getDatabasePool().query(
+            `UPDATE payments
+             SET order_item_id = COALESCE(order_item_id, $2),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [params.payment.id, singleItem]
+          );
+        }
+      }
+
+      await this.createPaymentItemAllocations({
+        paymentRecordId: params.payment.id,
+        orderItems: order.items,
+      });
+
+      const renewalApplied = await this.applyPay4bitRenewal({
+        order,
+        payment: params.payment,
+        localpayId: params.localpayId,
+      });
+      if (!renewalApplied) {
+        await this.createSubscriptionsForOrder({
+          order,
+          orderItems: order.items,
+          renewalMethod: null,
+        });
+      }
+
+      await couponService.finalizeRedemptionForOrder(params.orderId);
+
+      try {
+        const confirmationResult =
+          await orderService.sendOrderPaymentConfirmationEmail(params.orderId);
+        if (
+          !confirmationResult.success &&
+          !['already_sent', 'renewal_order'].includes(
+            confirmationResult.reason ?? ''
+          )
+        ) {
+          Logger.warn('Failed to send order payment confirmation email', {
+            orderId: params.orderId,
+            reason: confirmationResult.reason,
+          });
+        }
+      } catch (error) {
+        Logger.warn('Order payment confirmation email call failed', {
+          orderId: params.orderId,
+          error,
+        });
+      }
+
+      return true;
+    } finally {
+      if (lockAcquired) {
+        await lockClient.query('SELECT pg_advisory_unlock(hashtext($1))', [
+          params.orderId,
+        ]);
+      }
+      lockClient.release();
+    }
+  }
+
+  async createPay4bitCheckoutSession(params: {
+    orderId: string;
+  }): Promise<
+    | {
+        success: true;
+        sessionId: string;
+        sessionUrl: string;
+        paymentId: string;
+        orderId: string;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      if (!env.PAY4BIT_ENABLED) {
+        return { success: false, error: 'payment_provider_unavailable' };
+      }
+
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      if (!['cart', 'pending_payment'].includes(order.status)) {
+        return { success: false, error: 'order_not_pending' };
+      }
+
+      if (order.payment_provider && order.payment_provider !== 'pay4bit') {
+        return { success: false, error: 'payment_provider_mismatch' };
+      }
+
+      if (!order.items || order.items.length === 0) {
+        return { success: false, error: 'order_missing_items' };
+      }
+
+      const ownAccountValidation = await this.validateOwnAccountSelectionData(
+        order as OrderWithItems
+      );
+      if (!ownAccountValidation.valid) {
+        Logger.warn(
+          'Missing own-account credentials while creating Pay4bit checkout session',
+          {
+            orderId: order.id,
+            item: ownAccountValidation.missingItemLabel,
+          }
+        );
+        return { success: false, error: 'own_account_credentials_required' };
+      }
+
+      const settlement = this.resolveLockedSettlement(order as OrderWithItems);
+      if (!settlement) {
+        return { success: false, error: 'invalid_settlement' };
+      }
+
+      const paymentIntentId = `p4b_intent_${uuidv4()}`;
+      const checkout = pay4bitProvider.buildHostedCheckoutUrl({
+        account: order.id,
+        description: this.buildPay4bitOrderDescription(order as OrderWithItems),
+        amount: pay4bitProvider.formatAmountFromCents(settlement.totalCents),
+        currency: settlement.currency,
+      });
+
+      const createdPaymentInput: CreateUnifiedPaymentInput = {
+        userId: order.user_id,
+        provider: 'pay4bit',
+        providerPaymentId: paymentIntentId,
+        status: 'pending',
+        providerStatus: 'created',
+        purpose: 'subscription',
+        amount: settlement.totalCents / 100,
+        currency: settlement.currency.toLowerCase(),
+        paymentMethodType: 'card',
+        orderId: order.id,
+        checkoutMode: 'session',
+        metadata: {
+          order_id: order.id,
+          checkout_mode: 'session',
+          pay4bit_intent_id: paymentIntentId,
+          pay4bit_account: checkout.account,
+          pay4bit_desc: checkout.description,
+          pay4bit_sum: checkout.sum,
+          pay4bit_currency: checkout.currency,
+          callback_url: env.PAY4BIT_CALLBACK_URL,
+          checkout_url: checkout.checkoutUrl,
+        },
+      };
+
+      const singleItemId = order.items.length === 1 ? order.items[0]?.id : null;
+      if (singleItemId) {
+        createdPaymentInput.orderItemId = singleItemId;
+      }
+
+      const createdPayment = await paymentRepository.create(createdPaymentInput);
+
+      await orderService.updateOrderPayment(order.id, {
+        payment_provider: 'pay4bit',
+        payment_reference: paymentIntentId,
+        checkout_mode: 'session',
+        settlement_currency: settlement.currency,
+        settlement_total_cents: settlement.totalCents,
+        status: order.status === 'cart' ? 'pending_payment' : order.status,
+        status_reason:
+          order.status === 'cart'
+            ? 'awaiting_payment'
+            : (order.status_reason ?? null),
+      });
+
+      return {
+        success: true,
+        sessionId: paymentIntentId,
+        sessionUrl: checkout.checkoutUrl,
+        paymentId: createdPayment.providerPaymentId,
+        orderId: order.id,
+      };
+    } catch (error) {
+      Logger.error('Failed to create Pay4bit checkout session', {
+        orderId: params.orderId,
+        error,
+      });
+      return { success: false, error: 'pay4bit_checkout_failed' };
+    }
+  }
+
+  async confirmPay4bitCheckoutSession(params: {
+    orderId: string;
+    localpayId: string;
+  }): Promise<
+    | {
+        success: true;
+        orderId: string;
+        localpayId: string;
+        orderStatus: string | null;
+        fulfilled: boolean;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      const order = await orderService.getOrderById(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      const normalizedLocalpayId = params.localpayId.trim();
+      if (!normalizedLocalpayId) {
+        return { success: false, error: 'payment_not_completed' };
+      }
+
+      if (
+        order.payment_provider === 'pay4bit' &&
+        order.payment_reference &&
+        order.payment_reference !== normalizedLocalpayId &&
+        ['cart', 'pending_payment'].includes(order.status)
+      ) {
+        return { success: false, error: 'checkout_session_mismatch' };
+      }
+
+      const payment = await paymentRepository.findByProviderPaymentId(
+        'pay4bit',
+        normalizedLocalpayId
+      );
+      if (!payment) {
+        return { success: false, error: 'payment_not_completed' };
+      }
+      if (payment.orderId && payment.orderId !== params.orderId) {
+        return { success: false, error: 'checkout_session_mismatch' };
+      }
+
+      if (payment.status === 'succeeded') {
+        const processed = await this.processPay4bitOrderPayment({
+          orderId: params.orderId,
+          localpayId: normalizedLocalpayId,
+          payment,
+        });
+        if (!processed) {
+          return { success: false, error: 'fulfillment_failed' };
+        }
+      }
+
+      const updatedOrder = await orderService.getOrderById(params.orderId);
+      const fulfilled =
+        updatedOrder !== null &&
+        ['in_process', 'delivered', 'paid'].includes(updatedOrder.status);
+
+      if (!fulfilled) {
+        return { success: false, error: 'payment_not_completed' };
+      }
+
+      return {
+        success: true,
+        orderId: params.orderId,
+        localpayId: normalizedLocalpayId,
+        orderStatus: updatedOrder?.status ?? null,
+        fulfilled,
+      };
+    } catch (error) {
+      Logger.error('Failed to confirm Pay4bit checkout session', {
+        orderId: params.orderId,
+        localpayId: params.localpayId,
+        error,
+      });
+      return { success: false, error: 'pay4bit_session_confirm_failed' };
+    }
+  }
+
+  async handlePay4bitCallback(
+    payload: Pay4bitCallbackPayload
+  ): Promise<Pay4bitCallbackResponse> {
+    const lockClient = await getDatabasePool().connect();
+    const idempotencyRef = this.buildPay4bitCallbackIdempotencyRef(
+      payload.localpayId,
+      payload.method
+    );
+    let lockAcquired = false;
+
+    try {
+      await lockClient.query('SELECT pg_advisory_lock(hashtext($1))', [
+        idempotencyRef,
+      ]);
+      lockAcquired = true;
+
+      const storedResponse = await this.getStoredPay4bitCallbackResponse({
+        localpayId: payload.localpayId,
+        method: payload.method,
+        account: payload.account,
+      });
+      if (storedResponse) {
+        return storedResponse;
+      }
+
+      const isSignValid = pay4bitProvider.verifySign({
+        provided: payload.sign,
+        localpayId: payload.localpayId,
+        account: payload.account,
+        sum: payload.sum,
+      });
+      const isCheckSignValid = pay4bitProvider.verifyCheckSign({
+        provided: payload.checkSign,
+        description: payload.description,
+        account: payload.account,
+        amount: payload.amount,
+      });
+
+      if (!isSignValid || !isCheckSignValid) {
+        const response: Pay4bitCallbackResponse = {
+          statusCode: 401,
+          body: this.buildPay4bitCallbackResponse('invalid_signature'),
+        };
+        await this.persistPay4bitCallbackResponse({
+          payment: null,
+          localpayId: payload.localpayId,
+          method: payload.method,
+          response,
+        });
+        return response;
+      }
+
+      const order = await orderService.getOrderWithItems(payload.account);
+      if (!order) {
+        const maybeSubscription =
+          await subscriptionService.getSubscriptionById(payload.account);
+        const response: Pay4bitCallbackResponse = {
+          statusCode: 404,
+          body: this.buildPay4bitCallbackResponse(
+            maybeSubscription.success && maybeSubscription.data
+              ? 'subscription_callback_not_supported'
+              : 'order_not_found'
+          ),
+        };
+        await this.persistPay4bitCallbackResponse({
+          payment: null,
+          localpayId: payload.localpayId,
+          method: payload.method,
+          response,
+        });
+        return response;
+      }
+
+      const settlement = this.resolveLockedSettlement(order);
+      if (!settlement) {
+        const response: Pay4bitCallbackResponse = {
+          statusCode: 400,
+          body: this.buildPay4bitCallbackResponse('settlement_not_locked'),
+        };
+        await this.persistPay4bitCallbackResponse({
+          payment: null,
+          localpayId: payload.localpayId,
+          method: payload.method,
+          response,
+        });
+        return response;
+      }
+
+      const sumCents = this.parseAmountToCents(payload.sum);
+      const amountCents = this.parseAmountToCents(payload.amount);
+      if (
+        sumCents === null ||
+        amountCents === null ||
+        sumCents !== amountCents ||
+        sumCents !== settlement.totalCents
+      ) {
+        await orderService.updateOrderStatus(
+          order.id,
+          'cancelled',
+          'payment_amount_mismatch'
+        );
+        await couponService.voidRedemptionForOrder(order.id);
+
+        const response: Pay4bitCallbackResponse = {
+          statusCode: 400,
+          body: this.buildPay4bitCallbackResponse('payment_amount_mismatch'),
+        };
+        await this.persistPay4bitCallbackResponse({
+          payment: null,
+          localpayId: payload.localpayId,
+          method: payload.method,
+          response,
+        });
+        return response;
+      }
+
+      if (payload.currency.trim().toUpperCase() !== settlement.currency) {
+        await orderService.updateOrderStatus(
+          order.id,
+          'cancelled',
+          'payment_currency_mismatch'
+        );
+        await couponService.voidRedemptionForOrder(order.id);
+
+        const response: Pay4bitCallbackResponse = {
+          statusCode: 400,
+          body: this.buildPay4bitCallbackResponse('payment_currency_mismatch'),
+        };
+        await this.persistPay4bitCallbackResponse({
+          payment: null,
+          localpayId: payload.localpayId,
+          method: payload.method,
+          response,
+        });
+        return response;
+      }
+
+      const payment = await this.getOrCreatePay4bitOrderPayment({
+        order,
+        settlementCurrency: settlement.currency,
+        settlementTotalCents: settlement.totalCents,
+        localpayId: payload.localpayId,
+        description: payload.description,
+        callbackMethod: payload.method,
+        rawPayload: payload,
+      });
+
+      await this.recordPaymentEvent({
+        provider: 'pay4bit',
+        eventId: idempotencyRef,
+        eventType: `pay4bit_callback_${payload.method}`,
+        orderId: order.id,
+        paymentId: payment.id,
+      });
+
+      await orderService.updateOrderPayment(order.id, {
+        payment_provider: 'pay4bit',
+        payment_reference: payload.localpayId,
+        checkout_mode: 'session',
+        settlement_currency: settlement.currency,
+        settlement_total_cents: settlement.totalCents,
+        status: order.status === 'cart' ? 'pending_payment' : order.status,
+        status_reason:
+          order.status === 'cart'
+            ? 'awaiting_payment'
+            : (order.status_reason ?? null),
+      });
+
+      let response: Pay4bitCallbackResponse;
+      if (payload.method === 'check') {
+        if (
+          order.status === 'cancelled' ||
+          order.status === 'delivered' ||
+          order.status === 'paid'
+        ) {
+          response = {
+            statusCode: 400,
+            body: this.buildPay4bitCallbackResponse('order_not_payable'),
+          };
+        } else {
+          await paymentRepository.updateStatusByProviderPaymentId(
+            'pay4bit',
+            payload.localpayId,
+            'processing',
+            'check',
+            {
+              ...(payment.metadata || {}),
+              last_callback_method: 'check',
+              last_callback_at: new Date().toISOString(),
+            }
+          );
+          response = {
+            statusCode: 200,
+            body: this.buildPay4bitCallbackResponse(
+              'Request successfully processed'
+            ),
+          };
+        }
+      } else if (payload.method === 'error') {
+        await paymentRepository.updateStatusByProviderPaymentId(
+          'pay4bit',
+          payload.localpayId,
+          'failed',
+          'error',
+          {
+            ...(payment.metadata || {}),
+            last_callback_method: 'error',
+            last_callback_at: new Date().toISOString(),
+          }
+        );
+        response = {
+          statusCode: 200,
+          body: this.buildPay4bitCallbackResponse(
+            'Request successfully processed'
+          ),
+        };
+      } else {
+        const processed = await this.processPay4bitOrderPayment({
+          orderId: order.id,
+          localpayId: payload.localpayId,
+          payment,
+        });
+        response = processed
+          ? {
+              statusCode: 200,
+              body: this.buildPay4bitCallbackResponse(
+                'Request successfully processed'
+              ),
+            }
+          : {
+              statusCode: 500,
+              body: this.buildPay4bitCallbackResponse('fulfillment_failed'),
+            };
+      }
+
+      await this.persistPay4bitCallbackResponse({
+        payment,
+        localpayId: payload.localpayId,
+        method: payload.method,
+        response,
+      });
+
+      return response;
+    } finally {
+      if (lockAcquired) {
+        await lockClient.query('SELECT pg_advisory_unlock(hashtext($1))', [
+          idempotencyRef,
+        ]);
+      }
+      lockClient.release();
+    }
+  }
+
   async createStripeCheckoutSession(params: {
     orderId: string;
     successUrl?: string | null;
@@ -3252,7 +4427,7 @@ export class PaymentService {
         return { success: false, error: 'missing_app_base_url' };
       }
 
-      const defaultSuccessUrl = `${baseUrl}/checkout/stripe?status=success&order_id=${order.id}&session_id={CHECKOUT_SESSION_ID}`;
+      const defaultSuccessUrl = `${baseUrl}/checkout/card?status=success&order_id=${order.id}&session_id={CHECKOUT_SESSION_ID}`;
       const defaultCancelUrl = `${baseUrl}/checkout`;
       const successUrl = params.successUrl || defaultSuccessUrl;
       const cancelUrl = params.cancelUrl || defaultCancelUrl;

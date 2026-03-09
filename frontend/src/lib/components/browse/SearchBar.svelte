@@ -305,7 +305,7 @@
                   loading="lazy"
                 />
               {:else}
-                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500/10 to-pink-500/10 flex items-center justify-center text-sm font-bold text-gray-700">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-700/10 to-pink-600/10 flex items-center justify-center text-sm font-bold text-gray-700">
                   {suggestion.serviceName.charAt(0)}
                 </div>
               {/if}

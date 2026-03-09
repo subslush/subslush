@@ -84,7 +84,7 @@
       <button
         on:click={onJoinPlan}
         class="w-full py-3 px-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 focus:ring-2 focus:ring-offset-2 focus:outline-none text-white shadow-lg hover:shadow-xl focus:ring-blue-500"
-        style="background: linear-gradient(45deg, #4FC3F7, #F06292)"
+        style="background: linear-gradient(90deg, #7e22ce 0%, #db2777 100%)"
       >
         Join Plan
       </button>

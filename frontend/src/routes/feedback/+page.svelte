@@ -101,7 +101,7 @@
 </script>
 
 <svelte:head>
-  <title>Report a Bug or Suggestion - SubSlush</title>
+  <title>Feedback - SubSlush</title>
   <meta
     name="description"
     content="Report bugs, issues, or improvement suggestions for the SubSlush Marketplace beta."
@@ -113,7 +113,7 @@
 
   <section class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     <div class="space-y-4">
-      <h1 class="text-3xl font-bold text-gray-900">Beta feedback</h1>
+      <h1 class="text-3xl font-bold text-gray-900">Feedback</h1>
       <p class="text-sm text-gray-600">
         Thanks for helping us improve. Please be as clear as possible when describing issues so we can
         reproduce them. For suggestions, explain the improvement you want and why it matters.

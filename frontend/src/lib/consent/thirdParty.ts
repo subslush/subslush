@@ -159,6 +159,14 @@ const initCrisp = (): void => {
   loadScript('https://client.crisp.chat/l.js', 'crisp-chat');
 };
 
+export const openCrispChat = (): void => {
+  if (!browser) return;
+  initCrisp();
+  const crisp = (window.$crisp = window.$crisp || []);
+  crisp.push(['do', 'chat:show']);
+  crisp.push(['do', 'chat:open']);
+};
+
 export const initConsentSideEffects = (): void => {
   if (!browser) return;
   scheduleSupport();

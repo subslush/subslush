@@ -44,6 +44,7 @@ export interface CheckoutPricingSummaryItem {
   service_type?: string | null;
   variant_name?: string | null;
   service_plan?: string | null;
+  pricing_snapshot_id: string;
   term_months: number;
   currency: string;
   base_price_cents: number;
@@ -53,14 +54,25 @@ export interface CheckoutPricingSummaryItem {
   term_total_cents: number;
   coupon_discount_cents: number;
   final_total_cents: number;
+  settlement_currency: string;
+  settlement_base_price_cents: number;
+  settlement_term_subtotal_cents: number;
+  settlement_term_discount_cents: number;
+  settlement_term_total_cents: number;
+  settlement_coupon_discount_cents: number;
+  settlement_final_total_cents: number;
 }
 
 export interface CheckoutPricingSummary {
   items: CheckoutPricingSummaryItem[];
+  pricing_snapshot_id: string;
+  display_currency: string;
+  settlement_currency: string;
   order_subtotal_cents: number;
   order_discount_cents: number;
   order_coupon_discount_cents: number;
   order_total_cents: number;
+  order_settlement_total_cents: number;
   normalized_coupon_code?: string | null;
 }
 

@@ -1,5 +1,6 @@
 import { getDatabasePool } from '../config/database';
 import { env } from '../config/environment';
+import { createHash, createHmac } from 'crypto';
 import { emailService } from './emailService';
 import { notificationService } from './notificationService';
 import { Logger } from '../utils/logger';
@@ -9,6 +10,13 @@ import {
 } from '../utils/subscriptionHelpers';
 
 type RenewalTaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type SubscriptionReminderStage = '7d' | '3d' | '24h';
+
+type ReminderStageContent = {
+  subject: string;
+  headline: string;
+  summary: string;
+};
 
 const RENEWAL_FULFILLMENT_CATEGORY = 'renewal_fulfillment';
 
@@ -43,6 +51,117 @@ const formatCurrency = (
     return `${normalized} ${amount.toFixed(2)}`;
   }
 };
+
+function getReminderStageContent(
+  stage: SubscriptionReminderStage
+): ReminderStageContent {
+  if (stage === '7d') {
+    return {
+      subject: 'Subscription reminder: renew in 7 days',
+      headline: 'Your subscription expires in 7 days',
+      summary: 'Renew now to avoid service interruption.',
+    };
+  }
+
+  if (stage === '3d') {
+    return {
+      subject: 'Subscription reminder: 3 days left',
+      headline: 'Your subscription expires in 3 days',
+      summary: 'Renew now to keep your access active.',
+    };
+  }
+
+  return {
+    subject: 'Subscription reminder: expires in 24 hours',
+    headline: 'Your subscription expires in 24 hours',
+    summary: 'Renew now to avoid immediate expiration.',
+  };
+}
+
+export function buildSubscriptionRenewalReminderLink(params: {
+  subscriptionId: string;
+  reminderStage: SubscriptionReminderStage;
+  targetExpiryAt: Date;
+}): {
+  url: string;
+  path: string;
+  token: string;
+  tokenHash: string;
+} {
+  const payload = JSON.stringify({
+    subscription_id: params.subscriptionId,
+    stage: params.reminderStage,
+    expiry_at: params.targetExpiryAt.toISOString(),
+  });
+  const payloadEncoded = Buffer.from(payload, 'utf8').toString('base64url');
+  const signature = createHmac('sha256', env.JWT_SECRET)
+    .update(payloadEncoded)
+    .digest('base64url');
+  const token = `${payloadEncoded}.${signature}`;
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  const path = `/dashboard/subscriptions/${params.subscriptionId}/renewal?stage=${encodeURIComponent(
+    params.reminderStage
+  )}&rt=${encodeURIComponent(token)}`;
+
+  return {
+    url: buildAppLink(path),
+    path,
+    token,
+    tokenHash,
+  };
+}
+
+export async function sendSubscriptionExpiryReminderEmail(params: {
+  recipientEmail: string;
+  subscriptionId: string;
+  serviceType: string;
+  servicePlan: string;
+  productName?: string | null;
+  variantName?: string | null;
+  termMonths?: number | null;
+  reminderStage: SubscriptionReminderStage;
+  targetExpiryAt: Date;
+  renewalLink: string;
+}): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  const content = getReminderStageContent(params.reminderStage);
+  const serviceLabel = formatSubscriptionDisplayName({
+    productName: params.productName ?? null,
+    variantName: params.variantName ?? null,
+    serviceType: params.serviceType as any,
+    servicePlan: params.servicePlan as any,
+    termMonths: params.termMonths ?? null,
+  });
+  const subscriptionShort = formatSubscriptionShortId(params.subscriptionId);
+  const expiryDate = params.targetExpiryAt.toISOString().slice(0, 10);
+
+  const text = [
+    `${content.headline}.`,
+    `${serviceLabel} (${subscriptionShort})`,
+    '',
+    `Expiry date: ${expiryDate}`,
+    content.summary,
+    '',
+    `Renew now: ${params.renewalLink}`,
+  ].join('\n');
+
+  const html = `
+    <p>${content.headline}.</p>
+    <p><strong>${serviceLabel}</strong> (${subscriptionShort})</p>
+    <p>Expiry date: ${expiryDate}</p>
+    <p>${content.summary}</p>
+    <p><a href="${params.renewalLink}">Renew now</a></p>
+  `.trim();
+
+  return emailService.send({
+    to: params.recipientEmail,
+    subject: content.subject,
+    text,
+    html,
+  });
+}
 
 async function fetchUserEmail(userId: string): Promise<string | null> {
   try {

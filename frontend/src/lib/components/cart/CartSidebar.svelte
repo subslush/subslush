@@ -110,9 +110,6 @@
                   <div class="min-w-0">
                     <p class="truncate text-sm font-semibold text-slate-900">{item.serviceName}</p>
                     <p class="text-xs text-slate-500 capitalize">{item.plan}</p>
-                    {#if item.termMonths}
-                      <p class="mt-1 text-xs text-slate-500">{item.termMonths} months</p>
-                    {/if}
                   </div>
                   <button
                     type="button"
@@ -144,7 +141,7 @@
         </div>
         <button
           type="button"
-          class="inline-flex w-full items-center justify-center rounded-lg bg-gradient-to-r from-cyan-500 to-pink-500 px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          class="inline-flex w-full items-center justify-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           on:click={handleCheckout}
           disabled={$cart.length === 0}
         >

@@ -29,7 +29,7 @@
   let newLabel: Partial<AdminProductLabel> = {
     name: '',
     slug: '',
-    color: '#F06292',
+    color: '#DB2777',
     description: ''
   };
 
@@ -85,7 +85,7 @@
         description: newLabel.description || undefined,
         color: newLabel.color || undefined
       });
-      newLabel = { name: '', slug: '', color: '#F06292', description: '' };
+      newLabel = { name: '', slug: '', color: '#DB2777', description: '' };
       labelMessage = 'Label created successfully.';
     } catch (error) {
       labelError = getErrorMessage(error, 'Failed to create label.');
@@ -149,7 +149,7 @@
           <p class="text-sm text-red-600">{productError}</p>
         {/if}
         <button
-          class="w-full rounded-lg bg-gradient-to-r from-cyan-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white"
+          class="w-full rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2 text-sm font-semibold text-white"
           type="submit"
           disabled={productSaving}
         >

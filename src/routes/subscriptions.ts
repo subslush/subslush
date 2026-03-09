@@ -3885,7 +3885,7 @@ export async function subscriptionRoutes(
     }
   );
 
-  // Manual Stripe renewal checkout when auto-renew is off
+  // Manual card renewal checkout (Pay4bit hosted link)
   fastify.post<{
     Params: { subscriptionId: string };
   }>(
@@ -3934,17 +3934,10 @@ export async function subscriptionRoutes(
           );
         }
 
-        if (subscription.auto_renew) {
+        if (subscription.renewal_method === 'credits') {
           return ErrorResponses.badRequest(
             reply,
-            'Disable auto-renew to pay manually'
-          );
-        }
-
-        if (subscription.renewal_method !== 'stripe') {
-          return ErrorResponses.badRequest(
-            reply,
-            'Manual Stripe renewal is only available for Stripe subscriptions'
+            'Use credits renewal for this subscription'
           );
         }
 
@@ -3977,13 +3970,30 @@ export async function subscriptionRoutes(
         }
 
         const currency =
-          billingDetails.currency || subscription.currency || 'USD';
+          normalizeCurrencyCode(
+            billingDetails.currency || subscription.currency || 'USD'
+          ) ||
+          (billingDetails.currency || subscription.currency || 'USD')
+            .trim()
+            .toUpperCase();
         const amount = billingDetails.priceCents / 100;
+        const termMonths = Math.max(
+          1,
+          Math.floor(
+            billingDetails.termMonths ||
+              subscription.term_months ||
+              1
+          )
+        );
+        const basePriceCents =
+          billingDetails.basePriceCents ??
+          Math.max(1, Math.round(billingDetails.priceCents / termMonths));
+        const discountPercent = billingDetails.discountPercent ?? 0;
 
         const cycleEndDate = resolveCycleEndDate({
           endDate: subscription.end_date,
           termStartAt: subscription.term_start_at ?? null,
-          termMonths: billingDetails.termMonths,
+          termMonths,
         });
         if (!cycleEndDate) {
           return ErrorResponses.badRequest(
@@ -4005,67 +4015,151 @@ export async function subscriptionRoutes(
           );
         }
 
-        const paymentResult = await paymentService.createStripePayment(
-          userId,
-          amount,
-          currency,
-          `Subscription renewal: ${subscription.service_type} ${subscription.service_plan}`,
-          'one_time',
+        const orderDescription = `Subscription renewal: ${subscription.service_type} ${subscription.service_plan}`;
+        const orderResult = await orderService.createOrderWithItems(
           {
-            renewal: true,
-            subscription_id: subscriptionId,
-            service_type: subscription.service_type,
-            service_plan: subscription.service_plan,
-            duration_months: billingDetails.termMonths,
-            term_months: billingDetails.termMonths,
-            base_price_cents: billingDetails.basePriceCents ?? undefined,
-            discount_percent: billingDetails.discountPercent ?? undefined,
-            expected_end_date: new Date(subscription.end_date).toISOString(),
-            ...(subscription.renewal_date
-              ? {
-                  expected_renewal_date: new Date(
-                    subscription.renewal_date
-                  ).toISOString(),
-                }
-              : {}),
-            off_session: false,
-          },
-          {
-            priceCents: billingDetails.priceCents,
+            user_id: userId,
+            status: 'pending_payment',
+            status_reason: 'renewal_payment_created',
             currency,
-            productVariantId: subscription.product_variant_id ?? null,
-            ...(billingDetails.basePriceCents !== null &&
-            billingDetails.basePriceCents !== undefined
-              ? { basePriceCents: billingDetails.basePriceCents }
-              : {}),
-            ...(billingDetails.discountPercent !== null &&
-            billingDetails.discountPercent !== undefined
-              ? { discountPercent: billingDetails.discountPercent }
-              : {}),
-            termMonths: billingDetails.termMonths,
-            autoRenew: false,
-            nextBillingAt: null,
-            renewalMethod: 'stripe',
-            statusReason: 'renewal_payment_created',
-          }
+            subtotal_cents: billingDetails.priceCents,
+            discount_cents: 0,
+            coupon_discount_cents: 0,
+            total_cents: billingDetails.priceCents,
+            settlement_currency: currency,
+            settlement_total_cents: billingDetails.priceCents,
+            term_months: termMonths,
+            paid_with_credits: false,
+            auto_renew: false,
+            payment_provider: 'pay4bit',
+            metadata: {
+              renewal: true,
+              renewal_order: true,
+              order_type: 'renewal',
+              subscription_id: subscriptionId,
+              service_type: subscription.service_type,
+              service_plan: subscription.service_plan,
+              duration_months: termMonths,
+              term_months: termMonths,
+              base_price_cents: basePriceCents,
+              discount_percent: discountPercent,
+              total_price_cents: billingDetails.priceCents,
+              expected_end_date: new Date(subscription.end_date).toISOString(),
+              ...(subscription.renewal_date
+                ? {
+                    expected_renewal_date: new Date(
+                      subscription.renewal_date
+                    ).toISOString(),
+                  }
+                : {}),
+              auto_renew: false,
+              renewal_method: null,
+            },
+          },
+          [
+            {
+              product_variant_id: subscription.product_variant_id ?? null,
+              quantity: 1,
+              unit_price_cents: billingDetails.priceCents,
+              base_price_cents: basePriceCents,
+              discount_percent: discountPercent,
+              term_months: termMonths,
+              auto_renew: false,
+              coupon_discount_cents: 0,
+              currency,
+              total_price_cents: billingDetails.priceCents,
+              settlement_currency: currency,
+              settlement_unit_price_cents: billingDetails.priceCents,
+              settlement_base_price_cents: basePriceCents,
+              settlement_coupon_discount_cents: 0,
+              settlement_total_price_cents: billingDetails.priceCents,
+              description: orderDescription,
+              metadata: {
+                renewal: true,
+                renewal_order: true,
+                order_type: 'renewal',
+                subscription_id: subscriptionId,
+                service_type: subscription.service_type,
+                service_plan: subscription.service_plan,
+                duration_months: termMonths,
+                term_months: termMonths,
+                base_price_cents: basePriceCents,
+                discount_percent: discountPercent,
+                total_price_cents: billingDetails.priceCents,
+                expected_end_date: new Date(subscription.end_date).toISOString(),
+                auto_renew: false,
+              },
+            },
+          ]
         );
 
-        if (!paymentResult.success) {
+        if (!orderResult.success || !orderResult.data) {
           await subscriptionRenewalService.markRenewalFailed({
             subscriptionId,
             cycleEndDate,
           });
           return ErrorResponses.internalError(
             reply,
-            paymentResult.error || 'Failed to start renewal checkout'
+            'Failed to start renewal checkout'
           );
         }
 
-        if (paymentResult.paymentRecordId) {
+        const cardResult = await paymentService.createPay4bitCheckoutSession({
+          orderId: orderResult.data.id,
+        });
+        if (!cardResult.success) {
+          await orderService.updateOrderStatus(
+            orderResult.data.id,
+            'cancelled',
+            cardResult.error || 'renewal_checkout_failed'
+          );
+          await subscriptionRenewalService.markRenewalFailed({
+            subscriptionId,
+            cycleEndDate,
+          });
+
+          if (
+            [
+              'payment_provider_unavailable',
+              'payment_provider_rate_limited',
+              'payment_provider_misconfigured',
+            ].includes(cardResult.error || '')
+          ) {
+            return ErrorResponses.serviceUnavailable(
+              reply,
+              'Card renewal checkout is temporarily unavailable. Please try again later.'
+            );
+          }
+
+          if (
+            [
+              'order_not_found',
+              'order_not_pending',
+              'payment_provider_mismatch',
+              'order_missing_items',
+              'invalid_currency',
+              'missing_app_base_url',
+              'own_account_credentials_required',
+              'invalid_settlement',
+            ].includes(cardResult.error || '')
+          ) {
+            return ErrorResponses.badRequest(
+              reply,
+              (cardResult.error || 'invalid_checkout').replace(/_/g, ' ')
+            );
+          }
+
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to start renewal checkout'
+          );
+        }
+
+        if (cardResult.paymentId) {
           await subscriptionRenewalService.attachPaymentToRenewal({
             subscriptionId,
             cycleEndDate,
-            paymentId: paymentResult.paymentRecordId,
+            paymentId: cardResult.paymentId,
             status: 'processing',
           });
         } else {
@@ -4077,13 +4171,22 @@ export async function subscriptionRoutes(
 
         await subscriptionService.updateSubscription(subscriptionId, userId, {
           status_reason: 'renewal_payment_created',
+          auto_renew: false,
+          next_billing_at: null,
+          renewal_method: null,
+          auto_renew_disabled_at: new Date(),
         });
 
         return SuccessResponses.ok(reply, {
-          paymentId: paymentResult.paymentId,
-          clientSecret: paymentResult.clientSecret,
-          amount: paymentResult.amount,
-          currency: paymentResult.currency,
+          order_id: orderResult.data.id,
+          payment_provider: 'pay4bit',
+          payment_id: cardResult.paymentId,
+          session_id: cardResult.sessionId,
+          session_url: cardResult.sessionUrl,
+          amount,
+          currency,
+          settlement_currency: currency,
+          settlement_total_cents: billingDetails.priceCents,
         });
       } catch (error) {
         Logger.error('Failed to start manual renewal checkout:', error);

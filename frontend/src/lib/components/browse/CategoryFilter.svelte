@@ -100,7 +100,7 @@
           type="button"
           class={`flex-shrink-0 flex items-center space-x-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 min-w-fit ${
             selectedCategory === category.id
-              ? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900 font-semibold'
+              ? 'bg-gradient-to-br from-purple-700/5 to-pink-600/5 border border-cyan-200 text-gray-900 font-semibold'
               : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800'
           }`}
           style="scroll-snap-align: start; min-height: 44px;"

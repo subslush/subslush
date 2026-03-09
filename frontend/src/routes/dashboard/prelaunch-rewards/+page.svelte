@@ -875,7 +875,7 @@
         <h2 class="text-lg font-semibold text-gray-900">Raffle entries</h2>
         <p class="text-sm text-gray-600">Tickets earned from calendar drops.</p>
       </div>
-      <div class="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-cyan-50 px-5 py-4">
+      <div class="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-purple-50 px-5 py-4">
         <p class="text-xs font-semibold uppercase tracking-widest text-emerald-700">
           Total raffle tickets
         </p>
@@ -922,7 +922,7 @@
         </button>
       </div>
       <div class="space-y-6 px-6 py-6">
-        <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-white via-gray-50 to-cyan-50 px-5 py-4">
+        <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-white via-gray-50 to-purple-50 px-5 py-4">
           <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="space-y-2">
               <p class="text-xs font-semibold uppercase tracking-widest text-gray-500">Value</p>

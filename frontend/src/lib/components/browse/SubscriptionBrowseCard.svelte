@@ -150,7 +150,7 @@
       {/if}
       <!-- Fallback logo -->
       <div
-        class="w-16 h-16 rounded-lg bg-gradient-to-br from-cyan-500/10 to-pink-500/10 flex items-center justify-center text-2xl font-bold text-gray-700"
+        class="w-16 h-16 rounded-lg bg-gradient-to-br from-purple-700/10 to-pink-600/10 flex items-center justify-center text-2xl font-bold text-gray-700"
         style="display: {logoImage || logoUrl ? 'none' : 'flex'}"
       >
         {subscription.serviceName.charAt(0)}
@@ -222,7 +222,7 @@
     <!-- CTA Button -->
     <button
       type="button"
-      class="w-full bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-white font-medium py-3 px-6 rounded-lg transition-all duration-200 hover:shadow-lg group-hover:scale-105 flex items-center justify-center space-x-2"
+      class="w-full bg-gradient-to-r from-purple-700 to-pink-600 hover:from-purple-800 hover:to-pink-700 text-white font-medium py-3 px-6 rounded-lg transition-all duration-200 hover:shadow-lg group-hover:scale-105 flex items-center justify-center space-x-2"
       on:click={(e) => { e.stopPropagation(); handleClick(); }}
     >
       <Eye size={16} />

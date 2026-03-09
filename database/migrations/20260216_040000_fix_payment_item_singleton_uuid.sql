@@ -1,5 +1,9 @@
--- Fix enforce_payment_item_singleton() to avoid MIN(uuid) aggregate errors.
--- Uses array_agg to retrieve the single order_item_id when count = 1.
+-- Migration: Fix payment item singleton trigger function to avoid UUID aggregate errors.
+-- Created: 2026-02-16T04:00:00.000Z
+-- Description: Uses array_agg to retrieve a deterministic UUID when payment has one item.
+
+-- Up Migration
+BEGIN;
 
 CREATE OR REPLACE FUNCTION enforce_payment_item_singleton()
 RETURNS TRIGGER AS $$
@@ -45,3 +49,12 @@ BEGIN
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
+
+COMMIT;
+
+-- Down Migration
+BEGIN;
+
+-- No-op down migration: keeps existing function definition for safety.
+
+COMMIT;

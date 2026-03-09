@@ -31,11 +31,26 @@ process.env['SUPABASE_ANON_KEY'] = 'test-anon-key-for-testing-purposes-only';
 process.env['SUPABASE_SERVICE_ROLE_KEY'] = 'test-service-role-key';
 
 // Payment provider environment variables
+process.env['STRIPE_ENABLED'] = 'true';
 process.env['STRIPE_SECRET_KEY'] = 'test-stripe-secret-key';
 process.env['STRIPE_WEBHOOK_SECRET'] = 'test-stripe-webhook-secret';
+process.env['PAY4BIT_ENABLED'] = 'false';
+process.env['PAY4BIT_PUBLIC_KEY'] = '';
+process.env['PAY4BIT_SECRET_KEY'] = '';
+process.env['PAY4BIT_CALLBACK_URL'] = '';
+process.env['PAY4BIT_BASE_URL'] = '';
 process.env['NOWPAYMENTS_API_KEY'] = 'test-nowpayments-api-key';
 process.env['NOWPAYMENTS_IPN_SECRET'] = 'test-nowpayments-ipn-secret';
 process.env['NOWPAYMENTS_WEBHOOK_URL'] = 'https://api.example.com/webhook';
+process.env['CURRENCYAPI_KEY'] = '';
+process.env['FX_ENGINE_ENABLED'] = 'false';
+process.env['FX_FETCH_JOB_ENABLED'] = 'false';
+process.env['FX_PUBLISH_JOB_ENABLED'] = 'false';
+process.env['FX_FETCH_SCHEDULE_CRON'] = '0 0 * * *';
+process.env['FX_PUBLISH_SCHEDULE_CRON'] = '59 23 * * 0';
+process.env['FX_RATE_STALE_MINUTES'] = '1560';
+process.env['FX_RATE_MAX_STALE_MINUTES'] = '2880';
+process.env['FX_ROUNDING_RULE_VERSION'] = '2026-02-v1';
 
 // Database environment (not used in Redis tests but required by environment validation)
 process.env['DB_HOST'] = 'localhost';

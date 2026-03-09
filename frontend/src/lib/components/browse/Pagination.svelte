@@ -155,7 +155,7 @@
                 type="button"
                 class={`pagination-btn w-10 h-10 text-sm font-medium rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
                   page === pagination.currentPage
-                    ? 'bg-gradient-to-br from-cyan-500/5 to-pink-500/5 border border-cyan-200 text-gray-900 font-semibold'
+                    ? 'bg-gradient-to-br from-purple-700/5 to-pink-600/5 border border-cyan-200 text-gray-900 font-semibold'
                     : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
                 }`}
                 on:click={() => goToPage(page)}

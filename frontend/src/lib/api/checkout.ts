@@ -5,10 +5,10 @@ import type {
   CheckoutIdentityResponse,
   CheckoutDraftRequest,
   CheckoutDraftResponse,
-  CheckoutStripeSessionRequest,
-  CheckoutStripeSessionResponse,
-  CheckoutStripeConfirmRequest,
-  CheckoutStripeConfirmResponse,
+  CheckoutCardSessionRequest,
+  CheckoutCardSessionResponse,
+  CheckoutCardConfirmRequest,
+  CheckoutCardConfirmResponse,
   CheckoutCreditsCompleteRequest,
   CheckoutCreditsCompleteResponse,
   CheckoutNowPaymentsInvoiceRequest,
@@ -31,24 +31,36 @@ export class CheckoutService {
     return unwrapApiData<CheckoutDraftResponse>(response);
   }
 
-  async createStripeSession(
-    input: CheckoutStripeSessionRequest
-  ): Promise<CheckoutStripeSessionResponse> {
+  async createCardSession(
+    input: CheckoutCardSessionRequest
+  ): Promise<CheckoutCardSessionResponse> {
     const response = await apiClient.post(
-      API_ENDPOINTS.CHECKOUT.STRIPE_SESSION,
+      API_ENDPOINTS.CHECKOUT.CARD_SESSION,
       input
     );
-    return unwrapApiData<CheckoutStripeSessionResponse>(response);
+    return unwrapApiData<CheckoutCardSessionResponse>(response);
+  }
+
+  async confirmCardSession(
+    input: CheckoutCardConfirmRequest
+  ): Promise<CheckoutCardConfirmResponse> {
+    const response = await apiClient.post(
+      API_ENDPOINTS.CHECKOUT.CARD_CONFIRM,
+      input
+    );
+    return unwrapApiData<CheckoutCardConfirmResponse>(response);
+  }
+
+  async createStripeSession(
+    input: CheckoutCardSessionRequest
+  ): Promise<CheckoutCardSessionResponse> {
+    return this.createCardSession(input);
   }
 
   async confirmStripeSession(
-    input: CheckoutStripeConfirmRequest
-  ): Promise<CheckoutStripeConfirmResponse> {
-    const response = await apiClient.post(
-      API_ENDPOINTS.CHECKOUT.STRIPE_CONFIRM,
-      input
-    );
-    return unwrapApiData<CheckoutStripeConfirmResponse>(response);
+    input: CheckoutCardConfirmRequest
+  ): Promise<CheckoutCardConfirmResponse> {
+    return this.confirmCardSession(input);
   }
 
   async completeCreditsCheckout(

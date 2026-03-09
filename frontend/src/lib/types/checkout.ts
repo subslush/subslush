@@ -31,6 +31,7 @@ export interface CheckoutPricingSummaryItem {
   service_type?: string | null;
   variant_name?: string | null;
   service_plan?: string | null;
+  pricing_snapshot_id: string;
   term_months: number;
   currency: string;
   base_price_cents: number;
@@ -40,14 +41,25 @@ export interface CheckoutPricingSummaryItem {
   term_total_cents: number;
   coupon_discount_cents: number;
   final_total_cents: number;
+  settlement_currency: string;
+  settlement_base_price_cents: number;
+  settlement_term_subtotal_cents: number;
+  settlement_term_discount_cents: number;
+  settlement_term_total_cents: number;
+  settlement_coupon_discount_cents: number;
+  settlement_final_total_cents: number;
 }
 
 export interface CheckoutPricingSummary {
   items: CheckoutPricingSummaryItem[];
+  pricing_snapshot_id: string;
+  display_currency: string;
+  settlement_currency: string;
   order_subtotal_cents: number;
   order_discount_cents: number;
   order_coupon_discount_cents: number;
   order_total_cents: number;
+  order_settlement_total_cents: number;
   normalized_coupon_code?: string | null;
 }
 
@@ -57,7 +69,7 @@ export interface CheckoutDraftResponse {
   pricing?: CheckoutPricingSummary;
 }
 
-export interface CheckoutStripeSessionRequest {
+export interface CheckoutCardSessionRequest {
   checkout_session_key?: string | null;
   order_id?: string | null;
   success_url?: string | null;
@@ -66,24 +78,34 @@ export interface CheckoutStripeSessionRequest {
   add_payment_info_event_id?: string | null;
 }
 
-export interface CheckoutStripeSessionResponse {
+export interface CheckoutCardSessionResponse {
   order_id: string;
   session_id: string;
   session_url: string;
   payment_id?: string | null;
+  pricing_snapshot_id?: string | null;
+  settlement_currency?: string | null;
+  settlement_total_cents?: number | null;
+  display_currency?: string | null;
+  display_total_cents?: number | null;
 }
 
-export interface CheckoutStripeConfirmRequest {
+export interface CheckoutCardConfirmRequest {
   order_id: string;
   session_id: string;
 }
 
-export interface CheckoutStripeConfirmResponse {
+export interface CheckoutCardConfirmResponse {
   order_id: string;
   session_id: string;
   order_status: string | null;
   fulfilled: boolean;
 }
+
+export type CheckoutStripeSessionRequest = CheckoutCardSessionRequest;
+export type CheckoutStripeSessionResponse = CheckoutCardSessionResponse;
+export type CheckoutStripeConfirmRequest = CheckoutCardConfirmRequest;
+export type CheckoutStripeConfirmResponse = CheckoutCardConfirmResponse;
 
 export interface CheckoutCreditsCompleteRequest {
   checkout_session_key?: string | null;

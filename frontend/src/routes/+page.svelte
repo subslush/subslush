@@ -1,66 +1,250 @@
 <script lang="ts">
-  import { ArrowUp, Play, Music, Bot, Briefcase, Code, Gamepad2, Shield, Users, GraduationCap, Dumbbell, PenTool, ChevronDown, Mail } from 'lucide-svelte';
-  import { onMount } from 'svelte';
+  import { Play, Music, Bot, Briefcase, GraduationCap, Dumbbell, PenTool, ChevronDown, Mail } from 'lucide-svelte';
   import { goto } from '$app/navigation';
   import { apiClient } from '$lib/api/client.js';
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Hero from '$lib/components/home/Hero.svelte';
+  import HomeCategoryRail from '$lib/components/home/HomeCategoryRail.svelte';
   import SubscriptionGrid from '$lib/components/home/SubscriptionGrid.svelte';
   import TrustSignals from '$lib/components/home/TrustSignals.svelte';
-  import TestimonialsSection from '$lib/components/home/TestimonialsSection.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
   import { API_ENDPOINTS } from '$lib/utils/constants.js';
   import { isValidEmail } from '$lib/utils/validators.js';
+  import type { ProductListing } from '$lib/types/subscription.js';
   import type { PageData } from './$types';
 
   export let data: PageData;
 
+  type CuratedProductRule = {
+    slug?: string;
+    aliases?: string[];
+  };
+
+  type HomeShowcaseSection = {
+    key: string;
+    title: string;
+    description: string;
+    listName: string;
+    emptyState: string;
+    products: ProductListing[];
+  };
+
   let searchQuery = '';
-  let showScrollTop = false;
   const categories = [
     { key: 'streaming', label: 'Streaming', icon: Play },
     { key: 'music', label: 'Music', icon: Music },
     { key: 'ai', label: 'AI', icon: Bot },
     { key: 'productivity', label: 'Productivity', icon: Briefcase },
-    { key: 'software', label: 'Software', icon: Code },
-    { key: 'gaming', label: 'Gaming', icon: Gamepad2 },
-    { key: 'security', label: 'Security', icon: Shield },
-    { key: 'social', label: 'Social', icon: Users },
+    { key: 'design', label: 'Design', icon: PenTool },
     { key: 'education', label: 'Education', icon: GraduationCap },
-    { key: 'fitness', label: 'Fitness', icon: Dumbbell },
-    { key: 'design', label: 'Design', icon: PenTool }
+    { key: 'fitness', label: 'Fitness', icon: Dumbbell }
   ];
 
-  const allProducts = Array.isArray(data.products) ? data.products : [];
-  const normalizeCategory = (value?: string | null) => (value || '').trim().toLowerCase();
-  const filterByCategory = (category: string) =>
-    allProducts.filter(product => normalizeCategory(product.category) === category).slice(0, 6);
+  const curatedProductsByCategory: Record<string, CuratedProductRule[]> = {
+    streaming: [
+      { slug: 'netflix', aliases: ['netflix'] },
+      { slug: 'amazon-prime-video', aliases: ['amazon prime video', 'amazon'] },
+      { slug: 'youtube', aliases: ['youtube'] },
+      { slug: 'apple-tv', aliases: ['apple tv'] },
+      { slug: 'crunchyroll', aliases: ['crunchy roll', 'crunchyroll'] }
+    ],
+    music: [
+      { slug: 'spotify', aliases: ['spotify'] },
+      { slug: 'youtube', aliases: ['youtube'] },
+      { slug: 'deezer', aliases: ['deezer'] },
+      { slug: 'apple-music', aliases: ['apple music', 'apple'] }
+    ],
+    ai: [
+      { slug: 'chatgpt', aliases: ['chatgpt'] },
+      { slug: 'google', aliases: ['google ai', 'google'] },
+      { slug: 'perplexity', aliases: ['perplexity'] },
+      { slug: 'lovable', aliases: ['loveable', 'lovable'] },
+      { slug: 'n8n', aliases: ['n8n'] },
+      { slug: 'boltnew', aliases: ['bolt.new', 'bolt new', 'bolt'] }
+    ],
+    productivity: [{ slug: 'notion', aliases: ['notion'] }],
+    design: [
+      { slug: 'adobe-creative-cloud', aliases: ['adobe creative cloud', 'adobe'] },
+      { slug: 'canva', aliases: ['canva'] },
+      { slug: 'figma', aliases: ['figma'] }
+    ],
+    education: [{ slug: 'duolingo', aliases: ['duolingo'] }],
+    fitness: [{ slug: 'myfitnesspal', aliases: ['myfitnesspal', 'my fitness pal'] }]
+  };
 
-  const streamingProducts = filterByCategory('streaming');
-  const aiProducts = filterByCategory('ai');
-  const musicProducts = filterByCategory('music');
+  const normalizeText = (value?: string | null): string =>
+    (value || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
 
-  onMount(() => {
-    const hero = document.getElementById('hero-section');
-    const heroHeight = hero?.offsetHeight ?? 0;
+  const normalizeCategory = (value?: string | null): string => normalizeText(value);
 
-    const bannerEl = document.getElementById('promo-banner');
-    if (bannerEl) {
-      bannerHeight = bannerEl.offsetHeight;
+  const matchesByAlias = (product: ProductListing, aliases: string[]): boolean => {
+    const normalizedName = normalizeText(product.name);
+    const normalizedSlug = normalizeText(product.slug);
+
+    return aliases.some(alias => {
+      const normalizedAlias = normalizeText(alias);
+      return (
+        normalizedAlias.length > 0 &&
+        (normalizedName === normalizedAlias ||
+          normalizedSlug === normalizedAlias ||
+          normalizedName.includes(normalizedAlias) ||
+          normalizedAlias.includes(normalizedName))
+      );
+    });
+  };
+
+  const pickCuratedProducts = (
+    products: ProductListing[],
+    rules: CuratedProductRule[],
+    fallbackCategory?: string
+  ): ProductListing[] => {
+    const selected: ProductListing[] = [];
+    const usedIds = new Set<string>();
+
+    for (const rule of rules) {
+      const candidate = products.find(product => {
+        if (usedIds.has(product.product_id)) {
+          return false;
+        }
+
+        const slugMatch =
+          typeof rule.slug === 'string' &&
+          normalizeText(product.slug) === normalizeText(rule.slug);
+        if (slugMatch) {
+          return true;
+        }
+
+        if (Array.isArray(rule.aliases) && rule.aliases.length > 0) {
+          return matchesByAlias(product, rule.aliases);
+        }
+
+        return false;
+      });
+
+      if (candidate) {
+        selected.push(candidate);
+        usedIds.add(candidate.product_id);
+      }
     }
 
-    const handleScroll = () => {
-      showScrollTop = window.scrollY > heroHeight;
-    };
+    if (!fallbackCategory) {
+      return selected;
+    }
 
-    handleScroll();
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  });
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const categoryFallback = products.filter(product =>
+      normalizeCategory(product.category) === normalizeCategory(fallbackCategory)
+      && !usedIds.has(product.product_id)
+    );
+    return [...selected, ...categoryFallback].slice(0, rules.length);
   };
+
+  let allProducts: ProductListing[] = [];
+  let streamingProducts: ProductListing[] = [];
+  let musicProducts: ProductListing[] = [];
+  let aiProducts: ProductListing[] = [];
+  let productivityProducts: ProductListing[] = [];
+  let designProducts: ProductListing[] = [];
+  let educationProducts: ProductListing[] = [];
+  let fitnessProducts: ProductListing[] = [];
+  let homeShowcaseSections: HomeShowcaseSection[] = [];
+
+  $: allProducts = Array.isArray(data.products) ? (data.products as ProductListing[]) : [];
+  $: streamingProducts = pickCuratedProducts(
+    allProducts,
+    curatedProductsByCategory.streaming,
+    'streaming'
+  );
+  $: musicProducts = pickCuratedProducts(
+    allProducts,
+    curatedProductsByCategory.music,
+    'music'
+  );
+  $: aiProducts = pickCuratedProducts(
+    allProducts,
+    curatedProductsByCategory.ai,
+    'ai'
+  );
+  $: productivityProducts = pickCuratedProducts(
+    allProducts,
+    curatedProductsByCategory.productivity,
+    'productivity'
+  );
+  $: designProducts = pickCuratedProducts(
+    allProducts,
+    curatedProductsByCategory.design,
+    'design'
+  );
+  $: educationProducts = pickCuratedProducts(
+    allProducts,
+    curatedProductsByCategory.education,
+    'education'
+  );
+  $: fitnessProducts = pickCuratedProducts(
+    allProducts,
+    curatedProductsByCategory.fitness,
+    'fitness'
+  );
+  $: homeShowcaseSections = [
+    {
+      key: 'streaming',
+      title: 'Streaming',
+      description: 'Binge-ready subscriptions with verified access and flexible terms.',
+      listName: 'Streaming',
+      emptyState: 'No streaming products yet. Check back soon.',
+      products: streamingProducts
+    },
+    {
+      key: 'music',
+      title: 'Music',
+      description: 'Hi-fi streaming, curated playlists, and premium listening perks.',
+      listName: 'Music',
+      emptyState: 'No music products yet. Check back soon.',
+      products: musicProducts
+    },
+    {
+      key: 'ai',
+      title: 'AI',
+      description: 'Upgrade your workflows with leading AI tools and copilots.',
+      listName: 'AI',
+      emptyState: 'No AI products yet. Check back soon.',
+      products: aiProducts
+    },
+    {
+      key: 'productivity',
+      title: 'Productivity',
+      description: 'Core work tools that keep teams fast, focused, and organized.',
+      listName: 'Productivity',
+      emptyState: 'No productivity products yet. Check back soon.',
+      products: productivityProducts
+    },
+    {
+      key: 'design',
+      title: 'Design',
+      description: 'Professional design stacks for creatives, teams, and solo builders.',
+      listName: 'Design',
+      emptyState: 'No design products yet. Check back soon.',
+      products: designProducts
+    },
+    {
+      key: 'education',
+      title: 'Education',
+      description: 'Learn faster with premium language and study subscriptions.',
+      listName: 'Education',
+      emptyState: 'No education products yet. Check back soon.',
+      products: educationProducts
+    },
+    {
+      key: 'fitness',
+      title: 'Fitness',
+      description: 'Build consistency with premium training and nutrition tools.',
+      listName: 'Fitness',
+      emptyState: 'No fitness products yet. Check back soon.',
+      products: fitnessProducts
+    }
+  ];
 
   function goToCategory(categoryKey: string) {
     const params = new URLSearchParams();
@@ -68,12 +252,7 @@
     goto(`/browse?${params.toString()}`);
   }
 
-  function goToAllCategories() {
-    goto('/browse');
-  }
-
   let showNewsletterDetails = false;
-  let bannerHeight = 0;
   let newsletterEmail = '';
   let newsletterError = '';
   let newsletterSuccess = '';
@@ -134,114 +313,55 @@
 <!-- Home page wrapper with natural scroll -->
 <div class="min-h-screen bg-white">
   <!-- Navigation -->
-  <HomeNav bind:searchQuery />
+  <HomeNav bind:searchQuery catalogProducts={allProducts} />
 
   <!-- Hero Section -->
   <Hero />
 
-  <!-- Categories (sticky carousel) -->
-  <div class="sticky z-40 w-full" style={`top: ${bannerHeight}px`}>
-    <div class="flex justify-center px-2 sm:px-4 lg:px-6">
-      <div class="max-w-5xl w-full border border-gray-200 rounded-lg px-3 py-2 shadow-sm bg-white">
-        <div class="flex items-center justify-between gap-3 mb-2">
-          <p class="text-sm font-semibold text-cyan-600 uppercase tracking-wide">Product categories</p>
-          <button
-            class="text-sm font-semibold text-cyan-600 hover:text-cyan-700 underline underline-offset-4"
-            on:click={goToAllCategories}
-          >
-            Browse all products
-          </button>
-        </div>
-        <div class="flex gap-2 overflow-x-auto pb-1">
-          {#each categories as category}
-            <button
-              class="flex-shrink-0 flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md transition transform hover:-translate-y-0.5"
-              on:click={() => goToCategory(category.key)}
-            >
-              <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-50 to-pink-50 text-cyan-600 border border-cyan-100">
-                <svelte:component this={category.icon} size={14} />
-              </span>
-              <span class="text-sm font-semibold text-gray-900 whitespace-nowrap">{category.label}</span>
-            </button>
-          {/each}
-        </div>
-      </div>
+  <!-- Categories rail -->
+  <section class="bg-white py-3">
+    <div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+      <HomeCategoryRail
+        {categories}
+        on:select={(event) => goToCategory(event.detail)}
+      />
     </div>
-  </div>
+  </section>
 
   <!-- Spacer -->
   <div class="h-6 bg-white"></div>
 
-  <!-- Streaming -->
-  <section class="py-12 bg-white">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <h2 class="text-2xl font-bold text-gray-900">Streaming</h2>
-          <p class="text-sm text-gray-600 mt-1">Binge-ready subscriptions with verified access and flexible terms.</p>
+  {#each homeShowcaseSections as section, sectionIndex (section.key)}
+    <section class={`py-12 bg-white ${sectionIndex > 0 ? 'content-visibility-auto' : ''}`}>
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-bold text-gray-900">{section.title}</h2>
+            <p class="text-sm text-gray-600 mt-1">{section.description}</p>
+          </div>
         </div>
+
+        {#if section.products.length > 0}
+          <SubscriptionGrid products={section.products} listName={section.listName} />
+        {:else}
+          <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
+            {section.emptyState}
+          </div>
+        {/if}
       </div>
-
-      {#if streamingProducts.length > 0}
-        <SubscriptionGrid products={streamingProducts} listName="Streaming" />
-      {:else}
-        <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
-          No streaming products yet. Check back soon.
-        </div>
-      {/if}
-    </div>
-  </section>
-
-  <!-- AI -->
-  <section class="py-12 bg-white content-visibility-auto">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <h2 class="text-2xl font-bold text-gray-900">AI</h2>
-          <p class="text-sm text-gray-600 mt-1">Upgrade your workflows with leading AI tools and copilots.</p>
-        </div>
-      </div>
-
-      {#if aiProducts.length > 0}
-        <SubscriptionGrid products={aiProducts} listName="AI" />
-      {:else}
-        <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
-          No AI products yet. Check back soon.
-        </div>
-      {/if}
-    </div>
-  </section>
-
-  <!-- Music -->
-  <section class="py-12 bg-white content-visibility-auto">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <h2 class="text-2xl font-bold text-gray-900">Music</h2>
-          <p class="text-sm text-gray-600 mt-1">Hi-fi streaming, curated playlists, and premium listening perks.</p>
-        </div>
-      </div>
-
-      {#if musicProducts.length > 0}
-        <SubscriptionGrid products={musicProducts} listName="Music" />
-      {:else}
-        <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
-          No music products yet. Check back soon.
-        </div>
-      {/if}
-    </div>
-  </section>
+    </section>
+  {/each}
 
   <!-- Explore banner -->
   <section class="py-6 bg-white content-visibility-auto">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="rounded-2xl border border-gray-200 bg-gradient-to-r from-cyan-50 via-white to-pink-50 p-6 sm:p-8 shadow-sm">
+      <div class="rounded-2xl border border-gray-200 bg-gradient-to-r from-purple-50 via-white to-pink-50 p-6 sm:p-8 shadow-sm">
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p class="text-xs font-semibold uppercase tracking-wide text-cyan-600">Discover more</p>
             <h3 class="text-2xl font-bold text-gray-900 mt-2">Explore all products &amp; categories</h3>
             <p class="text-sm text-gray-600 mt-1">
-              Browse streaming, AI, music, and every category in one place.
+              Browse streaming, AI, music, productivity, design, education, and fitness in one place.
             </p>
           </div>
           <a
@@ -298,7 +418,7 @@
               />
             </div>
             <button
-              class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm leading-tight font-semibold text-white bg-gradient-to-r from-cyan-500 to-pink-500 shadow-sm hover:shadow-md transition min-h-0 sm:self-center"
+              class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm leading-tight font-semibold text-white bg-gradient-to-r from-purple-700 to-pink-600 shadow-sm hover:shadow-md transition min-h-0 sm:self-center"
               type="button"
               on:click={handleNewsletterSubscribe}
               disabled={newsletterLoading || !newsletterEmailValid}
@@ -324,15 +444,5 @@
     <div class="fixed bottom-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">
       <p class="text-sm">{data.error}</p>
     </div>
-  {/if}
-
-  {#if showScrollTop}
-    <button
-      class="fixed right-6 scroll-to-top-button flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500 text-white shadow-lg hover:bg-cyan-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-      aria-label="Back to top"
-      on:click={scrollToTop}
-    >
-      <ArrowUp size={20} aria-hidden="true" />
-    </button>
   {/if}
 </div>

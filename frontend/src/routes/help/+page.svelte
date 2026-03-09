@@ -3,6 +3,7 @@
   import { Clock, Mail, MessageSquare, ChevronDown, Globe, CreditCard, ShieldCheck, Timer, Wallet, LifeBuoy } from 'lucide-svelte';
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
+  import { openCrispChat } from '$lib/consent/thirdParty.js';
 
   type SupportHourSlot = {
     label: string;
@@ -27,12 +28,12 @@
     {
       tag: 'Eligibility',
       question: 'Can I use SubSlush from any country?',
-      answer: 'Yes. We accept customers worldwide. Checkout supports USD, GBP, CAD, and EUR.',
+      answer: 'Yes. We accept customers worldwide. Checkout supports a broad set of display currencies with locked checkout totals.',
     },
     {
       tag: 'Payments',
       question: 'How can I pay?',
-      answer: 'We accept card and crypto payments. Card payments are processed securely through Stripe. Crypto payments are handled via credits top-ups.',
+      answer: 'We accept card and crypto payments. Card payments use secure hosted checkout. Crypto payments are handled via credits top-ups.',
     },
     {
       tag: 'Delivery',
@@ -61,12 +62,12 @@
     {
       tag: 'Security',
       question: 'Is my payment information stored by SubSlush?',
-      answer: 'No. Card payments are handled by Stripe and we only receive confirmation and transaction references.',
+      answer: 'No. Card payments are handled by a hosted payment provider and we only receive confirmation and transaction references.',
     },
     {
       tag: 'Renewals',
       question: 'Do subscriptions auto-renew?',
-      answer: 'Some plans can renew automatically. You can manage renewal preferences from your dashboard.',
+      answer: 'Renewals are manual. You can start renewal checkout from your dashboard in the renewal window before expiry.',
       linkHref: '/dashboard/subscriptions',
       linkText: 'Manage subscriptions',
     },
@@ -228,7 +229,11 @@
           </p>
 
           <div class="grid gap-4 sm:grid-cols-2">
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <button
+              type="button"
+              class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-700/40"
+              on:click={openCrispChat}
+            >
               <div class="flex items-center gap-2 text-sm font-semibold text-gray-900">
                 <MessageSquare size={18} class="text-cyan-600" aria-hidden="true" />
                 Live chat
@@ -236,7 +241,7 @@
               <p class="mt-2 text-xs text-gray-600">
                 Chat with the team during opening hours for order status, delivery help, or account questions.
               </p>
-            </div>
+            </button>
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
               <div class="flex items-center gap-2 text-sm font-semibold text-gray-900">
                 <Mail size={18} class="text-cyan-600" aria-hidden="true" />
@@ -251,7 +256,7 @@
           <div class="flex flex-wrap gap-3">
             <a
               href="mailto:hello@subslush.com"
-              class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90"
+              class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90"
             >
               <Mail size={16} aria-hidden="true" />
               Email support
@@ -331,7 +336,7 @@
             Payments and billing
           </div>
           <p class="mt-2 text-xs text-gray-600">
-            Pay by card or crypto credits. Transactions are secured by Stripe and our payment partners.
+            Pay by card or crypto credits. Card transactions use secure hosted checkout.
           </p>
         </div>
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

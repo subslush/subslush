@@ -28,7 +28,7 @@
   <!-- Author Section -->
   <div class="flex flex-col items-center">
     <!-- Avatar Circle with Initials -->
-    <div class="w-12 h-12 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-full flex items-center justify-center mb-2">
+    <div class="w-12 h-12 bg-gradient-to-r from-purple-700 to-pink-600 rounded-full flex items-center justify-center mb-2">
       <span class="text-white font-bold text-sm">{getInitials(testimonial.authorName)}</span>
     </div>
 

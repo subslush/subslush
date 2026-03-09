@@ -1,21 +1,78 @@
 import { browser } from '$app/environment';
 
-export const SUPPORTED_CURRENCIES = ['USD', 'GBP', 'CAD', 'EUR'] as const;
+export const SUPPORTED_CURRENCIES = [
+  'USD',
+  'EUR',
+  'AUD',
+  'CAD',
+  'CHF',
+  'CNY',
+  'CZK',
+  'DKK',
+  'GBP',
+  'HKD',
+  'HUF',
+  'JPY',
+  'MYR',
+  'NOK',
+  'PLN',
+  'PHP',
+  'RON',
+  'SEK',
+  'SGD',
+  'THB'
+] as const;
 export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 
-const EUROPE_COUNTRY_CODES = new Set<string>([
-  'AL', 'AD', 'AM', 'AT', 'AZ', 'BY', 'BE', 'BA', 'BG', 'HR', 'CY', 'CZ',
-  'DK', 'EE', 'FI', 'FR', 'GE', 'DE', 'GR', 'HU', 'IS', 'IE', 'IT', 'KZ',
-  'XK', 'LV', 'LI', 'LT', 'LU', 'MT', 'MD', 'MC', 'ME', 'NL', 'MK', 'NO',
-  'PL', 'PT', 'RO', 'RU', 'SM', 'RS', 'SK', 'SI', 'ES', 'SE', 'CH', 'TR',
-  'UA', 'VA', 'EU'
+const COUNTRY_CURRENCY_OVERRIDES: Record<string, SupportedCurrency> = {
+  US: 'USD',
+  AU: 'AUD',
+  CA: 'CAD',
+  CH: 'CHF',
+  CN: 'CNY',
+  CZ: 'CZK',
+  DK: 'DKK',
+  GB: 'GBP',
+  UK: 'GBP',
+  HK: 'HKD',
+  HU: 'HUF',
+  JP: 'JPY',
+  MY: 'MYR',
+  NO: 'NOK',
+  PL: 'PLN',
+  PH: 'PHP',
+  RO: 'RON',
+  SE: 'SEK',
+  SG: 'SGD',
+  TH: 'THB'
+};
+
+const EURO_ZONE_COUNTRY_CODES = new Set<string>([
+  'AD', 'AT', 'BE', 'CY', 'DE', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'IE',
+  'IT', 'LT', 'LU', 'LV', 'MC', 'MT', 'NL', 'PT', 'SI', 'SK', 'SM', 'VA', 'EU'
 ]);
 
 export const CURRENCY_OPTIONS: Array<{ value: SupportedCurrency; label: string }> = [
   { value: 'USD', label: 'EN / USD' },
-  { value: 'GBP', label: 'EN / GBP' },
+  { value: 'EUR', label: 'EN / EUR' },
+  { value: 'AUD', label: 'EN / AUD' },
   { value: 'CAD', label: 'EN / CAD' },
-  { value: 'EUR', label: 'EN / EUR' }
+  { value: 'CHF', label: 'EN / CHF' },
+  { value: 'CNY', label: 'EN / CNY' },
+  { value: 'CZK', label: 'EN / CZK' },
+  { value: 'DKK', label: 'EN / DKK' },
+  { value: 'GBP', label: 'EN / GBP' },
+  { value: 'HKD', label: 'EN / HKD' },
+  { value: 'HUF', label: 'EN / HUF' },
+  { value: 'JPY', label: 'EN / JPY' },
+  { value: 'MYR', label: 'EN / MYR' },
+  { value: 'NOK', label: 'EN / NOK' },
+  { value: 'PLN', label: 'EN / PLN' },
+  { value: 'PHP', label: 'EN / PHP' },
+  { value: 'RON', label: 'EN / RON' },
+  { value: 'SEK', label: 'EN / SEK' },
+  { value: 'SGD', label: 'EN / SGD' },
+  { value: 'THB', label: 'EN / THB' }
 ];
 
 export const normalizeCurrencyCode = (
@@ -33,10 +90,10 @@ export const resolveCurrencyForCountry = (
 ): SupportedCurrency | null => {
   if (!countryCode) return null;
   const normalized = countryCode.trim().toUpperCase();
-  if (normalized === 'US') return 'USD';
-  if (normalized === 'CA') return 'CAD';
-  if (normalized === 'GB' || normalized === 'UK') return 'GBP';
-  if (EUROPE_COUNTRY_CODES.has(normalized)) return 'EUR';
+  if (COUNTRY_CURRENCY_OVERRIDES[normalized]) {
+    return COUNTRY_CURRENCY_OVERRIDES[normalized];
+  }
+  if (EURO_ZONE_COUNTRY_CODES.has(normalized)) return 'EUR';
   return null;
 };
 
@@ -120,10 +177,42 @@ export const resolvePreferredCurrency = (params: {
 
 export const resolveCurrencyLocale = (currency: SupportedCurrency): string => {
   switch (currency) {
+    case 'AUD':
+      return 'en-AU';
+    case 'CHF':
+      return 'de-CH';
+    case 'CNY':
+      return 'zh-CN';
+    case 'CZK':
+      return 'cs-CZ';
+    case 'DKK':
+      return 'da-DK';
     case 'GBP':
       return 'en-GB';
+    case 'HKD':
+      return 'zh-HK';
+    case 'HUF':
+      return 'hu-HU';
+    case 'JPY':
+      return 'ja-JP';
+    case 'MYR':
+      return 'ms-MY';
+    case 'NOK':
+      return 'nb-NO';
+    case 'PLN':
+      return 'pl-PL';
+    case 'PHP':
+      return 'en-PH';
+    case 'RON':
+      return 'ro-RO';
+    case 'SEK':
+      return 'sv-SE';
+    case 'SGD':
+      return 'en-SG';
+    case 'THB':
+      return 'th-TH';
     case 'CAD':
-      return 'en-US';
+      return 'en-CA';
     case 'EUR':
       return 'en-IE';
     case 'USD':

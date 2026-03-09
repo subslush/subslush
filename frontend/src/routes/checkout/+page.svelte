@@ -23,6 +23,7 @@
   } from '$lib/utils/currency.js';
   import type {
     CheckoutPricingSummary,
+    CheckoutPricingSummaryItem,
     CheckoutNowPaymentsInvoiceResponse,
     CheckoutNowPaymentsMinimumResponse
   } from '$lib/types/checkout.js';
@@ -57,10 +58,10 @@
   let couponMessage = '';
   let showDiscountCodeInput = false;
 
-  let paymentMethod: 'stripe' | 'crypto' | 'credits' | null = null;
+  let paymentMethod: 'card' | 'crypto' | 'credits' | null = null;
   let redirecting = false;
   let actionError = '';
-  let lastPaymentMethod: 'stripe' | 'crypto' | 'credits' | null = null;
+  let lastPaymentMethod: 'card' | 'crypto' | 'credits' | null = null;
   type OwnAccountCheckoutInput = {
     accountIdentifier: string;
     credentials: string;
@@ -170,7 +171,15 @@
     return normalized.length >= 8 ? normalized : null;
   };
 
-  const resolveOrderCurrency = (items: CartItem[]): SupportedCurrency => {
+  const resolveOrderCurrency = (
+    items: CartItem[],
+    selectedCurrency: string | null | undefined
+  ): SupportedCurrency => {
+    const normalizedSelectedCurrency = normalizeCurrencyCode(selectedCurrency);
+    if (normalizedSelectedCurrency) {
+      return normalizedSelectedCurrency;
+    }
+
     const distinct = new Set<SupportedCurrency>(
       items
         .map(item => normalizeCurrencyCode(item.currency))
@@ -182,7 +191,58 @@
         return singleCurrency;
       }
     }
-    return $currency || 'USD';
+    return 'USD';
+  };
+
+  const resolvePricingItemForCartItem = (
+    item: CartItem,
+    index: number
+  ): CheckoutPricingSummaryItem | null => {
+    if (!pricing || !Array.isArray(pricing.items)) {
+      return null;
+    }
+
+    const expectedVariantId = item.variantId || '';
+    const expectedTermMonths =
+      typeof item.termMonths === 'number' && Number.isFinite(item.termMonths)
+        ? Math.max(1, Math.floor(item.termMonths))
+        : null;
+
+    const indexed = pricing.items[index];
+    if (
+      indexed &&
+      indexed.variant_id === expectedVariantId &&
+      (expectedTermMonths === null || indexed.term_months === expectedTermMonths)
+    ) {
+      return indexed;
+    }
+
+    return (
+      pricing.items.find(
+        pricingItem =>
+          pricingItem.variant_id === expectedVariantId &&
+          (expectedTermMonths === null ||
+            pricingItem.term_months === expectedTermMonths)
+      ) ?? null
+    );
+  };
+
+  const resolveCheckoutLineTotal = (
+    item: CartItem,
+    index: number
+  ): { amount: number; currency: SupportedCurrency } => {
+    const pricedItem = resolvePricingItemForCartItem(item, index);
+    if (pricedItem) {
+      return {
+        amount: pricedItem.final_total_cents / 100,
+        currency: normalizeCurrencyCode(pricedItem.currency) || orderCurrency
+      };
+    }
+
+    return {
+      amount: item.price * item.quantity,
+      currency: normalizeCurrencyCode(item.currency) || orderCurrency
+    };
   };
 
   const CRYPTO_COIN_PRIORITY = [
@@ -255,7 +315,7 @@
     items.map(item => ({
       variant_id: item.variantId || '',
       term_months: item.termMonths ?? null,
-      auto_renew: item.autoRenew ?? true,
+      auto_renew: false,
       selection_type: item.upgradeSelectionType ?? null,
       account_identifier:
         item.upgradeSelectionType === 'upgrade_own_account'
@@ -381,7 +441,7 @@
           id: item.id,
           variant_id: item.variantId,
           term_months: item.termMonths,
-          auto_renew: item.autoRenew ?? true,
+          auto_renew: false,
           selection_type: item.upgradeSelectionType ?? null,
           own_account_credential_requirement:
             item.upgradeSelectionType === 'upgrade_own_account'
@@ -519,7 +579,7 @@
 
     const items = $cart;
     if (items.length === 0) return false;
-    const currencyCode = resolveOrderCurrency(items);
+    const currencyCode = resolveOrderCurrency(items, $currency);
     const signature = buildDraftSignature(
       normalizeEmail(contactEmail),
       currencyCode,
@@ -764,7 +824,7 @@
       return;
     }
 
-    const normalizedCurrency = resolveOrderCurrency($cart);
+    const normalizedCurrency = resolveOrderCurrency($cart, $currency);
     if (normalizedCurrency !== 'USD') {
       creditsRequired = null;
       creditsQuoteMessage = 'Credits checkout is only available for USD pricing.';
@@ -825,7 +885,7 @@
     return `Please fill in the required account details before payment: ${missingFields.join(', ')}.`;
   };
 
-  const handleStripeCheckout = async () => {
+  const handleCardCheckout = async () => {
     actionError = '';
     if (!isValidEmail(contactEmail)) {
       emailTouched = true;
@@ -845,10 +905,10 @@
       return;
     }
 
-    const startStripeSession = async (trackingIds?: {
+    const startCardSession = async (trackingIds?: {
       addPaymentInfoEventId?: string;
     }): Promise<string | null> => {
-      const response = await checkoutService.createStripeSession({
+      const response = await checkoutService.createCardSession({
         checkout_session_key: getDraftCheckoutSessionKey(),
         add_payment_info_event_id:
           trackingIds?.addPaymentInfoEventId ?? null
@@ -859,9 +919,9 @@
     redirecting = true;
     try {
       const trackingIds = trackCheckoutPaymentStep('card');
-      const sessionUrl = await startStripeSession(trackingIds);
+      const sessionUrl = await startCardSession(trackingIds);
       if (!sessionUrl) {
-        actionError = 'Stripe session unavailable. Please try again.';
+        actionError = 'Card session unavailable. Please try again.';
         return;
       }
       window.location.assign(sessionUrl);
@@ -869,13 +929,13 @@
       const message =
         error instanceof Error
           ? error.message
-          : 'Unable to start Stripe checkout.';
+          : 'Unable to start card checkout.';
       if (isProviderMismatchMessage(message)) {
         const rebuilt = await rebuildDraftForPaymentMethodChange();
         if (rebuilt) {
           try {
             const retryTrackingIds = trackCheckoutPaymentStep('card');
-            const retrySessionUrl = await startStripeSession(retryTrackingIds);
+            const retrySessionUrl = await startCardSession(retryTrackingIds);
             if (retrySessionUrl) {
               window.location.assign(retrySessionUrl);
               return;
@@ -884,7 +944,7 @@
             actionError =
               retryError instanceof Error
                 ? retryError.message
-                : 'Unable to start Stripe checkout.';
+                : 'Unable to start card checkout.';
             return;
           }
         }
@@ -1089,7 +1149,13 @@
     }
   }
 
-  $: if (guestIdentityId && contactEmail && isValidEmail(contactEmail) && $cart.length > 0) {
+  $: if (
+    guestIdentityId &&
+    contactEmail &&
+    isValidEmail(contactEmail) &&
+    $cart.length > 0 &&
+    typeof $currency === 'string'
+  ) {
     scheduleDraftRefresh();
   }
 
@@ -1213,8 +1279,13 @@
   let showPrimaryActionButton = true;
   let selectedCryptoCoinLabel = '';
   let selectedCryptoNetworkLabel = '';
+  let settlementCurrency: SupportedCurrency | null = null;
+  let settlementTotal = 0;
+  let showSettlementNotice = false;
 
-  $: orderCurrency = resolveOrderCurrency($cart);
+  $: orderCurrency =
+    normalizeCurrencyCode(pricing?.display_currency) ||
+    resolveOrderCurrency($cart, $currency);
   $: fallbackTotal = $cart.reduce(
     (sum, item) => sum + item.price * item.quantity,
     0
@@ -1235,6 +1306,13 @@
     pricing?.order_total_cents !== undefined
       ? pricing.order_total_cents / 100
       : fallbackTotal;
+  $: settlementCurrency = normalizeCurrencyCode(pricing?.settlement_currency);
+  $: settlementTotal =
+    pricing?.order_settlement_total_cents !== undefined
+      ? pricing.order_settlement_total_cents / 100
+      : total;
+  $: showSettlementNotice =
+    settlementCurrency !== null && settlementCurrency !== orderCurrency;
   $: cryptoInvoiceMatchesSelection =
     paymentMethod === 'crypto' &&
     Boolean(invoice) &&
@@ -1287,7 +1365,7 @@
         </p>
         <a
           href="/browse"
-          class="mt-4 inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-cyan-500 to-pink-500 px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90"
+          class="mt-4 inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90"
         >
           Browse subscriptions
         </a>
@@ -1301,7 +1379,8 @@
               <span class="text-xs text-slate-500">{ $cart.length } item(s)</span>
             </div>
             <div class="mt-4 space-y-4">
-              {#each $cart as item}
+              {#each $cart as item, index (item.id)}
+                {@const displayLineTotal = resolveCheckoutLineTotal(item, index)}
                 <div class="rounded-xl border border-slate-200 p-4">
                   <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -1324,23 +1403,13 @@
                       <div class="flex items-end justify-between sm:block sm:text-right">
                         <p class="text-xs text-slate-500 sm:mb-0.5">Total</p>
                         <p class="text-2xl font-semibold leading-none text-slate-900 sm:text-xl">
-                          {formatCurrency(item.price, normalizeCurrencyCode(item.currency) || orderCurrency)}
+                          {formatCurrency(displayLineTotal.amount, displayLineTotal.currency)}
                         </p>
                       </div>
                       <div class="mt-2 flex items-center justify-between sm:mt-3 sm:justify-end sm:gap-2">
-                        <label class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1 text-[11px] text-slate-600">
-                          <input
-                            type="checkbox"
-                            class="h-3.5 w-3.5 rounded border-slate-300 text-slate-900"
-                            checked={item.autoRenew ?? true}
-                            on:change={(event) =>
-                              cart.updateItem(item.id, {
-                                autoRenew: (event.currentTarget as HTMLInputElement).checked
-                              })
-                            }
-                          />
-                          Auto-renew
-                        </label>
+                        <span class="inline-flex items-center rounded-md border border-slate-200 px-2 py-1 text-[11px] text-slate-600">
+                          Manual renewal
+                        </span>
                         <button
                           type="button"
                           class="rounded-lg p-2 text-rose-500 hover:bg-rose-50"
@@ -1478,6 +1547,13 @@
                 <span>Total</span>
                 <span>{draftLoading ? '--' : formatCurrency(total, orderCurrency)}</span>
               </div>
+              {#if showSettlementNotice && settlementCurrency}
+                <p class="text-[11px] text-slate-500">
+                  Charged in {settlementCurrency}: {draftLoading
+                    ? '--'
+                    : formatCurrency(settlementTotal, settlementCurrency)}
+                </p>
+              {/if}
             </div>
             <div class="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
               <ShieldCheck size={14} class="text-cyan-600" />
@@ -1537,7 +1613,7 @@
               <input
                 type="radio"
                 name="payment-method"
-                value="stripe"
+                value="card"
                 bind:group={paymentMethod}
                 class="mt-1 h-4 w-4 text-slate-900"
                 disabled
@@ -1694,7 +1770,7 @@
             {#if showPrimaryActionButton}
               <button
                 type="button"
-                class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500 to-pink-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl disabled:opacity-60"
+                class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl disabled:opacity-60"
                 disabled={
                   !paymentMethod ||
                   redirecting ||
@@ -1702,8 +1778,8 @@
                   creditsInsufficient
                 }
                 on:click={() => {
-                  if (paymentMethod === 'stripe') {
-                    void handleStripeCheckout();
+                  if (paymentMethod === 'card') {
+                    void handleCardCheckout();
                   } else if (paymentMethod === 'crypto') {
                     void handleCryptoInvoice();
                   }
@@ -1713,7 +1789,7 @@
                   <Loader2 class="h-4 w-4 animate-spin" />
                   {invoiceLoading ? 'Generating invoice...' : 'Processing...'}
                 {:else}
-                  {#if paymentMethod === 'stripe'}
+                  {#if paymentMethod === 'card'}
                     CONTINUE TO PAYMENT
                   {:else if paymentMethod === 'crypto'}
                     Generate invoice

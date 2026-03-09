@@ -124,7 +124,7 @@
   {/if}
   {#if verificationPending}
     <div
-      class="rounded-2xl border border-cyan-200/70 bg-gradient-to-r from-cyan-50 via-white to-pink-50 px-4 py-4 text-slate-900 shadow-sm dark:border-cyan-500/20 dark:bg-slate-900/60 dark:text-slate-100"
+      class="rounded-2xl border border-cyan-200/70 bg-gradient-to-r from-purple-50 via-white to-pink-50 px-4 py-4 text-slate-900 shadow-sm dark:border-cyan-500/20 dark:bg-slate-900/60 dark:text-slate-100"
       role="status"
       aria-live="polite"
     >
@@ -238,7 +238,7 @@
         type="submit"
         disabled={$isLoading}
         class="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-white font-medium rounded-lg transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-subslush-blue/20 focus:ring-offset-2 min-h-[52px] shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
-        style="background: linear-gradient(45deg, #4FC3F7, #F06292);"
+        style="background: linear-gradient(90deg, #7e22ce 0%, #db2777 100%);"
         aria-label="Sign in to your account"
       >
         {#if $isLoading}

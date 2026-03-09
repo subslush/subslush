@@ -20,6 +20,9 @@ export interface Order {
   coupon_discount_cents?: number | null;
   total_cents?: number | null;
   display_total_cents?: number | null;
+  pricing_snapshot_id?: string | null;
+  settlement_currency?: string | null;
+  settlement_total_cents?: number | null;
   term_months?: number | null;
   paid_with_credits: boolean;
   auto_renew: boolean;
@@ -49,6 +52,11 @@ export interface OrderItem {
   coupon_discount_cents?: number | null;
   currency: string;
   total_price_cents: number;
+  settlement_currency?: string | null;
+  settlement_unit_price_cents?: number | null;
+  settlement_base_price_cents?: number | null;
+  settlement_coupon_discount_cents?: number | null;
+  settlement_total_price_cents?: number | null;
   description?: string | null;
   metadata?: Record<string, any> | null;
   created_at: Date;
@@ -73,6 +81,9 @@ export interface CreateOrderInput {
   coupon_code?: string | null;
   coupon_discount_cents?: number | null;
   total_cents?: number | null;
+  pricing_snapshot_id?: string | null;
+  settlement_currency?: string | null;
+  settlement_total_cents?: number | null;
   term_months?: number | null;
   paid_with_credits?: boolean;
   auto_renew?: boolean;
@@ -96,6 +107,11 @@ export interface CreateOrderItemInput {
   coupon_discount_cents?: number | null;
   currency: string;
   total_price_cents: number;
+  settlement_currency?: string | null;
+  settlement_unit_price_cents?: number | null;
+  settlement_base_price_cents?: number | null;
+  settlement_coupon_discount_cents?: number | null;
+  settlement_total_price_cents?: number | null;
   description?: string | null;
   metadata?: Record<string, any> | null;
 }

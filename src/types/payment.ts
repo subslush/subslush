@@ -10,7 +10,12 @@ export type PaymentStatus =
   | 'refunded'
   | 'expired';
 
-export type PaymentProvider = 'nowpayments' | 'stripe' | 'manual' | 'admin';
+export type PaymentProvider =
+  | 'nowpayments'
+  | 'stripe'
+  | 'pay4bit'
+  | 'manual'
+  | 'admin';
 
 export type UnifiedPaymentStatus =
   | 'pending'

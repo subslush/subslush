@@ -9,6 +9,7 @@ import { logAdminAction } from '../../services/auditLogService';
 import { SuccessResponses, ErrorResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
 import { getDatabasePool } from '../../config/database';
+import { fxPricingPublisherService } from '../../services/fx/fxPricingPublisherService';
 
 const mapPaymentRow = (row: any): Record<string, unknown> => ({
   ...row,
@@ -203,6 +204,23 @@ export async function adminPaymentRoutes(
           reply,
           'Failed to get monitoring data'
         );
+      }
+    }
+  );
+
+  // FX diagnostics
+  fastify.get(
+    '/fx/diagnostics',
+    {
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const diagnostics = await fxPricingPublisherService.getDiagnostics();
+        return SuccessResponses.ok(reply, diagnostics);
+      } catch (error) {
+        Logger.error('Error getting FX diagnostics:', error);
+        return ErrorResponses.internalError(reply, 'Failed to fetch FX diagnostics');
       }
     }
   );

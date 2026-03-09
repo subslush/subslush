@@ -19,9 +19,23 @@ import {
   runNowPaymentsCurrencyRefresh,
 } from './paymentJobs';
 import { runEmailVerificationSync } from './authJobs';
+import { runDailyFxFetch, runWeeklyPricingPublish } from './fxJobs';
+import { getDelayUntilNextFxRunMs, parseFxCronSchedule } from './fxSchedule';
 
 const scheduler = new JobScheduler();
 let jobsRegistered = false;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const ONE_WEEK_MS = 7 * ONE_DAY_MS;
+const FX_DAILY_FALLBACK_SCHEDULE = {
+  minute: 0,
+  hour: 0,
+  dayOfWeek: null as number | null,
+};
+const FX_WEEKLY_FALLBACK_SCHEDULE = {
+  minute: 59,
+  hour: 23,
+  dayOfWeek: 0,
+};
 
 function registerJobs(): void {
   if (jobsRegistered) {
@@ -126,6 +140,67 @@ function registerJobs(): void {
     lockTtlSeconds: 300,
     handler: runCheckoutAbandonSweep,
   });
+
+  if (env.FX_ENGINE_ENABLED && env.FX_FETCH_JOB_ENABLED) {
+    const now = new Date();
+    const parsedFetchSchedule = parseFxCronSchedule(
+      env.FX_FETCH_SCHEDULE_CRON,
+      FX_DAILY_FALLBACK_SCHEDULE
+    );
+    const fetchSchedule = {
+      minute: parsedFetchSchedule.minute,
+      hour: parsedFetchSchedule.hour,
+      dayOfWeek: null as number | null,
+    };
+    const fetchInitialDelayMs = getDelayUntilNextFxRunMs(fetchSchedule, now);
+
+    scheduler.register({
+      name: 'fx-daily-fetch',
+      intervalMs: ONE_DAY_MS,
+      initialDelayMs: fetchInitialDelayMs,
+      alignIntervalWithInitialDelay: true,
+      lockKey: 'jobs:fx_daily_fetch',
+      lockTtlSeconds: 900,
+      handler: runDailyFxFetch,
+    });
+
+    Logger.info('Registered FX daily fetch schedule', {
+      cron: env.FX_FETCH_SCHEDULE_CRON,
+      nextRunAt: new Date(now.getTime() + fetchInitialDelayMs).toISOString(),
+    });
+  }
+
+  if (env.FX_ENGINE_ENABLED && env.FX_PUBLISH_JOB_ENABLED) {
+    const now = new Date();
+    const parsedPublishSchedule = parseFxCronSchedule(
+      env.FX_PUBLISH_SCHEDULE_CRON,
+      FX_WEEKLY_FALLBACK_SCHEDULE
+    );
+    const publishSchedule =
+      parsedPublishSchedule.dayOfWeek === null
+        ? FX_WEEKLY_FALLBACK_SCHEDULE
+        : parsedPublishSchedule;
+    const publishInitialDelayMs = getDelayUntilNextFxRunMs(
+      publishSchedule,
+      now
+    );
+
+    scheduler.register({
+      name: 'fx-weekly-publish',
+      intervalMs: ONE_WEEK_MS,
+      initialDelayMs: publishInitialDelayMs,
+      alignIntervalWithInitialDelay: true,
+      lockKey: 'jobs:fx_weekly_publish',
+      lockTtlSeconds: 1800,
+      handler: runWeeklyPricingPublish,
+    });
+
+    Logger.info('Registered FX weekly publish schedule', {
+      cron: env.FX_PUBLISH_SCHEDULE_CRON,
+      nextRunAt: new Date(now.getTime() + publishInitialDelayMs).toISOString(),
+      dayOfWeek: publishSchedule.dayOfWeek,
+    });
+  }
 
   jobsRegistered = true;
 }

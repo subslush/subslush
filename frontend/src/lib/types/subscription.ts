@@ -217,10 +217,15 @@ export interface AutoRenewDisableResponse {
 }
 
 export interface RenewalCheckoutResponse {
-  paymentId: string;
-  clientSecret: string;
+  order_id: string;
+  payment_provider: 'pay4bit' | 'stripe';
+  payment_id?: string | null;
+  session_id: string;
+  session_url: string;
   amount: number;
   currency: string;
+  settlement_currency?: string | null;
+  settlement_total_cents?: number | null;
 }
 
 export interface CreditsAutoRenewResponse {

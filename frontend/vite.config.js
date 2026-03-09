@@ -14,10 +14,12 @@ export default defineConfig({
 					return new URLSearchParams();
 				}
 
+				const largeHeroImages = new Set(['hero_20260227.png']);
 				const heroCardImages = new Set(['netflixny.jpg', 'spotifyny.jpg', 'chatgptny.jpg']);
 				const params = new URLSearchParams();
-				if (url.pathname.endsWith('pandabearny.webp')) {
-					params.set('w', '640;960;1280;1600;1920');
+				if ([...largeHeroImages].some((name) => url.pathname.endsWith(name))) {
+					params.set('w', '768;1024;1280;1600;1920;2560');
+					params.set('quality', '92');
 				} else if ([...heroCardImages].some((name) => url.pathname.endsWith(name))) {
 					params.set('w', '360;480;720;960;1200');
 				} else {

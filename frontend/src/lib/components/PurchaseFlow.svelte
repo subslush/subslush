@@ -8,9 +8,13 @@
   import { user } from '$lib/stores/auth.js';
   import { credits } from '$lib/stores/credits.js';
   import { API_CONFIG, API_ENDPOINTS, ROUTES } from '$lib/utils/constants.js';
-  import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
+  import {
+    formatCurrency,
+    normalizeCurrencyCode,
+    type SupportedCurrency
+  } from '$lib/utils/currency.js';
   import type { ServicePlanDetails, Subscription, UpgradeOptions } from '$lib/types/subscription.js';
-  import type { CheckoutRequest, CheckoutResponseStripe, PaymentQuoteResponse } from '$lib/types/payment.js';
+  import type { CheckoutRequest, CheckoutResponseCard, PaymentQuoteResponse } from '$lib/types/payment.js';
   import type {
     UpgradeSelectionSubmission,
     UpgradeSelectionType
@@ -27,18 +31,18 @@
   export let preselectedUpgradeType: UpgradeSelectionType | null = null;
   export let preselectedManualMonthlyAcknowledged = false;
 
-  let paymentMethod: 'stripe' | 'credits' | null = null;
-  let lastPaymentMethod: 'stripe' | 'credits' | null = null;
+  let paymentMethod: 'card' | 'credits' | null = null;
+  let lastPaymentMethod: 'card' | 'credits' | null = null;
   let showCreditsConfirm = false;
-  let autoRenew = true;
+  let autoRenew = false;
   let isProcessing = false;
   let errorMessage = '';
   let validationMessage = '';
   let creditsQuoteMessage = '';
   let showCreditsAuthNotice = false;
-  let showStripeAuthNotice = false;
-  let redirectingToStripe = false;
-  let checkoutResult: CheckoutResponseStripe | null = null;
+  let showCardAuthNotice = false;
+  let redirectingToCard = false;
+  let checkoutResult: CheckoutResponseCard | null = null;
   let purchaseResult: Subscription | null = null;
   let checkoutKey: string | null = null;
   let checkoutSnapshotKey: string | null = null;
@@ -67,6 +71,10 @@
   let pricingQuoteLoading = false;
   let lastPricingQuoteKey = '';
   let pricingQuote: PaymentQuoteResponse | null = null;
+  let quoteDisplayCurrency: SupportedCurrency = 'USD';
+  let quoteSettlementCurrency: SupportedCurrency | null = null;
+  let quoteSettlementTotal = 0;
+  let showQuoteSettlementNotice = false;
   type PurchaseStage = 'checkout' | 'processing' | 'selection' | 'success';
   let stage: PurchaseStage = 'checkout';
   let orderId: string | null = null;
@@ -83,7 +91,7 @@
   let lastPlaceOrderTrackingId = '';
   onMount(() => {
     const handlePageExit = () => {
-      if (redirectingToStripe) return;
+      if (redirectingToCard) return;
       const payload = resolveCheckoutCancelPayload('checkout_abandoned');
       if (!payload) return;
       if (checkoutCancelSent) return;
@@ -178,7 +186,17 @@
   );
   $: requiresManualMonthlyAck = Boolean(upgradeOptions?.manual_monthly_upgrade);
   $: ackOnly = requiresManualMonthlyAck && !hasSelectionOptions;
+  $: quoteDisplayCurrency =
+    normalizeCurrencyCode(pricingQuote?.display_currency) || resolvedCurrency;
   $: totalCost = pricingQuote ? pricingQuote.total_cents / 100 : fallbackTermTotal;
+  $: quoteSettlementCurrency = normalizeCurrencyCode(pricingQuote?.settlement_currency);
+  $: quoteSettlementTotal =
+    pricingQuote?.settlement_total_cents !== undefined
+      ? pricingQuote.settlement_total_cents / 100
+      : totalCost;
+  $: showQuoteSettlementNotice =
+    quoteSettlementCurrency !== null &&
+    quoteSettlementCurrency !== quoteDisplayCurrency;
   $: resolvedCredits = $credits.balance ?? userCredits;
   $: creditsRequired = creditsQuote?.requiredCredits ?? (isUsdCurrency ? totalCost : null);
   $: hasEnoughCredits = creditsRequired !== null && resolvedCredits >= creditsRequired;
@@ -198,15 +216,15 @@
     errorMessage = '';
     creditsQuoteMessage = '';
     showCreditsConfirm = false;
-    if (lastPaymentMethod === 'stripe' && paymentMethod !== 'stripe') {
-      invalidateStripeCheckout('payment_method_changed');
+    if (lastPaymentMethod === 'card' && paymentMethod !== 'card') {
+      invalidateCardCheckout('payment_method_changed');
     }
     resetSelectionState();
     if (paymentMethod !== 'credits') {
       showCreditsAuthNotice = false;
     }
-    if (paymentMethod !== 'stripe') {
-      showStripeAuthNotice = false;
+    if (paymentMethod !== 'card') {
+      showCardAuthNotice = false;
     }
     if (paymentMethod === 'credits') {
       void refreshCredits(true);
@@ -240,10 +258,10 @@
       ? ''
       : !paymentMethod
         ? 'Select a payment method'
-        : paymentMethod === 'stripe'
+        : paymentMethod === 'card'
           ? checkoutStale
             ? 'Restart checkout'
-            : 'Continue to Stripe'
+            : 'Continue to payment'
           : showCreditsConfirm
             ? 'Awaiting confirmation'
             : 'Review purchase';
@@ -252,7 +270,7 @@
     stage !== 'checkout' ||
     !paymentMethod ||
     isProcessing ||
-    redirectingToStripe ||
+    redirectingToCard ||
     (paymentMethod === 'credits' && (creditsRequired === null || !hasEnoughCredits)) ||
     (paymentMethod === 'credits' && creditsPurchaseBlocked) ||
     (paymentMethod === 'credits' && showCreditsConfirm);
@@ -289,13 +307,13 @@
     paymentMethod = null;
   }
 
-  $: if (!isLoggedIn && paymentMethod === 'stripe') {
+  $: if (!isLoggedIn && paymentMethod === 'card') {
     paymentMethod = null;
   }
 
   $: if (isLoggedIn) {
     showCreditsAuthNotice = false;
-    showStripeAuthNotice = false;
+    showCardAuthNotice = false;
   }
 
   function formatDuration(months: number): string {
@@ -331,7 +349,7 @@
     return item ? [item] : [];
   };
 
-  const resetStripeCheckoutState = () => {
+  const resetCardCheckoutState = () => {
     checkoutResult = null;
     checkoutPaymentId = null;
     checkoutKey = null;
@@ -341,7 +359,7 @@
     checkoutStale = false;
     checkoutStaleMessage = '';
     orderId = null;
-    redirectingToStripe = false;
+    redirectingToCard = false;
   };
 
   const resolveCheckoutCancelPayload = (reason: string, overrides?: {
@@ -400,7 +418,7 @@
     return false;
   };
 
-  const cancelStripeCheckout = async (
+  const cancelCardCheckout = async (
     reason: string,
     overrides?: {
       orderId?: string | null;
@@ -439,22 +457,22 @@
     }
   };
 
-  const invalidateStripeCheckout = (reason: string) => {
+  const invalidateCardCheckout = (reason: string) => {
     const payload = resolveCheckoutCancelPayload(reason);
     if (payload) {
-      void cancelStripeCheckout(reason, {
+      void cancelCardCheckout(reason, {
         orderId: payload.order_id,
         paymentId: payload.payment_id,
         checkoutKey: payload.checkout_key ?? null
       });
     }
-    resetStripeCheckoutState();
+    resetCardCheckoutState();
   };
 
-  const restartStripeCheckout = async (reason: string) => {
-    await cancelStripeCheckout(reason);
-    resetStripeCheckoutState();
-    await startStripeCheckout();
+  const restartCardCheckout = async (reason: string) => {
+    await cancelCardCheckout(reason);
+    resetCardCheckoutState();
+    await startCardCheckout();
   };
 
   const resetSelectionState = () => {
@@ -469,7 +487,7 @@
     processingError = '';
     purchaseResult = null;
     stage = 'checkout';
-    resetStripeCheckoutState();
+    resetCardCheckoutState();
   };
 
   async function loadSelection(subscriptionId: string): Promise<void> {
@@ -605,7 +623,7 @@
     await loadSelection(subscription.id);
   }
 
-  async function startStripeCheckout() {
+  async function startCardCheckout() {
     const snapshotKey = buildCheckoutKey({
       variantId: selectedPlan?.variant_id,
       duration: selectedDuration,
@@ -613,7 +631,7 @@
       autoRenew,
       couponCode: appliedCouponCode,
     });
-    if (redirectingToStripe) return;
+    if (redirectingToCard) return;
     isProcessing = true;
     errorMessage = '';
 
@@ -626,15 +644,15 @@
     const payload: CheckoutRequest = {
       variant_id: selectedPlan.variant_id,
       duration_months: selectedDuration,
-      payment_method: 'stripe',
-      auto_renew: autoRenew,
+      payment_method: 'card',
+      auto_renew: false,
       currency: resolvedCurrency,
       ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})
     };
 
     try {
       const response = await paymentService.createCheckout(payload);
-      checkoutResult = response as CheckoutResponseStripe;
+      checkoutResult = response as CheckoutResponseCard;
       orderId = checkoutResult.order_id;
       checkoutPaymentId = checkoutResult.paymentId ?? null;
       checkoutKey = checkoutResult.checkoutKey ?? currentCheckoutKey;
@@ -651,13 +669,13 @@
         }
       }
       if (!checkoutResult.sessionUrl) {
-        errorMessage = 'Stripe session is unavailable. Please try again.';
+        errorMessage = 'Card session is unavailable. Please try again.';
         return;
       }
-      redirectingToStripe = true;
+      redirectingToCard = true;
       window.location.assign(checkoutResult.sessionUrl);
     } catch (err) {
-      console.error('Stripe checkout failed', err);
+      console.error('Card checkout failed', err);
       errorMessage =
         resolveRateLimitMessage(err) ||
         'Unable to start card checkout. Please try again.';
@@ -713,7 +731,7 @@
       const purchase = await subscriptionService.purchaseSubscription({
         variant_id: selectedPlan.variant_id,
         duration_months: selectedDuration,
-        auto_renew: autoRenew,
+        auto_renew: false,
         ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})
       });
 
@@ -943,10 +961,10 @@
     if (stage !== 'checkout') return;
     if (!paymentMethod) return;
 
-    if (paymentMethod === 'stripe') {
+    if (paymentMethod === 'card') {
       if (checkoutStale) {
         errorMessage = '';
-        await restartStripeCheckout('checkout_updated');
+        await restartCardCheckout('checkout_updated');
         return;
       }
       trackAddPaymentInfo(
@@ -956,7 +974,7 @@
         getPurchaseItems(),
         orderId ? `order_${orderId}_add_payment_info_card` : undefined
       );
-      await startStripeCheckout();
+      await startCardCheckout();
       return;
     }
 
@@ -983,17 +1001,17 @@
     errorMessage = '';
   }
 
-  function handleStripeAuthNotice() {
-    showStripeAuthNotice = true;
+  function handleCardAuthNotice() {
+    showCardAuthNotice = true;
     validationMessage = '';
     errorMessage = '';
   }
 
   async function handleClose() {
     if (closeDisabled) return;
-    if (paymentMethod === 'stripe' && stage === 'checkout') {
-      await cancelStripeCheckout('checkout_cancelled');
-      resetStripeCheckoutState();
+    if (paymentMethod === 'card' && stage === 'checkout') {
+      await cancelCardCheckout('checkout_cancelled');
+      resetCardCheckoutState();
     }
     onClose();
   }
@@ -1169,14 +1187,14 @@
               <div class="flex items-center justify-between">
                 <span>Subtotal</span>
                 <span>
-                  {pricingQuoteLoading ? '--' : formatCurrency(quoteSubtotal, resolvedCurrency)}
+                  {pricingQuoteLoading ? '--' : formatCurrency(quoteSubtotal, quoteDisplayCurrency)}
                 </span>
               </div>
               {#if quoteTermDiscount > 0}
                 <div class="flex items-center justify-between">
                   <span>Term discount</span>
                   <span class="text-emerald-600">
-                    -{pricingQuoteLoading ? '--' : formatCurrency(quoteTermDiscount, resolvedCurrency)}
+                    -{pricingQuoteLoading ? '--' : formatCurrency(quoteTermDiscount, quoteDisplayCurrency)}
                   </span>
                 </div>
               {/if}
@@ -1184,17 +1202,24 @@
                 <div class="flex items-center justify-between">
                   <span>Coupon discount</span>
                   <span class="text-emerald-600">
-                    -{pricingQuoteLoading ? '--' : formatCurrency(quoteCouponDiscount, resolvedCurrency)}
+                    -{pricingQuoteLoading ? '--' : formatCurrency(quoteCouponDiscount, quoteDisplayCurrency)}
                   </span>
                 </div>
               {/if}
             </div>
             <div class="mt-4 flex items-baseline gap-3">
               <span class="text-3xl font-bold text-slate-900">
-                {pricingQuoteLoading ? '--' : formatCurrency(totalCost, resolvedCurrency)}
+                {pricingQuoteLoading ? '--' : formatCurrency(totalCost, quoteDisplayCurrency)}
               </span>
               <span class="text-sm text-slate-500">total</span>
             </div>
+            {#if showQuoteSettlementNotice && quoteSettlementCurrency}
+              <p class="mt-2 text-xs text-slate-500">
+                Charged in {quoteSettlementCurrency}: {pricingQuoteLoading
+                  ? '--'
+                  : formatCurrency(quoteSettlementTotal, quoteSettlementCurrency)}
+              </p>
+            {/if}
             <div class="mt-2 text-sm text-slate-600">Duration: {formatDuration(selectedDuration)}</div>
           </div>
 
@@ -1229,20 +1254,11 @@
             {/if}
           </div>
 
-          <div class="rounded-xl border border-slate-200 p-4">
-            <label class="flex items-start gap-3">
-              <input
-                type="checkbox"
-                bind:checked={autoRenew}
-                class="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-300"
-              />
-              <div>
-                <p class="text-sm font-semibold text-slate-900">Auto-renew</p>
-                <p class="text-xs text-slate-500">
-                  Keep this plan active and renew automatically before it expires.
-                </p>
-              </div>
-            </label>
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p class="text-sm font-semibold text-slate-900">Renewal mode</p>
+            <p class="mt-1 text-xs text-slate-500">
+              Renewals are manual. You can renew from your subscription dashboard before expiry.
+            </p>
           </div>
         </section>
 
@@ -1254,20 +1270,20 @@
                 <input
                   type="radio"
                   name="payment-method"
-                  value="stripe"
+                  value="card"
                   bind:group={paymentMethod}
                   class="mt-1 h-4 w-4 text-slate-900 focus:ring-slate-300"
                 />
                 <div>
                   <p class="text-sm font-semibold text-slate-900">Pay with card</p>
-                  <p class="text-xs text-slate-500">Secure checkout powered by Stripe.</p>
+                  <p class="text-xs text-slate-500">Secure hosted card checkout.</p>
                 </div>
               </label>
-            {:else if !showStripeAuthNotice}
+            {:else if !showCardAuthNotice}
               <button
                 type="button"
                 class="w-full text-left flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 transition-colors hover:bg-slate-50"
-                on:click={handleStripeAuthNotice}
+                on:click={handleCardAuthNotice}
               >
                 <div>
                   <p class="text-sm font-semibold text-slate-900">Pay with card</p>
@@ -1328,7 +1344,7 @@
                 </p>
               </div>
             {/if}
-            {#if paymentMethod === 'stripe' && checkoutStaleMessage}
+            {#if paymentMethod === 'card' && checkoutStaleMessage}
               <p class="text-xs text-amber-700">{checkoutStaleMessage}</p>
             {/if}
           </div>
@@ -1383,7 +1399,7 @@
         <div class="flex items-center gap-3">
           <button
             on:click={handlePrimaryAction}
-            class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500 to-pink-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed"
+            class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed"
             disabled={primaryDisabled}
           >
             {#if isProcessing}

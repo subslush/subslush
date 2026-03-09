@@ -20,7 +20,7 @@
     <button on:click={() => selectedCategory = category.id}
             class="px-4 py-2 rounded-lg text-sm font-medium transition-colors
                    {selectedCategory === category.id
-                     ? 'bg-gradient-to-br from-cyan-500/[0.08] to-pink-500/[0.08] border border-cyan-200/50 text-gray-900'
+                     ? 'bg-gradient-to-br from-purple-700/[0.08] to-pink-600/[0.08] border border-cyan-200/50 text-gray-900'
                      : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 hover:text-gray-900'}">
       {#if category.icon}
         <span class="mr-2">{category.icon}</span>

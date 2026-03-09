@@ -14,21 +14,21 @@ export default {
 		extend: {
 			colors: {
 				subslush: {
-					blue: '#4FC3F7',
-					'blue-light': '#81D4FA',
-					'blue-dark': '#0288D1',
-					pink: '#F06292',
-					'pink-light': '#F8BBD0',
-					'pink-dark': '#C2185B',
-					purple: '#9C27B0',
-					'purple-light': '#CE93D8',
-					'purple-dark': '#7B1FA2',
+					blue: '#7E22CE',
+					'blue-light': '#A855F7',
+					'blue-dark': '#6B21A8',
+					pink: '#DB2777',
+					'pink-light': '#EC4899',
+					'pink-dark': '#BE185D',
+					purple: '#9333EA',
+					'purple-light': '#C084FC',
+					'purple-dark': '#6B21A8',
 				}
 			},
 			boxShadow: {
-				'glow-blue': '0 0 20px rgba(79, 195, 247, 0.5)',
-				'glow-pink': '0 0 20px rgba(240, 98, 146, 0.5)',
-				'glow-purple': '0 0 20px rgba(156, 39, 176, 0.5)',
+				'glow-blue': '0 0 20px rgba(126, 34, 206, 0.5)',
+				'glow-pink': '0 0 20px rgba(219, 39, 119, 0.5)',
+				'glow-purple': '0 0 20px rgba(168, 85, 247, 0.5)',
 			},
 			animation: {
 				'blob': 'blob 20s infinite ease-in-out',

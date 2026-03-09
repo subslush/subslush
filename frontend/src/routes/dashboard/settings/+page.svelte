@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createMutation } from '@tanstack/svelte-query';
-  import { User, Mail, Lock, Save, HelpCircle } from 'lucide-svelte';
+  import { User, Mail, Lock, Save, HelpCircle, Coins, Gift } from 'lucide-svelte';
   import { auth, user as authUser } from '$lib/stores/auth.js';
+  import { credits } from '$lib/stores/credits.js';
   import { apiClient } from '$lib/api/client.js';
   import { API_ENDPOINTS } from '$lib/utils/constants.js';
 
@@ -222,6 +223,29 @@
         {$passwordResetMutation.isPending ? 'Sending...' : 'Send reset email'}
       </button>
     </form>
+  </div>
+
+  <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+    <div class="flex items-center gap-2 mb-4 text-gray-900">
+      <Coins size={18} />
+      <h2 class="text-sm font-semibold">Credits and rewards</h2>
+    </div>
+
+    <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+      <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Available credits</p>
+      <p class="mt-1 text-2xl font-semibold text-gray-900">{$credits.balance ?? 0}</p>
+      <p class="mt-1 text-xs text-gray-500">Credits top-up is currently unavailable.</p>
+    </div>
+
+    <div class="mt-4">
+      <a
+        href="/dashboard/prelaunch-rewards"
+        class="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
+      >
+        <Gift size={16} />
+        Open pre-launch rewards
+      </a>
+    </div>
   </div>
 
   <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">

@@ -70,6 +70,8 @@ export const API_ENDPOINTS = {
   CHECKOUT: {
     IDENTITY: '/checkout/identity',
     DRAFT: '/checkout/draft',
+    CARD_SESSION: '/checkout/card/session',
+    CARD_CONFIRM: '/checkout/card/confirm',
     STRIPE_SESSION: '/checkout/stripe/session',
     STRIPE_CONFIRM: '/checkout/stripe/confirm',
     CREDITS_COMPLETE: '/checkout/credits/complete',

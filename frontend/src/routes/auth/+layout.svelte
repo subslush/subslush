@@ -91,7 +91,7 @@
   <main class={`relative flex-1 flex ${$page.url.pathname === ROUTES.AUTH.REGISTER ? 'items-start pt-10 pb-12' : 'items-center'} justify-center px-4 sm:px-6 lg:px-8`}>
     <div class="w-full max-w-lg">
       <div class="bg-white/90 dark:bg-surface-800/90 backdrop-blur-xl shadow-2xl rounded-3xl p-8 sm:p-9 border border-white/20 dark:border-surface-700/50 relative"
-           style="box-shadow: 0 25px 50px -12px rgba(79, 195, 247, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.05);">
+           style="box-shadow: 0 25px 50px -12px rgba(126, 34, 206, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.05);">
         <!-- Glass effect overlay -->
         <div class="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/10 to-transparent pointer-events-none"></div>
 

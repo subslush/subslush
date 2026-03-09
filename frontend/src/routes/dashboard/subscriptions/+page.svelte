@@ -40,8 +40,6 @@
 
   let cancelReasonById: Record<string, string> = {};
   let cancelErrorById: Record<string, string> = {};
-  let autoRenewLoadingById: Record<string, boolean> = {};
-  let autoRenewErrorById: Record<string, string> = {};
 
   let creditRenewModalOpen = false;
   let creditRenewTarget: Subscription | null = null;
@@ -69,11 +67,6 @@
     due_soon: 'Due soon',
     scheduled: 'Scheduled'
   };
-
-  const stripeFailureStatuses = new Set([
-    'renewal_payment_failed',
-    'auto_renew_missing_payment_method'
-  ]);
 
   function getServiceLabel(value: string): string {
     return serviceLabels[value] || formatLabel(value);
@@ -144,8 +137,6 @@
     }
   }
 
-  const renewalInfoText =
-    'Renewal date is set 7 days before expiry so we have time to renew manually. You do not lose any subscription days.';
   const pendingDeliveryInfoText =
     'Orders are typically completed and delivered within 24 hours of placement; during business hours delivery is often faster. While we consistently meet this window, delivery may take up to 72 hours in rare cases.';
   const pendingDeliverySummary =
@@ -209,14 +200,6 @@
     return (
       !!subscription.cancellation_requested_at ||
       subscription.status_reason === 'cancelled_by_user'
-    );
-  }
-
-  function isStripeRenewalFailure(subscription: Subscription): boolean {
-    if (isCancellationRequested(subscription)) return false;
-    return (
-      subscription.renewal_method === 'stripe' &&
-      stripeFailureStatuses.has(subscription.status_reason || '')
     );
   }
 
@@ -388,69 +371,6 @@
       cancelConfirmError = apiError.message || 'Unable to cancel subscription.';
     } finally {
       cancelConfirmLoading = false;
-    }
-  }
-
-  async function disableStripeAutoRenew(subscriptionId: string) {
-    autoRenewLoadingById = { ...autoRenewLoadingById, [subscriptionId]: true };
-    autoRenewErrorById = { ...autoRenewErrorById, [subscriptionId]: '' };
-
-    try {
-      const result = await subscriptionService.disableStripeAutoRenew(subscriptionId);
-      const updated = result.subscription;
-      subscriptions = subscriptions.map(sub =>
-        sub.id === subscriptionId ? { ...sub, ...updated } : sub
-      );
-    } catch (error) {
-      const apiError = error as ApiError;
-      autoRenewErrorById = {
-        ...autoRenewErrorById,
-        [subscriptionId]: apiError.message || 'Unable to disable auto-renew.'
-      };
-    } finally {
-      autoRenewLoadingById = { ...autoRenewLoadingById, [subscriptionId]: false };
-    }
-  }
-
-  async function enableCreditsAutoRenew(subscriptionId: string) {
-    autoRenewLoadingById = { ...autoRenewLoadingById, [subscriptionId]: true };
-    autoRenewErrorById = { ...autoRenewErrorById, [subscriptionId]: '' };
-
-    try {
-      const result = await subscriptionService.enableCreditsAutoRenew(subscriptionId);
-      const updated = result.subscription;
-      subscriptions = subscriptions.map(sub =>
-        sub.id === subscriptionId ? { ...sub, ...updated } : sub
-      );
-    } catch (error) {
-      const apiError = error as ApiError;
-      autoRenewErrorById = {
-        ...autoRenewErrorById,
-        [subscriptionId]: apiError.message || 'Unable to enable auto-renew.'
-      };
-    } finally {
-      autoRenewLoadingById = { ...autoRenewLoadingById, [subscriptionId]: false };
-    }
-  }
-
-  async function disableCreditsAutoRenew(subscriptionId: string) {
-    autoRenewLoadingById = { ...autoRenewLoadingById, [subscriptionId]: true };
-    autoRenewErrorById = { ...autoRenewErrorById, [subscriptionId]: '' };
-
-    try {
-      const result = await subscriptionService.disableStripeAutoRenew(subscriptionId);
-      const updated = result.subscription;
-      subscriptions = subscriptions.map(sub =>
-        sub.id === subscriptionId ? { ...sub, ...updated } : sub
-      );
-    } catch (error) {
-      const apiError = error as ApiError;
-      autoRenewErrorById = {
-        ...autoRenewErrorById,
-        [subscriptionId]: apiError.message || 'Unable to disable auto-renew.'
-      };
-    } finally {
-      autoRenewLoadingById = { ...autoRenewLoadingById, [subscriptionId]: false };
     }
   }
 
@@ -626,31 +546,11 @@
                   Active until {formatDate(subscription.end_date)}
                 </p>
               {:else}
-                {#if subscription.auto_renew}
-                  <div class="flex items-center gap-1">
-                    <p class="text-[11px] uppercase tracking-wide text-gray-400">Renews on</p>
-                    <span
-                      class="text-[10px] font-semibold text-gray-500 border border-gray-300 rounded-full w-4 h-4 flex items-center justify-center cursor-help"
-                      title={renewalInfoText}
-                    >
-                      i
-                    </span>
-                  </div>
-                  <p class="text-sm font-medium text-gray-700">
-                    {formatDate(subscription.next_billing_at || subscription.renewal_date)}
-                  </p>
-                  <p class="text-xs text-gray-500 mt-1">
-                    Ends on {formatDate(subscription.end_date)}
-                  </p>
-                {:else}
-                  <p class="text-[11px] uppercase tracking-wide text-gray-400">Ends on</p>
-                  <p class="text-sm font-medium text-gray-700">{formatDate(subscription.end_date)}</p>
-                  {#if subscription.renewal_method === 'credits' && subscription.auto_renew === false}
-                    {@const daysUntilExpiry = getDaysUntilExpiry(subscription)}
-                    {#if daysUntilExpiry !== null && daysUntilExpiry <= 7 && daysUntilExpiry >= 0}
-                      <p class="text-xs font-semibold text-amber-600 mt-1">Renewal available</p>
-                    {/if}
-                  {/if}
+                <p class="text-[11px] uppercase tracking-wide text-gray-400">Ends on</p>
+                <p class="text-sm font-medium text-gray-700">{formatDate(subscription.end_date)}</p>
+                {@const daysUntilExpiry = getDaysUntilExpiry(subscription)}
+                {#if daysUntilExpiry !== null && daysUntilExpiry <= 7 && daysUntilExpiry >= 0}
+                  <p class="text-xs font-semibold text-amber-600 mt-1">Renewal available</p>
                 {/if}
                 {#if subscription.renewal_state}
                   <p class="text-xs text-gray-500 mt-1">{getRenewalStateLabel(subscription.renewal_state)}</p>
@@ -674,9 +574,9 @@
               {/if}
             </div>
             <div>
-              <p class="text-[11px] uppercase tracking-wide text-gray-400">Auto-renew</p>
+              <p class="text-[11px] uppercase tracking-wide text-gray-400">Renewal</p>
               <p class="text-sm font-medium text-gray-700">
-                {isCancellationRequested(subscription) ? 'Cancelled' : subscription.auto_renew ? 'Enabled' : 'Manual'}
+                {isCancellationRequested(subscription) ? 'Cancelled' : 'Manual'}
               </p>
             </div>
             <div>
@@ -690,24 +590,6 @@
             </div>
           </div>
 
-          {#if isStripeRenewalFailure(subscription)}
-            <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 flex flex-wrap items-center gap-2">
-              <span class="font-medium">Renewal failed.</span>
-              <span>Update your card or pay manually.</span>
-              <a
-                href={`/dashboard/subscriptions/${subscription.id}/billing`}
-                class="text-red-700 underline underline-offset-2 hover:text-red-900"
-              >
-                Update card
-              </a>
-              <a
-                href={`/dashboard/subscriptions/${subscription.id}/renewal`}
-                class="text-red-700 underline underline-offset-2 hover:text-red-900"
-              >
-                Pay manually
-              </a>
-            </div>
-          {/if}
           {#if subscription.status === 'pending' && subscription.status_reason === 'waiting_for_selection'}
             <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 flex flex-wrap items-center gap-2">
               <span class="font-medium">Action required.</span>
@@ -735,69 +617,45 @@
 
           {#if openSubscriptionId === subscription.id}
             <div class="mt-5 border-t border-gray-100 pt-4 space-y-4">
-              {#if subscription.renewal_method === 'stripe'}
-                <div class="rounded-lg border border-gray-200 p-4 space-y-3">
-                  <div class="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 class="text-sm font-semibold text-gray-900">Billing &amp; renewal</h3>
-                      <p class="text-xs text-gray-500 mt-1">
-                        Manage Stripe auto-renewal and manual renewal payments.
-                      </p>
-                    </div>
-                    <span class="text-xs text-gray-500 uppercase tracking-wide">Stripe</span>
-                  </div>
-
-                  {#if subscription.status !== 'active'}
-                    <p class="text-xs text-gray-500">
-                      Pending delivery.
+              <div class="rounded-lg border border-gray-200 p-4 space-y-3">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 class="text-sm font-semibold text-gray-900">Billing &amp; renewal</h3>
+                    <p class="text-xs text-gray-500 mt-1">
+                      Renewals are manual and available in the 7-day window before expiry.
                     </p>
-                  {/if}
+                  </div>
+                  <span class="text-xs text-gray-500 uppercase tracking-wide">
+                    {subscription.renewal_method === 'credits' ? 'Credits' : 'Card'}
+                  </span>
+                </div>
 
-                  {#if isCancellationRequested(subscription)}
-                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      Cancellation requested. This subscription will stay active until {formatDate(subscription.end_date)}
-                      and will not renew.
-                    </div>
-                  {:else if subscription.auto_renew}
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p class="text-xs text-gray-500">Next billing date</p>
-                        {#if subscription.status === 'active'}
-                          <p class="text-sm font-medium text-gray-700">
-                            {formatDate(subscription.next_billing_at || subscription.renewal_date)}
-                          </p>
-                        {:else}
-                          <p class="text-xs text-gray-500">Available after delivery</p>
-                        {/if}
-                      </div>
-                      <div class="flex flex-wrap items-center gap-2">
-                        <a
-                          href={`/dashboard/subscriptions/${subscription.id}/billing`}
-                          class="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                        >
-                          Update card
-                        </a>
-                        <button
-                          on:click={() => disableStripeAutoRenew(subscription.id)}
-                          class="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                          disabled={autoRenewLoadingById[subscription.id]}
-                        >
-                          {autoRenewLoadingById[subscription.id] ? 'Disabling...' : 'Disable auto-renew'}
-                        </button>
-                      </div>
-                    </div>
-                  {:else}
-                    {@const daysUntilExpiry = getDaysUntilExpiry(subscription)}
-                    {@const showManualPay =
-                      daysUntilExpiry !== null && daysUntilExpiry <= 7 && daysUntilExpiry >= 0}
+                {#if subscription.status !== 'active'}
+                  <p class="text-xs text-gray-500">
+                    Pending delivery.
+                  </p>
+                {:else if isCancellationRequested(subscription)}
+                  <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Cancellation requested. This subscription will stay active until {formatDate(subscription.end_date)}
+                    and will not renew.
+                  </div>
+                {:else}
+                  {@const daysUntilExpiry = getDaysUntilExpiry(subscription)}
+                  {@const showManualPay =
+                    daysUntilExpiry !== null && daysUntilExpiry <= 7 && daysUntilExpiry >= 0}
+
+                  {#if showManualPay}
                     <div class="flex flex-wrap items-center gap-2">
-                      <a
-                        href={`/dashboard/subscriptions/${subscription.id}/billing`}
-                        class="inline-flex items-center rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-black"
-                      >
-                        Enable auto-renew
-                      </a>
-                      {#if showManualPay}
+                      {#if subscription.renewal_method === 'credits'}
+                        {@const missingCredits = resolveMissingCredits(subscription)}
+                        <button
+                          on:click={() => openCreditRenewModal(subscription)}
+                          class="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                          disabled={missingCredits !== null && missingCredits > 0}
+                        >
+                          Renew now
+                        </button>
+                      {:else}
                         <a
                           href={`/dashboard/subscriptions/${subscription.id}/renewal`}
                           class="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
@@ -806,89 +664,7 @@
                         </a>
                       {/if}
                     </div>
-                    {#if showManualPay && daysUntilExpiry !== null}
-                      <p class="text-xs text-red-600">
-                        {daysUntilExpiry === 0
-                          ? 'Your subscription expires today.'
-                          : `Your subscription expires in ${daysUntilExpiry} day${daysUntilExpiry === 1 ? '' : 's'}.`}
-                        Enable auto-renew or renew now as soon as possible to avoid delays or expiration.
-                      </p>
-                    {/if}
-                  {/if}
-
-                  {#if autoRenewErrorById[subscription.id] && !isCancellationRequested(subscription)}
-                    <div class="text-xs text-red-700">{autoRenewErrorById[subscription.id]}</div>
-                  {/if}
-                </div>
-              {:else if subscription.renewal_method === 'credits'}
-                <div class="rounded-lg border border-gray-200 p-4 space-y-3">
-                  <div class="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 class="text-sm font-semibold text-gray-900">Billing &amp; renewal</h3>
-                      <p class="text-xs text-gray-500 mt-1">
-                        Manage credits auto-renewal and manual renewal payments.
-                      </p>
-                    </div>
-                    <span class="text-xs text-gray-500 uppercase tracking-wide">Credits</span>
-                  </div>
-
-                  {#if subscription.status !== 'active'}
-                    <p class="text-xs text-gray-500">
-                      Pending delivery.
-                    </p>
-                  {/if}
-
-                  {#if isCancellationRequested(subscription)}
-                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      Cancellation requested. This subscription will stay active until {formatDate(subscription.end_date)}
-                      and will not renew.
-                    </div>
-                  {:else if subscription.auto_renew}
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p class="text-xs text-gray-500">Next billing date</p>
-                        {#if subscription.status === 'active'}
-                          <p class="text-sm font-medium text-gray-700">
-                            {formatDate(subscription.next_billing_at || subscription.renewal_date)}
-                          </p>
-                        {:else}
-                          <p class="text-xs text-gray-500">Available after delivery</p>
-                        {/if}
-                      </div>
-                      <div class="flex flex-wrap items-center gap-2">
-                        <button
-                          on:click={() => disableCreditsAutoRenew(subscription.id)}
-                          class="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                          disabled={autoRenewLoadingById[subscription.id]}
-                        >
-                          {autoRenewLoadingById[subscription.id] ? 'Disabling...' : 'Disable auto-renew'}
-                        </button>
-                      </div>
-                    </div>
-                  {:else}
-                    {@const daysUntilExpiry = getDaysUntilExpiry(subscription)}
-                    {@const showManualPay =
-                      daysUntilExpiry !== null && daysUntilExpiry <= 7 && daysUntilExpiry >= 0}
-                    {@const missingCredits = resolveMissingCredits(subscription)}
-                    <div class="flex flex-wrap items-center gap-2">
-                      <button
-                        on:click={() => enableCreditsAutoRenew(subscription.id)}
-                        class="inline-flex items-center rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-black"
-                        disabled={autoRenewLoadingById[subscription.id]}
-                      >
-                        {autoRenewLoadingById[subscription.id] ? 'Enabling...' : 'Enable auto-renew'}
-                      </button>
-                      {#if showManualPay}
-                        <button
-                          on:click={() => openCreditRenewModal(subscription)}
-                          class="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                          disabled={missingCredits !== null && missingCredits > 0}
-                        >
-                          Renew now
-                        </button>
-                      {/if}
-                    </div>
-                    {#if showManualPay && daysUntilExpiry !== null}
+                    {#if daysUntilExpiry !== null}
                       <p class="text-xs text-red-600">
                         {daysUntilExpiry === 0
                           ? 'Your subscription expires today.'
@@ -896,18 +672,21 @@
                         Renew now to avoid delays or expiration.
                       </p>
                     {/if}
-                    {#if showManualPay && missingCredits !== null && missingCredits > 0}
-                      <p class="text-xs text-red-600">
-                        You need {formatCredits(missingCredits)} more credits to renew. Please top up before renewing.
-                      </p>
+                    {#if subscription.renewal_method === 'credits'}
+                      {@const missingCredits = resolveMissingCredits(subscription)}
+                      {#if missingCredits !== null && missingCredits > 0}
+                        <p class="text-xs text-red-600">
+                          You need {formatCredits(missingCredits)} more credits to renew. Please top up before renewing.
+                        </p>
+                      {/if}
                     {/if}
+                  {:else}
+                    <p class="text-xs text-gray-600">
+                      Renew now becomes available within 7 days of expiry.
+                    </p>
                   {/if}
-
-                  {#if autoRenewErrorById[subscription.id] && !isCancellationRequested(subscription)}
-                    <div class="text-xs text-red-700">{autoRenewErrorById[subscription.id]}</div>
-                  {/if}
-                </div>
-              {/if}
+                {/if}
+              </div>
 
               <div class="flex items-start justify-between gap-4">
                 <div>
@@ -1080,9 +859,6 @@
           Your subscription will stay active until
           <span class="font-semibold"> {formatDate(cancelTarget.end_date)}</span>.
         </p>
-        {#if cancelTarget.auto_renew}
-          <p class="text-xs text-gray-500">Auto-renew will be disabled immediately after confirmation.</p>
-        {/if}
         <p class="text-xs text-gray-500">
           This action is irreversible. To subscribe again, you will need to make a new purchase.
         </p>

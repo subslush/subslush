@@ -28,6 +28,11 @@ export interface OrderItem {
   term_months?: number | null;
   currency: string;
   total_price_cents: number;
+  settlement_currency?: string | null;
+  settlement_unit_price_cents?: number | null;
+  settlement_base_price_cents?: number | null;
+  settlement_coupon_discount_cents?: number | null;
+  settlement_total_price_cents?: number | null;
   description?: string | null;
   metadata?: Record<string, unknown> | null;
   created_at: string;
@@ -47,6 +52,9 @@ export interface OrderListItem {
   coupon_discount_cents?: number | null;
   total_cents?: number | null;
   display_total_cents?: number | null;
+  pricing_snapshot_id?: string | null;
+  settlement_currency?: string | null;
+  settlement_total_cents?: number | null;
   paid_with_credits?: boolean;
   auto_renew?: boolean;
   payment_provider?: string | null;

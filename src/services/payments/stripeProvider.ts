@@ -7,9 +7,22 @@ import {
 } from './paymentProvider';
 import { UnifiedPaymentStatus } from '../../types/payment';
 
-const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-06-20',
-});
+let stripeClient: Stripe | null = null;
+
+function getStripeClient(): Stripe {
+  if (!env.STRIPE_ENABLED) {
+    throw new Error('Stripe is disabled by configuration');
+  }
+  if (!env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY is required when Stripe is enabled');
+  }
+  if (!stripeClient) {
+    stripeClient = new Stripe(env.STRIPE_SECRET_KEY, {
+      apiVersion: '2024-06-20',
+    });
+  }
+  return stripeClient;
+}
 
 function mapStripeStatus(
   status: Stripe.PaymentIntent.Status
@@ -51,6 +64,7 @@ export class StripeProvider implements PaymentProvider {
   async createPayment(
     request: ProviderPaymentCreateRequest
   ): Promise<ProviderPaymentDetails> {
+    const stripe = getStripeClient();
     const amountCents = Math.round(request.amount * 100);
     const autoRenew =
       request.metadata?.['auto_renew'] === true ||
@@ -106,6 +120,7 @@ export class StripeProvider implements PaymentProvider {
     clientReferenceId?: string;
     expand?: string[];
   }): Promise<Stripe.Checkout.Session> {
+    const stripe = getStripeClient();
     return stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: params.lineItems,
@@ -146,6 +161,7 @@ export class StripeProvider implements PaymentProvider {
   async expireCheckoutSession(
     sessionId: string
   ): Promise<Stripe.Checkout.Session> {
+    const stripe = getStripeClient();
     return stripe.checkout.sessions.expire(sessionId);
   }
 
@@ -153,10 +169,12 @@ export class StripeProvider implements PaymentProvider {
     sessionId: string,
     params?: Stripe.Checkout.SessionRetrieveParams
   ): Promise<Stripe.Checkout.Session> {
+    const stripe = getStripeClient();
     return stripe.checkout.sessions.retrieve(sessionId, params);
   }
 
   async getPaymentStatus(paymentId: string): Promise<ProviderPaymentDetails> {
+    const stripe = getStripeClient();
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentId);
 
     const details: ProviderPaymentDetails = {
@@ -186,6 +204,7 @@ export class StripeProvider implements PaymentProvider {
     email?: string | null;
     metadata?: Record<string, any>;
   }): Promise<Stripe.Customer> {
+    const stripe = getStripeClient();
     return stripe.customers.create({
       ...(params.email ? { email: params.email } : {}),
       ...(params.metadata
@@ -199,6 +218,7 @@ export class StripeProvider implements PaymentProvider {
     email?: string | null;
     metadata?: Record<string, any>;
   }): Promise<Stripe.Customer> {
+    const stripe = getStripeClient();
     return stripe.customers.update(params.customerId, {
       ...(params.email ? { email: params.email } : {}),
       ...(params.metadata
@@ -211,6 +231,7 @@ export class StripeProvider implements PaymentProvider {
     customerId: string;
     metadata?: Record<string, any>;
   }): Promise<Stripe.SetupIntent> {
+    const stripe = getStripeClient();
     return stripe.setupIntents.create({
       customer: params.customerId,
       usage: 'off_session',
@@ -224,12 +245,14 @@ export class StripeProvider implements PaymentProvider {
   async retrieveSetupIntent(
     setupIntentId: string
   ): Promise<Stripe.SetupIntent> {
+    const stripe = getStripeClient();
     return stripe.setupIntents.retrieve(setupIntentId);
   }
 
   async retrievePaymentMethod(
     paymentMethodId: string
   ): Promise<Stripe.PaymentMethod> {
+    const stripe = getStripeClient();
     return stripe.paymentMethods.retrieve(paymentMethodId);
   }
 
@@ -237,6 +260,7 @@ export class StripeProvider implements PaymentProvider {
     paymentMethodId: string;
     customerId: string;
   }): Promise<Stripe.PaymentMethod> {
+    const stripe = getStripeClient();
     return stripe.paymentMethods.attach(params.paymentMethodId, {
       customer: params.customerId,
     });
@@ -250,6 +274,7 @@ export class StripeProvider implements PaymentProvider {
     description?: string;
     metadata?: Record<string, any>;
   }): Promise<Stripe.PaymentIntent> {
+    const stripe = getStripeClient();
     const amountCents = Math.round(params.amount * 100);
     return stripe.paymentIntents.create({
       amount: amountCents,
@@ -268,6 +293,7 @@ export class StripeProvider implements PaymentProvider {
   async cancelPaymentIntent(
     paymentIntentId: string
   ): Promise<Stripe.PaymentIntent> {
+    const stripe = getStripeClient();
     return stripe.paymentIntents.cancel(paymentIntentId);
   }
 }

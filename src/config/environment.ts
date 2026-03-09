@@ -32,8 +32,54 @@ const environmentSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT secret must be at least 32 characters'),
   JWT_EXPIRY: z.coerce.number().default(86400),
   JWT_ALGORITHM: z.enum(['HS256', 'RS256']).default('HS256'),
-  STRIPE_SECRET_KEY: z.string().min(1, 'Stripe secret key is required'),
-  STRIPE_WEBHOOK_SECRET: z.string().min(1, 'Stripe webhook secret is required'),
+  STRIPE_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(true)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return true;
+    }),
+  STRIPE_SECRET_KEY: z.preprocess(
+    value => (typeof value === 'string' ? value.trim() : value),
+    z.string().optional()
+  ).default(''),
+  STRIPE_WEBHOOK_SECRET: z.preprocess(
+    value => (typeof value === 'string' ? value.trim() : value),
+    z.string().optional()
+  ).default(''),
+  PAY4BIT_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(false)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return false;
+    }),
+  PAY4BIT_PUBLIC_KEY: z.preprocess(
+    value => (typeof value === 'string' ? value.trim() : value),
+    z.string().optional()
+  ).default(''),
+  PAY4BIT_SECRET_KEY: z.preprocess(
+    value => (typeof value === 'string' ? value.trim() : value),
+    z.string().optional()
+  ).default(''),
+  PAY4BIT_CALLBACK_URL: z.preprocess(
+    value => (typeof value === 'string' ? value.trim() : value),
+    z.string().optional()
+  ).default(''),
+  PAY4BIT_BASE_URL: z.preprocess(
+    value => (typeof value === 'string' ? value.trim() : value),
+    z.string().optional()
+  ).default(''),
   COOKIE_SECRET: z
     .string()
     .min(16, 'Cookie secret must be at least 16 characters')
@@ -77,6 +123,57 @@ const environmentSchema = z.object({
   NOWPAYMENTS_CURRENCY_CACHE_TTL: z.coerce.number().default(3600),
   NOWPAYMENTS_CURRENCY_LKG_TTL: z.coerce.number().default(86400),
   NOWPAYMENTS_CURRENCY_REFRESH_INTERVAL: z.coerce.number().default(900000),
+  CURRENCYAPI_KEY: z.preprocess(
+    value => (typeof value === 'string' ? value.trim() : value),
+    z.string().optional()
+  ).default(''),
+  FX_ENGINE_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(false)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return false;
+    }),
+  FX_FETCH_JOB_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(false)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return false;
+    }),
+  FX_PUBLISH_JOB_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(false)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return false;
+    }),
+  FX_FETCH_SCHEDULE_CRON: z.string().default('0 0 * * *'),
+  FX_PUBLISH_SCHEDULE_CRON: z.string().default('59 23 * * 0'),
+  FX_RATE_STALE_MINUTES: z.coerce.number().int().positive().default(1560),
+  FX_RATE_MAX_STALE_MINUTES: z.coerce.number()
+    .int()
+    .positive()
+    .default(2880),
+  FX_ROUNDING_RULE_VERSION: z
+    .string()
+    .min(1)
+    .default('2026-02-v1'),
   PASSWORD_RESET_REDIRECT_URL: z.preprocess(
     value =>
       typeof value === 'string' && value.trim() === '' ? undefined : value,
@@ -247,6 +344,15 @@ const environmentSchema = z.object({
   EMAIL_VERIFICATION_SYNC_BATCH_SIZE: z.coerce.number().default(200),
 });
 
+function isValidAbsoluteUrl(value: string): boolean {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function validateEnvironment(): EnvironmentConfig {
   try {
     const rawPasswordReset = process.env['PASSWORD_RESET_REDIRECT_URL'];
@@ -279,6 +385,73 @@ function validateEnvironment(): EnvironmentConfig {
     }
 
     const withTestOverrides = applyTestOverrides(withCheckoutDefaults);
+
+    if (withTestOverrides.STRIPE_ENABLED) {
+      const missing: string[] = [];
+      if (!withTestOverrides.STRIPE_SECRET_KEY) missing.push('STRIPE_SECRET_KEY');
+      if (!withTestOverrides.STRIPE_WEBHOOK_SECRET) {
+        missing.push('STRIPE_WEBHOOK_SECRET');
+      }
+      if (missing.length > 0) {
+        throw new Error(
+          `Stripe configuration missing required fields: ${missing.join(', ')}`
+        );
+      }
+    }
+
+    if (withTestOverrides.PAY4BIT_ENABLED) {
+      const missing: string[] = [];
+      if (!withTestOverrides.PAY4BIT_PUBLIC_KEY) {
+        missing.push('PAY4BIT_PUBLIC_KEY');
+      }
+      if (!withTestOverrides.PAY4BIT_SECRET_KEY) {
+        missing.push('PAY4BIT_SECRET_KEY');
+      }
+      if (!withTestOverrides.PAY4BIT_CALLBACK_URL) {
+        missing.push('PAY4BIT_CALLBACK_URL');
+      }
+      if (!withTestOverrides.PAY4BIT_BASE_URL) {
+        missing.push('PAY4BIT_BASE_URL');
+      }
+      if (!withTestOverrides.CURRENCYAPI_KEY) {
+        missing.push('CURRENCYAPI_KEY');
+      }
+      if (missing.length > 0) {
+        throw new Error(
+          `Pay4bit/FX configuration missing required fields: ${missing.join(', ')}`
+        );
+      }
+      if (!isValidAbsoluteUrl(withTestOverrides.PAY4BIT_CALLBACK_URL)) {
+        throw new Error('PAY4BIT_CALLBACK_URL must be a valid URL');
+      }
+      if (!isValidAbsoluteUrl(withTestOverrides.PAY4BIT_BASE_URL)) {
+        throw new Error('PAY4BIT_BASE_URL must be a valid URL');
+      }
+    }
+
+    if (
+      withTestOverrides.FX_FETCH_JOB_ENABLED ||
+      withTestOverrides.FX_PUBLISH_JOB_ENABLED
+    ) {
+      if (!withTestOverrides.FX_ENGINE_ENABLED) {
+        throw new Error(
+          'FX_ENGINE_ENABLED must be true when FX_FETCH_JOB_ENABLED or FX_PUBLISH_JOB_ENABLED is true'
+        );
+      }
+    }
+
+    if (withTestOverrides.FX_ENGINE_ENABLED && !withTestOverrides.CURRENCYAPI_KEY) {
+      throw new Error('CURRENCYAPI_KEY is required when FX_ENGINE_ENABLED is true');
+    }
+
+    if (
+      withTestOverrides.FX_RATE_MAX_STALE_MINUTES <
+      withTestOverrides.FX_RATE_STALE_MINUTES
+    ) {
+      throw new Error(
+        'FX_RATE_MAX_STALE_MINUTES must be greater than or equal to FX_RATE_STALE_MINUTES'
+      );
+    }
 
     // Log critical configuration values for debugging in development only
     if (withTestOverrides.NODE_ENV === 'development') {

@@ -3,13 +3,20 @@ import { createApiClient } from '$lib/api/client';
 import { API_ENDPOINTS } from '$lib/utils/constants';
 import { unwrapApiData } from '$lib/api/response';
 import type { AvailableProductsResponse } from '$lib/types/subscription';
+import { browser } from '$app/environment';
+import { getCurrencyCookie, normalizeCurrencyCode } from '$lib/utils/currency';
 
 export const load: PageLoad = async ({ fetch, parent }) => {
   try {
     const { currency } = await parent();
+    const serverCurrency = normalizeCurrencyCode(currency);
+    const clientCookieCurrency = browser
+      ? normalizeCurrencyCode(getCurrencyCookie(document.cookie))
+      : null;
+    const preferredCurrency = clientCookieCurrency || serverCurrency;
     const client = createApiClient(
       fetch,
-      currency ? { 'X-Currency': currency } : undefined
+      preferredCurrency ? { 'X-Currency': preferredCurrency } : undefined
     );
     const response = await client.get(API_ENDPOINTS.SUBSCRIPTIONS.PRODUCTS_AVAILABLE);
     const productsResponse = unwrapApiData<AvailableProductsResponse>(response);

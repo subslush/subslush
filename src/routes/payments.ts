@@ -9,6 +9,7 @@ import { subscriptionService } from '../services/subscriptionService';
 import { creditService } from '../services/creditService';
 import { orderService } from '../services/orderService';
 import { resolveVariantPricing } from '../services/variantPricingService';
+import { resolvePricingLockContext } from '../services/pricingLockService';
 import { couponService, normalizeCouponCode } from '../services/couponService';
 import {
   buildTikTokProductProperties,
@@ -27,6 +28,7 @@ import {
   nowpaymentsClient,
 } from '../utils/nowpaymentsClient';
 import { getDatabasePool } from '../config/database';
+import { env } from '../config/environment';
 import {
   normalizeUpgradeOptions,
   validateUpgradeOptions,
@@ -36,6 +38,7 @@ import {
   resolvePreferredCurrency,
   type SupportedCurrency,
 } from '../utils/currency';
+import { computeTermPricing } from '../utils/termPricing';
 import {
   createPaymentRequestJsonSchema,
   minAmountRequestJsonSchema,
@@ -100,7 +103,171 @@ const buildCheckoutKey = (params: {
   ].join('|');
 };
 
+const readPay4bitParam = (
+  source: Record<string, unknown>,
+  key: string
+): string | null => {
+  const nestedParams =
+    source['params'] && typeof source['params'] === 'object'
+      ? (source['params'] as Record<string, unknown>)[key]
+      : undefined;
+  const candidates = [
+    source[key],
+    source[`params[${key}]`],
+    nestedParams,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const normalized = candidate.trim();
+      if (normalized.length > 0) {
+        return normalized;
+      }
+    }
+    if (Array.isArray(candidate)) {
+      for (const entry of candidate) {
+        if (typeof entry !== 'string') {
+          continue;
+        }
+        const normalized = entry.trim();
+        if (normalized.length > 0) {
+          return normalized;
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+const parseUrlEncodedBody = (
+  rawBody: string | Buffer
+): Record<string, string | string[]> => {
+  const parsed: Record<string, string | string[]> = {};
+  const normalizedBody =
+    typeof rawBody === 'string' ? rawBody : rawBody.toString('utf8');
+  const params = new globalThis.URLSearchParams(normalizedBody);
+
+  params.forEach((value, key) => {
+    const existing = parsed[key];
+    if (existing === undefined) {
+      parsed[key] = value;
+      return;
+    }
+
+    if (Array.isArray(existing)) {
+      existing.push(value);
+      return;
+    }
+
+    parsed[key] = [existing, value];
+  });
+
+  return parsed;
+};
+
+const parsePay4bitCallbackBody = (
+  request: FastifyRequest
+):
+  | {
+      ok: true;
+      data: {
+        method: 'check' | 'pay' | 'error';
+        localpayId: string;
+        account: string;
+        sum: string;
+        amount: string;
+        currency: string;
+        description: string;
+        sign: string;
+        checkSign: string;
+        projectId?: string | null;
+        paymentType?: string | null;
+        revenue?: string | null;
+      };
+    }
+  | { ok: false; message: string } => {
+  const querySource =
+    request.query && typeof request.query === 'object'
+      ? (request.query as Record<string, unknown>)
+      : {};
+  const bodySource =
+    request.body && typeof request.body === 'object'
+      ? (request.body as Record<string, unknown>)
+      : {};
+  const merged = { ...querySource, ...bodySource };
+
+  const rawMethod =
+    readPay4bitParam(merged, 'method') ||
+    readPay4bitParam(querySource, 'method') ||
+    readPay4bitParam(bodySource, 'method');
+  if (!rawMethod) {
+    return { ok: false, message: 'method_missing' };
+  }
+  const method = rawMethod.toLowerCase();
+  if (!['check', 'pay', 'error'].includes(method)) {
+    return { ok: false, message: 'method_invalid' };
+  }
+
+  const localpayId =
+    readPay4bitParam(merged, 'localpayId') ||
+    readPay4bitParam(merged, 'paymentId');
+  const account = readPay4bitParam(merged, 'account');
+  const sum = readPay4bitParam(merged, 'sum');
+  const amount = readPay4bitParam(merged, 'amount');
+  const currency = readPay4bitParam(merged, 'currency');
+  const description = readPay4bitParam(merged, 'desc');
+  const sign = readPay4bitParam(merged, 'sign');
+  const checkSign = readPay4bitParam(merged, 'check_sign');
+
+  if (
+    !localpayId ||
+    !account ||
+    !sum ||
+    !amount ||
+    !currency ||
+    !description ||
+    !sign ||
+    !checkSign
+  ) {
+    return { ok: false, message: 'params_missing' };
+  }
+
+  return {
+    ok: true,
+    data: {
+      method: method as 'check' | 'pay' | 'error',
+      localpayId,
+      account,
+      sum,
+      amount,
+      currency,
+      description,
+      sign,
+      checkSign,
+      projectId: readPay4bitParam(merged, 'projectId'),
+      paymentType: readPay4bitParam(merged, 'paymentType'),
+      revenue: readPay4bitParam(merged, 'revenue'),
+    },
+  };
+};
+
 export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
+  if (!fastify.hasContentTypeParser('application/x-www-form-urlencoded')) {
+    fastify.addContentTypeParser(
+      'application/x-www-form-urlencoded',
+      { parseAs: 'string' },
+      (_request, body, done) => {
+        try {
+          const parsed = parseUrlEncodedBody(body);
+          done(null, parsed);
+        } catch (error) {
+          done(error as Error);
+        }
+      }
+    );
+  }
+
   // Quote pricing without creating an order or reserving inventory
   fastify.post(
     '/quote',
@@ -170,11 +337,28 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
-        const { product, snapshot, currency } = pricingResult.data;
+        const { product, variant, price, snapshot, currency } =
+          pricingResult.data;
+        const lockContext = await resolvePricingLockContext({
+          variantId: variant.id,
+          displayCurrency: currency,
+          displayPrice: price,
+        });
+        if (!lockContext) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Unable to lock pricing snapshot for checkout.'
+          );
+        }
         const subtotalCents = snapshot.basePriceCents * snapshot.termMonths;
         const termDiscountCents = snapshot.discountCents;
         let couponDiscountCents = 0;
         let totalCents = snapshot.totalPriceCents;
+        const settlementPricing = computeTermPricing({
+          basePriceCents: lockContext.settlementBasePriceCents,
+          termMonths: snapshot.termMonths,
+          discountPercent: snapshot.discountPercent,
+        });
 
         const normalizedCoupon = normalizeCouponCode(coupon_code);
         if (normalizedCoupon) {
@@ -196,12 +380,30 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           couponDiscountCents = couponResult.data.discountCents;
           totalCents = couponResult.data.totalCents;
         }
+        const settlementCouponDiscountCents =
+          snapshot.totalPriceCents > 0
+            ? Math.min(
+                settlementPricing.totalPriceCents,
+                Math.round(
+                  (couponDiscountCents * settlementPricing.totalPriceCents) /
+                    snapshot.totalPriceCents
+                )
+              )
+            : 0;
+        const settlementTotalCents = Math.max(
+          0,
+          settlementPricing.totalPriceCents - settlementCouponDiscountCents
+        );
 
         return SuccessResponses.ok(reply, {
+          pricing_snapshot_id: lockContext.snapshotId,
+          display_currency: lockContext.displayCurrency,
+          settlement_currency: lockContext.settlementCurrency,
           subtotal_cents: subtotalCents,
           term_discount_cents: termDiscountCents,
           coupon_discount_cents: couponDiscountCents,
           total_cents: totalCents,
+          settlement_total_cents: settlementTotalCents,
           currency,
         });
       } catch (error) {
@@ -211,7 +413,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
-  // Unified checkout: Stripe (default) or credits
+  // Unified checkout: Card hosted checkout (Pay4bit/Stripe fallback) or credits
   fastify.post(
     '/checkout',
     {
@@ -232,8 +434,8 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             },
             payment_method: {
               type: 'string',
-              enum: ['stripe', 'credits'],
-              default: 'stripe',
+              enum: ['card', 'stripe', 'pay4bit', 'credits'],
+              default: 'card',
             },
             auto_renew: {
               type: 'boolean',
@@ -261,11 +463,40 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         const {
           variant_id,
           duration_months = 1,
-          payment_method = 'stripe',
+          payment_method = 'card',
           auto_renew = false,
           currency: requestedCurrency,
           coupon_code,
         } = request.body as any;
+
+        const requestedPaymentMethod =
+          payment_method === 'pay4bit'
+            ? 'pay4bit'
+            : payment_method === 'card'
+              ? 'card'
+              : payment_method;
+        const cardProvider = env.PAY4BIT_ENABLED ? 'pay4bit' : 'stripe';
+
+        if (
+          requestedPaymentMethod === 'pay4bit' &&
+          !env.PAY4BIT_ENABLED
+        ) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Pay4bit checkout is not enabled'
+          );
+        }
+
+        if (
+          ['card', 'stripe'].includes(requestedPaymentMethod) &&
+          !env.STRIPE_ENABLED &&
+          !env.PAY4BIT_ENABLED
+        ) {
+          return ErrorResponses.serviceUnavailable(
+            reply,
+            'Card checkout is temporarily unavailable. Please try again later.'
+          );
+        }
 
         const preferredCurrency = resolveRequestCurrency(
           request,
@@ -293,7 +524,19 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
-        const { product, variant, snapshot, currency } = pricingResult.data;
+        const { product, variant, price: displayPrice, snapshot, currency } =
+          pricingResult.data;
+        const lockContext = await resolvePricingLockContext({
+          variantId: variant.id,
+          displayCurrency: currency,
+          displayPrice,
+        });
+        if (!lockContext) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Unable to lock pricing snapshot for checkout.'
+          );
+        }
         const upgradeOptionsRaw = normalizeUpgradeOptions(product.metadata);
         const upgradeValidation = validateUpgradeOptions(upgradeOptionsRaw);
         if (!upgradeValidation.valid) {
@@ -324,6 +567,11 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
 
         const termSubtotalCents = snapshot.basePriceCents * snapshot.termMonths;
         const termTotalCents = snapshot.totalPriceCents;
+        const settlementTermPricing = computeTermPricing({
+          basePriceCents: lockContext.settlementBasePriceCents,
+          termMonths: snapshot.termMonths,
+          discountPercent: snapshot.discountPercent,
+        });
         let couponDiscountCents = 0;
         let coupon: { id: string; code: string; percent_off: number } | null =
           null;
@@ -360,6 +608,20 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           0,
           termTotalCents - couponDiscountCents
         );
+        const settlementCouponDiscountCents =
+          termTotalCents > 0
+            ? Math.min(
+                settlementTermPricing.totalPriceCents,
+                Math.round(
+                  (couponDiscountCents * settlementTermPricing.totalPriceCents) /
+                    termTotalCents
+                )
+              )
+            : 0;
+        const settlementFinalTotalCents = Math.max(
+          0,
+          settlementTermPricing.totalPriceCents - settlementCouponDiscountCents
+        );
         const priceCents = finalTotalCents;
         const price = priceCents / 100;
         const orderDescription = `Subscription: ${product.service_type} ${planCode} (${snapshot.termMonths} month${snapshot.termMonths > 1 ? 's' : ''})`;
@@ -375,10 +637,14 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           coupon_code: coupon?.code ?? null,
           coupon_discount_cents: couponDiscountCents,
           total_cents: finalTotalCents,
+          pricing_snapshot_id: lockContext.snapshotId,
+          settlement_currency: lockContext.settlementCurrency,
+          settlement_total_cents: settlementFinalTotalCents,
           term_months: snapshot.termMonths,
           paid_with_credits: payment_method === 'credits',
           auto_renew,
-          payment_provider: payment_method === 'credits' ? 'credits' : 'stripe',
+          payment_provider:
+            payment_method === 'credits' ? 'credits' : cardProvider,
           metadata: {
             service_type: product.service_type,
             service_plan: planCode,
@@ -386,6 +652,11 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             discount_percent: snapshot.discountPercent,
             base_price_cents: snapshot.basePriceCents,
             total_price_cents: finalTotalCents,
+            display_currency: lockContext.displayCurrency,
+            display_total_cents: finalTotalCents,
+            pricing_snapshot_id: lockContext.snapshotId,
+            settlement_currency: lockContext.settlementCurrency,
+            settlement_total_cents: settlementFinalTotalCents,
             checkout_key: checkoutKey,
             checkout_context: {
               variant_id: variant.id,
@@ -417,6 +688,11 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             coupon_discount_cents: couponDiscountCents,
             currency,
             total_price_cents: finalTotalCents,
+            settlement_currency: lockContext.settlementCurrency,
+            settlement_unit_price_cents: settlementFinalTotalCents,
+            settlement_base_price_cents: lockContext.settlementBasePriceCents,
+            settlement_coupon_discount_cents: settlementCouponDiscountCents,
+            settlement_total_price_cents: settlementFinalTotalCents,
             description: orderDescription,
             metadata: {
               service_type: product.service_type,
@@ -425,6 +701,10 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
               discount_percent: snapshot.discountPercent,
               base_price_cents: snapshot.basePriceCents,
               total_price_cents: finalTotalCents,
+              settlement_currency: lockContext.settlementCurrency,
+              settlement_base_price_cents: lockContext.settlementBasePriceCents,
+              settlement_coupon_discount_cents: settlementCouponDiscountCents,
+              settlement_total_cents: settlementFinalTotalCents,
               ...(upgradeOptions ? { upgrade_options: upgradeOptions } : {}),
               ...(coupon
                 ? {
@@ -718,6 +998,11 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           return SuccessResponses.created(reply, {
             payment_method: 'credits',
             order_id: order.id,
+            pricing_snapshot_id: lockContext.snapshotId,
+            display_currency: lockContext.displayCurrency,
+            display_total_cents: finalTotalCents,
+            settlement_currency: lockContext.settlementCurrency,
+            settlement_total_cents: settlementFinalTotalCents,
             subscription: subResult.data,
             upgrade_options: upgradeOptions ?? null,
             transaction: {
@@ -728,17 +1013,22 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           });
         }
 
-        // Default: Stripe Checkout Session
-        const stripeResult = await paymentService.createStripeCheckoutSession({
-          orderId: order.id,
-        });
+        // Default: hosted card checkout
+        const cardResult =
+          cardProvider === 'pay4bit'
+            ? await paymentService.createPay4bitCheckoutSession({
+                orderId: order.id,
+              })
+            : await paymentService.createStripeCheckoutSession({
+                orderId: order.id,
+              });
 
-        if (!stripeResult.success) {
+        if (!cardResult.success) {
           const isProviderTemporarilyUnavailable = [
             'payment_provider_unavailable',
             'payment_provider_rate_limited',
             'payment_provider_misconfigured',
-          ].includes(stripeResult.error || '');
+          ].includes(cardResult.error || '');
           const isValidationError = [
             'order_not_found',
             'order_not_pending',
@@ -747,7 +1037,8 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             'invalid_currency',
             'missing_app_base_url',
             'own_account_credentials_required',
-          ].includes(stripeResult.error || '');
+            'invalid_settlement',
+          ].includes(cardResult.error || '');
 
           if (isProviderTemporarilyUnavailable) {
             return ErrorResponses.serviceUnavailable(
@@ -759,32 +1050,38 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           if (isValidationError) {
             return ErrorResponses.badRequest(
               reply,
-              (stripeResult.error || 'invalid_checkout').replace(/_/g, ' ')
+              (cardResult.error || 'invalid_checkout').replace(/_/g, ' ')
             );
           }
 
           await orderService.updateOrderStatus(
             order.id,
             'cancelled',
-            stripeResult.error || 'stripe_checkout_failed'
+            cardResult.error || 'card_checkout_failed'
           );
           if (coupon) {
             await couponService.voidRedemptionForOrder(order.id);
           }
           return ErrorResponses.internalError(
             reply,
-            stripeResult.error || 'Failed to start Stripe checkout'
+            cardResult.error || 'Failed to start card checkout'
           );
         }
 
         return SuccessResponses.created(reply, {
-          payment_method: 'stripe',
+          payment_method: 'card',
+          payment_provider: cardProvider,
           order_id: order.id,
-          paymentId: stripeResult.paymentId,
-          sessionId: stripeResult.sessionId,
-          sessionUrl: stripeResult.sessionUrl,
+          paymentId: cardResult.paymentId,
+          sessionId: cardResult.sessionId,
+          sessionUrl: cardResult.sessionUrl,
           amount: price,
           currency,
+          pricing_snapshot_id: lockContext.snapshotId,
+          display_currency: lockContext.displayCurrency,
+          display_total_cents: finalTotalCents,
+          settlement_currency: lockContext.settlementCurrency,
+          settlement_total_cents: settlementFinalTotalCents,
           checkoutKey,
           upgrade_options: upgradeOptions ?? null,
         });
@@ -826,6 +1123,30 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           reason?: string;
           checkout_key?: string;
         };
+
+        const existingOrder = await orderService.getOrderById(order_id);
+        if (existingOrder?.payment_provider === 'pay4bit') {
+          if (existingOrder.user_id !== user.userId) {
+            return ErrorResponses.forbidden(reply, 'Access denied');
+          }
+          if (existingOrder.status !== 'pending_payment') {
+            return SuccessResponses.ok(reply, {
+              cancelled: false,
+              status: 'already_processed',
+            });
+          }
+
+          await orderService.updateOrderStatus(
+            order_id,
+            'cancelled',
+            reason || 'checkout_cancelled'
+          );
+          await couponService.voidRedemptionForOrder(order_id);
+          return SuccessResponses.ok(reply, {
+            cancelled: true,
+            status: 'cancelled',
+          });
+        }
 
         const result = await paymentService.cancelStripeCheckout({
           orderId: order_id,
@@ -934,7 +1255,46 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
-  // Stripe webhook (no auth)
+  // Pay4bit callback (no auth)
+  fastify.route({
+    method: ['GET', 'POST'],
+    url: '/pay4bit/callback',
+    preHandler: [webhookRateLimit],
+    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        if (!env.PAY4BIT_ENABLED) {
+          return ErrorResponses.notFound(reply, 'Callback route is disabled');
+        }
+
+        const parsed = parsePay4bitCallbackBody(request);
+        if (!parsed.ok) {
+          Logger.warn('Invalid Pay4bit callback payload', {
+            message: parsed.message,
+            ip: request.ip,
+          });
+          return reply.code(400).send({
+            result: {
+              message: parsed.message,
+            },
+          });
+        }
+
+        const callbackResult = await paymentService.handlePay4bitCallback(
+          parsed.data
+        );
+        return reply.code(callbackResult.statusCode).send(callbackResult.body);
+      } catch (error) {
+        Logger.error('Pay4bit callback error:', error);
+        return reply.code(500).send({
+          result: {
+            message: 'callback_failed',
+          },
+        });
+      }
+    },
+  });
+
+  // Stripe webhook (no auth, feature-flagged)
   fastify.post(
     '/stripe/webhook',
     {
@@ -945,6 +1305,10 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
+        if (!env.STRIPE_ENABLED) {
+          return ErrorResponses.notFound(reply, 'Stripe webhook is disabled');
+        }
+
         const signature = request.headers['stripe-signature'] as
           | string
           | undefined;

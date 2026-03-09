@@ -1,57 +1,75 @@
-const SUPPORTED_CURRENCIES = ['USD', 'GBP', 'CAD', 'EUR'] as const;
+const SUPPORTED_CURRENCIES = [
+  'USD',
+  'EUR',
+  'AUD',
+  'CAD',
+  'CHF',
+  'CNY',
+  'CZK',
+  'DKK',
+  'GBP',
+  'HKD',
+  'HUF',
+  'JPY',
+  'MYR',
+  'NOK',
+  'PLN',
+  'PHP',
+  'RON',
+  'SEK',
+  'SGD',
+  'THB',
+] as const;
 
 export type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 
-const EUROPE_COUNTRY_CODES = new Set<string>([
-  'AL',
+const COUNTRY_CURRENCY_OVERRIDES: Record<string, SupportedCurrency> = {
+  US: 'USD',
+  AU: 'AUD',
+  CA: 'CAD',
+  CH: 'CHF',
+  CN: 'CNY',
+  CZ: 'CZK',
+  DK: 'DKK',
+  GB: 'GBP',
+  UK: 'GBP',
+  HK: 'HKD',
+  HU: 'HUF',
+  JP: 'JPY',
+  MY: 'MYR',
+  NO: 'NOK',
+  PL: 'PLN',
+  PH: 'PHP',
+  RO: 'RON',
+  SE: 'SEK',
+  SG: 'SGD',
+  TH: 'THB',
+};
+
+const EURO_ZONE_COUNTRY_CODES = new Set<string>([
   'AD',
-  'AM',
   'AT',
-  'AZ',
-  'BY',
   'BE',
-  'BA',
-  'BG',
-  'HR',
   'CY',
-  'CZ',
-  'DK',
+  'DE',
   'EE',
+  'ES',
   'FI',
   'FR',
-  'GE',
-  'DE',
   'GR',
-  'HU',
-  'IS',
+  'HR',
   'IE',
   'IT',
-  'KZ',
-  'XK',
-  'LV',
-  'LI',
   'LT',
   'LU',
-  'MT',
-  'MD',
+  'LV',
   'MC',
-  'ME',
+  'MT',
   'NL',
-  'MK',
-  'NO',
-  'PL',
   'PT',
-  'RO',
-  'RU',
-  'SM',
-  'RS',
-  'SK',
   'SI',
-  'ES',
-  'SE',
-  'CH',
-  'TR',
-  'UA',
+  'SK',
+  'SM',
   'VA',
   'EU',
 ]);
@@ -84,10 +102,10 @@ export const resolveCurrencyForCountry = (
 ): SupportedCurrency | null => {
   if (!countryCode) return null;
   const normalized = countryCode.trim().toUpperCase();
-  if (normalized === 'US') return 'USD';
-  if (normalized === 'CA') return 'CAD';
-  if (normalized === 'GB' || normalized === 'UK') return 'GBP';
-  if (EUROPE_COUNTRY_CODES.has(normalized)) return 'EUR';
+  if (COUNTRY_CURRENCY_OVERRIDES[normalized]) {
+    return COUNTRY_CURRENCY_OVERRIDES[normalized];
+  }
+  if (EURO_ZONE_COUNTRY_CODES.has(normalized)) return 'EUR';
   return null;
 };
 
@@ -143,7 +161,23 @@ export const resolvePreferredCurrency = (options: {
 
 export const getSupportedCurrencies = (): SupportedCurrency[] => [
   'USD',
-  'GBP',
-  'CAD',
   'EUR',
+  'AUD',
+  'CAD',
+  'CHF',
+  'CNY',
+  'CZK',
+  'DKK',
+  'GBP',
+  'HKD',
+  'HUF',
+  'JPY',
+  'MYR',
+  'NOK',
+  'PLN',
+  'PHP',
+  'RON',
+  'SEK',
+  'SGD',
+  'THB',
 ];

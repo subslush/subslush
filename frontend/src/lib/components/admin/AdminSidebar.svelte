@@ -81,7 +81,7 @@
           href={item.href}
           class={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
             isActive(item.href, $page.url.pathname)
-              ? 'bg-gradient-to-r from-cyan-500/10 to-pink-500/10 text-gray-900 border border-cyan-100'
+              ? 'bg-gradient-to-r from-purple-700/10 to-pink-600/10 text-gray-900 border border-cyan-100'
               : 'text-gray-600 hover:bg-gray-100'
           }`}
         >

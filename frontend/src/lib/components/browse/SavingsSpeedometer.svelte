@@ -46,7 +46,7 @@
     if (savings < 30) return 'text-amber-500';
     if (savings < 60) return 'text-cyan-500';
     if (savings < 100) return 'text-green-500';
-    return 'text-transparent bg-gradient-to-r from-cyan-500 to-pink-500 bg-clip-text';
+    return 'text-transparent bg-gradient-to-r from-purple-700 to-pink-600 bg-clip-text';
   }
 
   function getSavingsCategory(savings: number): string {
@@ -216,7 +216,7 @@
   <!-- Stats and insights -->
   <div class="space-y-4">
     <!-- Current comparison stats -->
-    <div class="bg-gradient-to-br from-cyan-50/50 to-pink-50/50 rounded-lg p-4 border border-cyan-100">
+    <div class="bg-gradient-to-br from-purple-50/60 to-pink-50/60 rounded-lg p-4 border border-purple-100">
       <div class="flex items-center justify-between mb-2">
         <span class="text-sm font-medium text-gray-700">Current comparison:</span>
         <span class="text-sm font-bold text-cyan-600">
@@ -242,7 +242,7 @@
     <!-- CTA -->
     <button
       type="button"
-      class="w-full bg-gradient-to-r from-cyan-500 to-pink-500 hover:from-cyan-600 hover:to-pink-600 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 hover:shadow-lg hover:scale-105 flex items-center justify-center space-x-2 group"
+      class="w-full bg-gradient-to-r from-purple-700 to-pink-600 hover:from-purple-800 hover:to-pink-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 hover:shadow-lg hover:scale-105 flex items-center justify-center space-x-2 group"
     >
       <span>Compare More Services</span>
       <ArrowRight size={16} class="transform group-hover:translate-x-1 transition-transform" />

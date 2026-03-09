@@ -46,6 +46,9 @@ function mapOrder(row: any): Order {
     coupon_code: row.coupon_code ?? null,
     coupon_discount_cents: row.coupon_discount_cents ?? null,
     total_cents: row.total_cents,
+    pricing_snapshot_id: row.pricing_snapshot_id ?? null,
+    settlement_currency: row.settlement_currency ?? null,
+    settlement_total_cents: row.settlement_total_cents ?? null,
     term_months: row.term_months,
     paid_with_credits: row.paid_with_credits,
     auto_renew: row.auto_renew,
@@ -77,6 +80,12 @@ function mapOrderItem(row: any): OrderItem {
     coupon_discount_cents: row.coupon_discount_cents ?? null,
     currency: row.currency,
     total_price_cents: row.total_price_cents,
+    settlement_currency: row.settlement_currency ?? null,
+    settlement_unit_price_cents: row.settlement_unit_price_cents ?? null,
+    settlement_base_price_cents: row.settlement_base_price_cents ?? null,
+    settlement_coupon_discount_cents:
+      row.settlement_coupon_discount_cents ?? null,
+    settlement_total_price_cents: row.settlement_total_price_cents ?? null,
     description: row.description,
     metadata: parseMetadata(row.metadata),
     created_at: row.created_at,
@@ -969,9 +978,13 @@ export class OrderService {
     const orderResult = await client.query(
       `INSERT INTO orders (
         user_id, status, status_reason, currency, subtotal_cents, discount_cents,
-        coupon_id, coupon_code, coupon_discount_cents, total_cents, paid_with_credits,
-        auto_renew, payment_provider, payment_reference, term_months, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        coupon_id, coupon_code, coupon_discount_cents, total_cents, pricing_snapshot_id,
+        settlement_currency, settlement_total_cents, paid_with_credits, auto_renew,
+        payment_provider, payment_reference, term_months, metadata
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19
+      )
       RETURNING *`,
       [
         input.user_id,
@@ -984,6 +997,9 @@ export class OrderService {
         input.coupon_code ?? null,
         couponDiscountCents,
         totalCents,
+        input.pricing_snapshot_id ?? null,
+        input.settlement_currency ?? null,
+        input.settlement_total_cents ?? null,
         input.paid_with_credits ?? false,
         input.auto_renew ?? false,
         input.payment_provider || null,
@@ -1004,9 +1020,14 @@ export class OrderService {
       const itemResult = await client.query(
         `INSERT INTO order_items (
           order_id, product_variant_id, quantity, unit_price_cents,
-          base_price_cents, discount_percent, term_months, currency,
-          total_price_cents, description, metadata, auto_renew, coupon_discount_cents
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          base_price_cents, discount_percent, term_months, currency, total_price_cents,
+          settlement_currency, settlement_unit_price_cents, settlement_base_price_cents,
+          settlement_coupon_discount_cents, settlement_total_price_cents, description,
+          metadata, auto_renew, coupon_discount_cents
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9,
+          $10, $11, $12, $13, $14, $15, $16, $17, $18
+        )
         RETURNING *`,
         [
           order.id,
@@ -1018,6 +1039,11 @@ export class OrderService {
           item.term_months ?? null,
           item.currency,
           item.total_price_cents,
+          item.settlement_currency ?? null,
+          item.settlement_unit_price_cents ?? null,
+          item.settlement_base_price_cents ?? null,
+          item.settlement_coupon_discount_cents ?? null,
+          item.settlement_total_price_cents ?? null,
           item.description || null,
           item.metadata ? JSON.stringify(item.metadata) : null,
           item.auto_renew ?? null,
@@ -1185,6 +1211,9 @@ export class OrderService {
     updates: {
       payment_provider?: string | null;
       payment_reference?: string | null;
+      pricing_snapshot_id?: string | null;
+      settlement_currency?: string | null;
+      settlement_total_cents?: number | null;
       paid_with_credits?: boolean;
       auto_renew?: boolean;
       checkout_mode?: string | null;
@@ -1219,6 +1248,18 @@ export class OrderService {
       if (updates.payment_reference !== undefined) {
         updateFields.push(`payment_reference = $${++paramCount}`);
         values.push(updates.payment_reference);
+      }
+      if (updates.pricing_snapshot_id !== undefined) {
+        updateFields.push(`pricing_snapshot_id = $${++paramCount}`);
+        values.push(updates.pricing_snapshot_id);
+      }
+      if (updates.settlement_currency !== undefined) {
+        updateFields.push(`settlement_currency = $${++paramCount}`);
+        values.push(updates.settlement_currency);
+      }
+      if (updates.settlement_total_cents !== undefined) {
+        updateFields.push(`settlement_total_cents = $${++paramCount}`);
+        values.push(updates.settlement_total_cents);
       }
       if (updates.paid_with_credits !== undefined) {
         updateFields.push(`paid_with_credits = $${++paramCount}`);

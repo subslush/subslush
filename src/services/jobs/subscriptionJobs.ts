@@ -5,23 +5,22 @@ import {
   computeNextRenewalDates,
   formatSubscriptionDisplayName,
   formatSubscriptionShortId,
-  getNextStripeRenewalAttemptDate,
   getSubscriptionDurationMonths,
 } from '../../utils/subscriptionHelpers';
 import { creditService } from '../creditService';
-import { paymentService } from '../paymentService';
 import { notificationService } from '../notificationService';
 import { subscriptionService } from '../subscriptionService';
-import { paymentMethodService } from '../paymentMethodService';
 import { upgradeSelectionService } from '../upgradeSelectionService';
 import {
   resolveCycleEndDate,
   subscriptionRenewalService,
 } from '../subscriptionRenewalService';
 import {
+  buildSubscriptionRenewalReminderLink,
   ensureRenewalTask,
   notifyCreditsRenewalSuccess,
-  notifyStripeRenewalFailure,
+  sendSubscriptionExpiryReminderEmail,
+  type SubscriptionReminderStage,
 } from '../renewalNotificationService';
 import { getMmuCycleInfo, shouldCreateMmuTask } from '../../utils/mmuSchedule';
 
@@ -61,8 +60,6 @@ interface RenewalCandidate {
   item_base_price_cents?: number | null;
   item_discount_percent?: number | null;
 }
-
-const STRIPE_PENDING_TIMEOUT_MINUTES = 120;
 
 function parseJson(value: any): any | null {
   if (!value) return null;
@@ -152,38 +149,6 @@ async function updateSubscription(
   }
 
   return result.success;
-}
-
-async function findPendingStripeRenewal(subscriptionId: string): Promise<{
-  paymentId: string;
-  recordId: string;
-  status: string;
-  createdAt: Date;
-} | null> {
-  const pool = getDatabasePool();
-  const result = await pool.query(
-    `
-      SELECT id, provider_payment_id, status, created_at
-      FROM payments
-      WHERE provider = 'stripe'
-        AND (metadata->>'subscription_id') = $1
-        AND status IN ('pending', 'processing')
-      ORDER BY created_at DESC
-      LIMIT 1
-    `,
-    [subscriptionId]
-  );
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return {
-    paymentId: result.rows[0].provider_payment_id,
-    recordId: result.rows[0].id,
-    status: result.rows[0].status,
-    createdAt: result.rows[0].created_at,
-  };
 }
 
 type TermResolutionSource = 'stored' | 'item' | 'order' | 'metadata' | 'date';
@@ -325,12 +290,6 @@ function resolveCurrency(candidate: RenewalCandidate): string {
   ).toLowerCase();
 }
 
-function resolveDueDate(candidate: RenewalCandidate): Date {
-  return toDate(
-    candidate.next_billing_at || candidate.renewal_date || candidate.end_date
-  );
-}
-
 export async function runSubscriptionRenewalSweep(): Promise<void> {
   const pool = getDatabasePool();
   const lookaheadMinutes = env.SUBSCRIPTION_RENEWAL_LOOKAHEAD_MINUTES;
@@ -450,10 +409,10 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
       await updateSubscription(
         subscriptionId,
         {
-          status_reason: 'auto_renew_missing_method',
-          next_billing_at: new Date(
-            Date.now() + env.SUBSCRIPTION_RENEWAL_RETRY_MINUTES * 60 * 1000
-          ),
+          auto_renew: false,
+          auto_renew_disabled_at: new Date(),
+          next_billing_at: null,
+          status_reason: 'auto_renew_disabled_missing_method',
         },
         'missing_method'
       );
@@ -675,346 +634,25 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
       continue;
     }
 
-    if (renewalMethod === 'stripe') {
-      const amount = priceCents / 100;
-      const currentAttemptAt = resolveDueDate(candidate);
-      const endDate = toDate(candidate.end_date);
-      const nextAttemptAt = getNextStripeRenewalAttemptDate(
-        endDate,
-        currentAttemptAt
-      );
-
-      const pendingPayment = await findPendingStripeRenewal(subscriptionId);
-
-      if (pendingPayment) {
-        const renewalLock = await subscriptionRenewalService.acquireRenewalLock(
-          {
-            subscriptionId,
-            cycleEndDate,
-          }
-        );
-        if (!renewalLock.acquired) {
-          Logger.info('Skipping Stripe renewal due to active lock', {
-            subscriptionId,
-            cycleEndDate: renewalLock.cycleEndDate,
-            status: renewalLock.status,
-          });
-          continue;
-        }
-
-        await subscriptionRenewalService.attachPaymentToRenewal({
-          subscriptionId,
-          cycleEndDate,
-          paymentId: pendingPayment.recordId,
-          status: 'processing',
-        });
-        const pendingCreatedAt =
-          pendingPayment.createdAt instanceof Date
-            ? pendingPayment.createdAt
-            : new Date(pendingPayment.createdAt);
-        const pendingAgeMs = Number.isNaN(pendingCreatedAt.getTime())
-          ? 0
-          : Date.now() - pendingCreatedAt.getTime();
-
-        if (pendingAgeMs >= STRIPE_PENDING_TIMEOUT_MINUTES * 60 * 1000) {
-          const reconcile = await paymentService.reconcileStripePaymentIntent(
-            pendingPayment.paymentId
-          );
-
-          if (!reconcile.handled) {
-            Logger.warn('Stripe renewal pending reconciliation failed', {
-              subscriptionId,
-              paymentId: pendingPayment.paymentId,
-              error: reconcile.error,
-            });
-          }
-
-          if (
-            reconcile.status === 'processing' ||
-            reconcile.status === 'pending'
-          ) {
-            await updateSubscription(
-              subscriptionId,
-              {
-                status_reason: 'renewal_payment_created',
-                next_billing_at: currentAttemptAt,
-                renewal_method: 'stripe',
-              },
-              'stripe_pending_reconciled'
-            );
-          }
-
-          continue;
-        }
-
-        await updateSubscription(
-          subscriptionId,
-          {
-            status_reason: 'renewal_payment_created',
-            next_billing_at: currentAttemptAt,
-            renewal_method: 'stripe',
-          },
-          'stripe_pending_existing'
-        );
-        continue;
-      }
-
-      let paymentMethodId = candidate.billing_payment_method_id ?? null;
-      let paymentMethod = paymentMethodId
-        ? await paymentMethodService.getPaymentMethodById(
-            paymentMethodId,
-            userId
-          )
-        : null;
-
-      if (!paymentMethod) {
-        const fallback = await paymentMethodService.getDefaultPaymentMethod(
-          userId,
-          'stripe'
-        );
-        if (fallback) {
-          paymentMethod = fallback;
-          paymentMethodId = fallback.id;
-        }
-      }
-
-      if (!paymentMethod || paymentMethod.status !== 'active') {
-        const disableAutoRenew = !nextAttemptAt;
-        await updateSubscription(
-          subscriptionId,
-          {
-            status_reason: 'auto_renew_missing_payment_method',
-            next_billing_at: nextAttemptAt ?? null,
-            renewal_method: 'stripe',
-            ...(disableAutoRenew
-              ? {
-                  auto_renew: false,
-                  auto_renew_disabled_at: new Date(),
-                }
-              : {}),
-          },
-          'stripe_missing_payment_method'
-        );
-
-        try {
-          await notifyStripeRenewalFailure({
-            userId,
-            subscriptionId,
-            serviceType: candidate.service_type,
-            servicePlan: candidate.service_plan,
-            productName: candidate.product_name ?? null,
-            variantName: candidate.variant_name ?? null,
-            termMonths: durationMonths,
-            endDate,
-            renewalDate: candidate.renewal_date ?? null,
-            priceCents,
-            currency,
-            reason: 'missing_payment_method',
-            nextRetryAt: nextAttemptAt ?? null,
-          });
-        } catch (error) {
-          Logger.warn('Stripe renewal missing method notification failed', {
-            subscriptionId,
-            error,
-          });
-        }
-        continue;
-      }
-
-      if (!paymentMethod.provider_customer_id) {
-        const disableAutoRenew = !nextAttemptAt;
-        await updateSubscription(
-          subscriptionId,
-          {
-            status_reason: 'auto_renew_missing_payment_method',
-            next_billing_at: nextAttemptAt ?? null,
-            renewal_method: 'stripe',
-            ...(disableAutoRenew
-              ? {
-                  auto_renew: false,
-                  auto_renew_disabled_at: new Date(),
-                }
-              : {}),
-          },
-          'stripe_missing_customer'
-        );
-
-        try {
-          await notifyStripeRenewalFailure({
-            userId,
-            subscriptionId,
-            serviceType: candidate.service_type,
-            servicePlan: candidate.service_plan,
-            productName: candidate.product_name ?? null,
-            variantName: candidate.variant_name ?? null,
-            termMonths: durationMonths,
-            endDate,
-            renewalDate: candidate.renewal_date ?? null,
-            priceCents,
-            currency,
-            reason: 'missing_customer',
-            nextRetryAt: nextAttemptAt ?? null,
-          });
-        } catch (error) {
-          Logger.warn('Stripe renewal missing customer notification failed', {
-            subscriptionId,
-            error,
-          });
-        }
-        continue;
-      }
-
-      const renewalLock = await subscriptionRenewalService.acquireRenewalLock({
-        subscriptionId,
-        cycleEndDate,
-      });
-      if (!renewalLock.acquired) {
-        Logger.info('Skipping Stripe renewal due to active lock', {
-          subscriptionId,
-          cycleEndDate: renewalLock.cycleEndDate,
-          status: renewalLock.status,
-        });
-        continue;
-      }
-
-      const paymentResult =
-        await paymentService.createStripeOffSessionRenewalPayment({
-          userId,
-          amount,
-          currency: currency || 'USD',
-          description: `Subscription renewal: ${candidate.service_type} ${candidate.service_plan}`,
-          paymentMethodId: paymentMethod.provider_payment_method_id,
-          customerId: paymentMethod.provider_customer_id || '',
-          subscriptionId,
-          metadata: {
-            renewal: true,
-            subscription_id: subscriptionId,
-            service_type: candidate.service_type,
-            service_plan: candidate.service_plan,
-            duration_months: durationMonths,
-            term_months: durationMonths,
-            base_price_cents: basePriceCents ?? undefined,
-            discount_percent: discountPercent ?? undefined,
-            payment_method_id: paymentMethod.provider_payment_method_id,
-            user_payment_method_id: paymentMethod.id,
-            expected_end_date: endDate.toISOString(),
-            ...(candidate.renewal_date
-              ? {
-                  expected_renewal_date: toDate(
-                    candidate.renewal_date
-                  ).toISOString(),
-                }
-              : {}),
-            off_session: true,
-          },
-          orderContext: {
-            priceCents,
-            currency,
-            productVariantId: candidate.product_variant_id ?? null,
-            ...(basePriceCents !== null && basePriceCents !== undefined
-              ? { basePriceCents }
-              : {}),
-            ...(discountPercent !== null && discountPercent !== undefined
-              ? { discountPercent }
-              : {}),
-            termMonths: durationMonths,
-            autoRenew: true,
-            nextBillingAt: currentAttemptAt,
-            renewalMethod: 'stripe',
-            statusReason: 'renewal_payment_created',
-          },
-        });
-
-      if (!paymentResult.success && !paymentResult.paymentId) {
-        await subscriptionRenewalService.markRenewalFailed({
-          subscriptionId,
-          cycleEndDate,
-        });
-        const disableAutoRenew = !nextAttemptAt;
-        await updateSubscription(
-          subscriptionId,
-          {
-            status_reason: 'renewal_payment_failed',
-            next_billing_at: nextAttemptAt ?? null,
-            ...(disableAutoRenew
-              ? {
-                  auto_renew: false,
-                  auto_renew_disabled_at: new Date(),
-                }
-              : {}),
-          },
-          'stripe_payment_failed'
-        );
-
-        try {
-          await notifyStripeRenewalFailure({
-            userId,
-            subscriptionId,
-            serviceType: candidate.service_type,
-            servicePlan: candidate.service_plan,
-            productName: candidate.product_name ?? null,
-            variantName: candidate.variant_name ?? null,
-            termMonths: durationMonths,
-            endDate,
-            renewalDate: candidate.renewal_date ?? null,
-            priceCents,
-            currency,
-            reason: paymentResult.error || 'stripe_payment_failed',
-            nextRetryAt: nextAttemptAt ?? null,
-          });
-        } catch (error) {
-          Logger.warn('Stripe renewal failure notification failed', {
-            subscriptionId,
-            error,
-          });
-        }
-        continue;
-      }
-
-      if (paymentResult.paymentRecordId) {
-        await subscriptionRenewalService.attachPaymentToRenewal({
-          subscriptionId,
-          cycleEndDate,
-          paymentId: paymentResult.paymentRecordId,
-          status: 'processing',
-        });
-      } else {
-        await subscriptionRenewalService.beginRenewalProcessing({
-          subscriptionId,
-          cycleEndDate,
-        });
-      }
-
+    if (renewalMethod !== 'credits') {
       await updateSubscription(
         subscriptionId,
         {
-          status_reason: 'renewal_payment_created',
-          next_billing_at: currentAttemptAt,
-          renewal_method: 'stripe',
-          ...(paymentMethodId
-            ? { billing_payment_method_id: paymentMethodId }
-            : {}),
+          auto_renew: false,
+          auto_renew_disabled_at: new Date(),
+          next_billing_at: null,
+          renewal_method: null,
+          status_reason: 'auto_renew_disabled_manual_renewal_required',
         },
-        'stripe_payment_created'
+        'auto_renew_cutover_non_credits'
       );
-
-      Logger.info('Stripe renewal payment created', {
+      Logger.info('Auto-renew disabled for non-credit subscription', {
         subscriptionId,
-        paymentId: paymentResult.paymentId,
+        renewalMethod,
       });
       continue;
     }
 
-    await updateSubscription(
-      subscriptionId,
-      {
-        status_reason: 'auto_renew_manual_review',
-        next_billing_at: new Date(
-          Date.now() + env.SUBSCRIPTION_RENEWAL_RETRY_MINUTES * 60 * 1000
-        ),
-      },
-      'manual_review'
-    );
   }
 
   Logger.info('Subscription renewal sweep complete', {
@@ -1033,62 +671,209 @@ export async function runSubscriptionExpirySweep(): Promise<void> {
     return;
   }
 
-  const expiredSubscriptionIds = result.data?.subscription_ids || [];
-  if (expiredSubscriptionIds.length > 0) {
-    try {
-      const cleanup = await paymentService.cancelPendingStripeRenewalPayments(
-        expiredSubscriptionIds
-      );
-      Logger.info('Expired subscription Stripe renewal cleanup', {
-        expired: expiredSubscriptionIds.length,
-        cancelled: cleanup.cancelled,
-        skipped: cleanup.skipped,
-        errors: cleanup.errors,
-      });
-    } catch (error) {
-      Logger.warn('Expired subscription Stripe renewal cleanup failed', {
-        error,
-      });
-    }
-  }
-
   Logger.info('Subscription expiry sweep complete', {
     updated: result.data?.updated || 0,
   });
 }
 
+const HOUR_MS = 60 * 60 * 1000;
 const REMINDER_WINDOW_HOURS = 2;
 
-const SUBSCRIPTION_REMINDERS = [
+type SubscriptionReminderConfig = {
+  stage: SubscriptionReminderStage;
+  hours: number;
+  title: string;
+  messageSuffix: string;
+};
+
+type ReminderCandidate = {
+  id: string;
+  user_id: string;
+  user_email?: string | null;
+  service_type: string;
+  service_plan: string;
+  end_date: Date | string;
+  term_months?: number | null;
+  product_name?: string | null;
+  variant_name?: string | null;
+};
+
+type ReminderEventState = {
+  id: string;
+  notificationId: string | null;
+  emailSentAt: Date | null;
+  created: boolean;
+};
+
+const SUBSCRIPTION_REMINDERS: SubscriptionReminderConfig[] = [
   {
+    stage: '7d',
     hours: 168,
-    title: 'Subscription expiring soon',
+    title: 'Subscription expiring in 7 days',
     messageSuffix: 'expires in 7 days.',
   },
   {
+    stage: '3d',
     hours: 72,
     title: 'Subscription expiring in 3 days',
     messageSuffix: 'expires in 3 days.',
   },
+  {
+    stage: '24h',
+    hours: 24,
+    title: 'Subscription expiring in 24 hours',
+    messageSuffix: 'expires in 24 hours.',
+  },
 ];
 
-export async function runSubscriptionReminderSweep(): Promise<void> {
+const MAX_REMINDER_HOURS = Math.max(
+  ...SUBSCRIPTION_REMINDERS.map(reminder => reminder.hours)
+);
+
+export function isSubscriptionReminderDue(params: {
+  targetExpiryAt: Date;
+  reminderHours: number;
+  now: Date;
+  windowHours?: number;
+}): boolean {
+  const windowHours = params.windowHours ?? REMINDER_WINDOW_HOURS;
+  const targetMs = params.now.getTime() + params.reminderHours * HOUR_MS;
+  const lowerBoundMs = targetMs - windowHours * HOUR_MS;
+  const expiryMs = params.targetExpiryAt.getTime();
+
+  return expiryMs > lowerBoundMs && expiryMs <= targetMs;
+}
+
+async function findNotificationIdByDedupeKey(
+  dedupeKey: string
+): Promise<string | null> {
+  const pool = getDatabasePool();
+  const result = await pool.query(
+    `SELECT id
+     FROM notifications
+     WHERE dedupe_key = $1
+     LIMIT 1`,
+    [dedupeKey]
+  );
+  return result.rows[0]?.id ?? null;
+}
+
+async function ensureReminderEvent(params: {
+  subscriptionId: string;
+  reminder: SubscriptionReminderConfig;
+  endDate: Date;
+}): Promise<ReminderEventState | null> {
+  const pool = getDatabasePool();
+  const insertResult = await pool.query(
+    `INSERT INTO subscription_reminder_events (
+       subscription_id,
+       reminder_stage,
+       target_expiry_at,
+       metadata
+     ) VALUES ($1, $2, $3, $4::jsonb)
+     ON CONFLICT (subscription_id, reminder_stage, target_expiry_at) DO NOTHING
+     RETURNING id, notification_id, email_sent_at`,
+    [
+      params.subscriptionId,
+      params.reminder.stage,
+      params.endDate,
+      JSON.stringify({
+        reminder_hours: params.reminder.hours,
+        reminder_stage: params.reminder.stage,
+      }),
+    ]
+  );
+
+  if (insertResult.rows.length > 0) {
+    return {
+      id: insertResult.rows[0].id as string,
+      notificationId: (insertResult.rows[0].notification_id as string) || null,
+      emailSentAt: (insertResult.rows[0].email_sent_at as Date) || null,
+      created: true,
+    };
+  }
+
+  const existingResult = await pool.query(
+    `SELECT id, notification_id, email_sent_at
+     FROM subscription_reminder_events
+     WHERE subscription_id = $1
+       AND reminder_stage = $2
+       AND target_expiry_at = $3
+     LIMIT 1`,
+    [params.subscriptionId, params.reminder.stage, params.endDate]
+  );
+
+  if (existingResult.rows.length === 0) {
+    return null;
+  }
+
+  return {
+    id: existingResult.rows[0].id as string,
+    notificationId: (existingResult.rows[0].notification_id as string) || null,
+    emailSentAt: (existingResult.rows[0].email_sent_at as Date) || null,
+    created: false,
+  };
+}
+
+async function attachReminderNotification(params: {
+  eventId: string;
+  notificationId: string;
+  dedupeKey: string;
+}): Promise<void> {
+  const pool = getDatabasePool();
+  await pool.query(
+    `UPDATE subscription_reminder_events
+     SET notification_id = COALESCE(notification_id, $2),
+         metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
+         updated_at = NOW()
+     WHERE id = $1`,
+    [
+      params.eventId,
+      params.notificationId,
+      JSON.stringify({
+        notification_dedupe_key: params.dedupeKey,
+      }),
+    ]
+  );
+}
+
+async function markReminderEmailSent(params: {
+  eventId: string;
+  renewalLinkTokenHash: string;
+  reminderStage: SubscriptionReminderStage;
+}): Promise<void> {
+  const pool = getDatabasePool();
+  await pool.query(
+    `UPDATE subscription_reminder_events
+     SET email_sent_at = COALESCE(email_sent_at, NOW()),
+         metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+         updated_at = NOW()
+     WHERE id = $1`,
+    [
+      params.eventId,
+      JSON.stringify({
+        email_status: 'sent',
+        reminder_stage: params.reminderStage,
+        renewal_link_token_hash: params.renewalLinkTokenHash,
+      }),
+    ]
+  );
+}
+
+export async function runSubscriptionReminderSweep(
+  now: Date = new Date()
+): Promise<void> {
   Logger.info('Subscription reminder sweep started');
   const pool = getDatabasePool();
-  const notifications: {
-    userId: string;
-    type: 'subscription_expiring';
-    title: string;
-    message: string;
-    metadata: Record<string, unknown>;
-    subscriptionId: string;
-    dedupeKey: string;
-  }[] = [];
+
+  let remindersDue = 0;
+  let eventsCreated = 0;
+  let notificationsCreated = 0;
+  let emailsSent = 0;
 
   try {
-    for (const reminder of SUBSCRIPTION_REMINDERS) {
-      const result = await pool.query(
-        `
+    const candidateResult = await pool.query(
+      `
         SELECT s.id,
                s.user_id,
                s.service_type,
@@ -1096,25 +881,66 @@ export async function runSubscriptionReminderSweep(): Promise<void> {
                s.end_date,
                s.term_months,
                p.name AS product_name,
-               pv.name AS variant_name
+               pv.name AS variant_name,
+               u.email AS user_email
         FROM subscriptions s
         LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
         LEFT JOIN products p ON p.id = pv.product_id
+        LEFT JOIN users u ON u.id = s.user_id
         WHERE s.status = 'active'
           AND COALESCE(s.auto_renew, FALSE) = FALSE
           AND s.cancellation_requested_at IS NULL
           AND COALESCE(s.status_reason, '') <> 'cancelled_by_user'
           AND s.end_date IS NOT NULL
-          AND s.end_date > NOW()
-          AND s.end_date <= NOW() + ($1 * INTERVAL '1 hour')
-          AND s.end_date > NOW() + ($1 * INTERVAL '1 hour') - ($2 * INTERVAL '1 hour')
-        `,
-        [reminder.hours, REMINDER_WINDOW_HOURS]
-      );
+          AND s.end_date > $1
+          AND s.end_date <= $2
+      `,
+      [
+        now,
+        new Date((now.getTime() + (MAX_REMINDER_HOURS + REMINDER_WINDOW_HOURS) * HOUR_MS)),
+      ]
+    );
 
-      for (const row of result.rows) {
-        const endDate =
-          row.end_date instanceof Date ? row.end_date : new Date(row.end_date);
+    const candidates = candidateResult.rows as ReminderCandidate[];
+
+    for (const row of candidates) {
+      const endDate =
+        row.end_date instanceof Date ? row.end_date : new Date(row.end_date);
+      if (Number.isNaN(endDate.getTime())) {
+        continue;
+      }
+
+      for (const reminder of SUBSCRIPTION_REMINDERS) {
+        if (
+          !isSubscriptionReminderDue({
+            targetExpiryAt: endDate,
+            reminderHours: reminder.hours,
+            now,
+          })
+        ) {
+          continue;
+        }
+
+        remindersDue += 1;
+
+        const event = await ensureReminderEvent({
+          subscriptionId: row.id,
+          reminder,
+          endDate,
+        });
+
+        if (!event) {
+          Logger.warn('Unable to create or load subscription reminder event', {
+            subscriptionId: row.id,
+            reminderStage: reminder.stage,
+          });
+          continue;
+        }
+
+        if (event.created) {
+          eventsCreated += 1;
+        }
+
         const serviceLabel = formatSubscriptionDisplayName({
           productName: row.product_name ?? null,
           variantName: row.variant_name ?? null,
@@ -1124,41 +950,100 @@ export async function runSubscriptionReminderSweep(): Promise<void> {
         });
         const subscriptionShort = formatSubscriptionShortId(row.id);
         const message = `Your ${serviceLabel} subscription (${subscriptionShort}) ${reminder.messageSuffix}`;
-        notifications.push({
-          userId: row.user_id,
-          type: 'subscription_expiring',
-          title: reminder.title,
-          message,
-          metadata: {
-            subscription_id: row.id,
-            service_type: row.service_type,
-            service_plan: row.service_plan,
-            expires_at: endDate.toISOString(),
-            reminder_hours: reminder.hours,
-            link: '/dashboard/subscriptions',
-          },
+        const notificationDedupeKey = `subscription_expiring:${row.id}:${reminder.stage}:${endDate.toISOString()}`;
+
+        let notificationId = event.notificationId;
+        if (!notificationId) {
+          const createResult = await notificationService.createNotification({
+            userId: row.user_id,
+            type: 'subscription_expiring',
+            title: reminder.title,
+            message,
+            metadata: {
+              subscription_id: row.id,
+              service_type: row.service_type,
+              service_plan: row.service_plan,
+              expires_at: endDate.toISOString(),
+              reminder_hours: reminder.hours,
+              reminder_stage: reminder.stage,
+              link: `/dashboard/subscriptions/${row.id}/renewal`,
+            },
+            subscriptionId: row.id,
+            dedupeKey: notificationDedupeKey,
+          });
+
+          if (!createResult.success) {
+            Logger.warn('Failed to create subscription reminder notification', {
+              subscriptionId: row.id,
+              reminderStage: reminder.stage,
+              error: createResult.error,
+            });
+          }
+
+          if (createResult.success && createResult.data?.id) {
+            notificationId = createResult.data.id;
+            notificationsCreated += 1;
+          } else {
+            notificationId =
+              (await findNotificationIdByDedupeKey(notificationDedupeKey)) ??
+              null;
+          }
+
+          if (notificationId) {
+            await attachReminderNotification({
+              eventId: event.id,
+              notificationId,
+              dedupeKey: notificationDedupeKey,
+            });
+          }
+        }
+
+        if (event.emailSentAt || !row.user_email) {
+          continue;
+        }
+
+        const reminderLink = buildSubscriptionRenewalReminderLink({
           subscriptionId: row.id,
-          dedupeKey: `subscription_expiring:${row.id}:${reminder.hours}:${endDate.toISOString()}`,
+          reminderStage: reminder.stage,
+          targetExpiryAt: endDate,
         });
+        const emailResult = await sendSubscriptionExpiryReminderEmail({
+          recipientEmail: row.user_email,
+          subscriptionId: row.id,
+          serviceType: row.service_type,
+          servicePlan: row.service_plan,
+          productName: row.product_name ?? null,
+          variantName: row.variant_name ?? null,
+          termMonths: row.term_months ?? null,
+          reminderStage: reminder.stage,
+          targetExpiryAt: endDate,
+          renewalLink: reminderLink.url,
+        });
+
+        if (!emailResult.success) {
+          Logger.warn('Failed to send subscription reminder email', {
+            subscriptionId: row.id,
+            reminderStage: reminder.stage,
+            error: emailResult.error,
+          });
+          continue;
+        }
+
+        await markReminderEmailSent({
+          eventId: event.id,
+          reminderStage: reminder.stage,
+          renewalLinkTokenHash: reminderLink.tokenHash,
+        });
+        emailsSent += 1;
       }
     }
 
-    const createResult =
-      await notificationService.createNotifications(notifications);
-
-    if (!createResult.success) {
-      Logger.warn(
-        'Subscription reminder sweep failed to create notifications',
-        {
-          error: createResult.error,
-        }
-      );
-      return;
-    }
-
     Logger.info('Subscription reminder sweep complete', {
-      created: createResult.data.created,
-      candidates: notifications.length,
+      candidates: candidates.length,
+      remindersDue,
+      eventsCreated,
+      notificationsCreated,
+      emailsSent,
     });
   } catch (error) {
     Logger.error('Subscription reminder sweep failed:', error);

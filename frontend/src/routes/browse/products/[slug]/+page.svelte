@@ -143,7 +143,7 @@
       id: buildCartItemId({
         variantId: variant.id,
         termMonths: term.months,
-        autoRenew: true,
+        autoRenew: false,
         selectionType: upgradeSelectionType,
       }),
       serviceType: product.service_type || product.slug || product.name,
@@ -156,7 +156,7 @@
       features: variant.features,
       variantId: variant.id,
       termMonths: term.months,
-      autoRenew: true,
+      autoRenew: false,
       upgradeSelectionType: upgradeSelectionType || null,
       ownAccountCredentialRequirement:
         upgradeSelectionType === 'upgrade_own_account'
@@ -196,7 +196,7 @@
       id: buildCartItemId({
         variantId: variant.id,
         termMonths: term.months,
-        autoRenew: true,
+        autoRenew: false,
         selectionType: upgradeSelectionType,
       }),
       serviceType: product.service_type || product.slug || product.name,
@@ -209,7 +209,7 @@
       features: variant.features,
       variantId: variant.id,
       termMonths: term.months,
-      autoRenew: true,
+      autoRenew: false,
       upgradeSelectionType: upgradeSelectionType || null,
       ownAccountCredentialRequirement:
         upgradeSelectionType === 'upgrade_own_account'
@@ -422,7 +422,7 @@
             <div class="absolute left-1/2 -top-3 -translate-x-1/2">
               <div class="flex flex-wrap justify-center gap-1">
                 {#each variant.badges as badge}
-                  <span class="rounded-full border border-white/60 bg-gradient-to-r from-cyan-500 via-fuchsia-500 to-pink-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow-lg">
+                  <span class="rounded-full border border-white/60 bg-gradient-to-r from-purple-700 via-purple-600 to-pink-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-lg">
                     {badge}
                   </span>
                 {/each}
@@ -430,7 +430,7 @@
             </div>
           {/if}
           <div class="rounded-lg bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800 p-3 shadow-sm">
-            <h2 class="inline-block text-base font-semibold bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-pink-500 bg-clip-text text-transparent">
+            <h2 class="inline-block text-base font-semibold bg-gradient-to-r from-purple-600 via-purple-500 to-pink-600 bg-clip-text text-transparent">
               {variant.display_name}
             </h2>
             {#if variantDescription}
@@ -532,7 +532,7 @@
     </div>
 
     <section class="mt-8">
-      <div class="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gradient-to-r from-cyan-50 via-white to-pink-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gradient-to-r from-purple-50 via-white to-pink-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-start gap-3">
           <span class="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-700">
             <Shield size={14} class="text-cyan-700" />
