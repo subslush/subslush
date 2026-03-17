@@ -16,10 +16,8 @@ import {
   subscriptionRenewalService,
 } from '../subscriptionRenewalService';
 import {
-  buildSubscriptionRenewalReminderLink,
   ensureRenewalTask,
   notifyCreditsRenewalSuccess,
-  sendSubscriptionExpiryReminderEmail,
   type SubscriptionReminderStage,
 } from '../renewalNotificationService';
 import { getMmuCycleInfo, shouldCreateMmuTask } from '../../utils/mmuSchedule';
@@ -660,7 +658,6 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
       });
       continue;
     }
-
   }
 
   Logger.info('Subscription renewal sweep complete', {
@@ -845,29 +842,6 @@ async function attachReminderNotification(params: {
   );
 }
 
-async function markReminderEmailSent(params: {
-  eventId: string;
-  renewalLinkTokenHash: string;
-  reminderStage: SubscriptionReminderStage;
-}): Promise<void> {
-  const pool = getDatabasePool();
-  await pool.query(
-    `UPDATE subscription_reminder_events
-     SET email_sent_at = COALESCE(email_sent_at, NOW()),
-         metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
-         updated_at = NOW()
-     WHERE id = $1`,
-    [
-      params.eventId,
-      JSON.stringify({
-        email_status: 'sent',
-        reminder_stage: params.reminderStage,
-        renewal_link_token_hash: params.renewalLinkTokenHash,
-      }),
-    ]
-  );
-}
-
 export async function runSubscriptionReminderSweep(
   now: Date = new Date()
 ): Promise<void> {
@@ -905,7 +879,9 @@ export async function runSubscriptionReminderSweep(
       `,
       [
         now,
-        new Date((now.getTime() + (MAX_REMINDER_HOURS + REMINDER_WINDOW_HOURS) * HOUR_MS)),
+        new Date(
+          now.getTime() + (MAX_REMINDER_HOURS + REMINDER_WINDOW_HOURS) * HOUR_MS
+        ),
       ]
     );
 
@@ -1009,40 +985,7 @@ export async function runSubscriptionReminderSweep(
         if (event.emailSentAt || !row.user_email) {
           continue;
         }
-
-        const reminderLink = buildSubscriptionRenewalReminderLink({
-          subscriptionId: row.id,
-          reminderStage: reminder.stage,
-          targetExpiryAt: endDate,
-        });
-        const emailResult = await sendSubscriptionExpiryReminderEmail({
-          recipientEmail: row.user_email,
-          subscriptionId: row.id,
-          serviceType: row.service_type,
-          servicePlan: row.service_plan,
-          productName: row.product_name ?? null,
-          variantName: row.variant_name ?? null,
-          termMonths: row.term_months ?? null,
-          reminderStage: reminder.stage,
-          targetExpiryAt: endDate,
-          renewalLink: reminderLink.url,
-        });
-
-        if (!emailResult.success) {
-          Logger.warn('Failed to send subscription reminder email', {
-            subscriptionId: row.id,
-            reminderStage: reminder.stage,
-            error: emailResult.error,
-          });
-          continue;
-        }
-
-        await markReminderEmailSent({
-          eventId: event.id,
-          reminderStage: reminder.stage,
-          renewalLinkTokenHash: reminderLink.tokenHash,
-        });
-        emailsSent += 1;
+        // Email reminders are intentionally disabled after subscription/renewal deprecation.
       }
     }
 

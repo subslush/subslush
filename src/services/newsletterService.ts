@@ -405,69 +405,26 @@ class NewsletterService {
       'If you did not request this, you can safely ignore this email.',
     ].join('\n');
 
-    const html = `
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Your 12% off coupon</title>
-        </head>
-        <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f3f4f6;padding:24px 0;">
-            <tr>
-              <td align="center">
-                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
-                  <tr>
-                    <td style="padding:24px 32px;background-color:#0f172a;background:linear-gradient(90deg,#0f172a,#1e293b);color:#ffffff;text-align:center;">
-                      <div style="font-size:24px;font-weight:700;letter-spacing:0.5px;line-height:1.1;">
-                        <span style="display:inline-block;"><span style="color:#06B6D4;">S</span><span style="color:#27A6CC;">u</span><span style="color:#4897C3;">b</span><span style="color:#6988BB;">S</span><span style="color:#8978B2;">l</span><span style="color:#AA68AA;">u</span><span style="color:#CB59A1;">s</span><span style="color:#EC4899;">h</span></span>
-                      </div>
-                      <div style="font-size:12px;color:#d1d5db;margin-top:6px;">Premium For Less</div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:28px 32px;">
-                      <h1 style="margin:0 0 12px;font-size:20px;text-align:center;">Welcome to SubSlush</h1>
-                      <p style="margin:0 0 16px;font-size:14px;color:#374151;text-align:center;">
-                        Premium subscriptions for less, and you just unlocked 12% off your first order.
-                        Use the code below to get started.
-                      </p>
-                      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;">
-                        <tr>
-                          <td style="padding:16px;text-align:center;">
-                            <div style="font-size:12px;text-transform:uppercase;color:#6b7280;letter-spacing:0.08em;">Coupon code</div>
-                            <div style="margin-top:6px;font-size:22px;font-weight:700;letter-spacing:0.1em;color:#111827;">${params.couponCode}</div>
-                            <div style="margin-top:8px;font-size:12px;color:#6b7280;">12% off your first order · ${expiryNote}</div>
-                          </td>
-                        </tr>
-                      </table>
-                      <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:22px auto 12px;">
-                        <tr>
-                          <td>
-                            <a href="${browseLink}" style="display:inline-block;background-color:#111827;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;">
-                              Start browsing
-                            </a>
-                          </td>
-                        </tr>
-                      </table>
-                      <p style="margin:0;font-size:12px;color:#6b7280;text-align:center;">
-                        This code can only be used once on your first purchase.
-                      </p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:18px 32px;background-color:#f9fafb;text-align:center;font-size:12px;color:#9ca3af;">
-                      &copy; 2026 SubSlush. All rights reserved.
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `.trim();
+    const html = emailService.buildBrandedEmail({
+      title: 'Welcome to SubSlush',
+      intro:
+        'Premium subscriptions for less, and you just unlocked 12% off your first order.',
+      bodyHtml: `
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <tr>
+            <td style="padding:16px;text-align:center;">
+              <div style="font-size:12px;text-transform:uppercase;color:#64748b;letter-spacing:0.08em;">Coupon code</div>
+              <div style="margin-top:8px;font-size:28px;font-weight:800;letter-spacing:0.12em;color:#0f172a;">${params.couponCode}</div>
+              <div style="margin-top:10px;font-size:12px;color:#64748b;">12% off your first order · ${expiryNote}</div>
+            </td>
+          </tr>
+        </table>
+      `.trim(),
+      ctaLabel: 'Start browsing',
+      ctaUrl: browseLink,
+      note: 'This code can only be used once on your first purchase.',
+      previewText: `Your 12% off first-order coupon: ${params.couponCode}`,
+    });
 
     return emailService.send({
       to: params.to,

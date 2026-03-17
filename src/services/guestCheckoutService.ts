@@ -75,6 +75,12 @@ const buildClaimLink = (token: string): string => {
   return `${base}${path}`;
 };
 
+const buildAppLink = (path: string): string => {
+  const base = resolveAppBaseUrl();
+  if (!base) return path;
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+};
+
 const buildPricingSummary = (
   pricing: CheckoutPricingSummary['items'] | null,
   totals: {
@@ -199,11 +205,24 @@ export class GuestCheckoutService {
           'If you did not request this, you can ignore this email.',
         ].join('\n');
 
-        const html = `
-          <p>Use the link below to confirm your email for this checkout:</p>
-          <p><a href="${claimLink}">Confirm checkout email</a></p>
-          <p>If you did not request this, you can ignore this email.</p>
-        `.trim();
+        const html = emailService.buildBrandedEmail({
+          title: 'Confirm your checkout email',
+          intro:
+            'Use the secure link below to confirm your email for this checkout session.',
+          bodyHtml: `
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+              <tr>
+                <td style="padding:14px 16px;font-size:13px;color:#334155;">
+                  This verification link is one-time use and expires automatically.
+                </td>
+              </tr>
+            </table>
+          `.trim(),
+          ctaLabel: 'Confirm checkout email',
+          ctaUrl: claimLink,
+          note: 'If you did not request this, you can ignore this email.',
+          previewText: 'Confirm your SubSlush checkout email',
+        });
 
         const sendResult = await emailService.send({
           to: params.email,
@@ -310,7 +329,7 @@ export class GuestCheckoutService {
       const existingUserId = identityRow.user_id as string | null;
 
       const targetUserResult = await client.query(
-        `SELECT id, is_guest, stripe_customer_id
+        `SELECT id, is_guest, stripe_customer_id, email
          FROM users
          WHERE id = $1
          FOR UPDATE`,
@@ -324,6 +343,11 @@ export class GuestCheckoutService {
       }
 
       const targetUser = targetUserResult.rows[0];
+      const targetEmail =
+        typeof targetUser.email === 'string' ? targetUser.email.trim() : '';
+      const identityEmail =
+        typeof identityRow.email === 'string' ? identityRow.email.trim() : '';
+      const notificationEmail = targetEmail || identityEmail;
 
       if (existingUserId && existingUserId !== params.userId) {
         const optionalUserTables = [
@@ -519,6 +543,59 @@ export class GuestCheckoutService {
 
       await client.query('COMMIT');
       transactionOpen = false;
+
+      if (notificationEmail) {
+        const ordersLink = buildAppLink('/dashboard/orders');
+        const emailSubject =
+          'Your SubSlush order is now linked to your account';
+        const emailText = [
+          'Your guest order has been successfully linked to your SubSlush account.',
+          '',
+          'How to access your credentials:',
+          `1) Open My Orders: ${ordersLink}`,
+          '2) Open your delivered order',
+          '3) Click "Reveal credentials" to view account credentials and activation instructions',
+          '',
+          `Need help? ${buildAppLink('/help')}`,
+        ].join('\n');
+        const emailHtml = emailService.buildBrandedEmail({
+          title: 'Order claimed successfully',
+          intro: 'Your guest order has been linked to your SubSlush account.',
+          bodyHtml: `
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+              <tr>
+                <td style="padding:14px 16px;font-size:13px;color:#334155;">
+                  <div style="font-weight:700;color:#0f172a;margin-bottom:8px;">How to access your credentials</div>
+                  <ol style="margin:0;padding-left:20px;">
+                    <li style="margin:0 0 7px;">Open <strong>My Orders</strong> in your dashboard.</li>
+                    <li style="margin:0 0 7px;">Open your delivered order.</li>
+                    <li style="margin:0;">Click <strong>Reveal credentials</strong> to view credentials and activation instructions.</li>
+                  </ol>
+                </td>
+              </tr>
+            </table>
+          `.trim(),
+          ctaLabel: 'Open My Orders',
+          ctaUrl: ordersLink,
+          note: `Need help? ${buildAppLink('/help')}`,
+          previewText: 'Your SubSlush order has been claimed',
+        });
+
+        const sendResult = await emailService.send({
+          to: notificationEmail,
+          subject: emailSubject,
+          text: emailText,
+          html: emailHtml,
+        });
+
+        if (!sendResult.success) {
+          Logger.warn('Failed to send post-claim order instructions email', {
+            userId: params.userId,
+            guestIdentityId,
+            error: sendResult.error,
+          });
+        }
+      }
 
       return createSuccessResult({
         guestIdentityId,
@@ -869,7 +946,8 @@ export class GuestCheckoutService {
               total_price_cents: pricedItem.finalTotalCents,
               settlement_currency: pricedItem.settlementCurrency,
               settlement_base_price_cents: pricedItem.settlementBasePriceCents,
-              settlement_total_price_cents: pricedItem.settlementFinalTotalCents,
+              settlement_total_price_cents:
+                pricedItem.settlementFinalTotalCents,
               settlement_coupon_discount_cents:
                 pricedItem.settlementCouponDiscountCents,
               ...(pricedItem.input.selection_type

@@ -398,7 +398,9 @@ export class OrderService {
         ? order.metadata['guest_identity_id']
         : null;
     const isUnclaimedGuestOrder =
-      shouldIssueClaimToken && Boolean(guestIdentityId) && Boolean(contactEmail);
+      shouldIssueClaimToken &&
+      Boolean(guestIdentityId) &&
+      Boolean(contactEmail);
 
     if (isUnclaimedGuestOrder && guestIdentityId) {
       const claimTokenResult = await guestCheckoutService.issueClaimToken({
@@ -433,108 +435,52 @@ export class OrderService {
           `Need help? ${helpLink}`,
         ].join('\n');
 
-        const html = `
-          <!doctype html>
-          <html>
-            <head>
-              <meta charset="utf-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1" />
-              <title>Order delivered - action required</title>
-            </head>
-            <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f3f4f6;padding:24px 0;">
-                <tr>
-                  <td align="center">
-                    <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
-                      <tr>
-                        <td style="padding:24px 32px;background-color:#0f172a;background:linear-gradient(90deg,#0f172a,#1e293b);color:#ffffff;text-align:center;">
-                          <div style="font-size:24px;font-weight:700;letter-spacing:0.5px;line-height:1.1;">
-                            <span style="display:inline-block;"><span style="color:#06B6D4;">S</span><span style="color:#27A6CC;">u</span><span style="color:#4897C3;">b</span><span style="color:#6988BB;">S</span><span style="color:#8978B2;">l</span><span style="color:#AA68AA;">u</span><span style="color:#CB59A1;">s</span><span style="color:#EC4899;">h</span></span>
-                          </div>
-                          <div style="font-size:12px;color:#d1d5db;margin-top:6px;">Premium For Less</div>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:28px 32px;">
-                          <h1 style="margin:0 0 12px;font-size:20px;text-align:center;">Order delivered - claim required</h1>
-                          <p style="margin:0 0 16px;font-size:14px;color:#374151;text-align:center;">
-                            Your order ${orderShort} has been delivered.
-                            Claim it within <strong>72 hours</strong> to access credentials and activation instructions.
-                          </p>
-                          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 16px;background-color:#fff7ed;border:1px solid #fdba74;border-radius:10px;">
-                            <tr>
-                              <td style="padding:14px 16px;font-size:13px;color:#7c2d12;text-align:center;">
-                                This claim link is one-time use and expires in 72 hours.
-                              </td>
-                            </tr>
-                          </table>
-                          <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto 18px;">
-                            <tr>
-                              <td>
-                                <a href="${claimLink}" style="display:inline-block;background-color:#111827;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-size:14px;font-weight:700;">
-                                  Claim order now
-                                </a>
-                              </td>
-                            </tr>
-                          </table>
-                          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:16px;">
-                            <tr>
-                              <td style="padding:14px 16px;font-size:13px;color:#111827;">
-                                <div style="font-weight:700;margin-bottom:8px;text-align:center;">Follow these steps</div>
-                                <ol style="margin:0;padding-left:20px;color:#374151;">
-                                  <li style="margin:0 0 8px 0;">Click <strong>Claim order now</strong> above.</li>
-                                  <li style="margin:0 0 8px 0;">Sign in to an existing SubSlush account, or create a new account. The order attaches to that account.</li>
-                                  <li style="margin:0 0 8px 0;">Open <strong>My Orders</strong> in your dashboard.</li>
-                                  <li style="margin:0 0 8px 0;">Open your delivered order.</li>
-                                  <li style="margin:0;">Click <strong>Reveal credentials</strong> to view credentials and activation instructions.</li>
-                                </ol>
-                              </td>
-                            </tr>
-                          </table>
-                          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 16px;background-color:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;">
-                            <tr>
-                              <td style="padding:14px 16px;font-size:13px;color:#1e1b4b;text-align:center;">
-                                <strong>Important:</strong> Subscription credentials and activation instructions are not automatic.
-                                You must open the order and <strong>Reveal credentials</strong> to finish activation.
-                              </td>
-                            </tr>
-                          </table>
-                          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;">
-                            <tr>
-                              <td style="padding:14px 16px;font-size:13px;color:#111827;">
-                                <div style="font-weight:600;margin-bottom:6px;text-align:center;">Subscriptions delivered</div>
-                                <ul style="margin:0;padding-left:18px;color:#374151;">
-                                  ${subscriptionsHtml}
-                                </ul>
-                              </td>
-                            </tr>
-                          </table>
-                          <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:22px auto 12px;">
-                            <tr>
-                              <td>
-                                <a href="${claimLink}" style="display:inline-block;background-color:#111827;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-size:14px;font-weight:700;">
-                                  Claim order now
-                                </a>
-                              </td>
-                            </tr>
-                          </table>
-                          <p style="margin:0;font-size:12px;color:#6b7280;text-align:center;">
-                            Need help? Visit our <a href="${helpLink}" style="color:#111827;text-decoration:underline;">help center</a>.
-                          </p>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:18px 32px;background-color:#f9fafb;text-align:center;font-size:12px;color:#9ca3af;">
-                          &copy; 2026 SubSlush. All rights reserved.
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-            </body>
-          </html>
-        `.trim();
+        const html = emailService.buildBrandedEmail({
+          title: 'Order delivered - claim required',
+          intro: `Your order ${orderShort} has been delivered. Claim it within 72 hours to access credentials and activation instructions.`,
+          bodyHtml: `
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px;background-color:#fff7ed;border:1px solid #fdba74;border-radius:10px;">
+              <tr>
+                <td style="padding:14px 16px;font-size:13px;color:#7c2d12;">
+                  This claim link is one-time use and expires in 72 hours.
+                </td>
+              </tr>
+            </table>
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+              <tr>
+                <td style="padding:14px 16px;font-size:13px;color:#334155;">
+                  <div style="font-weight:700;color:#0f172a;margin-bottom:8px;">Follow these steps</div>
+                  <ol style="margin:0;padding-left:20px;">
+                    <li style="margin:0 0 7px;">Click <strong>Claim order now</strong>.</li>
+                    <li style="margin:0 0 7px;">Sign in to an existing SubSlush account, or create a new account.</li>
+                    <li style="margin:0 0 7px;">Open <strong>My Orders</strong> in your dashboard.</li>
+                    <li style="margin:0 0 7px;">Open your delivered order.</li>
+                    <li style="margin:0;">Click <strong>Reveal credentials</strong>.</li>
+                  </ol>
+                </td>
+              </tr>
+            </table>
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px;background-color:#fdf4ff;border:1px solid #f5d0fe;border-radius:10px;">
+              <tr>
+                <td style="padding:14px 16px;font-size:13px;color:#701a75;">
+                  <strong>Important:</strong> credentials and activation instructions are not automatic.
+                </td>
+              </tr>
+            </table>
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+              <tr>
+                <td style="padding:14px 16px;font-size:13px;color:#334155;">
+                  <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Subscriptions delivered</div>
+                  <ul style="margin:0;padding-left:18px;">${subscriptionsHtml}</ul>
+                </td>
+              </tr>
+            </table>
+          `.trim(),
+          ctaLabel: 'Claim order now',
+          ctaUrl: claimLink,
+          note: `Need help? ${helpLink}`,
+          previewText: `Order ${orderShort} delivered - claim required`,
+        });
 
         return {
           payload: {
@@ -579,7 +525,7 @@ export class OrderService {
                 <div style="font-weight:600;margin-bottom:8px;color:#0f172a;">Manage this order in your account</div>
                 <div style="margin-bottom:8px;">Create a SubSlush account (or sign in) with this same email address, then click claim.</div>
                 <div style="margin-bottom:8px;">This one-time claim link expires in 72 hours.</div>
-                <a href="${claimTokenResult.data.claimLink}" style="display:inline-block;background-color:#111827;color:#ffffff;text-decoration:none;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                <a href="${claimTokenResult.data.claimLink}" style="display:inline-block;background:linear-gradient(90deg,#7e22ce 0%,#db2777 100%);color:#ffffff;text-decoration:none;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;">
                   Claim this order
                 </a>
               </td>
@@ -624,9 +570,9 @@ export class OrderService {
               </td>
             </tr>
           </table>
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 16px;background-color:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 16px;background-color:#fdf4ff;border:1px solid #f5d0fe;border-radius:10px;">
             <tr>
-              <td style="padding:14px 16px;font-size:13px;color:#1e1b4b;">
+              <td style="padding:14px 16px;font-size:13px;color:#701a75;">
                 <strong>Important:</strong> Subscription credentials and activation instructions are not automatic.
                 You must open the order and <strong>Reveal credentials</strong> to finish activation.
               </td>
@@ -646,72 +592,26 @@ export class OrderService {
       `Need help? ${helpLink}`,
       claimText,
     ].join('\n');
-    const html = `
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Order delivered</title>
-        </head>
-        <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f3f4f6;padding:24px 0;">
-            <tr>
-              <td align="center">
-                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
-                  <tr>
-                    <td style="padding:24px 32px;background-color:#0f172a;background:linear-gradient(90deg,#0f172a,#1e293b);color:#ffffff;text-align:center;">
-                      <div style="font-size:24px;font-weight:700;letter-spacing:0.5px;line-height:1.1;">
-                        <span style="display:inline-block;"><span style="color:#06B6D4;">S</span><span style="color:#27A6CC;">u</span><span style="color:#4897C3;">b</span><span style="color:#6988BB;">S</span><span style="color:#8978B2;">l</span><span style="color:#AA68AA;">u</span><span style="color:#CB59A1;">s</span><span style="color:#EC4899;">h</span></span>
-                      </div>
-                      <div style="font-size:12px;color:#d1d5db;margin-top:6px;">Premium For Less</div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:28px 32px;">
-                      <h1 style="margin:0 0 12px;font-size:20px;">Order delivered</h1>
-                      <p style="margin:0 0 16px;font-size:14px;color:#374151;">
-                        Your order ${orderShort} has been delivered and is now active.
-                        You can access it in your SubSlush dashboard under My Orders.
-                      </p>
-                      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;">
-                        <tr>
-                          <td style="padding:14px 16px;font-size:13px;color:#111827;">
-                            <div style="font-weight:600;margin-bottom:6px;">Subscriptions activated</div>
-                            <ul style="margin:0;padding-left:18px;color:#374151;">
-                              ${subscriptionsHtml}
-                            </ul>
-                          </td>
-                        </tr>
-                      </table>
-                      <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:22px auto 12px;">
-                        <tr>
-                          <td>
-                            <a href="${dashboardLink}" style="display:inline-block;background-color:#111827;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;">
-                              View My Orders
-                            </a>
-                          </td>
-                        </tr>
-                      </table>
-                      ${credentialsGuideHtml}
-                      ${claimHtml}
-                      <p style="margin:0;font-size:12px;color:#6b7280;text-align:center;">
-                        Need help? Visit our <a href="${helpLink}" style="color:#111827;text-decoration:underline;">help center</a>.
-                      </p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:18px 32px;background-color:#f9fafb;text-align:center;font-size:12px;color:#9ca3af;">
-                      &copy; 2026 SubSlush. All rights reserved.
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `.trim();
+    const html = emailService.buildBrandedEmail({
+      title: 'Order delivered',
+      intro: `Your order ${orderShort} has been delivered and is now active.`,
+      bodyHtml: `
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <tr>
+            <td style="padding:14px 16px;font-size:13px;color:#334155;">
+              <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Subscriptions activated</div>
+              <ul style="margin:0;padding-left:18px;">${subscriptionsHtml}</ul>
+            </td>
+          </tr>
+        </table>
+        ${credentialsGuideHtml}
+        ${claimHtml}
+      `.trim(),
+      ctaLabel: 'View My Orders',
+      ctaUrl: dashboardLink,
+      note: `Need help? ${helpLink}`,
+      previewText: `Order ${orderShort} delivered`,
+    });
 
     return {
       payload: {
@@ -769,6 +669,7 @@ export class OrderService {
         : '<li style="margin:0 0 6px 0;">Subscription</li>';
 
     const helpLink = buildAppLink('/help');
+    const dashboardLink = buildAppLink('/dashboard/orders');
     const shouldIssueClaimToken = await this.isGuestUser(order.user_id);
     const guestIdentityId =
       typeof order.metadata?.['guest_identity_id'] === 'string'
@@ -799,7 +700,7 @@ export class OrderService {
                 <div style="font-weight:600;margin-bottom:8px;color:#0f172a;">Manage this order in your account</div>
                 <div style="margin-bottom:8px;">Create a SubSlush account (or sign in) with this same email address, then click claim.</div>
                 <div style="margin-bottom:8px;">This one-time claim link expires in 72 hours.</div>
-                <a href="${claimTokenResult.data.claimLink}" style="display:inline-block;background-color:#111827;color:#ffffff;text-decoration:none;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;">
+                <a href="${claimTokenResult.data.claimLink}" style="display:inline-block;background:linear-gradient(90deg,#7e22ce 0%,#db2777 100%);color:#ffffff;text-decoration:none;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;">
                   Claim this order
                 </a>
               </td>
@@ -827,65 +728,25 @@ export class OrderService {
       `Need help? ${helpLink}`,
       claimText,
     ].join('\n');
-    const html = `
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Order confirmed</title>
-        </head>
-        <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Arial,sans-serif;color:#111827;">
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f3f4f6;padding:24px 0;">
-            <tr>
-              <td align="center">
-                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="background-color:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
-                  <tr>
-                    <td style="padding:24px 32px;background-color:#0f172a;background:linear-gradient(90deg,#0f172a,#1e293b);color:#ffffff;text-align:center;">
-                      <div style="font-size:24px;font-weight:700;letter-spacing:0.5px;line-height:1.1;">
-                        <span style="display:inline-block;"><span style="color:#06B6D4;">S</span><span style="color:#27A6CC;">u</span><span style="color:#4897C3;">b</span><span style="color:#6988BB;">S</span><span style="color:#8978B2;">l</span><span style="color:#AA68AA;">u</span><span style="color:#CB59A1;">s</span><span style="color:#EC4899;">h</span></span>
-                      </div>
-                      <div style="font-size:12px;color:#d1d5db;margin-top:6px;">Premium For Less</div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:28px 32px;">
-                      <h1 style="margin:0 0 12px;font-size:20px;">Payment received</h1>
-                      <p style="margin:0 0 12px;font-size:14px;color:#374151;">
-                        We received your payment for order ${orderShort}.
-                      </p>
-                      <p style="margin:0 0 16px;font-size:14px;color:#374151;">
-                        Order delivery is usually completed within 24 hours during business days.
-                        In some cases, delivery can take up to 72 hours.
-                      </p>
-                      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;">
-                        <tr>
-                          <td style="padding:14px 16px;font-size:13px;color:#111827;">
-                            <div style="font-weight:600;margin-bottom:6px;">Order items</div>
-                            <ul style="margin:0;padding-left:18px;color:#374151;">
-                              ${subscriptionsHtml}
-                            </ul>
-                          </td>
-                        </tr>
-                      </table>
-                      ${claimHtml}
-                      <p style="margin:0;font-size:12px;color:#6b7280;text-align:center;">
-                        Need help? Visit our <a href="${helpLink}" style="color:#111827;text-decoration:underline;">help center</a>.
-                      </p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:18px 32px;background-color:#f9fafb;text-align:center;font-size:12px;color:#9ca3af;">
-                      &copy; 2026 SubSlush. All rights reserved.
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `.trim();
+    const html = emailService.buildBrandedEmail({
+      title: 'Payment received',
+      intro: `We received your payment for order ${orderShort}. Delivery is usually completed within 24 hours on business days, and can take up to 72 hours in some cases.`,
+      bodyHtml: `
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <tr>
+            <td style="padding:14px 16px;font-size:13px;color:#334155;">
+              <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Order items</div>
+              <ul style="margin:0;padding-left:18px;">${subscriptionsHtml}</ul>
+            </td>
+          </tr>
+        </table>
+        ${claimHtml}
+      `.trim(),
+      ctaLabel: 'View My Orders',
+      ctaUrl: dashboardLink,
+      note: `Need help? ${helpLink}`,
+      previewText: `Payment received for order ${orderShort}`,
+    });
 
     const sendResult = await emailService.send({
       to: email,
