@@ -39,81 +39,28 @@ describe('PinResetService', () => {
     jest.clearAllMocks();
   });
 
-  it('creates a reset request and sends the email', async () => {
-    const mockClient: MockPoolClient = {
-      query:
-        jest.fn<
-          (text: string, params?: unknown[]) => Promise<QueryResultLike>
-        >(),
-      release: jest.fn(),
-    };
-    const mockPool: MockPool = {
-      connect: jest
-        .fn<() => Promise<MockPoolClient>>()
-        .mockResolvedValue(mockClient),
-      query:
-        jest.fn<
-          (text: string, params?: unknown[]) => Promise<QueryResultLike>
-        >(),
-    };
-
-    mockGetDatabasePool.mockReturnValue(
-      mockPool as unknown as ReturnType<typeof getDatabasePool>
-    );
-    mockEmailService.send.mockResolvedValue({ success: true });
-
-    mockClient.query
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [{ email: 'user@example.com' }] })
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE expired
-      .mockResolvedValueOnce({ rows: [] }) // UPDATE superseded
-      .mockResolvedValueOnce({ rows: [{ id: 'req-id' }] })
-      .mockResolvedValueOnce({ rows: [] }); // COMMIT
-
-    const result = await pinResetService.requestReset(userId, adminId);
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.requestId).toBe('req-id');
-      expect(result.data.userId).toBe(userId);
-      expect(result.data.emailMasked).toContain('@');
-    }
-    expect(mockEmailService.send).toHaveBeenCalledTimes(1);
-  });
-
-  it('returns user_not_found when the user does not exist', async () => {
-    const mockClient: MockPoolClient = {
-      query:
-        jest.fn<
-          (text: string, params?: unknown[]) => Promise<QueryResultLike>
-        >(),
-      release: jest.fn(),
-    };
-    const mockPool: MockPool = {
-      connect: jest
-        .fn<() => Promise<MockPoolClient>>()
-        .mockResolvedValue(mockClient),
-      query:
-        jest.fn<
-          (text: string, params?: unknown[]) => Promise<QueryResultLike>
-        >(),
-    };
-
-    mockGetDatabasePool.mockReturnValue(
-      mockPool as unknown as ReturnType<typeof getDatabasePool>
-    );
-
-    mockClient.query
-      .mockResolvedValueOnce({ rows: [] }) // BEGIN
-      .mockResolvedValueOnce({ rows: [] }) // SELECT email
-      .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
-
+  it('returns pin_deprecated for reset requests', async () => {
     const result = await pinResetService.requestReset(userId, adminId);
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error).toBe('user_not_found');
+      expect(result.error).toBe('pin_deprecated');
     }
+    expect(mockGetDatabasePool).not.toHaveBeenCalled();
+    expect(mockEmailService.send).not.toHaveBeenCalled();
+  });
+
+  it('returns pin_deprecated even when the user does not exist', async () => {
+    const result = await pinResetService.requestReset(
+      '00000000-0000-0000-0000-000000000000',
+      adminId
+    );
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBe('pin_deprecated');
+    }
+    expect(mockGetDatabasePool).not.toHaveBeenCalled();
     expect(mockEmailService.send).not.toHaveBeenCalled();
   });
 

@@ -286,6 +286,7 @@ type AvailablePlan = {
   logo_key?: string | null;
   logoKey?: string | null;
   category?: string | null;
+  sub_category?: string | null;
   product_id: string;
   variant_id: string;
 };
@@ -309,6 +310,14 @@ const resolveRequestCurrency = (request: FastifyRequest): SupportedCurrency => {
     headerCountry,
     fallback: 'USD',
   });
+};
+
+const normalizeQueryText = (value?: string | null): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
 };
 const MISSING_PRICE_TASK_TYPE = 'support';
 const MISSING_PRICE_TASK_PRIORITY: AdminTaskPriority = 'high';
@@ -816,19 +825,31 @@ export async function subscriptionRoutes(
 
         const serviceQuery = request.query as {
           service_type?: string;
+          category?: string;
+          sub_category?: string;
           region?: string;
         };
-        const serviceTypeFilter = serviceQuery.service_type
-          ? serviceQuery.service_type.toLowerCase()
-          : undefined;
+        const serviceTypeFilter = normalizeQueryText(
+          serviceQuery.service_type
+        )?.toLowerCase();
+        const categoryFilter = normalizeQueryText(serviceQuery.category);
+        const subCategoryFilter = normalizeQueryText(serviceQuery.sub_category);
+        const listingFilters =
+          serviceTypeFilter || categoryFilter || subCategoryFilter
+            ? {
+                ...(serviceTypeFilter
+                  ? { service_type: serviceTypeFilter }
+                  : {}),
+                ...(categoryFilter ? { category: categoryFilter } : {}),
+                ...(subCategoryFilter
+                  ? { sub_category: subCategoryFilter }
+                  : {}),
+              }
+            : undefined;
 
         const [listings, fixedProducts] = await Promise.all([
-          catalogService.listActiveListings(
-            serviceTypeFilter ? { service_type: serviceTypeFilter } : undefined
-          ),
-          catalogService.listActiveFixedProducts(
-            serviceTypeFilter ? { service_type: serviceTypeFilter } : undefined
-          ),
+          catalogService.listActiveListings(listingFilters),
+          catalogService.listActiveFixedProducts(listingFilters),
         ]);
         const variantIds = listings.map(listing => listing.variant.id);
         const [currentPriceMap, termLookup] = await Promise.all([
@@ -989,6 +1010,7 @@ export async function subscriptionRoutes(
             logo_key: product.logo_key ?? null,
             logoKey: product.logo_key ?? null,
             category: product.category ?? null,
+            sub_category: product.sub_category ?? null,
             product_id: product.id,
             variant_id: variant.id,
           };
@@ -1058,6 +1080,7 @@ export async function subscriptionRoutes(
             logo_key: product.logo_key ?? null,
             logoKey: product.logo_key ?? null,
             category: product.category ?? null,
+            sub_category: product.sub_category ?? null,
             product_id: product.id,
             variant_id: product.id,
           };
@@ -1347,18 +1370,30 @@ export async function subscriptionRoutes(
 
         const serviceQuery = request.query as {
           service_type?: string;
+          category?: string;
+          sub_category?: string;
         };
-        const serviceTypeFilter = serviceQuery.service_type
-          ? serviceQuery.service_type.toLowerCase()
-          : undefined;
+        const serviceTypeFilter = normalizeQueryText(
+          serviceQuery.service_type
+        )?.toLowerCase();
+        const categoryFilter = normalizeQueryText(serviceQuery.category);
+        const subCategoryFilter = normalizeQueryText(serviceQuery.sub_category);
+        const listingFilters =
+          serviceTypeFilter || categoryFilter || subCategoryFilter
+            ? {
+                ...(serviceTypeFilter
+                  ? { service_type: serviceTypeFilter }
+                  : {}),
+                ...(categoryFilter ? { category: categoryFilter } : {}),
+                ...(subCategoryFilter
+                  ? { sub_category: subCategoryFilter }
+                  : {}),
+              }
+            : undefined;
 
         const [listings, fixedProducts] = await Promise.all([
-          catalogService.listActiveListings(
-            serviceTypeFilter ? { service_type: serviceTypeFilter } : undefined
-          ),
-          catalogService.listActiveFixedProducts(
-            serviceTypeFilter ? { service_type: serviceTypeFilter } : undefined
-          ),
+          catalogService.listActiveListings(listingFilters),
+          catalogService.listActiveFixedProducts(listingFilters),
         ]);
         const variantIds = listings.map(listing => listing.variant.id);
         const [currentPriceMap, termLookup] = await Promise.all([
@@ -1572,6 +1607,7 @@ export async function subscriptionRoutes(
           service_type: entry.product.service_type ?? null,
           logo_key: entry.product.logo_key ?? null,
           category: entry.product.category ?? null,
+          sub_category: entry.product.sub_category ?? null,
           currency: entry.currency,
           from_price: entry.minMonthlyCents / 100,
           from_term_months: entry.fromTermMonths,
@@ -1691,6 +1727,7 @@ export async function subscriptionRoutes(
               service_type: product.service_type ?? null,
               logo_key: product.logo_key ?? null,
               category: product.category ?? null,
+              sub_category: product.sub_category ?? null,
               terms_conditions: termsConditions,
               upgrade_options: upgradeOptions,
               platform: platform || null,
@@ -1826,6 +1863,7 @@ export async function subscriptionRoutes(
             service_type: product.service_type ?? null,
             logo_key: product.logo_key ?? null,
             category: product.category ?? null,
+            sub_category: product.sub_category ?? null,
             terms_conditions: termsConditions,
             upgrade_options: upgradeOptions,
             platform: platform || null,
@@ -2262,13 +2300,8 @@ export async function subscriptionRoutes(
           );
         }
 
-        const {
-          product,
-          snapshot,
-          currency,
-          productVariantId,
-          planCode,
-        } = pricingResult.data;
+        const { product, snapshot, currency, productVariantId, planCode } =
+          pricingResult.data;
         const upgradeOptionsRaw = normalizeUpgradeOptions(product.metadata);
         const upgradeValidation = validateUpgradeOptions(upgradeOptionsRaw);
         if (!upgradeValidation.valid) {
@@ -3547,7 +3580,10 @@ export async function subscriptionRoutes(
 
       const { subscriptionId } = request.params;
       if (!validateSubscriptionId(subscriptionId)) {
-        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+        return ErrorResponses.badRequest(
+          reply,
+          'Invalid subscription ID format'
+        );
       }
 
       Logger.info('Deprecated auto-renew endpoint requested', {
@@ -3586,7 +3622,10 @@ export async function subscriptionRoutes(
 
       const { subscriptionId } = request.params;
       if (!validateSubscriptionId(subscriptionId)) {
-        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+        return ErrorResponses.badRequest(
+          reply,
+          'Invalid subscription ID format'
+        );
       }
 
       Logger.info('Deprecated auto-renew endpoint requested', {
@@ -3620,7 +3659,10 @@ export async function subscriptionRoutes(
 
       const { subscriptionId } = request.params;
       if (!validateSubscriptionId(subscriptionId)) {
-        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+        return ErrorResponses.badRequest(
+          reply,
+          'Invalid subscription ID format'
+        );
       }
 
       Logger.info('Deprecated auto-renew endpoint requested', {
@@ -3654,7 +3696,10 @@ export async function subscriptionRoutes(
 
       const { subscriptionId } = request.params;
       if (!validateSubscriptionId(subscriptionId)) {
-        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+        return ErrorResponses.badRequest(
+          reply,
+          'Invalid subscription ID format'
+        );
       }
 
       Logger.info('Deprecated auto-renew endpoint requested', {
@@ -3688,7 +3733,10 @@ export async function subscriptionRoutes(
 
       const { subscriptionId } = request.params;
       if (!validateSubscriptionId(subscriptionId)) {
-        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+        return ErrorResponses.badRequest(
+          reply,
+          'Invalid subscription ID format'
+        );
       }
 
       Logger.info('Deprecated manual renewal endpoint requested', {
@@ -3722,7 +3770,10 @@ export async function subscriptionRoutes(
 
       const { subscriptionId } = request.params;
       if (!validateSubscriptionId(subscriptionId)) {
-        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+        return ErrorResponses.badRequest(
+          reply,
+          'Invalid subscription ID format'
+        );
       }
 
       Logger.info('Deprecated manual renewal endpoint requested', {

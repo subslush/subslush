@@ -694,7 +694,6 @@ type SubscriptionReminderConfig = {
 type ReminderCandidate = {
   id: string;
   user_id: string;
-  user_email?: string | null;
   service_type: string;
   service_plan: string;
   end_date: Date | string;
@@ -706,7 +705,6 @@ type ReminderCandidate = {
 type ReminderEventState = {
   id: string;
   notificationId: string | null;
-  emailSentAt: Date | null;
   created: boolean;
 };
 
@@ -777,7 +775,7 @@ async function ensureReminderEvent(params: {
        metadata
      ) VALUES ($1, $2, $3, $4::jsonb)
      ON CONFLICT (subscription_id, reminder_stage, target_expiry_at) DO NOTHING
-     RETURNING id, notification_id, email_sent_at`,
+     RETURNING id, notification_id`,
     [
       params.subscriptionId,
       params.reminder.stage,
@@ -793,13 +791,12 @@ async function ensureReminderEvent(params: {
     return {
       id: insertResult.rows[0].id as string,
       notificationId: (insertResult.rows[0].notification_id as string) || null,
-      emailSentAt: (insertResult.rows[0].email_sent_at as Date) || null,
       created: true,
     };
   }
 
   const existingResult = await pool.query(
-    `SELECT id, notification_id, email_sent_at
+    `SELECT id, notification_id
      FROM subscription_reminder_events
      WHERE subscription_id = $1
        AND reminder_stage = $2
@@ -815,7 +812,6 @@ async function ensureReminderEvent(params: {
   return {
     id: existingResult.rows[0].id as string,
     notificationId: (existingResult.rows[0].notification_id as string) || null,
-    emailSentAt: (existingResult.rows[0].email_sent_at as Date) || null,
     created: false,
   };
 }
@@ -851,7 +847,6 @@ export async function runSubscriptionReminderSweep(
   let remindersDue = 0;
   let eventsCreated = 0;
   let notificationsCreated = 0;
-  let emailsSent = 0;
 
   try {
     const candidateResult = await pool.query(
@@ -863,12 +858,10 @@ export async function runSubscriptionReminderSweep(
                s.end_date,
                s.term_months,
                p.name AS product_name,
-               pv.name AS variant_name,
-               u.email AS user_email
+               pv.name AS variant_name
         FROM subscriptions s
         LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
         LEFT JOIN products p ON p.id = pv.product_id
-        LEFT JOIN users u ON u.id = s.user_id
         WHERE s.status = 'active'
           AND COALESCE(s.auto_renew, FALSE) = FALSE
           AND s.cancellation_requested_at IS NULL
@@ -981,11 +974,6 @@ export async function runSubscriptionReminderSweep(
             });
           }
         }
-
-        if (event.emailSentAt || !row.user_email) {
-          continue;
-        }
-        // Email reminders are intentionally disabled after subscription/renewal deprecation.
       }
     }
 
@@ -994,7 +982,6 @@ export async function runSubscriptionReminderSweep(
       remindersDue,
       eventsCreated,
       notificationsCreated,
-      emailsSent,
     });
   } catch (error) {
     Logger.error('Subscription reminder sweep failed:', error);

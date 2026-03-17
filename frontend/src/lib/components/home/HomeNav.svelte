@@ -525,7 +525,32 @@
 		return resolveCategoryFallbackImage(categoryKey);
 	};
 
-	const resolveOfferHref = (product: ProductListing | null, fallbackHref?: string): string => {
+	const resolveSubCategoryHref = (
+		product: ProductListing | null,
+		fallbackCategoryKey?: string
+	): string | null => {
+		if (!product) return null;
+		const subCategory = (product.sub_category || '').trim();
+		if (!subCategory) return null;
+
+		const params = new URLSearchParams();
+		const category = (product.category || fallbackCategoryKey || '').trim();
+		if (category) {
+			params.set('category', category.toLowerCase());
+		}
+		params.set('sub_category', subCategory.toLowerCase());
+		return `/browse?${params.toString()}`;
+	};
+
+	const resolveOfferHref = (
+		product: ProductListing | null,
+		fallbackHref?: string,
+		categoryKey?: string
+	): string => {
+		const subCategoryHref = resolveSubCategoryHref(product, categoryKey);
+		if (subCategoryHref) {
+			return subCategoryHref;
+		}
 		if (product?.slug) {
 			return `/browse/products/${encodeURIComponent(product.slug)}`;
 		}
@@ -648,7 +673,8 @@
 	$: activeOfferImage = resolveOfferImage(activeOfferProduct, activeMegaCategory?.key);
 	$: activeOfferHref = resolveOfferHref(
 		activeOfferProduct,
-		activePopularLink?.href || activeMegaCategory?.featured.href
+		activePopularLink?.href || activeMegaCategory?.featured.href,
+		activeMegaCategory?.key
 	);
 	$: activeOfferTitle =
 		activeOfferProduct?.name ||
@@ -1254,8 +1280,17 @@
 										</div>
 										<div class="mega-middle-list">
 											{#each activeMegaCategory.popular.slice(0, 6) as link, linkIndex}
+												{@const linkProduct = resolveCatalogProductForLink(
+													link,
+													activeMegaCategory?.key
+												)}
+												{@const linkHref = resolveOfferHref(
+													linkProduct,
+													link.href,
+													activeMegaCategory?.key
+												)}
 												<a
-													href={link.href}
+													href={linkHref}
 													class={`mega-sub-link ${activePopularIndex === linkIndex ? 'is-highlighted' : ''}`}
 													on:mouseenter={() => setActivePopularItem(linkIndex)}
 													on:focus={() => setActivePopularItem(linkIndex)}

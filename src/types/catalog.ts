@@ -9,6 +9,7 @@ export interface Product {
   service_type?: string | null;
   logo_key?: string | null;
   category?: string | null;
+  sub_category?: string | null;
   default_currency?: string | null;
   max_subscriptions?: number | null;
   duration_months?: number | null;
@@ -157,6 +158,7 @@ export interface CreateProductInput {
   service_type?: string | null;
   logo_key?: string | null;
   category?: string | null;
+  sub_category?: string | null;
   default_currency?: string | null;
   max_subscriptions?: number | null;
   duration_months?: number | null;
@@ -173,6 +175,7 @@ export interface UpdateProductInput {
   service_type?: string | null;
   logo_key?: string | null;
   category?: string | null;
+  sub_category?: string | null;
   default_currency?: string | null;
   max_subscriptions?: number | null;
   duration_months?: number | null;

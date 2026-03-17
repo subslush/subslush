@@ -34,6 +34,7 @@ export interface ServicePlanDetails {
   logo_key?: string | null;
   logoKey?: string | null;
   category?: string | null;
+  sub_category?: string | null;
 }
 
 // Request types
@@ -132,6 +133,7 @@ export interface ProductListing {
   logo_key?: string | null;
   logoKey?: string | null;
   category?: string | null;
+  sub_category?: string | null;
   currency: string;
   from_price: number;
   from_term_months: number;
@@ -173,6 +175,7 @@ export interface ProductDetail {
     logo_key?: string | null;
     logoKey?: string | null;
     category?: string | null;
+    sub_category?: string | null;
     terms_conditions?: string[] | null;
     termsConditions?: string[] | null;
     upgrade_options?: UpgradeOptions | null;

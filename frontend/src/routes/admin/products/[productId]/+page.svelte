@@ -364,6 +364,7 @@
     description: string;
     logoKey: string;
     category: string;
+    subCategory: string;
     maxSubscriptions: string;
     durationMonths: string;
     fixedPriceCents: string;
@@ -445,6 +446,7 @@
       description: value.description || '',
       logoKey: pickValue(value.logoKey, value.logo_key) || '',
       category: value.category || '',
+      subCategory: pickValue(value.subCategory, value.sub_category) || '',
       maxSubscriptions:
         maxSubscriptions !== undefined && maxSubscriptions !== null
           ? String(maxSubscriptions)
@@ -650,6 +652,7 @@
           ? undefined
           : parsedMaxSubscriptions;
       const categoryValue = productForm.category.trim();
+      const subCategoryValue = productForm.subCategory.trim();
       const durationMonthsRaw = String(productForm.durationMonths ?? '').trim();
       const fixedPriceCentsRaw = String(productForm.fixedPriceCents ?? '').trim();
       const fixedPriceCurrencyRaw = String(
@@ -707,7 +710,8 @@
         description: productForm.description || undefined,
         service_type: productForm.serviceType || undefined,
         logo_key: productForm.logoKey || undefined,
-        category: categoryValue || undefined,
+        category: categoryValue === '' ? null : categoryValue,
+        sub_category: subCategoryValue === '' ? null : subCategoryValue,
         max_subscriptions: maxSubscriptions,
         duration_months:
           hasAllFixedFields && parsedDurationMonths !== null
@@ -1256,6 +1260,11 @@
           class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
           placeholder="Category"
           bind:value={productForm.category}
+        />
+        <input
+          class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          placeholder="Sub-category"
+          bind:value={productForm.subCategory}
         />
       </div>
       <div class="grid gap-3 md:grid-cols-2">

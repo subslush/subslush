@@ -81,6 +81,33 @@ const buildAppLink = (path: string): string => {
   return `${base}${path.startsWith('/') ? path : `/${path}`}`;
 };
 
+const buildBrandedEmailIfSupported = (options: {
+  title: string;
+  intro?: string;
+  bodyHtml?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  note?: string;
+  previewText?: string;
+}): string | undefined => {
+  const maybeBuilder = (
+    emailService as Partial<{
+      buildBrandedEmail: (input: typeof options) => string;
+    }>
+  ).buildBrandedEmail;
+
+  if (typeof maybeBuilder !== 'function') {
+    return undefined;
+  }
+
+  try {
+    return maybeBuilder(options);
+  } catch (error) {
+    Logger.warn('Failed to build branded guest claim email HTML', { error });
+    return undefined;
+  }
+};
+
 const buildPricingSummary = (
   pricing: CheckoutPricingSummary['items'] | null,
   totals: {
@@ -205,7 +232,7 @@ export class GuestCheckoutService {
           'If you did not request this, you can ignore this email.',
         ].join('\n');
 
-        const html = emailService.buildBrandedEmail({
+        const html = buildBrandedEmailIfSupported({
           title: 'Confirm your checkout email',
           intro:
             'Use the secure link below to confirm your email for this checkout session.',

@@ -9,6 +9,7 @@
 
   export let products: ProductListing[] = [];
   export let listName = 'Browse';
+  export let linkMode: 'product' | 'subcategory' = 'product';
 
   type ServiceStyle = {
     logo?: Picture;
@@ -37,9 +38,38 @@
     return formatCurrency(price, resolvedCurrency);
   }
 
-  function getPlanHref(product: { slug?: string | null }): string {
+  function getSubCategoryHref(product: ProductListing): string | null {
+    if (linkMode !== 'subcategory') {
+      return null;
+    }
+    const subCategory = (product.sub_category || '').trim();
+    if (!subCategory) {
+      return null;
+    }
+    const params = new URLSearchParams();
+    const category = (product.category || '').trim();
+    if (category) {
+      params.set('category', category.toLowerCase());
+    }
+    params.set('sub_category', subCategory.toLowerCase());
+    return `/browse?${params.toString()}`;
+  }
+
+  function getPlanHref(product: ProductListing): string {
+    const subCategoryHref = getSubCategoryHref(product);
+    if (subCategoryHref) {
+      return subCategoryHref;
+    }
     if (!product.slug) return '/browse';
     return `/browse/products/${encodeURIComponent(product.slug)}`;
+  }
+
+  function getCardAriaLabel(product: ProductListing): string {
+    const subCategory = (product.sub_category || '').trim();
+    if (linkMode === 'subcategory' && subCategory) {
+      return `View ${subCategory} products`;
+    }
+    return `View ${product.name} details`;
   }
 
   function shouldContainLogoInTile(product: ProductListing, serviceType: string): boolean {
@@ -128,7 +158,7 @@
     <a
       href={getPlanHref(product)}
       class="subscription-showcase-card group"
-      aria-label={`View ${product.name} details`}
+      aria-label={getCardAriaLabel(product)}
       on:click={() => handleSelectItem(product, index)}
     >
       <div class="subscription-showcase-surface">

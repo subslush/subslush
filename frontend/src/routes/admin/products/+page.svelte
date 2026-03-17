@@ -22,6 +22,8 @@
     name: '',
     slug: '',
     serviceType: '',
+    category: '',
+    subCategory: '',
     status: 'inactive',
     description: '',
     durationMonths: '',
@@ -97,6 +99,8 @@
         slug: newProduct.slug,
         description: newProduct.description || undefined,
         service_type: newProduct.serviceType || undefined,
+        category: newProduct.category.trim() || undefined,
+        sub_category: newProduct.subCategory.trim() || undefined,
         duration_months: hasAllFixedFields ? parsedDurationMonths : undefined,
         fixed_price_cents: hasAllFixedFields ? parsedFixedPriceCents : undefined,
         fixed_price_currency: hasAllFixedFields
@@ -109,6 +113,8 @@
         name: '',
         slug: '',
         serviceType: '',
+        category: '',
+        subCategory: '',
         status: 'inactive',
         description: '',
         durationMonths: '',
@@ -183,6 +189,18 @@
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
+        </div>
+        <div class="grid gap-3 md:grid-cols-2">
+          <input
+            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            placeholder="Category (e.g. streaming)"
+            bind:value={newProduct.category}
+          />
+          <input
+            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            placeholder="Sub-category (e.g. Netflix)"
+            bind:value={newProduct.subCategory}
+          />
         </div>
         <textarea
           class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"

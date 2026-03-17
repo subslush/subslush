@@ -55,6 +55,19 @@ function normalizeServiceType(value?: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizeTextField(value?: string | null): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeTaxonomyFilterValue(value?: string | null): string | null {
+  const normalized = normalizeTextField(value);
+  return normalized ? normalized.toLowerCase() : null;
+}
+
 function normalizeIntegerOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === '') {
     return null;
@@ -105,6 +118,7 @@ function mapProduct(row: any): Product {
     service_type: row.service_type,
     logo_key: row.logo_key,
     category: row.category,
+    sub_category: row.sub_category,
     default_currency: row.default_currency,
     max_subscriptions: row.max_subscriptions,
     duration_months: row.duration_months,
@@ -240,6 +254,7 @@ export class CatalogService {
             service_type,
             logo_key,
             category,
+            sub_category,
             default_currency,
             max_subscriptions,
             duration_months,
@@ -248,7 +263,7 @@ export class CatalogService {
             status,
             metadata
           )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING *`,
         [
           input.name,
@@ -256,7 +271,8 @@ export class CatalogService {
           input.description || null,
           normalizeServiceType(input.service_type),
           input.logo_key || null,
-          input.category || null,
+          normalizeTextField(input.category),
+          normalizeTextField(input.sub_category),
           normalizeCurrencyCode(input.default_currency) || null,
           input.max_subscriptions ?? null,
           durationMonths,
@@ -320,7 +336,11 @@ export class CatalogService {
       }
       if (updates.category !== undefined) {
         updateFields.push(`category = $${++paramCount}`);
-        values.push(updates.category);
+        values.push(normalizeTextField(updates.category));
+      }
+      if (updates.sub_category !== undefined) {
+        updateFields.push(`sub_category = $${++paramCount}`);
+        values.push(normalizeTextField(updates.sub_category));
       }
       if (updates.default_currency !== undefined) {
         if (updates.default_currency) {
@@ -344,7 +364,9 @@ export class CatalogService {
         values.push(durationMonths);
       }
       if (updates.fixed_price_cents !== undefined) {
-        const fixedPriceCents = normalizeIntegerOrNull(updates.fixed_price_cents);
+        const fixedPriceCents = normalizeIntegerOrNull(
+          updates.fixed_price_cents
+        );
         updateFields.push(`fixed_price_cents = $${++paramCount}`);
         values.push(fixedPriceCents);
       }
@@ -391,7 +413,7 @@ export class CatalogService {
             : normalizeIntegerOrNull(existingProduct.fixed_price_cents);
         const fixedPriceCurrency =
           updates.fixed_price_currency !== undefined
-            ? normalizedFixedPriceCurrency ?? null
+            ? (normalizedFixedPriceCurrency ?? null)
             : normalizeCurrencyCode(existingProduct.fixed_price_currency) ||
               null;
 
@@ -609,6 +631,8 @@ export class CatalogService {
   async listProducts(filters?: {
     status?: string;
     service_type?: string;
+    category?: string;
+    sub_category?: string;
     limit?: number;
     offset?: number;
   }): Promise<Product[]> {
@@ -625,6 +649,20 @@ export class CatalogService {
       if (filters?.service_type) {
         sql += ` AND service_type = $${++paramCount}`;
         params.push(filters.service_type);
+      }
+      const normalizedCategory = normalizeTaxonomyFilterValue(
+        filters?.category
+      );
+      if (normalizedCategory) {
+        sql += ` AND LOWER(BTRIM(COALESCE(category, ''))) = $${++paramCount}`;
+        params.push(normalizedCategory);
+      }
+      const normalizedSubCategory = normalizeTaxonomyFilterValue(
+        filters?.sub_category
+      );
+      if (normalizedSubCategory) {
+        sql += ` AND LOWER(BTRIM(COALESCE(sub_category, ''))) = $${++paramCount}`;
+        params.push(normalizedSubCategory);
       }
 
       sql += ' ORDER BY created_at DESC';
@@ -910,6 +948,8 @@ export class CatalogService {
 
   async listActiveListings(filters?: {
     service_type?: string;
+    category?: string;
+    sub_category?: string;
   }): Promise<CatalogListing[]> {
     try {
       const pool = getDatabasePool();
@@ -924,6 +964,7 @@ export class CatalogService {
           p.service_type AS product_service_type,
           p.logo_key AS product_logo_key,
           p.category AS product_category,
+          p.sub_category AS product_sub_category,
           p.default_currency AS product_default_currency,
           p.max_subscriptions AS product_max_subscriptions,
           p.duration_months AS product_duration_months,
@@ -955,6 +996,20 @@ export class CatalogService {
         sql += ` AND LOWER(p.service_type) = $${++paramCount}`;
         params.push(normalizedServiceType);
       }
+      const normalizedCategory = normalizeTaxonomyFilterValue(
+        filters?.category
+      );
+      if (normalizedCategory) {
+        sql += ` AND LOWER(BTRIM(COALESCE(p.category, ''))) = $${++paramCount}`;
+        params.push(normalizedCategory);
+      }
+      const normalizedSubCategory = normalizeTaxonomyFilterValue(
+        filters?.sub_category
+      );
+      if (normalizedSubCategory) {
+        sql += ` AND LOWER(BTRIM(COALESCE(p.sub_category, ''))) = $${++paramCount}`;
+        params.push(normalizedSubCategory);
+      }
 
       sql +=
         ' ORDER BY p.created_at DESC, pv.sort_order ASC, pv.created_at ASC';
@@ -969,6 +1024,7 @@ export class CatalogService {
           service_type: row.product_service_type,
           logo_key: row.product_logo_key,
           category: row.product_category,
+          sub_category: row.product_sub_category,
           default_currency: row.product_default_currency,
           max_subscriptions: row.product_max_subscriptions,
           duration_months: row.product_duration_months,
@@ -1001,6 +1057,8 @@ export class CatalogService {
 
   async listActiveFixedProducts(filters?: {
     service_type?: string;
+    category?: string;
+    sub_category?: string;
   }): Promise<Product[]> {
     try {
       const pool = getDatabasePool();
@@ -1023,6 +1081,20 @@ export class CatalogService {
       if (normalizedServiceType) {
         sql += ` AND LOWER(p.service_type) = $${++paramCount}`;
         params.push(normalizedServiceType);
+      }
+      const normalizedCategory = normalizeTaxonomyFilterValue(
+        filters?.category
+      );
+      if (normalizedCategory) {
+        sql += ` AND LOWER(BTRIM(COALESCE(p.category, ''))) = $${++paramCount}`;
+        params.push(normalizedCategory);
+      }
+      const normalizedSubCategory = normalizeTaxonomyFilterValue(
+        filters?.sub_category
+      );
+      if (normalizedSubCategory) {
+        sql += ` AND LOWER(BTRIM(COALESCE(p.sub_category, ''))) = $${++paramCount}`;
+        params.push(normalizedSubCategory);
       }
 
       sql += ' ORDER BY p.created_at DESC';
@@ -1193,6 +1265,7 @@ export class CatalogService {
           p.service_type AS product_service_type,
           p.logo_key AS product_logo_key,
           p.category AS product_category,
+          p.sub_category AS product_sub_category,
           p.default_currency AS product_default_currency,
           p.max_subscriptions AS product_max_subscriptions,
           p.duration_months AS product_duration_months,
@@ -1251,6 +1324,7 @@ export class CatalogService {
           service_type: row.product_service_type,
           logo_key: row.product_logo_key,
           category: row.product_category,
+          sub_category: row.product_sub_category,
           default_currency: row.product_default_currency,
           max_subscriptions: row.product_max_subscriptions,
           duration_months: row.product_duration_months,
@@ -1298,6 +1372,7 @@ export class CatalogService {
           p.service_type AS product_service_type,
           p.logo_key AS product_logo_key,
           p.category AS product_category,
+          p.sub_category AS product_sub_category,
           p.default_currency AS product_default_currency,
           p.max_subscriptions AS product_max_subscriptions,
           p.duration_months AS product_duration_months,
@@ -1339,6 +1414,7 @@ export class CatalogService {
           service_type: row.product_service_type,
           logo_key: row.product_logo_key,
           category: row.product_category,
+          sub_category: row.product_sub_category,
           default_currency: row.product_default_currency,
           max_subscriptions: row.product_max_subscriptions,
           duration_months: row.product_duration_months,

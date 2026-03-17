@@ -36,6 +36,7 @@ describe('Subscriptions available listing', () => {
         service_type: 'spotify',
         logo_key: 'spotify',
         category: 'music',
+        sub_category: 'Spotify',
         default_currency: 'USD',
         max_subscriptions: 1,
         status: 'active',
@@ -116,7 +117,104 @@ describe('Subscriptions available listing', () => {
     expect(plan.price).toBe(50);
     expect(plan.service_name).toBe('Spotify');
     expect(plan.logo_key).toBe('spotify');
+    expect(plan.sub_category).toBe('Spotify');
     expect(plan.product_id).toBe('prod-1');
     expect(plan.variant_id).toBe('variant-1');
+  });
+
+  it('supports category and sub-category filters for browse listings', async () => {
+    const listing = {
+      product: {
+        id: 'prod-2',
+        name: 'Netflix Premium',
+        slug: 'netflix-premium',
+        description: 'Streaming plan',
+        service_type: 'netflix',
+        logo_key: 'netflix',
+        category: 'streaming',
+        sub_category: 'Netflix',
+        default_currency: 'USD',
+        max_subscriptions: 2,
+        status: 'active',
+        metadata: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      variant: {
+        id: 'variant-2',
+        product_id: 'prod-2',
+        name: 'Premium',
+        variant_code: 'premium',
+        description: 'Premium plan',
+        service_plan: 'premium',
+        is_active: true,
+        sort_order: 0,
+        metadata: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    };
+
+    const price = {
+      id: 'price-2',
+      product_variant_id: 'variant-2',
+      price_cents: 9000,
+      currency: 'USD',
+      starts_at: new Date(),
+      ends_at: null,
+      metadata: null,
+      created_at: new Date(),
+    };
+
+    mockCatalogService.listActiveListings.mockResolvedValue([listing as any]);
+    mockCatalogService.listActiveFixedProducts.mockResolvedValue([]);
+    mockCatalogService.listCurrentPricesForCurrency.mockResolvedValue(
+      new Map([['variant-2', price as any]])
+    );
+    mockCatalogService.listVariantTermsForVariants.mockResolvedValue(
+      new Map([
+        [
+          'variant-2',
+          [
+            {
+              id: 'term-2',
+              product_variant_id: 'variant-2',
+              months: 1,
+              discount_percent: 0,
+              is_active: true,
+              is_recommended: true,
+              sort_order: 0,
+              metadata: null,
+              created_at: new Date(),
+              updated_at: new Date(),
+            },
+          ],
+        ],
+      ])
+    );
+
+    const app = Fastify();
+    await app.register(subscriptionRoutes, { prefix: '/subscriptions' });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/subscriptions/products/available?category=streaming&sub_category=netflix',
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(mockCatalogService.listActiveListings).toHaveBeenCalledWith({
+      category: 'streaming',
+      sub_category: 'netflix',
+    });
+    expect(mockCatalogService.listActiveFixedProducts).toHaveBeenCalledWith({
+      category: 'streaming',
+      sub_category: 'netflix',
+    });
+
+    const body = response.json();
+    expect(body.data.total_products).toBe(1);
+    expect(body.data.products[0]?.sub_category).toBe('Netflix');
   });
 });

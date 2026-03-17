@@ -72,6 +72,8 @@ export interface AdminProduct {
   logo_key?: string | null;
   logoKey?: string | null;
   category?: string | null;
+  sub_category?: string | null;
+  subCategory?: string | null;
   default_currency?: string | null;
   defaultCurrency?: string | null;
   max_subscriptions?: number | null;

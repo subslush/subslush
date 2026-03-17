@@ -28,12 +28,24 @@
 
   let searchQuery = '';
   let selectedCategory = 'all';
+  let selectedSubCategory = '';
   let sortBy = 'recommended';
   let categoriesOpen = false;
   let listName = 'Browse';
 
+  const normalizeFilterValue = (value?: string | null): string =>
+    typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+  const toDisplayLabel = (value: string): string =>
+    value
+      .split(/[\s_-]+/)
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+
   $: products = Array.isArray(data.products) ? (data.products as BrowseProduct[]) : [];
-  $: urlCategory = $page.url.searchParams.get('category')?.toLowerCase() || 'all';
+  $: urlCategory = normalizeFilterValue($page.url.searchParams.get('category')) || 'all';
+  $: urlSubCategory = normalizeFilterValue($page.url.searchParams.get('sub_category'));
   $: urlSearch = $page.url.searchParams.get('search')?.trim() || '';
   $: if (urlSearch !== searchQuery) {
     searchQuery = urlSearch;
@@ -44,16 +56,49 @@
   $: if (urlCategory !== selectedCategory) {
     selectedCategory = urlCategory;
   }
+  $: if (urlSubCategory !== selectedSubCategory) {
+    selectedSubCategory = urlSubCategory;
+  }
 
-  const resolveListName = (categoryKey: string): string => {
+  const getSubCategoryForProduct = (product: BrowseProduct): string =>
+    normalizeFilterValue(product.sub_category);
+
+  const resolveSubCategoryLabel = (
+    subCategoryKey: string,
+    source: BrowseProduct[]
+  ): string => {
+    if (!subCategoryKey) return '';
+    const productLabel = source.find(
+      product => getSubCategoryForProduct(product) === subCategoryKey
+    )?.sub_category;
+    if (typeof productLabel === 'string' && productLabel.trim().length > 0) {
+      return productLabel.trim();
+    }
+    return toDisplayLabel(subCategoryKey);
+  };
+
+  $: selectedSubCategoryLabel = resolveSubCategoryLabel(
+    selectedSubCategory,
+    products
+  );
+  $: selectedCategoryLabel =
+    categories.find(category => category.key === selectedCategory)?.label ||
+    'All products';
+
+  const resolveListName = (
+    categoryKey: string,
+    subCategoryLabel: string
+  ): string => {
+    if (subCategoryLabel) return subCategoryLabel;
     if (categoryKey === 'all') return 'Browse';
     return categories.find(category => category.key === categoryKey)?.label || 'Browse';
   };
 
-  $: listName = resolveListName(selectedCategory);
+  $: listName = resolveListName(selectedCategory, selectedSubCategoryLabel);
 
   function selectCategory(category: string) {
     selectedCategory = category;
+    selectedSubCategory = '';
     categoriesOpen = false;
     const url = new URL($page.url);
     if (category === 'all') {
@@ -61,6 +106,7 @@
     } else {
       url.searchParams.set('category', category);
     }
+    url.searchParams.delete('sub_category');
     goto(`${url.pathname}${url.search ? `?${url.searchParams.toString()}` : ''}`, { replaceState: true, noScroll: true });
   }
 
@@ -82,7 +128,11 @@
     const matchesCategory = selectedCategory === 'all' ||
       getCategoryForProduct(product) === selectedCategory;
 
-    return matchesSearch && matchesCategory;
+    const matchesSubCategory =
+      !selectedSubCategory ||
+      getSubCategoryForProduct(product) === selectedSubCategory;
+
+    return matchesSearch && matchesCategory && matchesSubCategory;
   });
 
   $: sortedProducts = (() => {
@@ -166,8 +216,15 @@
         <!-- Left panel -->
         <div class="space-y-6">
           <div class="border border-gray-200 rounded-xl p-4 shadow-sm">
-            <p class="text-xs font-semibold text-cyan-600 uppercase tracking-wide">Selected category</p>
-            <h2 class="text-xl font-bold text-gray-900 mt-1">{categories.find(c => c.key === selectedCategory)?.label || 'All products'}</h2>
+            <p class="text-xs font-semibold text-cyan-600 uppercase tracking-wide">
+              {selectedSubCategory ? 'Selected sub-category' : 'Selected category'}
+            </p>
+            <h2 class="text-xl font-bold text-gray-900 mt-1">
+              {selectedSubCategoryLabel || selectedCategoryLabel}
+            </h2>
+            {#if selectedSubCategory && selectedCategory !== 'all'}
+              <p class="text-xs text-gray-500 mt-1">Inside {selectedCategoryLabel}</p>
+            {/if}
             <p class="text-sm text-gray-600">{filteredProducts.length} items</p>
           </div>
           <div class="border border-gray-200 rounded-xl p-4 shadow-sm space-y-2">

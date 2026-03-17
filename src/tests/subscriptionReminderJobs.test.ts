@@ -121,7 +121,10 @@ function createReminderPool(candidates: ReminderCandidateRow[]) {
       };
     }
 
-    if (sql.includes('UPDATE subscription_reminder_events') && sql.includes('notification_id')) {
+    if (
+      sql.includes('UPDATE subscription_reminder_events') &&
+      sql.includes('notification_id')
+    ) {
       const eventId = String(params[0]);
       const notificationId = String(params[1]);
       for (const row of events.values()) {
@@ -133,7 +136,10 @@ function createReminderPool(candidates: ReminderCandidateRow[]) {
       return { rows: [] };
     }
 
-    if (sql.includes('UPDATE subscription_reminder_events') && sql.includes('email_sent_at')) {
+    if (
+      sql.includes('UPDATE subscription_reminder_events') &&
+      sql.includes('email_sent_at')
+    ) {
       const eventId = String(params[0]);
       for (const row of events.values()) {
         if (row.id === eventId && !row.email_sent_at) {
@@ -200,7 +206,7 @@ describe('subscription reminder jobs', () => {
     ).toBe(false);
   });
 
-  it('creates reminder events once and sends tokenized renewal links without duplicates on rerun', async () => {
+  it('creates reminder events once, creates notifications once, and never sends reminder emails on rerun', async () => {
     const now = new Date('2026-02-24T10:00:00.000Z');
     const candidates: ReminderCandidateRow[] = [
       {
@@ -242,37 +248,26 @@ describe('subscription reminder jobs', () => {
     mockGetDatabasePool.mockReturnValue(pool as any);
 
     let notificationCounter = 1;
-    mockNotificationService.createNotification.mockImplementation(async () => ({
-      success: true,
-      data: {
-        id: `notif-${notificationCounter++}`,
-      },
-    } as any));
-
-    mockEmailService.send.mockResolvedValue({ success: true });
+    mockNotificationService.createNotification.mockImplementation(
+      async () =>
+        ({
+          success: true,
+          data: {
+            id: `notif-${notificationCounter++}`,
+          },
+        }) as any
+    );
 
     await runSubscriptionReminderSweep(now);
     await runSubscriptionReminderSweep(now);
 
     expect(events.size).toBe(3);
     expect(mockNotificationService.createNotification).toHaveBeenCalledTimes(3);
-    expect(mockEmailService.send).toHaveBeenCalledTimes(3);
-
-    const sentLinks = mockEmailService.send.mock.calls.map(
-      call => (call[0].text.match(/Renew now: (.+)$/m) || [])[1] || ''
-    );
-
-    expect(sentLinks[0]).toContain('/dashboard/orders?stage=7d&rt=');
-    expect(sentLinks[1]).toContain('/dashboard/orders?stage=3d&rt=');
-    expect(sentLinks[2]).toContain('/dashboard/orders?stage=24h&rt=');
-
-    for (const link of sentLinks) {
-      expect(link).toMatch(/rt=[A-Za-z0-9._%-]+/);
-    }
+    expect(mockEmailService.send).not.toHaveBeenCalled();
 
     for (const event of events.values()) {
       expect(event.notification_id).toBeTruthy();
-      expect(event.email_sent_at).toBeTruthy();
+      expect(event.email_sent_at).toBeNull();
     }
   });
 });

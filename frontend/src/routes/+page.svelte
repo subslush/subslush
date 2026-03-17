@@ -16,6 +16,7 @@
   export let data: PageData;
 
   type CuratedProductRule = {
+    subCategory?: string;
     slug?: string;
     aliases?: string[];
   };
@@ -42,34 +43,52 @@
 
   const curatedProductsByCategory: Record<string, CuratedProductRule[]> = {
     streaming: [
-      { slug: 'netflix', aliases: ['netflix'] },
-      { slug: 'amazon-prime-video', aliases: ['amazon prime video', 'amazon'] },
-      { slug: 'youtube', aliases: ['youtube'] },
-      { slug: 'apple-tv', aliases: ['apple tv'] },
-      { slug: 'crunchyroll', aliases: ['crunchy roll', 'crunchyroll'] }
+      { subCategory: 'netflix', slug: 'netflix', aliases: ['netflix'] },
+      {
+        subCategory: 'amazon prime video',
+        slug: 'amazon-prime-video',
+        aliases: ['amazon prime video', 'amazon']
+      },
+      { subCategory: 'youtube', slug: 'youtube', aliases: ['youtube'] },
+      { subCategory: 'apple tv', slug: 'apple-tv', aliases: ['apple tv'] },
+      {
+        subCategory: 'crunchyroll',
+        slug: 'crunchyroll',
+        aliases: ['crunchy roll', 'crunchyroll']
+      }
     ],
     music: [
-      { slug: 'spotify', aliases: ['spotify'] },
-      { slug: 'youtube', aliases: ['youtube'] },
-      { slug: 'deezer', aliases: ['deezer'] },
-      { slug: 'apple-music', aliases: ['apple music', 'apple'] }
+      { subCategory: 'spotify', slug: 'spotify', aliases: ['spotify'] },
+      { subCategory: 'youtube', slug: 'youtube', aliases: ['youtube'] },
+      { subCategory: 'deezer', slug: 'deezer', aliases: ['deezer'] },
+      { subCategory: 'apple music', slug: 'apple-music', aliases: ['apple music', 'apple'] }
     ],
     ai: [
-      { slug: 'chatgpt', aliases: ['chatgpt'] },
-      { slug: 'google', aliases: ['google ai', 'google'] },
-      { slug: 'perplexity', aliases: ['perplexity'] },
-      { slug: 'lovable', aliases: ['loveable', 'lovable'] },
-      { slug: 'n8n', aliases: ['n8n'] },
-      { slug: 'boltnew', aliases: ['bolt.new', 'bolt new', 'bolt'] }
+      { subCategory: 'chatgpt', slug: 'chatgpt', aliases: ['chatgpt'] },
+      { subCategory: 'google', slug: 'google', aliases: ['google ai', 'google'] },
+      { subCategory: 'perplexity', slug: 'perplexity', aliases: ['perplexity'] },
+      { subCategory: 'lovable', slug: 'lovable', aliases: ['loveable', 'lovable'] },
+      { subCategory: 'n8n', slug: 'n8n', aliases: ['n8n'] },
+      { subCategory: 'boltnew', slug: 'boltnew', aliases: ['bolt.new', 'bolt new', 'bolt'] }
     ],
-    productivity: [{ slug: 'notion', aliases: ['notion'] }],
+    productivity: [{ subCategory: 'notion', slug: 'notion', aliases: ['notion'] }],
     design: [
-      { slug: 'adobe-creative-cloud', aliases: ['adobe creative cloud', 'adobe'] },
-      { slug: 'canva', aliases: ['canva'] },
-      { slug: 'figma', aliases: ['figma'] }
+      {
+        subCategory: 'adobe creative cloud',
+        slug: 'adobe-creative-cloud',
+        aliases: ['adobe creative cloud', 'adobe']
+      },
+      { subCategory: 'canva', slug: 'canva', aliases: ['canva'] },
+      { subCategory: 'figma', slug: 'figma', aliases: ['figma'] }
     ],
-    education: [{ slug: 'duolingo', aliases: ['duolingo'] }],
-    fitness: [{ slug: 'myfitnesspal', aliases: ['myfitnesspal', 'my fitness pal'] }]
+    education: [{ subCategory: 'duolingo', slug: 'duolingo', aliases: ['duolingo'] }],
+    fitness: [
+      {
+        subCategory: 'myfitnesspal',
+        slug: 'myfitnesspal',
+        aliases: ['myfitnesspal', 'my fitness pal']
+      }
+    ]
   };
 
   const normalizeText = (value?: string | null): string =>
@@ -104,25 +123,46 @@
     const selected: ProductListing[] = [];
     const usedIds = new Set<string>();
 
+    const getComparablePrice = (product: ProductListing): number =>
+      Number.isFinite(product.from_price) ? product.from_price : Number.POSITIVE_INFINITY;
+
+    const matchesRule = (
+      product: ProductListing,
+      rule: CuratedProductRule
+    ): boolean => {
+      const subCategoryMatch =
+        typeof rule.subCategory === 'string' &&
+        normalizeText(product.sub_category) === normalizeText(rule.subCategory);
+      if (subCategoryMatch) {
+        return true;
+      }
+
+      const slugMatch =
+        typeof rule.slug === 'string' &&
+        normalizeText(product.slug) === normalizeText(rule.slug);
+      if (slugMatch) {
+        return true;
+      }
+
+      if (Array.isArray(rule.aliases) && rule.aliases.length > 0) {
+        return matchesByAlias(product, rule.aliases);
+      }
+
+      return false;
+    };
+
     for (const rule of rules) {
-      const candidate = products.find(product => {
-        if (usedIds.has(product.product_id)) {
-          return false;
+      const candidate = products.reduce<ProductListing | null>((best, product) => {
+        if (usedIds.has(product.product_id) || !matchesRule(product, rule)) {
+          return best;
         }
-
-        const slugMatch =
-          typeof rule.slug === 'string' &&
-          normalizeText(product.slug) === normalizeText(rule.slug);
-        if (slugMatch) {
-          return true;
+        if (!best) {
+          return product;
         }
-
-        if (Array.isArray(rule.aliases) && rule.aliases.length > 0) {
-          return matchesByAlias(product, rule.aliases);
-        }
-
-        return false;
-      });
+        return getComparablePrice(product) < getComparablePrice(best)
+          ? product
+          : best;
+      }, null);
 
       if (candidate) {
         selected.push(candidate);
@@ -342,7 +382,11 @@
         </div>
 
         {#if section.products.length > 0}
-          <SubscriptionGrid products={section.products} listName={section.listName} />
+          <SubscriptionGrid
+            products={section.products}
+            listName={section.listName}
+            linkMode="subcategory"
+          />
         {:else}
           <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
             {section.emptyState}
