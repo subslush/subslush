@@ -83,3 +83,32 @@ export interface OrderSubscriptionResponse {
 export interface OrderSubscriptionsResponse {
   subscriptions: Subscription[];
 }
+
+export interface OrderEntitlement {
+  id: string;
+  order_id: string;
+  order_item_id?: string | null;
+  user_id: string;
+  status: 'active' | 'expired' | 'cancelled' | 'pending';
+  starts_at: string;
+  ends_at: string;
+  duration_months_snapshot?: number | null;
+  mmu_cycle_index?: number | null;
+  mmu_cycle_total?: number | null;
+  source_subscription_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  has_credentials?: boolean;
+}
+
+export interface OrderEntitlementsResponse {
+  entitlements: OrderEntitlement[];
+}
+
+export interface OrderCredentialRevealResponse {
+  order_id: string;
+  entitlement_id?: string | null;
+  subscription_id?: string | null;
+  credentials: string;
+}

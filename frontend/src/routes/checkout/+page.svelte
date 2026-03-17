@@ -1078,7 +1078,7 @@
       await credits.refresh($user?.id ?? null, { force: true });
       cart.clear();
       clearDraftState();
-      goto('/dashboard/subscriptions');
+      goto('/dashboard/orders');
     } catch (error) {
       actionError =
         error instanceof Error

@@ -55,6 +55,47 @@ function normalizeServiceType(value?: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizeIntegerOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Math.trunc(numeric);
+}
+
+function validateFixedCatalogFields(input: {
+  durationMonths: number | null;
+  fixedPriceCents: number | null;
+  fixedPriceCurrency: string | null;
+}): string | null {
+  const { durationMonths, fixedPriceCents, fixedPriceCurrency } = input;
+  if (
+    durationMonths !== null &&
+    (!Number.isInteger(durationMonths) || durationMonths <= 0)
+  ) {
+    return 'duration_months must be a positive integer';
+  }
+
+  if (
+    fixedPriceCents !== null &&
+    (!Number.isInteger(fixedPriceCents) || fixedPriceCents < 0)
+  ) {
+    return 'fixed_price_cents must be a non-negative integer';
+  }
+
+  if (
+    (fixedPriceCents === null && fixedPriceCurrency !== null) ||
+    (fixedPriceCents !== null && fixedPriceCurrency === null)
+  ) {
+    return 'fixed_price_cents and fixed_price_currency must be set together';
+  }
+
+  return null;
+}
+
 function mapProduct(row: any): Product {
   return {
     id: row.id,
@@ -66,6 +107,9 @@ function mapProduct(row: any): Product {
     category: row.category,
     default_currency: row.default_currency,
     max_subscriptions: row.max_subscriptions,
+    duration_months: row.duration_months,
+    fixed_price_cents: row.fixed_price_cents,
+    fixed_price_currency: row.fixed_price_currency,
     status: row.status,
     metadata: parseMetadata(row.metadata),
     created_at: row.created_at,
@@ -149,6 +193,11 @@ export class CatalogService {
     input: CreateProductInput
   ): Promise<ServiceResult<Product>> {
     try {
+      const durationMonths = normalizeIntegerOrNull(input.duration_months);
+      const fixedPriceCents = normalizeIntegerOrNull(input.fixed_price_cents);
+      const fixedPriceCurrency =
+        normalizeCurrencyCode(input.fixed_price_currency) || null;
+
       if (input.default_currency) {
         const normalizedCurrency = normalizeCurrencyCode(
           input.default_currency
@@ -168,11 +217,38 @@ export class CatalogService {
         }
       }
 
+      if (input.fixed_price_currency && !fixedPriceCurrency) {
+        return createErrorResult('Unsupported fixed_price_currency');
+      }
+
+      const fixedFieldValidation = validateFixedCatalogFields({
+        durationMonths,
+        fixedPriceCents,
+        fixedPriceCurrency,
+      });
+      if (fixedFieldValidation) {
+        return createErrorResult(fixedFieldValidation);
+      }
+
       const pool = getDatabasePool();
       const result = await pool.query(
         `INSERT INTO products
-          (name, slug, description, service_type, logo_key, category, default_currency, max_subscriptions, status, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          (
+            name,
+            slug,
+            description,
+            service_type,
+            logo_key,
+            category,
+            default_currency,
+            max_subscriptions,
+            duration_months,
+            fixed_price_cents,
+            fixed_price_currency,
+            status,
+            metadata
+          )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *`,
         [
           input.name,
@@ -183,6 +259,9 @@ export class CatalogService {
           input.category || null,
           normalizeCurrencyCode(input.default_currency) || null,
           input.max_subscriptions ?? null,
+          durationMonths,
+          fixedPriceCents,
+          fixedPriceCurrency,
           input.status || 'active',
           input.metadata ? JSON.stringify(input.metadata) : null,
         ]
@@ -203,6 +282,21 @@ export class CatalogService {
       const updateFields: string[] = [];
       const values: any[] = [];
       let paramCount = 0;
+      const pool = getDatabasePool();
+
+      const fixedFieldUpdatesProvided =
+        updates.duration_months !== undefined ||
+        updates.fixed_price_cents !== undefined ||
+        updates.fixed_price_currency !== undefined;
+      let normalizedFixedPriceCurrency: string | null | undefined;
+      let existingProduct: Product | null = null;
+
+      if (fixedFieldUpdatesProvided) {
+        existingProduct = await this.getProductById(productId);
+        if (!existingProduct) {
+          return createErrorResult('Product not found');
+        }
+      }
 
       if (updates.name !== undefined) {
         updateFields.push(`name = $${++paramCount}`);
@@ -244,6 +338,30 @@ export class CatalogService {
         updateFields.push(`max_subscriptions = $${++paramCount}`);
         values.push(updates.max_subscriptions);
       }
+      if (updates.duration_months !== undefined) {
+        const durationMonths = normalizeIntegerOrNull(updates.duration_months);
+        updateFields.push(`duration_months = $${++paramCount}`);
+        values.push(durationMonths);
+      }
+      if (updates.fixed_price_cents !== undefined) {
+        const fixedPriceCents = normalizeIntegerOrNull(updates.fixed_price_cents);
+        updateFields.push(`fixed_price_cents = $${++paramCount}`);
+        values.push(fixedPriceCents);
+      }
+      if (updates.fixed_price_currency !== undefined) {
+        if (updates.fixed_price_currency) {
+          normalizedFixedPriceCurrency = normalizeCurrencyCode(
+            updates.fixed_price_currency
+          );
+          if (!normalizedFixedPriceCurrency) {
+            return createErrorResult('Unsupported fixed_price_currency');
+          }
+        } else {
+          normalizedFixedPriceCurrency = null;
+        }
+        updateFields.push(`fixed_price_currency = $${++paramCount}`);
+        values.push(normalizedFixedPriceCurrency);
+      }
       if (updates.status !== undefined) {
         updateFields.push(`status = $${++paramCount}`);
         values.push(updates.status);
@@ -262,6 +380,31 @@ export class CatalogService {
         values.push(updates.metadata ? JSON.stringify(updates.metadata) : null);
       }
 
+      if (fixedFieldUpdatesProvided && existingProduct) {
+        const durationMonths =
+          updates.duration_months !== undefined
+            ? normalizeIntegerOrNull(updates.duration_months)
+            : normalizeIntegerOrNull(existingProduct.duration_months);
+        const fixedPriceCents =
+          updates.fixed_price_cents !== undefined
+            ? normalizeIntegerOrNull(updates.fixed_price_cents)
+            : normalizeIntegerOrNull(existingProduct.fixed_price_cents);
+        const fixedPriceCurrency =
+          updates.fixed_price_currency !== undefined
+            ? normalizedFixedPriceCurrency ?? null
+            : normalizeCurrencyCode(existingProduct.fixed_price_currency) ||
+              null;
+
+        const fixedFieldValidation = validateFixedCatalogFields({
+          durationMonths,
+          fixedPriceCents,
+          fixedPriceCurrency,
+        });
+        if (fixedFieldValidation) {
+          return createErrorResult(fixedFieldValidation);
+        }
+      }
+
       if (updateFields.length === 0) {
         return createErrorResult('No valid fields to update');
       }
@@ -269,7 +412,6 @@ export class CatalogService {
       updateFields.push(`updated_at = NOW()`);
       values.push(productId);
 
-      const pool = getDatabasePool();
       const result = await pool.query(
         `UPDATE products
          SET ${updateFields.join(', ')}
@@ -784,6 +926,9 @@ export class CatalogService {
           p.category AS product_category,
           p.default_currency AS product_default_currency,
           p.max_subscriptions AS product_max_subscriptions,
+          p.duration_months AS product_duration_months,
+          p.fixed_price_cents AS product_fixed_price_cents,
+          p.fixed_price_currency AS product_fixed_price_currency,
           p.status AS product_status,
           p.metadata AS product_metadata,
           p.created_at AS product_created_at,
@@ -826,6 +971,9 @@ export class CatalogService {
           category: row.product_category,
           default_currency: row.product_default_currency,
           max_subscriptions: row.product_max_subscriptions,
+          duration_months: row.product_duration_months,
+          fixed_price_cents: row.product_fixed_price_cents,
+          fixed_price_currency: row.product_fixed_price_currency,
           status: row.product_status,
           metadata: row.product_metadata,
           created_at: row.product_created_at,
@@ -847,6 +995,42 @@ export class CatalogService {
       }));
     } catch (error) {
       Logger.error('Failed to list active catalog listings:', error);
+      return [];
+    }
+  }
+
+  async listActiveFixedProducts(filters?: {
+    service_type?: string;
+  }): Promise<Product[]> {
+    try {
+      const pool = getDatabasePool();
+      const params: any[] = [];
+      let paramCount = 0;
+      let sql = `
+        SELECT p.*
+        FROM products p
+        LEFT JOIN product_variants pv
+          ON pv.product_id = p.id
+         AND pv.is_active = TRUE
+        WHERE p.status = 'active'
+          AND p.duration_months IS NOT NULL
+          AND p.fixed_price_cents IS NOT NULL
+          AND p.fixed_price_currency IS NOT NULL
+          AND pv.id IS NULL
+      `;
+
+      const normalizedServiceType = normalizeServiceType(filters?.service_type);
+      if (normalizedServiceType) {
+        sql += ` AND LOWER(p.service_type) = $${++paramCount}`;
+        params.push(normalizedServiceType);
+      }
+
+      sql += ' ORDER BY p.created_at DESC';
+
+      const result = await pool.query(sql, params);
+      return result.rows.map(mapProduct);
+    } catch (error) {
+      Logger.error('Failed to list active fixed products:', error);
       return [];
     }
   }
@@ -1011,6 +1195,9 @@ export class CatalogService {
           p.category AS product_category,
           p.default_currency AS product_default_currency,
           p.max_subscriptions AS product_max_subscriptions,
+          p.duration_months AS product_duration_months,
+          p.fixed_price_cents AS product_fixed_price_cents,
+          p.fixed_price_currency AS product_fixed_price_currency,
           p.status AS product_status,
           p.metadata AS product_metadata,
           p.created_at AS product_created_at,
@@ -1066,6 +1253,9 @@ export class CatalogService {
           category: row.product_category,
           default_currency: row.product_default_currency,
           max_subscriptions: row.product_max_subscriptions,
+          duration_months: row.product_duration_months,
+          fixed_price_cents: row.product_fixed_price_cents,
+          fixed_price_currency: row.product_fixed_price_currency,
           status: row.product_status,
           metadata: row.product_metadata,
           created_at: row.product_created_at,
@@ -1110,6 +1300,9 @@ export class CatalogService {
           p.category AS product_category,
           p.default_currency AS product_default_currency,
           p.max_subscriptions AS product_max_subscriptions,
+          p.duration_months AS product_duration_months,
+          p.fixed_price_cents AS product_fixed_price_cents,
+          p.fixed_price_currency AS product_fixed_price_currency,
           p.status AS product_status,
           p.metadata AS product_metadata,
           p.created_at AS product_created_at,
@@ -1148,6 +1341,9 @@ export class CatalogService {
           category: row.product_category,
           default_currency: row.product_default_currency,
           max_subscriptions: row.product_max_subscriptions,
+          duration_months: row.product_duration_months,
+          fixed_price_cents: row.product_fixed_price_cents,
+          fixed_price_currency: row.product_fixed_price_currency,
           status: row.product_status,
           metadata: row.product_metadata,
           created_at: row.product_created_at,

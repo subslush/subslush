@@ -600,7 +600,7 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
               message: `Your ${subscriptionLabel} renewal (${subscriptionShort}) has been fulfilled and is now active.`,
               metadata: {
                 subscription_id: subscription.id,
-                link: '/dashboard/subscriptions',
+                link: '/dashboard/orders',
                 renewed_at: renewedAt,
               },
               subscriptionId: subscription.id,

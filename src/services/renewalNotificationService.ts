@@ -99,7 +99,7 @@ export function buildSubscriptionRenewalReminderLink(params: {
     .digest('base64url');
   const token = `${payloadEncoded}.${signature}`;
   const tokenHash = createHash('sha256').update(token).digest('hex');
-  const path = `/dashboard/subscriptions/${params.subscriptionId}/renewal?stage=${encodeURIComponent(
+  const path = `/dashboard/orders?stage=${encodeURIComponent(
     params.reminderStage
   )}&rt=${encodeURIComponent(token)}`;
 
@@ -240,10 +240,8 @@ export async function notifyStripeRenewalFailure(params: {
   const renewalDateLabel = params.renewalDate
     ? params.renewalDate.toISOString().slice(0, 10)
     : endDateLabel;
-  const updateLink = buildAppLink(
-    `/dashboard/subscriptions/${params.subscriptionId}/billing`
-  );
-  const dashboardLink = buildAppLink('/dashboard/subscriptions');
+  const updateLink = buildAppLink('/dashboard/orders');
+  const dashboardLink = buildAppLink('/dashboard/orders');
   const subscriptionShort = formatSubscriptionShortId(params.subscriptionId);
 
   await notificationService.createNotification({
@@ -259,7 +257,7 @@ export async function notifyStripeRenewalFailure(params: {
         : null,
       end_date: params.endDate.toISOString(),
       reason: params.reason,
-      link: `/dashboard/subscriptions/${params.subscriptionId}/billing`,
+      link: '/dashboard/orders',
     },
     subscriptionId: params.subscriptionId,
     dedupeKey: `subscription_renewal_failed:${params.subscriptionId}:${params.endDate.toISOString()}`,
@@ -373,7 +371,7 @@ export async function notifyStripeRenewalSuccess(params: {
     message: `We received your payment for ${subscriptionShort} and will process your renewal shortly.`,
     metadata: {
       subscription_id: params.subscriptionId,
-      link: '/dashboard/subscriptions',
+      link: '/dashboard/orders',
       renewed_at: renewedAt,
     },
     subscriptionId: params.subscriptionId,
@@ -407,7 +405,7 @@ export async function notifyCreditsRenewalSuccess(params: {
     message: `Your ${serviceLabel} subscription (${subscriptionShort}) has been renewed using credits.`,
     metadata: {
       subscription_id: params.subscriptionId,
-      link: '/dashboard/subscriptions',
+      link: '/dashboard/orders',
       renewed_at: renewedAt,
       renewal_method: 'credits',
     },

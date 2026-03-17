@@ -2,9 +2,15 @@ import Fastify from 'fastify';
 import { orderRoutes } from '../routes/orders';
 import { getDatabasePool } from '../config/database';
 import { subscriptionService } from '../services/subscriptionService';
+import { orderEntitlementService } from '../services/orderEntitlementService';
 
 jest.mock('../config/database');
 jest.mock('../services/subscriptionService');
+jest.mock('../services/orderEntitlementService', () => ({
+  orderEntitlementService: {
+    listForOrder: jest.fn(),
+  },
+}));
 jest.mock('../middleware/rateLimitMiddleware', () => ({
   createRateLimitHandler: jest.fn(() => async () => {}),
 }));
@@ -27,6 +33,8 @@ const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
 const mockSubscriptionService = subscriptionService as jest.Mocked<
   typeof subscriptionService
 >;
+const mockOrderEntitlementService =
+  orderEntitlementService as jest.Mocked<typeof orderEntitlementService>;
 
 describe('Order subscription polling endpoint', () => {
   beforeEach(() => {
@@ -40,6 +48,7 @@ describe('Order subscription polling endpoint', () => {
       .mockResolvedValueOnce({ rows: [{ id: 'sub-1' }] });
 
     mockGetDatabasePool.mockReturnValue({ query: mockQuery } as any);
+    mockOrderEntitlementService.listForOrder.mockResolvedValue([]);
     mockSubscriptionService.getSubscriptionById.mockResolvedValue({
       success: true,
       data: {

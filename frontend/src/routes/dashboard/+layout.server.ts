@@ -19,7 +19,6 @@ const decodeProfileCache = (
       firstName?: string;
       lastName?: string;
       displayName?: string | null;
-      pinSetAt?: string | null;
     };
     if (!parsed?.id || !parsed.email || parsed.id !== userId) return null;
     return parsed;
@@ -41,8 +40,7 @@ const sanitizeProfileUser = (value: unknown) => {
     firstName: typeof profile.firstName === 'string' ? profile.firstName : undefined,
     lastName: typeof profile.lastName === 'string' ? profile.lastName : undefined,
     displayName:
-      typeof profile.displayName === 'string' ? profile.displayName : null,
-    pinSetAt: typeof profile.pinSetAt === 'string' ? profile.pinSetAt : null
+      typeof profile.displayName === 'string' ? profile.displayName : null
   };
 };
 

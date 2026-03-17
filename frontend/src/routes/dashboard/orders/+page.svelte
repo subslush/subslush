@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { Receipt } from 'lucide-svelte';
+  import { Eye, EyeOff, Receipt } from 'lucide-svelte';
   import { ordersService } from '$lib/api/orders.js';
   import type { PageData } from './$types';
   import type { OrderItem, OrderListItem } from '$lib/types/order.js';
@@ -10,6 +10,10 @@
 
   let orders: OrderListItem[] = data.orders;
   let pagination = data.pagination;
+  let revealedCredentialsByOrder: Record<string, string> = {};
+  let revealLoadingByOrder: Record<string, boolean> = {};
+  let revealErrorByOrder: Record<string, string> = {};
+  let copyMessageByOrder: Record<string, string> = {};
 
   $: orders = data.orders;
   $: pagination = data.pagination;
@@ -116,6 +120,65 @@
     goto(`/dashboard/orders?${params.toString()}`);
   }
 
+  function clearRevealedCredentials(orderId: string) {
+    const { [orderId]: _removed, ...rest } = revealedCredentialsByOrder;
+    revealedCredentialsByOrder = rest;
+  }
+
+  function parseCredentials(raw: string): Record<string, string> | null {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        const entries = Object.entries(parsed).reduce<Record<string, string>>(
+          (acc, [key, value]) => {
+            acc[key] = typeof value === 'string' ? value : JSON.stringify(value);
+            return acc;
+          },
+          {}
+        );
+        return entries;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  async function copyCredentials(orderId: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      copyMessageByOrder = {
+        ...copyMessageByOrder,
+        [orderId]: 'Copied to clipboard.'
+      };
+      setTimeout(() => {
+        copyMessageByOrder = { ...copyMessageByOrder, [orderId]: '' };
+      }, 2000);
+    } catch {
+      copyMessageByOrder = {
+        ...copyMessageByOrder,
+        [orderId]: 'Copy failed. Please copy manually.'
+      };
+    }
+  }
+
+  async function revealCredentials(orderId: string) {
+    revealLoadingByOrder = { ...revealLoadingByOrder, [orderId]: true };
+    revealErrorByOrder = { ...revealErrorByOrder, [orderId]: '' };
+    try {
+      const response = await ordersService.revealOrderCredentials(orderId);
+      revealedCredentialsByOrder = {
+        ...revealedCredentialsByOrder,
+        [orderId]: response.credentials
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to reveal credentials.';
+      revealErrorByOrder = { ...revealErrorByOrder, [orderId]: message };
+    } finally {
+      revealLoadingByOrder = { ...revealLoadingByOrder, [orderId]: false };
+    }
+  }
+
   onMount(() => {
     let isActive = true;
 
@@ -163,7 +226,7 @@
       {#if orders.length > 0}
         <a
           href="/browse"
-          class="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black"
+          class="inline-flex items-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2 text-sm font-medium text-white transition hover:opacity-95"
         >
           Go shopping
         </a>
@@ -186,7 +249,7 @@
       <p class="text-sm text-gray-600 mt-1">Your completed orders will appear here.</p>
       <a
         href="/browse"
-        class="mt-4 inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black"
+        class="mt-4 inline-flex items-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2 text-sm font-medium text-white transition hover:opacity-95"
       >
         Go shopping
       </a>
@@ -222,6 +285,55 @@
               <p class="text-xs text-gray-500 mt-1">Total</p>
               <p class="text-xs text-gray-500 mt-3">{formatDate(order.created_at)}</p>
             </div>
+          </div>
+          <div class="mt-4 border-t border-gray-100 pt-4">
+            {#if !revealedCredentialsByOrder[order.id]}
+              <button
+                class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                disabled={revealLoadingByOrder[order.id]}
+                on:click={() => revealCredentials(order.id)}
+              >
+                <Eye size={14} />
+                {revealLoadingByOrder[order.id] ? 'Revealing...' : 'Reveal credentials'}
+              </button>
+            {:else}
+              <button
+                class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                on:click={() => clearRevealedCredentials(order.id)}
+              >
+                <EyeOff size={14} />
+                Hide credentials
+              </button>
+            {/if}
+            {#if revealErrorByOrder[order.id]}
+              <p class="mt-2 text-xs text-red-600">{revealErrorByOrder[order.id]}</p>
+            {/if}
+            {#if revealedCredentialsByOrder[order.id]}
+              {@const parsedCredentials = parseCredentials(revealedCredentialsByOrder[order.id])}
+              {#if parsedCredentials}
+                <div class="mt-3 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  {#each Object.entries(parsedCredentials) as [key, value]}
+                    <div class="flex items-start justify-between gap-3 text-xs">
+                      <span class="font-medium uppercase tracking-wide text-gray-500">{key}</span>
+                      <span class="max-w-[70%] break-all text-right text-gray-700">{value}</span>
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <p class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 whitespace-pre-wrap break-words">
+                  {revealedCredentialsByOrder[order.id]}
+                </p>
+              {/if}
+              <button
+                class="mt-2 inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                on:click={() => copyCredentials(order.id, revealedCredentialsByOrder[order.id])}
+              >
+                Copy credentials
+              </button>
+              {#if copyMessageByOrder[order.id]}
+                <p class="mt-2 text-xs text-gray-500">{copyMessageByOrder[order.id]}</p>
+              {/if}
+            {/if}
           </div>
         </div>
       {/each}

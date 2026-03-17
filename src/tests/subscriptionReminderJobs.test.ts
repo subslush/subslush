@@ -262,9 +262,9 @@ describe('subscription reminder jobs', () => {
       call => (call[0].text.match(/Renew now: (.+)$/m) || [])[1] || ''
     );
 
-    expect(sentLinks[0]).toContain('/dashboard/subscriptions/sub-7d/renewal?stage=7d&rt=');
-    expect(sentLinks[1]).toContain('/dashboard/subscriptions/sub-3d/renewal?stage=3d&rt=');
-    expect(sentLinks[2]).toContain('/dashboard/subscriptions/sub-24h/renewal?stage=24h&rt=');
+    expect(sentLinks[0]).toContain('/dashboard/orders?stage=7d&rt=');
+    expect(sentLinks[1]).toContain('/dashboard/orders?stage=3d&rt=');
+    expect(sentLinks[2]).toContain('/dashboard/orders?stage=24h&rt=');
 
     for (const link of sentLinks) {
       expect(link).toMatch(/rt=[A-Za-z0-9._%-]+/);

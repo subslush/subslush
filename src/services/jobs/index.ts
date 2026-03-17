@@ -4,13 +4,12 @@ import { paymentMonitoringService } from '../paymentMonitoringService';
 import { JobScheduler } from './jobScheduler';
 import {
   runSubscriptionExpirySweep,
-  runSubscriptionReminderSweep,
   runSubscriptionRenewalSweep,
+  runSubscriptionReminderSweep,
   runUpgradeSelectionReminderSweep,
   runManualMonthlyUpgradeSweep,
 } from './subscriptionJobs';
 import {
-  runPinLockoutMonitor,
   runSubscriptionDataQualityMonitor,
   runOrderAllocationReconciliation,
 } from './monitoringJobs';
@@ -42,14 +41,20 @@ function registerJobs(): void {
     return;
   }
 
-  scheduler.register({
-    name: 'subscription-renewal',
-    intervalMs: env.SUBSCRIPTION_RENEWAL_INTERVAL,
-    initialDelayMs: 10000,
-    lockKey: 'jobs:subscription_renewal',
-    lockTtlSeconds: 300,
-    handler: runSubscriptionRenewalSweep,
-  });
+  if (env.SUBSCRIPTION_AUTO_RENEW_SWEEP_ENABLED) {
+    scheduler.register({
+      name: 'subscription-renewal',
+      intervalMs: env.SUBSCRIPTION_RENEWAL_INTERVAL,
+      initialDelayMs: 10000,
+      lockKey: 'jobs:subscription_renewal',
+      lockTtlSeconds: 300,
+      handler: runSubscriptionRenewalSweep,
+    });
+  } else {
+    Logger.info('Subscription auto-renew sweep scheduler is disabled', {
+      featureFlag: 'SUBSCRIPTION_AUTO_RENEW_SWEEP_ENABLED',
+    });
+  }
 
   scheduler.register({
     name: 'subscription-expiry',
@@ -87,23 +92,20 @@ function registerJobs(): void {
     handler: runManualMonthlyUpgradeSweep,
   });
 
-  scheduler.register({
-    name: 'pin-lockout-monitor',
-    intervalMs: env.PIN_LOCKOUT_MONITOR_INTERVAL,
-    initialDelayMs: 15000,
-    lockKey: 'jobs:pin_lockout_monitor',
-    lockTtlSeconds: 120,
-    handler: runPinLockoutMonitor,
-  });
-
-  scheduler.register({
-    name: 'subscription-data-quality',
-    intervalMs: env.SUBSCRIPTION_DATA_QUALITY_INTERVAL,
-    initialDelayMs: 35000,
-    lockKey: 'jobs:subscription_data_quality',
-    lockTtlSeconds: 300,
-    handler: runSubscriptionDataQualityMonitor,
-  });
+  if (env.SUBSCRIPTION_AUTO_RENEW_SWEEP_ENABLED) {
+    scheduler.register({
+      name: 'subscription-data-quality',
+      intervalMs: env.SUBSCRIPTION_DATA_QUALITY_INTERVAL,
+      initialDelayMs: 35000,
+      lockKey: 'jobs:subscription_data_quality',
+      lockTtlSeconds: 300,
+      handler: runSubscriptionDataQualityMonitor,
+    });
+  } else {
+    Logger.info('Subscription auto-renew data-quality monitor is disabled', {
+      featureFlag: 'SUBSCRIPTION_AUTO_RENEW_SWEEP_ENABLED',
+    });
+  }
 
   scheduler.register({
     name: 'order-allocation-reconciliation',

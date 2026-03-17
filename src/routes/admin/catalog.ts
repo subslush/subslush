@@ -110,6 +110,9 @@ export async function adminCatalogRoutes(
             category: { type: 'string' },
             default_currency: { type: 'string' },
             max_subscriptions: { type: 'integer', minimum: 0 },
+            duration_months: { type: ['integer', 'null'], minimum: 1 },
+            fixed_price_cents: { type: ['integer', 'null'], minimum: 0 },
+            fixed_price_currency: { type: ['string', 'null'] },
             status: { type: 'string', enum: ['active', 'inactive'] },
             metadata: { type: 'object' },
           },
@@ -123,7 +126,7 @@ export async function adminCatalogRoutes(
         if (payload?.status === 'active' || payload?.status === undefined) {
           return ErrorResponses.badRequest(
             reply,
-            'Create the product as inactive, add variants/terms/prices, then activate it.'
+            'Create the product as inactive, then add fixed duration/price fields or variant pricing before activation.'
           );
         }
 
@@ -173,6 +176,9 @@ export async function adminCatalogRoutes(
             category: { type: 'string' },
             default_currency: { type: 'string' },
             max_subscriptions: { type: 'integer', minimum: 0 },
+            duration_months: { type: ['integer', 'null'], minimum: 1 },
+            fixed_price_cents: { type: ['integer', 'null'], minimum: 0 },
+            fixed_price_currency: { type: ['string', 'null'] },
             status: { type: 'string', enum: ['active', 'inactive'] },
             metadata: { type: 'object' },
           },
@@ -191,74 +197,115 @@ export async function adminCatalogRoutes(
         }
 
         if (payload?.status === 'active') {
-          const activeVariants = await catalogService.listVariants(
-            productId,
-            true
-          );
-          if (activeVariants.length === 0) {
-            return ErrorResponses.badRequest(
-              reply,
-              'Cannot activate product without an active variant'
-            );
-          }
-
-          const termMap = await catalogService.listVariantTermsForVariants(
-            activeVariants.map(variant => variant.id),
-            true
-          );
-          const missingTerms = activeVariants.filter(
-            variant => (termMap.get(variant.id) || []).length === 0
-          );
-          if (missingTerms.length > 0) {
-            const names = missingTerms
-              .map(variant => variant.name)
-              .filter(Boolean)
-              .slice(0, 3)
-              .join(', ');
-            const suffix = missingTerms.length > 3 ? '…' : '';
-            const detail = names ? ` (${names}${suffix})` : '';
-            return ErrorResponses.badRequest(
-              reply,
-              `Cannot activate product until all active variants have at least one term${detail}`
-            );
-          }
-
+          const durationMonthsRaw =
+            payload?.duration_months !== undefined
+              ? payload.duration_months
+              : before.duration_months;
+          const fixedPriceCentsRaw =
+            payload?.fixed_price_cents !== undefined
+              ? payload.fixed_price_cents
+              : before.fixed_price_cents;
+          const fixedPriceCurrencyRaw =
+            payload?.fixed_price_currency !== undefined
+              ? payload.fixed_price_currency
+              : before.fixed_price_currency;
+          const normalizedFixedCurrency =
+            typeof fixedPriceCurrencyRaw === 'string' &&
+            fixedPriceCurrencyRaw.trim().length > 0
+              ? fixedPriceCurrencyRaw.trim().toUpperCase()
+              : null;
           const requiredCurrencies = getSupportedCurrencies();
-          const variantIds = activeVariants.map(variant => variant.id);
-          const currencyMaps = await Promise.all(
-            requiredCurrencies.map(currency =>
-              catalogService.listCurrentPricesForCurrency({
-                variantIds,
-                currency,
-              })
-            )
-          );
-
-          const missingCurrencyByVariant = activeVariants
-            .map(variant => {
-              const missing = requiredCurrencies.filter((_, index) => {
-                const priceMap = currencyMaps[index];
-                return !priceMap || !priceMap.has(variant.id);
-              });
-              return missing.length > 0
-                ? {
-                    name: variant.name || variant.id,
-                    missing,
-                  }
-                : null;
-            })
-            .filter(Boolean) as Array<{ name: string; missing: string[] }>;
-
-          if (missingCurrencyByVariant.length > 0) {
-            const preview = missingCurrencyByVariant
-              .slice(0, 3)
-              .map(entry => `${entry.name}: ${entry.missing.join(', ')}`)
-              .join('; ');
-            const suffix = missingCurrencyByVariant.length > 3 ? '…' : '';
-            return ErrorResponses.badRequest(
-              reply,
-              `Cannot activate product until all active variants have prices for ${requiredCurrencies.join(', ')}. Missing: ${preview}${suffix}`
+          const hasSupportedFixedCurrency =
+            !!normalizedFixedCurrency &&
+            requiredCurrencies.includes(
+              normalizedFixedCurrency as (typeof requiredCurrencies)[number]
             );
+          const hasCompleteFixedCatalog =
+            Number.isInteger(durationMonthsRaw) &&
+            Number(durationMonthsRaw) > 0 &&
+            Number.isInteger(fixedPriceCentsRaw) &&
+            Number(fixedPriceCentsRaw) >= 0 &&
+            hasSupportedFixedCurrency;
+          const hasAnyFixedCatalogField =
+            (durationMonthsRaw !== undefined && durationMonthsRaw !== null) ||
+            (fixedPriceCentsRaw !== undefined && fixedPriceCentsRaw !== null) ||
+            normalizedFixedCurrency !== null;
+
+          if (!hasCompleteFixedCatalog) {
+            const activeVariants = await catalogService.listVariants(
+              productId,
+              true
+            );
+            if (activeVariants.length === 0) {
+              if (hasAnyFixedCatalogField) {
+                return ErrorResponses.badRequest(
+                  reply,
+                  'Cannot activate product: fixed catalog fields are incomplete. Set duration_months, fixed_price_cents, and a supported fixed_price_currency, or configure active variants.'
+                );
+              }
+              return ErrorResponses.badRequest(
+                reply,
+                'Cannot activate product without an active variant or fixed catalog fields'
+              );
+            }
+
+            const termMap = await catalogService.listVariantTermsForVariants(
+              activeVariants.map(variant => variant.id),
+              true
+            );
+            const missingTerms = activeVariants.filter(
+              variant => (termMap.get(variant.id) || []).length === 0
+            );
+            if (missingTerms.length > 0) {
+              const names = missingTerms
+                .map(variant => variant.name)
+                .filter(Boolean)
+                .slice(0, 3)
+                .join(', ');
+              const suffix = missingTerms.length > 3 ? '…' : '';
+              const detail = names ? ` (${names}${suffix})` : '';
+              return ErrorResponses.badRequest(
+                reply,
+                `Cannot activate product until all active variants have at least one term${detail}`
+              );
+            }
+
+            const variantIds = activeVariants.map(variant => variant.id);
+            const currencyMaps = await Promise.all(
+              requiredCurrencies.map(currency =>
+                catalogService.listCurrentPricesForCurrency({
+                  variantIds,
+                  currency,
+                })
+              )
+            );
+
+            const missingCurrencyByVariant = activeVariants
+              .map(variant => {
+                const missing = requiredCurrencies.filter((_, index) => {
+                  const priceMap = currencyMaps[index];
+                  return !priceMap || !priceMap.has(variant.id);
+                });
+                return missing.length > 0
+                  ? {
+                      name: variant.name || variant.id,
+                      missing,
+                    }
+                  : null;
+              })
+              .filter(Boolean) as Array<{ name: string; missing: string[] }>;
+
+            if (missingCurrencyByVariant.length > 0) {
+              const preview = missingCurrencyByVariant
+                .slice(0, 3)
+                .map(entry => `${entry.name}: ${entry.missing.join(', ')}`)
+                .join('; ');
+              const suffix = missingCurrencyByVariant.length > 3 ? '…' : '';
+              return ErrorResponses.badRequest(
+                reply,
+                `Cannot activate product until all active variants have prices for ${requiredCurrencies.join(', ')}. Missing: ${preview}${suffix}`
+              );
+            }
           }
         }
 

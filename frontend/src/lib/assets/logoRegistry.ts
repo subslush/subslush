@@ -96,6 +96,31 @@ const logoAliases: Record<string, LogoKey> = {
   'spotify premium': 'spotify'
 };
 
+const buildLogoCandidates = (value: string): string[] => {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return [];
+
+  const dashed = normalized
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const compact = normalized.replace(/[^a-z0-9]+/g, '');
+  const alias =
+    logoAliases[normalized] ||
+    logoAliases[dashed] ||
+    logoAliases[compact];
+
+  const candidates = [
+    normalized,
+    dashed,
+    compact,
+    dashed ? `${dashed}-logo` : '',
+    compact ? `${compact}-logo` : '',
+    alias || ''
+  ].filter(Boolean);
+
+  return Array.from(new Set(candidates));
+};
+
 export const resolveLogoKey = (
   logoKey?: string | null
 ): Picture | undefined => {
@@ -112,7 +137,10 @@ export const resolveLogoKeyFromName = (
   if (!serviceName) {
     return undefined;
   }
-  const normalized = serviceName.trim().toLowerCase();
-  const alias = logoAliases[normalized] || normalized;
-  return resolveLogoKey(alias);
+  const candidates = buildLogoCandidates(serviceName);
+  for (const candidate of candidates) {
+    const resolved = resolveLogoKey(candidate);
+    if (resolved) return resolved;
+  }
+  return undefined;
 };

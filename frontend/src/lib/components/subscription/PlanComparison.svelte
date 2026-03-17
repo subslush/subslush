@@ -88,7 +88,7 @@
   <div class="mt-6 p-4 bg-gray-100 rounded-lg">
     <p class="text-sm text-gray-600">
       <strong>Billing:</strong> You'll be charged the full amount upfront for the selected duration.
-      Auto-renewal can be managed from your dashboard after purchase.
+      Renewals require a new purchase after the service period ends.
     </p>
   </div>
 </div>

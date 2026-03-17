@@ -1,9 +1,10 @@
 <script lang="ts">
   import StatusBadge from '$lib/components/admin/StatusBadge.svelte';
   import AdminEmptyState from '$lib/components/admin/AdminEmptyState.svelte';
+  import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
   import { adminService } from '$lib/api/admin.js';
   import { formatCents, formatOptionalDate, pickValue, statusToneFromMap } from '$lib/utils/admin.js';
-  import { logoKeys } from '$lib/assets/logoRegistry.js';
+  import { logoKeys, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
   import { SUPPORTED_CURRENCIES, type SupportedCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
   import type {
     AdminProduct,
@@ -22,6 +23,7 @@
   let assignedLabels: AdminProductLabel[] = data.assignedLabels;
   let labels: AdminProductLabel[] = data.labels;
   let priceHistory: AdminPriceHistory[] = data.priceHistory || [];
+  let platformProducts: AdminProduct[] = data.platformProducts || [];
 
   let productMessage = '';
   let productError = '';
@@ -118,6 +120,49 @@
       }
     }
     return [];
+  };
+
+  const buildPlatformOptions = (
+    products: AdminProduct[],
+    currentValue: string
+  ): string[] => {
+    const unique = new Map<string, string>();
+    const addOption = (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      const key = trimmed.toLowerCase();
+      if (!unique.has(key)) {
+        unique.set(key, trimmed);
+      }
+    };
+
+    for (const entry of products) {
+      const metadata = normalizeMetadata(entry.metadata);
+      const platform = readMetadataString(metadata, [
+        'platform',
+        'platform_name',
+        'platformName'
+      ]);
+      if (platform) {
+        addOption(platform);
+      } else if (entry.name) {
+        addOption(entry.name);
+      }
+    }
+
+    for (const key of logoKeys) {
+      const label = key
+        .replace(/-logo$/i, '')
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, char => char.toUpperCase())
+        .replace(/\bHbo\b/g, 'HBO')
+        .replace(/\bAi\b/g, 'AI')
+        .trim();
+      addOption(label);
+    }
+
+    addOption(currentValue);
+    return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
   };
 
   const coerceMetadataBoolean = (value: unknown): boolean => {
@@ -236,7 +281,10 @@
   const buildProductMetadata = (
     base: Record<string, unknown>,
     input: {
-      termsConditions: string;
+      infoBoxText: string;
+      platform: string;
+      region: string;
+      activationGuide: string;
       upgradeOptions: {
         allowNewAccount: boolean;
         allowOwnAccount: boolean;
@@ -246,14 +294,44 @@
     }
   ): Record<string, unknown> => {
     const next = { ...base };
-    const terms = parseListInput(input.termsConditions);
-    if (terms.length > 0) {
-      next.terms_conditions = terms;
+    const infoBoxText = input.infoBoxText.trim();
+    if (infoBoxText) {
+      next.info_box_text = infoBoxText;
     } else {
-      delete next.terms_conditions;
-      delete next.termsConditions;
-      delete next.terms;
+      delete next.info_box_text;
+      delete next.infoBoxText;
+      delete next.info_text;
+      delete next.infoText;
     }
+
+    const platform = input.platform.trim();
+    if (platform) {
+      next.platform = platform;
+    } else {
+      delete next.platform;
+      delete next.platform_name;
+      delete next.platformName;
+    }
+
+    const region = input.region.trim();
+    if (region) {
+      next.region = region;
+    } else {
+      delete next.region;
+      delete next.region_name;
+      delete next.regionName;
+    }
+
+    const activationGuide = input.activationGuide.trim();
+    if (activationGuide) {
+      next.activation_guide = activationGuide;
+    } else {
+      delete next.activation_guide;
+      delete next.activationGuide;
+      delete next.activation_guide_text;
+      delete next.activationGuideText;
+    }
+
     const upgradeOptions = input.upgradeOptions;
     const hasUpgradeOptions =
       upgradeOptions.allowNewAccount ||
@@ -287,7 +365,13 @@
     logoKey: string;
     category: string;
     maxSubscriptions: string;
-    termsConditions: string;
+    durationMonths: string;
+    fixedPriceCents: string;
+    fixedPriceCurrency: string;
+    infoBoxText: string;
+    platform: string;
+    region: string;
+    activationGuide: string;
     allowNewAccount: boolean;
     allowOwnAccount: boolean;
     manualMonthlyUpgrade: boolean;
@@ -347,6 +431,12 @@
     const metadata = normalizeMetadata(value.metadata);
     const upgradeOptions = readUpgradeOptions(metadata);
     const maxSubscriptions = pickValue(value.maxSubscriptions, value.max_subscriptions);
+    const durationMonths = pickValue(value.durationMonths, value.duration_months);
+    const fixedPriceCents = pickValue(value.fixedPriceCents, value.fixed_price_cents);
+    const fixedPriceCurrency = pickValue(
+      value.fixedPriceCurrency,
+      value.fixed_price_currency
+    );
     return {
       name: value.name || '',
       slug: value.slug || '',
@@ -359,9 +449,38 @@
         maxSubscriptions !== undefined && maxSubscriptions !== null
           ? String(maxSubscriptions)
           : '',
-      termsConditions: formatListInput(
-        readMetadataList(metadata, ['terms_conditions', 'termsConditions', 'terms'])
-      ),
+      durationMonths:
+        durationMonths !== undefined && durationMonths !== null
+          ? String(durationMonths)
+          : '',
+      fixedPriceCents:
+        fixedPriceCents !== undefined && fixedPriceCents !== null
+          ? String(fixedPriceCents)
+          : '',
+      fixedPriceCurrency:
+        typeof fixedPriceCurrency === 'string' ? fixedPriceCurrency : '',
+      infoBoxText: readMetadataString(metadata, [
+        'info_box_text',
+        'infoBoxText',
+        'info_text',
+        'infoText'
+      ]),
+      platform: readMetadataString(metadata, [
+        'platform',
+        'platform_name',
+        'platformName'
+      ]),
+      region: readMetadataString(metadata, [
+        'region',
+        'region_name',
+        'regionName'
+      ]),
+      activationGuide: readMetadataString(metadata, [
+        'activation_guide',
+        'activationGuide',
+        'activation_guide_text',
+        'activationGuideText'
+      ]),
       allowNewAccount: upgradeOptions.allowNewAccount,
       allowOwnAccount: upgradeOptions.allowOwnAccount,
       manualMonthlyUpgrade: upgradeOptions.manualMonthlyUpgrade,
@@ -371,8 +490,9 @@
   };
 
   let productForm: ProductForm = buildProductForm(product);
-  let termsCount = 0;
-  $: termsCount = parseListInput(productForm.termsConditions).length;
+  let platformOptions: string[] = buildPlatformOptions(platformProducts, productForm.platform);
+  $: platformOptions = buildPlatformOptions(platformProducts, productForm.platform);
+  $: selectedPlatformLogo = resolveLogoKeyFromName(productForm.platform);
   let variantForms: Record<string, VariantForm> = variants.reduce(
     (acc, variant) => {
       acc[variant.id] = buildVariantForm(variant);
@@ -530,8 +650,49 @@
           ? undefined
           : parsedMaxSubscriptions;
       const categoryValue = productForm.category.trim();
+      const durationMonthsRaw = String(productForm.durationMonths ?? '').trim();
+      const fixedPriceCentsRaw = String(productForm.fixedPriceCents ?? '').trim();
+      const fixedPriceCurrencyRaw = String(
+        productForm.fixedPriceCurrency ?? ''
+      ).trim();
+      const hasAnyFixedField =
+        durationMonthsRaw !== '' ||
+        fixedPriceCentsRaw !== '' ||
+        fixedPriceCurrencyRaw !== '';
+      const hasAllFixedFields =
+        durationMonthsRaw !== '' &&
+        fixedPriceCentsRaw !== '' &&
+        fixedPriceCurrencyRaw !== '';
+      if (hasAnyFixedField && !hasAllFixedFields) {
+        productError =
+          'To use fixed catalog pricing, provide duration, fixed price cents, and currency together.';
+        return;
+      }
+
+      const parsedDurationMonths =
+        durationMonthsRaw === '' ? null : Number(durationMonthsRaw);
+      const parsedFixedPriceCents =
+        fixedPriceCentsRaw === '' ? null : Number(fixedPriceCentsRaw);
+      if (
+        parsedDurationMonths !== null &&
+        (!Number.isInteger(parsedDurationMonths) || parsedDurationMonths <= 0)
+      ) {
+        productError = 'Duration months must be a positive integer.';
+        return;
+      }
+      if (
+        parsedFixedPriceCents !== null &&
+        (!Number.isInteger(parsedFixedPriceCents) || parsedFixedPriceCents < 0)
+      ) {
+        productError = 'Fixed price cents must be a non-negative integer.';
+        return;
+      }
+
       const metadata = buildProductMetadata(normalizeMetadata(product.metadata), {
-        termsConditions: productForm.termsConditions,
+        infoBoxText: productForm.infoBoxText,
+        platform: productForm.platform,
+        region: productForm.region,
+        activationGuide: productForm.activationGuide,
         upgradeOptions: {
           allowNewAccount: productForm.allowNewAccount,
           allowOwnAccount: productForm.allowOwnAccount,
@@ -548,6 +709,17 @@
         logo_key: productForm.logoKey || undefined,
         category: categoryValue || undefined,
         max_subscriptions: maxSubscriptions,
+        duration_months:
+          hasAllFixedFields && parsedDurationMonths !== null
+            ? parsedDurationMonths
+            : null,
+        fixed_price_cents:
+          hasAllFixedFields && parsedFixedPriceCents !== null
+            ? parsedFixedPriceCents
+            : null,
+        fixed_price_currency: hasAllFixedFields
+          ? fixedPriceCurrencyRaw.toUpperCase()
+          : null,
         status: productForm.status,
         metadata
       });
@@ -1105,26 +1277,105 @@
           {/each}
         </select>
       </div>
+      <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+        <p class="text-xs font-semibold text-gray-700">Fixed Catalog Fields</p>
+        <p class="mt-1 text-xs text-gray-500">
+          Use these fields for unique products that do not require variants.
+        </p>
+        <div class="mt-2 grid gap-3 md:grid-cols-3">
+          <input
+            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            type="number"
+            min="1"
+            step="1"
+            placeholder="Duration months"
+            bind:value={productForm.durationMonths}
+          />
+          <input
+            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="Fixed price cents"
+            bind:value={productForm.fixedPriceCents}
+          />
+          <input
+            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            placeholder="Currency (e.g. USD)"
+            bind:value={productForm.fixedPriceCurrency}
+          />
+        </div>
+      </div>
       <textarea
         class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
         rows={3}
         placeholder="Description"
         bind:value={productForm.description}
       ></textarea>
+      <div class="grid gap-3 md:grid-cols-2">
+        <div>
+          <label for="product-platform" class="text-xs font-semibold text-gray-500">Platform</label>
+          <select
+            id="product-platform"
+            class="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            bind:value={productForm.platform}
+          >
+            <option value="">Select platform</option>
+            {#each platformOptions as platformOption}
+              <option value={platformOption}>{platformOption}</option>
+            {/each}
+          </select>
+          <div class="mt-2 flex items-center gap-2 text-xs text-gray-600">
+            {#if selectedPlatformLogo}
+              <ResponsiveImage
+                image={selectedPlatformLogo}
+                alt={`${productForm.platform || 'Selected'} platform logo`}
+                sizes="20px"
+                pictureClass="h-5 w-5 shrink-0 overflow-hidden rounded"
+                imgClass="h-full w-full object-contain"
+                loading="lazy"
+                decoding="async"
+              />
+            {:else}
+              <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-[10px] font-semibold text-gray-500">
+                ?
+              </span>
+            {/if}
+            <span>{productForm.platform || 'No platform selected'}</span>
+          </div>
+        </div>
+        <input
+          class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          placeholder="Region (e.g. Global, EU, US)"
+          bind:value={productForm.region}
+        />
+      </div>
       <div>
-        <label for="product-terms" class="text-xs font-semibold text-gray-500">
-          Terms & Conditions (one per line, optional)
+        <label for="product-info-box" class="text-xs font-semibold text-gray-500">
+          Product info box text (shown below image)
         </label>
         <textarea
-          id="product-terms"
+          id="product-info-box"
           class="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-          rows={5}
-          placeholder="Add bullet points as needed"
-          bind:value={productForm.termsConditions}
+          rows={4}
+          placeholder="Example: **INDIVIDUAL** YouTube Premium"
+          bind:value={productForm.infoBoxText}
         ></textarea>
-        <div class="mt-1 flex items-center justify-between text-xs text-gray-500">
-          <span>{termsCount} item{termsCount === 1 ? '' : 's'}</span>
-        </div>
+        <p class="mt-1 text-[11px] text-gray-500">
+          Use <code>**text**</code> to make part of the sentence bold.
+        </p>
+      </div>
+      <div>
+        <label for="product-activation-guide" class="text-xs font-semibold text-gray-500">
+          Activation guide (popup content, one step per line)
+        </label>
+        <textarea
+          id="product-activation-guide"
+          class="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          rows={6}
+          placeholder="Step 1...&#10;Step 2..."
+          bind:value={productForm.activationGuide}
+        ></textarea>
       </div>
       <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-2">
         <p class="text-sm font-semibold text-gray-900">Upgrade options</p>

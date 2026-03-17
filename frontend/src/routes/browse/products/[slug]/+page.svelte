@@ -3,13 +3,36 @@
   import { goto } from '$app/navigation';
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
-  import UpgradeSelectionForm from '$lib/components/subscription/UpgradeSelectionForm.svelte';
+  import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
+  import { resolveLogoKey, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
+  import visaLogo from '$lib/assets/visa.svg';
+  import mastercardIcon from '$lib/assets/mastercard-icon.svg';
+  import paypalIcon from '$lib/assets/paypal-icon.svg';
+  import btcIcon from '$lib/assets/bitcoin-icon.svg';
+  import ethIcon from '$lib/assets/eth-icon.svg';
+  import usdtLogo from '$lib/assets/usdt.svg';
+  import usdcLogo from '$lib/assets/usdc.svg';
+  import ltcIcon from '$lib/assets/litecoin-icon.svg';
+  import solIcon from '$lib/assets/solana-icon.svg';
+  import xrpIcon from '$lib/assets/xrp-icon.svg';
   import { cart } from '$lib/stores/cart.js';
   import { cartSidebar } from '$lib/stores/cartSidebar.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
   import { subscriptionService } from '$lib/api/subscriptions.js';
   import { trackAddToCart, trackViewItem } from '$lib/utils/analytics.js';
-  import { Shield } from 'lucide-svelte';
+  import {
+    Check,
+    CheckCircle2,
+    ChevronDown,
+    ChevronUp,
+    Globe,
+    Headphones,
+    ListChecks,
+    Lock,
+    Shield,
+    X,
+    Zap
+  } from 'lucide-svelte';
   import type {
     OwnAccountCredentialRequirement,
     ProductVariantOption,
@@ -27,20 +50,59 @@
   $: product = data.product;
   $: variants = data.variants || [];
 
-  let selectedTerms: Record<string, number> = {};
-  let termsConditions: string[] = [];
+  let selectedVariant: ProductVariantOption | null = null;
+  let selectedTerm: ProductTermOption | null = null;
+  let selectedFeatures: string[] = [];
   let upgradeOptions: UpgradeOptions | null = null;
   let upgradeSelectionType: UpgradeSelectionType | '' = '';
   let manualMonthlyAcknowledged = false;
+  let showActivationGuide = false;
+  let showFeaturesGuide = false;
+  let descriptionExpanded = false;
   let selectionError = '';
 
+  const DESCRIPTION_MAX_WORDS = 600;
+  const DESCRIPTION_MAX_CHARS = 3900;
+
+  const normalizeStringList = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value
+        .filter((item): item is string => typeof item === 'string')
+        .map(item => item.trim())
+        .filter(item => item.length > 0);
+    }
+    if (typeof value === 'string') {
+      return value
+        .split(/[\n,]+/)
+        .map(item => item.trim())
+        .filter(item => item.length > 0);
+    }
+    return [];
+  };
+
+  const collectVariantFeatures = (source: ProductVariantOption[]): string[] => {
+    const unique = new Set<string>();
+    for (const variant of source) {
+      for (const feature of normalizeStringList(variant.features)) {
+        unique.add(feature);
+      }
+    }
+    return Array.from(unique);
+  };
+
+  const resolveVariantLabel = (variant: ProductVariantOption): string =>
+    variant.display_name || variant.plan_code || variant.name || 'Plan';
+
+  $: productLogo =
+    resolveLogoKey(product?.logoKey ?? product?.logo_key ?? product?.slug) ||
+    resolveLogoKeyFromName(product?.name);
+
   $: upgradeOptions = product?.upgrade_options || null;
-  $: hasUpgradeSelection =
-    Boolean(
-      upgradeOptions?.allow_new_account ||
-        upgradeOptions?.allow_own_account ||
-        upgradeOptions?.manual_monthly_upgrade
-    );
+  $: hasUpgradeSelection = Boolean(
+    upgradeOptions?.allow_new_account ||
+      upgradeOptions?.allow_own_account ||
+      upgradeOptions?.manual_monthly_upgrade
+  );
   $: hasSelectionChoices = Boolean(
     upgradeOptions?.allow_new_account || upgradeOptions?.allow_own_account
   );
@@ -50,6 +112,14 @@
   $: if (selectionReady && selectionError) {
     selectionError = '';
   }
+  $: if (hasUpgradeSelection && hasSelectionChoices && !upgradeSelectionType) {
+    if (upgradeOptions?.allow_new_account && !upgradeOptions?.allow_own_account) {
+      upgradeSelectionType = 'upgrade_new_account';
+    } else if (upgradeOptions?.allow_own_account && !upgradeOptions?.allow_new_account) {
+      upgradeSelectionType = 'upgrade_own_account';
+    }
+  }
+
   const resolveOwnAccountCredentialRequirement = (
     options: UpgradeOptions | null
   ): OwnAccountCredentialRequirement =>
@@ -57,28 +127,146 @@
       ? 'email_only'
       : 'email_and_password';
 
-  $: termsConditions = (() => {
-    const normalize = (value: unknown): string[] => {
-      if (Array.isArray(value)) {
-        return value.filter(
-          (item): item is string => typeof item === 'string' && item.trim().length > 0
-        );
+  const readProductText = (keys: string[]): string => {
+    const record = product as Record<string, unknown>;
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value.trim();
       }
-      if (typeof value === 'string') {
-        return value
-          .split(/[\n,]+/)
-          .map(item => item.trim())
-          .filter(item => item.length > 0);
+    }
+    return '';
+  };
+
+  const escapeHtml = (value: string): string =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const renderInfoBoxHtml = (value: string): string => {
+    if (!value) return '';
+
+    const renderLine = (line: string): string => {
+      let html = '';
+      let cursor = 0;
+      const boldPattern = /\*\*(.+?)\*\*/g;
+
+      for (const match of line.matchAll(boldPattern)) {
+        const index = match.index ?? 0;
+        html += escapeHtml(line.slice(cursor, index));
+        html += `<strong>${escapeHtml(match[1] || '')}</strong>`;
+        cursor = index + match[0].length;
       }
-      return [];
+
+      html += escapeHtml(line.slice(cursor));
+      return html;
     };
 
-    const fromSnake = normalize((product as { terms_conditions?: unknown })?.terms_conditions);
-    if (fromSnake.length > 0) return fromSnake;
-    const fromCamel = normalize((product as { termsConditions?: unknown })?.termsConditions);
-    if (fromCamel.length > 0) return fromCamel;
-    return normalize((product as { terms?: unknown })?.terms);
-  })();
+    return value
+      .split(/\r?\n/)
+      .map(renderLine)
+      .join('<br />');
+  };
+
+  const buildDescriptionPreview = (
+    value: string,
+    maxWords: number,
+    maxChars: number
+  ): { text: string; truncated: boolean } => {
+    const text = value.trim();
+    if (!text) return { text: '', truncated: false };
+
+    const words = Array.from(text.matchAll(/\S+/g));
+    const exceedsWordLimit = words.length > maxWords;
+    const exceedsCharLimit = text.length > maxChars;
+
+    if (!exceedsWordLimit && !exceedsCharLimit) {
+      return { text, truncated: false };
+    }
+
+    let cutIndex = text.length;
+    if (exceedsCharLimit) {
+      cutIndex = Math.min(cutIndex, maxChars);
+    }
+    if (exceedsWordLimit) {
+      const overflowWord = words[maxWords];
+      if (overflowWord && typeof overflowWord.index === 'number') {
+        cutIndex = Math.min(cutIndex, overflowWord.index);
+      }
+    }
+
+    if (cutIndex <= 0 || cutIndex >= text.length) {
+      return { text, truncated: false };
+    }
+
+    const preview = text.slice(0, cutIndex).trimEnd();
+    return {
+      text: `${preview}...`,
+      truncated: true
+    };
+  };
+
+  $: infoBoxText = readProductText([
+    'info_box_text',
+    'infoBoxText',
+    'info_text',
+    'infoText'
+  ]);
+  $: infoBoxHtml = renderInfoBoxHtml(infoBoxText);
+  $: platformLabel =
+    readProductText(['platform', 'platform_name', 'platformName']) ||
+    product.name ||
+    '';
+  $: platformLogo = resolveLogoKeyFromName(platformLabel);
+  $: regionLabel = readProductText(['region', 'region_name', 'regionName']) || 'Global';
+  $: activationGuideText = readProductText([
+    'activation_guide',
+    'activationGuide',
+    'activation_guide_text',
+    'activationGuideText'
+  ]);
+  $: hasActivationGuide = activationGuideText.length > 0;
+  $: activationGuideSteps = activationGuideText
+    ? activationGuideText
+        .split(/\n+/)
+        .map(step => step.trim())
+        .filter(step => step.length > 0)
+    : [];
+  $: productDescription = (product?.description || '').trim();
+  $: descriptionPreview = buildDescriptionPreview(
+    productDescription,
+    DESCRIPTION_MAX_WORDS,
+    DESCRIPTION_MAX_CHARS
+  );
+  $: hasTruncatedDescription = descriptionPreview.truncated;
+  $: visibleDescription =
+    descriptionExpanded || !hasTruncatedDescription
+      ? productDescription
+      : descriptionPreview.text;
+  $: if (!hasTruncatedDescription) {
+    descriptionExpanded = false;
+  }
+
+  const resolveCountryName = (countryCode?: string | null): string => {
+    const normalized = typeof countryCode === 'string' ? countryCode.trim().toUpperCase() : '';
+    if (!normalized) return 'your country';
+    if (typeof Intl !== 'undefined' && 'DisplayNames' in Intl) {
+      try {
+        const formatter = new Intl.DisplayNames(['en'], { type: 'region' });
+        return formatter.of(normalized) || normalized;
+      } catch {
+        return normalized;
+      }
+    }
+    return normalized;
+  };
+
+  $: visitorCountry = resolveCountryName(data.requestCountryCode);
+  $: usersOnPage = data.usersOnPage ?? 12;
+  $: unitsLeft = data.unitsLeft ?? 6;
 
   const resolveDefaultTerm = (variant: ProductVariantOption): ProductTermOption | null => {
     if (!Array.isArray(variant.term_options) || variant.term_options.length === 0) {
@@ -88,84 +276,17 @@
     return recommended || variant.term_options[0] || null;
   };
 
-  const normalizeMonths = (value: unknown): number | null => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
+  const resolveSelectedTerm = (variant: ProductVariantOption): ProductTermOption | null =>
+    resolveDefaultTerm(variant);
 
-  $: if (variants.length > 0) {
-    const nextTerms = { ...selectedTerms };
-    let changed = false;
-    for (const variant of variants) {
-      if (!nextTerms[variant.id]) {
-        const defaultTerm = resolveDefaultTerm(variant);
-        const months = defaultTerm ? normalizeMonths(defaultTerm.months) : null;
-        if (months !== null) {
-          nextTerms[variant.id] = months;
-          changed = true;
-        }
-      }
-    }
-    if (changed) {
-      selectedTerms = nextTerms;
-    }
-  }
-
-  const resolveSelectedTerm = (variant: ProductVariantOption): ProductTermOption | null => {
-    const selectedMonths = selectedTerms[variant.id];
-    if (!Array.isArray(variant.term_options) || variant.term_options.length === 0) {
-      return null;
-    }
-    return (
-      variant.term_options.find(
-        term => normalizeMonths(term.months) === selectedMonths
-      ) ||
-      resolveDefaultTerm(variant)
-    );
-  };
-
-  const handleSelectTerm = (variantId: string, months: number) => {
-    const normalized = normalizeMonths(months);
-    if (normalized === null) return;
-    selectedTerms = { ...selectedTerms, [variantId]: normalized };
-  };
-
-  const handleCheckoutNow = (variant: ProductVariantOption) => {
-    const term = resolveSelectedTerm(variant);
-    if (!term) return;
-    const selectionValidationError = resolveSelectionValidationError('checkout');
-    if (selectionValidationError) {
-      selectionError = selectionValidationError;
-      return;
-    }
-    trackCartIntent(variant, term);
-    cart.addItem({
-      id: buildCartItemId({
-        variantId: variant.id,
-        termMonths: term.months,
-        autoRenew: false,
-        selectionType: upgradeSelectionType,
-      }),
-      serviceType: product.service_type || product.slug || product.name,
-      serviceName: product.name,
-      plan: variant.display_name || variant.plan_code || variant.name || 'Plan',
-      price: term.total_price,
-      currency: variant.currency,
-      quantity: 1,
-      description: variant.description,
-      features: variant.features,
-      variantId: variant.id,
-      termMonths: term.months,
-      autoRenew: false,
-      upgradeSelectionType: upgradeSelectionType || null,
-      ownAccountCredentialRequirement:
-        upgradeSelectionType === 'upgrade_own_account'
-          ? resolveOwnAccountCredentialRequirement(upgradeOptions)
-          : null,
-      manualMonthlyAcknowledged: requiresManualAck ? true : manualMonthlyAcknowledged,
-    });
-    void goto('/checkout');
-  };
+  $: selectedVariant = variants[0] || null;
+  $: selectedTerm = selectedVariant ? resolveDefaultTerm(selectedVariant) : null;
+  $: selectedFeatures =
+    selectedVariant && normalizeStringList(selectedVariant.features).length > 0
+      ? normalizeStringList(selectedVariant.features)
+      : collectVariantFeatures(variants);
+  $: selectedVariantCurrency =
+    normalizeCurrencyCode(selectedVariant?.currency) || 'USD';
 
   const buildCartItemId = (params: {
     variantId: string;
@@ -178,46 +299,8 @@
       params.variantId,
       params.termMonths,
       params.autoRenew ? 'renew' : 'no-renew',
-      selection,
+      selection
     ].join('|');
-  };
-
-  const handleAddToCart = (variant: ProductVariantOption) => {
-    const term = resolveSelectedTerm(variant);
-    if (!term) return;
-    const selectionValidationError = resolveSelectionValidationError('add');
-    if (selectionValidationError) {
-      selectionError = selectionValidationError;
-      return;
-    }
-    trackCartIntent(variant, term);
-
-    cart.addItem({
-      id: buildCartItemId({
-        variantId: variant.id,
-        termMonths: term.months,
-        autoRenew: false,
-        selectionType: upgradeSelectionType,
-      }),
-      serviceType: product.service_type || product.slug || product.name,
-      serviceName: product.name,
-      plan: variant.display_name || variant.plan_code || variant.name || 'Plan',
-      price: term.total_price,
-      currency: variant.currency,
-      quantity: 1,
-      description: variant.description,
-      features: variant.features,
-      variantId: variant.id,
-      termMonths: term.months,
-      autoRenew: false,
-      upgradeSelectionType: upgradeSelectionType || null,
-      ownAccountCredentialRequirement:
-        upgradeSelectionType === 'upgrade_own_account'
-          ? resolveOwnAccountCredentialRequirement(upgradeOptions)
-          : null,
-      manualMonthlyAcknowledged: requiresManualAck ? true : manualMonthlyAcknowledged,
-    });
-    cartSidebar.open();
   };
 
   const resolveSelectionValidationError = (
@@ -225,8 +308,7 @@
   ): string | null => {
     if (!hasUpgradeSelection) return null;
 
-    const actionLabel =
-      intent === 'checkout' ? 'continue' : 'add this item';
+    const actionLabel = intent === 'checkout' ? 'continue' : 'add this item';
     const hasMultipleChoices = Boolean(
       upgradeOptions?.allow_new_account && upgradeOptions?.allow_own_account
     );
@@ -271,21 +353,6 @@
     return `view_${ownerId}_${contentId}_${Date.now()}_${nonce}`;
   };
 
-  const formatTermLabel = (months: number): string => {
-    if (months === 1) return '1 month';
-    if (months % 12 === 0) {
-      const years = months / 12;
-      return years === 1 ? '12 months' : `${years * 12} months`;
-    }
-    return `${months} months`;
-  };
-
-  const formatMonthly = (total: number, months: number, currency: string): string => {
-    const monthly = months > 0 ? total / months : total;
-    const resolved = normalizeCurrencyCode(currency) || 'USD';
-    return formatCurrency(monthly, resolved);
-  };
-
   const buildProductItem = (
     variant?: ProductVariantOption | null,
     term?: ProductTermOption | null,
@@ -298,7 +365,7 @@
       item_id: itemId,
       item_name: itemName,
       item_category: product?.category || product?.service_type || undefined,
-      item_variant: variant?.display_name || variant?.plan_code || variant?.name || undefined,
+      item_variant: variant ? resolveVariantLabel(variant) : undefined,
       item_list_name: listName,
       price: term?.total_price,
       currency: variant?.currency,
@@ -327,6 +394,80 @@
     });
   };
 
+  const handleCheckoutNow = (variant: ProductVariantOption) => {
+    const term = resolveSelectedTerm(variant);
+    if (!term) return;
+    const selectionValidationError = resolveSelectionValidationError('checkout');
+    if (selectionValidationError) {
+      selectionError = selectionValidationError;
+      return;
+    }
+    trackCartIntent(variant, term);
+    cart.addItem({
+      id: buildCartItemId({
+        variantId: variant.id,
+        termMonths: term.months,
+        autoRenew: false,
+        selectionType: upgradeSelectionType
+      }),
+      serviceType: product.service_type || product.slug || product.name,
+      serviceName: product.name,
+      plan: resolveVariantLabel(variant),
+      price: term.total_price,
+      currency: variant.currency,
+      quantity: 1,
+      description: variant.description,
+      features: variant.features,
+      variantId: variant.id,
+      termMonths: term.months,
+      autoRenew: false,
+      upgradeSelectionType: upgradeSelectionType || null,
+      ownAccountCredentialRequirement:
+        upgradeSelectionType === 'upgrade_own_account'
+          ? resolveOwnAccountCredentialRequirement(upgradeOptions)
+          : null,
+      manualMonthlyAcknowledged: requiresManualAck ? true : manualMonthlyAcknowledged
+    });
+    void goto('/checkout');
+  };
+
+  const handleAddToCart = (variant: ProductVariantOption) => {
+    const term = resolveSelectedTerm(variant);
+    if (!term) return;
+    const selectionValidationError = resolveSelectionValidationError('add');
+    if (selectionValidationError) {
+      selectionError = selectionValidationError;
+      return;
+    }
+    trackCartIntent(variant, term);
+    cart.addItem({
+      id: buildCartItemId({
+        variantId: variant.id,
+        termMonths: term.months,
+        autoRenew: false,
+        selectionType: upgradeSelectionType
+      }),
+      serviceType: product.service_type || product.slug || product.name,
+      serviceName: product.name,
+      plan: resolveVariantLabel(variant),
+      price: term.total_price,
+      currency: variant.currency,
+      quantity: 1,
+      description: variant.description,
+      features: variant.features,
+      variantId: variant.id,
+      termMonths: term.months,
+      autoRenew: false,
+      upgradeSelectionType: upgradeSelectionType || null,
+      ownAccountCredentialRequirement:
+        upgradeSelectionType === 'upgrade_own_account'
+          ? resolveOwnAccountCredentialRequirement(upgradeOptions)
+          : null,
+      manualMonthlyAcknowledged: requiresManualAck ? true : manualMonthlyAcknowledged
+    });
+    cartSidebar.open();
+  };
+
   let lastViewedProductId = '';
   $: {
     if (browser) {
@@ -334,11 +475,15 @@
       if (!currentId) {
         lastViewedProductId = '';
       } else if (currentId !== lastViewedProductId) {
-        const primaryVariant = variants[0];
-        const defaultTerm = primaryVariant
-          ? resolveSelectedTerm(primaryVariant) || resolveDefaultTerm(primaryVariant)
+        const trackedVariant = selectedVariant || variants[0];
+        const defaultTerm = trackedVariant
+          ? resolveSelectedTerm(trackedVariant) || resolveDefaultTerm(trackedVariant)
           : null;
-        const analyticsItem = buildProductItem(primaryVariant, defaultTerm, 'Product Detail');
+        const analyticsItem = buildProductItem(
+          trackedVariant,
+          defaultTerm,
+          'Product Detail'
+        );
         if (analyticsItem) {
           const contentId = product?.slug || product?.id || currentId;
           const eventId = buildViewContentEventId(contentId);
@@ -360,7 +505,6 @@
       }
     }
   }
-
 </script>
 
 <svelte:head>
@@ -371,193 +515,619 @@
 <div class="min-h-screen bg-white">
   <HomeNav />
 
-  <div class="border-b border-gray-200 bg-white">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      <div class="flex items-center gap-2 text-sm text-gray-500">
-        <a href="/browse" class="text-cyan-600 font-semibold">Browse</a>
-        <span>/</span>
-        <span class="text-gray-800 font-semibold">{product.name}</span>
-      </div>
-      <h1 class="mt-2 text-2xl font-semibold text-gray-900">{product.name}</h1>
-      {#if product.description}
-        <p class="mt-1 text-sm text-gray-600 max-w-3xl">{product.description}</p>
-      {/if}
+  <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+    <div class="mb-6 flex flex-wrap items-center gap-2 text-sm">
+      <a href="/browse" class="font-semibold text-fuchsia-700 hover:text-fuchsia-800">
+        Browse
+      </a>
+      <span class="text-slate-400">/</span>
+      <span class="font-semibold text-slate-800">{product.name}</span>
     </div>
-  </div>
 
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    {#if hasUpgradeSelection && upgradeOptions}
-      <section class="mb-6">
-        <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <UpgradeSelectionForm
-            upgradeOptions={upgradeOptions}
-            title="Choose your upgrade option"
-            description="Select how you want us to complete this upgrade. We'll collect any account credentials after checkout."
-            locked={false}
-            submitting={false}
-            errorMessage={selectionError}
-            includeCredentials={false}
-            showSubmit={false}
-            requireManualAck={false}
-            bind:selectionType={upgradeSelectionType}
-            bind:manualMonthlyAcknowledged
-          />
-        </div>
-      </section>
-    {/if}
+    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_23.5rem] lg:items-start">
+      <section class="space-y-6">
+        <article>
+          <div class="grid gap-5 lg:grid-cols-[255px_minmax(0,1fr)] lg:items-center">
+            <div class="relative mx-auto flex aspect-square w-full max-w-[250px] items-center justify-center overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_20px_34px_rgba(15,23,42,0.12)]">
+              {#if productLogo}
+                <ResponsiveImage
+                  image={productLogo}
+                  alt={`${product.name} logo`}
+                  sizes="(min-width: 1024px) 250px, 46vw"
+                  pictureClass="relative z-10 block h-full w-full p-7"
+                  imgClass="h-full w-full object-contain"
+                  loading="eager"
+                  decoding="async"
+                />
+              {:else}
+                <span class="relative z-10 text-6xl font-black uppercase text-slate-900/90">
+                  {product.name.slice(0, 2)}
+                </span>
+              {/if}
+            </div>
 
-    <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-      {#each variants as variant}
-        {@const selectedMonths = selectedTerms[variant.id]}
-        {@const selectedTerm = Array.isArray(variant.term_options)
-          ? variant.term_options.find(term => normalizeMonths(term.months) === selectedMonths) ||
-            resolveDefaultTerm(variant)
-          : null}
-        {@const hasBadges = variant.badges && variant.badges.length > 0}
-        {@const variantDescription = (variant.description || '').trim()}
-        {@const resolvedCurrency = normalizeCurrencyCode(variant.currency) || 'USD'}
-        {@const canProceed = Boolean(selectedTerm)}
-        <div class="relative rounded-xl border border-gray-200 bg-white shadow-sm p-3 flex flex-col gap-3">
-          {#if hasBadges}
-            <div class="absolute left-1/2 -top-3 -translate-x-1/2">
-              <div class="flex flex-wrap justify-center gap-1">
-                {#each variant.badges as badge}
-                  <span class="rounded-full border border-white/60 bg-gradient-to-r from-purple-700 via-purple-600 to-pink-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-lg">
-                    {badge}
-                  </span>
-                {/each}
+            <div>
+              <h1 class="text-3xl font-semibold tracking-tight text-slate-900 sm:text-[2.15rem]">
+                {product.name}
+              </h1>
+
+              <div class="mt-4 grid gap-3 sm:grid-cols-2 sm:gap-4">
+                <section class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                    Platform
+                  </p>
+                  <p class="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    {#if platformLogo}
+                      <ResponsiveImage
+                        image={platformLogo}
+                        alt={`${platformLabel || 'Platform'} logo`}
+                        sizes="18px"
+                        pictureClass="h-[18px] w-[18px] shrink-0 overflow-hidden rounded"
+                        imgClass="h-full w-full object-contain"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    {:else}
+                      <Globe size={14} class="text-fuchsia-600" />
+                    {/if}
+                    {platformLabel}
+                  </p>
+                  <button
+                    type="button"
+                    class="mt-2 inline-flex items-center text-xs font-semibold text-pink-600 transition hover:text-pink-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    on:click={() => (showActivationGuide = true)}
+                    disabled={!hasActivationGuide}
+                  >
+                    Check activation guide
+                  </button>
+                </section>
+
+                <section class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                    Region
+                  </p>
+                  <p class="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-white">
+                      <Globe size={12} />
+                    </span>
+                    {regionLabel}
+                  </p>
+                  <p class="mt-2 flex items-center gap-1 text-xs text-slate-700">
+                    <CheckCircle2 size={12} class="text-emerald-600" />
+                    <span>
+                      Works in: <strong class="font-semibold text-slate-900">{visitorCountry}</strong>
+                    </span>
+                  </p>
+                </section>
+              </div>
+
+              <div class="mt-4 flex flex-wrap gap-2">
+                <span class="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-semibold">
+                  <Shield size={13} class="text-purple-600" />
+                  <span class="text-slate-700">Money back guarantee</span>
+                </span>
+                <span class="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-semibold">
+                  <Lock size={13} class="text-fuchsia-600" />
+                  <span class="text-slate-700">Secure checkout</span>
+                </span>
+                <span class="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-semibold">
+                  <Headphones size={13} class="text-pink-600" />
+                  <span class="text-slate-700">24/7 Customer support</span>
+                </span>
               </div>
             </div>
-          {/if}
-          <div class="rounded-lg bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800 p-3 shadow-sm">
-            <h2 class="inline-block text-base font-semibold bg-gradient-to-r from-purple-600 via-purple-500 to-pink-600 bg-clip-text text-transparent">
-              {variant.display_name}
-            </h2>
-            {#if variantDescription}
-              <p class="text-sm text-white mt-1">{variantDescription}</p>
-            {/if}
           </div>
+        </article>
 
-          {#if variant.features && variant.features.length > 0}
-            <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-              <p class="text-[11px] font-semibold uppercase text-gray-500">Features</p>
-              <ul class="mt-2 grid gap-1.5 text-xs text-gray-700">
-                {#each variant.features as feature}
-                  <li class="flex items-start gap-2">
-                    <span class="mt-1 h-2 w-2 rounded-full bg-cyan-500"></span>
-                    <span>{feature}</span>
-                  </li>
-                {/each}
-              </ul>
-            </div>
-          {/if}
-
-          <div class="rounded-lg border border-gray-200 px-3 py-2">
-            <p class="text-[11px] font-semibold text-gray-700">Choose a duration</p>
-            <div class="mt-2 grid gap-2">
-              {#each variant.term_options as term}
-                {@const discountLabel =
-                  term.discount_percent && term.discount_percent > 0
-                    ? `${term.discount_percent}% off`
-                    : ''}
-                {@const recommendedLabel = term.is_recommended ? 'Recommended' : ''}
-                <button
-                  type="button"
-                  class={`w-full rounded-md border px-3 py-1.5 text-left transition ${
-                    normalizeMonths(term.months) === selectedMonths
-                      ? 'border-cyan-500 bg-cyan-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  on:click={() => handleSelectTerm(variant.id, term.months)}
-                >
-                  <div class="flex items-center justify-between gap-2">
-                    <div>
-                      <p class="text-sm font-semibold text-gray-900">{formatTermLabel(term.months)}</p>
-                      <p class="text-[11px] text-gray-500">
-                        {formatMonthly(term.total_price, term.months, variant.currency)} / month
-                      </p>
-                    </div>
-                    <div class="text-right flex flex-col items-end justify-center min-h-[36px]">
-                      <p class="text-sm font-semibold text-gray-900">
-                        {formatCurrency(term.total_price, resolvedCurrency)}
-                      </p>
-                      {#if discountLabel || recommendedLabel}
-                        <p class="text-[11px] font-semibold">
-                          {#if discountLabel}
-                            <span class="text-emerald-600">{discountLabel}</span>
-                          {/if}
-                          {#if discountLabel && recommendedLabel}
-                            <span class="text-slate-400"> · </span>
-                          {/if}
-                          {#if recommendedLabel}
-                            <span class="text-cyan-600">{recommendedLabel}</span>
-                          {/if}
-                        </p>
-                      {/if}
-                    </div>
-                  </div>
-                </button>
-              {/each}
-            </div>
-          </div>
-
-          <div class="mt-auto flex items-center justify-between pt-2 border-t border-gray-200">
-            <div>
-              <p class="text-[11px] text-gray-500">Selected total</p>
-              <p class="text-sm font-semibold text-gray-900">
-                {selectedTerm ? formatCurrency(selectedTerm.total_price, resolvedCurrency) : '--'}
+        {#if infoBoxText}
+          <section class="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+            <div class="flex items-center gap-3">
+              <span class="info-leading-icon inline-flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true">
+                <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none">
+                  <defs>
+                    <linearGradient id="product-info-icon-gradient" x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse">
+                      <stop offset="0%" stop-color="#7e22ce" />
+                      <stop offset="100%" stop-color="#db2777" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="12" cy="12" r="8.5" stroke="url(#product-info-icon-gradient)" stroke-width="1.75" />
+                  <path d="M12 11v4" stroke="url(#product-info-icon-gradient)" stroke-width="1.75" stroke-linecap="round" />
+                  <circle cx="12" cy="8" r="1.2" fill="url(#product-info-icon-gradient)" />
+                </svg>
+              </span>
+              <p class="info-box-content min-w-0 text-xs leading-snug text-slate-700">
+                {@html infoBoxHtml}
               </p>
             </div>
-            <div class="flex items-center gap-2">
-              <button
-                type="button"
-                class="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                on:click={() => handleAddToCart(variant)}
-                disabled={!canProceed}
-              >
-                ADD TO CART
-              </button>
-              <button
-                type="button"
-                class="rounded-md bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
-                on:click={() => handleCheckoutNow(variant)}
-                disabled={!canProceed}
-              >
-                BUY NOW
-              </button>
-            </div>
-          </div>
-        </div>
-      {/each}
-    </div>
+          </section>
+        {/if}
 
-    <section class="mt-8">
-      <div class="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gradient-to-r from-purple-50 via-white to-pink-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex items-start gap-3">
-          <span class="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-700">
-            <Shield size={14} class="text-cyan-700" />
-            Warranty
-          </span>
-          <p class="text-sm text-gray-700">
-            Your order is covered under our Warranty Policy. We offer replacements or appropriate resolutions for non-functional items or related issues.
+        <section>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-2xl font-semibold tracking-tight text-slate-900">Description</h2>
+            <button
+              type="button"
+              class="gradient-outline-darkbtn inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold"
+              on:click={() => (showFeaturesGuide = true)}
+            >
+              <ListChecks size={14} class="text-fuchsia-600" />
+              View features
+            </button>
+          </div>
+          {#if visibleDescription}
+            <div class="relative mt-3">
+              <p class="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                {visibleDescription}
+              </p>
+              {#if !descriptionExpanded && hasTruncatedDescription}
+                <div class="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent"></div>
+              {/if}
+            </div>
+            {#if hasTruncatedDescription}
+              <button
+                type="button"
+                class="gradient-outline-darkbtn mt-4 inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold"
+                on:click={() => (descriptionExpanded = !descriptionExpanded)}
+              >
+                {descriptionExpanded ? 'Show less' : 'Show more'}
+                {#if descriptionExpanded}
+                  <ChevronUp size={14} />
+                {:else}
+                  <ChevronDown size={14} />
+                {/if}
+              </button>
+            {/if}
+          {:else}
+            <p class="mt-3 text-sm text-slate-500">No description available.</p>
+          {/if}
+        </section>
+
+      </section>
+
+      <aside class="lg:sticky lg:top-24">
+        <div class="mb-3 flex items-center justify-center gap-2 text-center">
+          <span class="live-dot" aria-hidden="true"></span>
+          <p class="text-xs font-medium text-slate-600">
+            <span class="font-semibold text-slate-900">{usersOnPage}</span> users on this page
           </p>
         </div>
-      </div>
-    </section>
+        <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_14px_28px_rgba(15,23,42,0.1)]">
+          <div>
+            <p class="text-5xl font-black tracking-tight text-slate-900">
+              {selectedTerm
+                ? formatCurrency(selectedTerm.total_price, selectedVariantCurrency)
+                : '--'}
+            </p>
+          </div>
+          <div class="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <span
+              class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-xs font-bold text-white"
+              aria-hidden="true"
+            >
+              !
+            </span>
+            <p class="text-xs font-medium text-slate-700">
+              Hurry up! Only <span class="font-semibold text-slate-900">{unitsLeft}</span> units left in this price.
+            </p>
+          </div>
 
-    {#if termsConditions.length > 0}
-      <section class="mt-8">
-        <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h3 class="text-lg font-semibold text-gray-900">Terms & Conditions</h3>
-          <ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-gray-600">
-            {#each termsConditions as term}
-              <li>{term}</li>
-            {/each}
-          </ul>
+          {#if hasUpgradeSelection && upgradeOptions}
+            <section class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <h3 class="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">Upgrade option</h3>
+              {#if upgradeOptions.allow_new_account || upgradeOptions.allow_own_account}
+                <div class="mt-2 space-y-2">
+                  {#if upgradeOptions.allow_new_account}
+                    <button
+                      type="button"
+                      class={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
+                        upgradeSelectionType === 'upgrade_new_account'
+                          ? 'border-fuchsia-300 bg-white'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                      on:click={() => (upgradeSelectionType = 'upgrade_new_account')}
+                    >
+                      <span class="flex items-center gap-2.5">
+                        <span class={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                          upgradeSelectionType === 'upgrade_new_account'
+                            ? 'border-fuchsia-500'
+                            : 'border-slate-300'
+                        }`}>
+                          {#if upgradeSelectionType === 'upgrade_new_account'}
+                            <span class="h-2 w-2 rounded-full bg-fuchsia-500"></span>
+                          {/if}
+                        </span>
+                        <span class="min-w-0">
+                          <span class="block text-sm font-semibold text-slate-900">New account</span>
+                          <span class="mt-0.5 block text-xs leading-relaxed text-slate-600">
+                            We create and deliver a ready-to-use account for this product.
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                  {/if}
+                  {#if upgradeOptions.allow_own_account}
+                    <button
+                      type="button"
+                      class={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
+                        upgradeSelectionType === 'upgrade_own_account'
+                          ? 'border-fuchsia-300 bg-white'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                      on:click={() => (upgradeSelectionType = 'upgrade_own_account')}
+                    >
+                      <span class="flex items-center gap-2.5">
+                        <span class={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                          upgradeSelectionType === 'upgrade_own_account'
+                            ? 'border-fuchsia-500'
+                            : 'border-slate-300'
+                        }`}>
+                          {#if upgradeSelectionType === 'upgrade_own_account'}
+                            <span class="h-2 w-2 rounded-full bg-fuchsia-500"></span>
+                          {/if}
+                        </span>
+                        <span class="min-w-0">
+                          <span class="block text-sm font-semibold text-slate-900">Your account</span>
+                          <span class="mt-0.5 block text-xs leading-relaxed text-slate-600">
+                            {resolveOwnAccountCredentialRequirement(upgradeOptions) === 'email_only'
+                              ? 'We only require your account email after checkout.'
+                              : 'We require account email and password after checkout.'}
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                  {/if}
+                </div>
+              {:else}
+                <p class="mt-2 text-xs text-slate-600">
+                  This plan requires a manual upgrade workflow after purchase.
+                </p>
+              {/if}
+              {#if selectionError}
+                <p class="mt-2 text-xs font-medium text-red-600">{selectionError}</p>
+              {/if}
+            </section>
+          {/if}
+
+          <div class="mt-4 space-y-2 border-t border-slate-200 pt-4">
+            <button
+              type="button"
+              class="w-full rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+              on:click={() => selectedVariant && handleCheckoutNow(selectedVariant)}
+              disabled={!selectedVariant || !selectedTerm}
+            >
+              BUY NOW
+            </button>
+            <button
+              type="button"
+              class="gradient-outline-btn w-full rounded-xl px-4 py-3.5 text-sm font-semibold transition hover:brightness-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+              on:click={() => selectedVariant && handleAddToCart(selectedVariant)}
+              disabled={!selectedVariant || !selectedTerm}
+            >
+              <span class="gradient-text">ADD TO CART</span>
+            </button>
+          </div>
+
+          <div class="mt-3 grid grid-cols-5 gap-2">
+            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+              <img src={visaLogo} alt="Visa" class="h-4 w-auto object-contain" loading="lazy" />
+            </span>
+            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+              <img
+                src={mastercardIcon}
+                alt="Mastercard"
+                class="h-6 w-auto object-contain"
+                loading="lazy"
+              />
+            </span>
+            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+              <img
+                src={paypalIcon}
+                alt="PayPal"
+                class="h-5 w-auto object-contain"
+                loading="lazy"
+              />
+            </span>
+            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+              <img src={btcIcon} alt="Bitcoin" class="h-5 w-auto object-contain" loading="lazy" />
+            </span>
+            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+              <img src={ethIcon} alt="Ethereum" class="h-6 w-auto object-contain" loading="lazy" />
+            </span>
+          </div>
+          <div class="mt-2 grid grid-cols-5 gap-2">
+            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+              <img src={usdtLogo} alt="USDT" class="h-5 w-5 object-contain" loading="lazy" />
+            </span>
+            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+              <img src={usdcLogo} alt="USDC" class="h-5 w-5 object-contain" loading="lazy" />
+            </span>
+            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+              <img src={ltcIcon} alt="Litecoin" class="h-5 w-5 object-contain" loading="lazy" />
+            </span>
+            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+              <img src={solIcon} alt="Solana" class="h-5 w-5 object-contain" loading="lazy" />
+            </span>
+            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+              <img src={xrpIcon} alt="XRP" class="h-5 w-5 object-contain" loading="lazy" />
+            </span>
+          </div>
+          <div class="mt-4 space-y-2 border-t border-slate-200 pt-3">
+            <details class="group rounded-xl border border-slate-200 bg-white">
+              <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5">
+                <span class="flex items-center gap-2">
+                  <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-white">
+                    <Zap size={13} />
+                  </span>
+                  <span class="text-sm font-semibold text-slate-800">Delivery</span>
+                </span>
+                <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
+              </summary>
+              <p class="px-3 pb-3 text-xs text-slate-600">
+                Digital delivery starts automatically after your order is confirmed.
+              </p>
+            </details>
+            <details class="group rounded-xl border border-slate-200 bg-white">
+              <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5">
+                <span class="flex items-center gap-2">
+                  <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-white">
+                    <Lock size={13} />
+                  </span>
+                  <span class="text-sm font-semibold text-slate-800">Money Back Guarantee</span>
+                </span>
+                <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
+              </summary>
+              <p class="px-3 pb-3 text-xs text-slate-600">
+                Covered by our refund policy if delivery requirements are not met.
+              </p>
+            </details>
+            <details class="group rounded-xl border border-slate-200 bg-white">
+              <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5">
+                <span class="flex items-center gap-2">
+                  <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-white">
+                    <Shield size={13} />
+                  </span>
+                  <span class="text-sm font-semibold text-slate-800">Ultra Secure Checkout</span>
+                </span>
+                <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
+              </summary>
+              <p class="px-3 pb-3 text-xs text-slate-600">
+                All checkout flows are protected with encrypted payment processing.
+              </p>
+            </details>
+          </div>
         </div>
-      </section>
-    {/if}
+      </aside>
+    </div>
   </main>
+
+  {#if showFeaturesGuide}
+    <div
+      class="activation-guide-overlay fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-5 sm:py-6"
+      role="presentation"
+      on:click={(event) => {
+        if (event.target === event.currentTarget) {
+          showFeaturesGuide = false;
+        }
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="features-guide-title"
+        class="w-full max-w-xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_70px_rgba(15,23,42,0.32)]"
+      >
+        <header class="border-b border-slate-200 bg-white px-4 py-4 sm:px-6 sm:py-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 id="features-guide-title" class="text-xl font-semibold tracking-tight text-slate-900">
+                Included features
+              </h2>
+              <p class="mt-1 text-sm text-slate-600">
+                Everything included with this product plan.
+              </p>
+            </div>
+            <button
+              type="button"
+              class="rounded-full border border-slate-200 bg-white p-1.5 text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+              aria-label="Close features"
+              on:click={() => (showFeaturesGuide = false)}
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+
+        <div class="max-h-[60vh] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+          {#if selectedFeatures.length > 0}
+            <ul class="space-y-2">
+              {#each selectedFeatures as feature}
+                <li class="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5 text-sm text-slate-700">
+                  <Check size={15} class="mt-0.5 shrink-0 text-fuchsia-600" />
+                  <span>{feature}</span>
+                </li>
+              {/each}
+            </ul>
+          {:else}
+            <p class="text-sm text-slate-600">Feature details are not available for this product yet.</p>
+          {/if}
+        </div>
+
+        <footer class="flex justify-end border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+          <button
+            type="button"
+            class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            on:click={() => (showFeaturesGuide = false)}
+          >
+            Close
+          </button>
+        </footer>
+      </div>
+    </div>
+  {/if}
+
+  {#if showActivationGuide && hasActivationGuide}
+    <div
+      class="activation-guide-overlay fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-5 sm:py-6"
+      role="presentation"
+      on:click={(event) => {
+        if (event.target === event.currentTarget) {
+          showActivationGuide = false;
+        }
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="activation-guide-title"
+        class="w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_70px_rgba(15,23,42,0.32)]"
+      >
+        <header class="border-b border-slate-200 bg-white px-4 py-4 sm:px-6 sm:py-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 id="activation-guide-title" class="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+                {platformLabel || product.name}
+              </h2>
+              <p class="mt-1 text-sm text-slate-600">
+                Follow these steps to activate your plan quickly and correctly.
+              </p>
+            </div>
+            <button
+              type="button"
+              class="rounded-full border border-slate-200 bg-white p-1.5 text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+              aria-label="Close activation guide"
+              on:click={() => (showActivationGuide = false)}
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+
+        <div class="max-h-[68vh] overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+          {#if activationGuideSteps.length > 0}
+            <ol class="space-y-3">
+              {#each activationGuideSteps as step, index}
+                <li class="guide-step rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-3.5 sm:px-4 sm:py-4">
+                  <div class="flex items-start gap-3">
+                    <span class="guide-step-index inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-slate-900">
+                      {index + 1}
+                    </span>
+                    <div class="min-w-0">
+                      <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                        Step {index + 1}
+                      </p>
+                      <p class="mt-1 text-sm leading-relaxed text-slate-700">{step}</p>
+                    </div>
+                  </div>
+                </li>
+              {/each}
+            </ol>
+          {:else}
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <p class="text-sm leading-relaxed text-slate-700">{activationGuideText}</p>
+            </div>
+          {/if}
+        </div>
+
+        <footer class="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+          <p class="text-xs text-slate-500">
+            If you need help, contact support and include your order number.
+          </p>
+          <button
+            type="button"
+            class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            on:click={() => (showActivationGuide = false)}
+          >
+            Close
+          </button>
+        </footer>
+      </div>
+    </div>
+  {/if}
 
   <Footer />
 </div>
+
+<style>
+  .live-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    background: #22c55e;
+    box-shadow: 0 0 0 rgba(34, 197, 94, 0.6);
+    animation: livePulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes livePulse {
+    0% {
+      opacity: 0.45;
+      transform: scale(0.95);
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+      box-shadow: 0 0 0 7px rgba(34, 197, 94, 0);
+    }
+    100% {
+      opacity: 0.45;
+      transform: scale(0.95);
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+    }
+  }
+
+  .gradient-outline-btn {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(#ffffff, #ffffff) padding-box,
+      linear-gradient(90deg, #7e22ce, #db2777) border-box;
+  }
+
+  .gradient-outline-darkbtn {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(#ffffff, #ffffff) padding-box,
+      linear-gradient(90deg, #7e22ce, #db2777) border-box;
+    color: #0f172a;
+  }
+
+  .gradient-text {
+    background: linear-gradient(90deg, #7e22ce, #db2777);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .info-box-content :global(strong) {
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .info-leading-icon {
+    color: #c026d3;
+  }
+
+  .activation-guide-overlay {
+    backdrop-filter: blur(5px);
+  }
+
+  .guide-step {
+    position: relative;
+  }
+
+  .guide-step-index {
+    background:
+      linear-gradient(#ffffff, #ffffff) padding-box,
+      linear-gradient(135deg, #7e22ce, #db2777, #f472b6) border-box;
+    border: 1px solid transparent;
+  }
+
+  .guide-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 1.95rem;
+    top: 3.05rem;
+    bottom: -0.95rem;
+    width: 1px;
+    background: linear-gradient(180deg, rgba(148, 163, 184, 0.52), rgba(226, 232, 240, 0.15));
+  }
+</style>

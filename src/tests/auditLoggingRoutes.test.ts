@@ -1,13 +1,21 @@
 import Fastify from 'fastify';
 import { userRoutes } from '../routes/users';
 import { subscriptionRoutes } from '../routes/subscriptions';
-import { pinService } from '../services/pinService';
-import { subscriptionService } from '../services/subscriptionService';
+import { orderRoutes } from '../routes/orders';
+import { getDatabasePool } from '../config/database';
+import { orderEntitlementService } from '../services/orderEntitlementService';
 import {
   logAdminAction,
   logCredentialRevealAttempt,
 } from '../services/auditLogService';
 
+jest.mock('../config/database');
+jest.mock('../services/orderEntitlementService', () => ({
+  orderEntitlementService: {
+    listForOrder: jest.fn(),
+    updateEntitlementCredentialsEncryptedValue: jest.fn(),
+  },
+}));
 jest.mock('../middleware/authMiddleware', () => ({
   authPreHandler: jest.fn(async (request: any) => {
     request.user = {
@@ -23,25 +31,17 @@ jest.mock('../middleware/rateLimitMiddleware', () => ({
   createRateLimitHandler: jest.fn(() => async () => {}),
   rateLimitMiddleware: jest.fn(() => async () => {}),
 }));
-jest.mock('../services/pinService', () => ({
-  pinService: {
-    setPin: jest.fn(),
-    verifyPin: jest.fn(),
-    issuePinToken: jest.fn(),
-    consumePinToken: jest.fn(),
-  },
-}));
-jest.mock('../services/subscriptionService');
 jest.mock('../services/auditLogService', () => ({
   logAdminAction: jest.fn(),
   logCredentialRevealAttempt: jest.fn(),
 }));
 jest.mock('../utils/logger');
 
-const mockPinService = pinService as jest.Mocked<typeof pinService>;
-const mockSubscriptionService = subscriptionService as jest.Mocked<
-  typeof subscriptionService
+const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
+  typeof getDatabasePool
 >;
+const mockOrderEntitlementService =
+  orderEntitlementService as jest.Mocked<typeof orderEntitlementService>;
 const mockLogAdminAction = logAdminAction as jest.MockedFunction<
   typeof logAdminAction
 >;
@@ -51,18 +51,16 @@ const mockLogCredentialRevealAttempt =
   >;
 
 describe('Audit logging routes', () => {
-  const subscriptionId = '123e4567-e89b-12d3-a456-426614174000';
+  const subscriptionId = '123e4567-e89b-42d3-a456-426614174000';
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockOrderEntitlementService.updateEntitlementCredentialsEncryptedValue.mockResolvedValue(
+      true
+    );
   });
 
-  it('logs PIN set events', async () => {
-    mockPinService.setPin.mockResolvedValue({
-      success: true,
-      pinSetAt: new Date('2025-01-01T00:00:00Z'),
-    });
-
+  it('returns deprecation response for PIN set endpoint and does not emit PIN audit logs', async () => {
     const app = Fastify();
     await app.register(userRoutes, { prefix: '/users' });
 
@@ -74,54 +72,12 @@ describe('Audit logging routes', () => {
 
     await app.close();
 
-    expect(response.statusCode).toBe(200);
-    expect(mockLogAdminAction).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        action: 'pin_set',
-        entityType: 'user',
-        entityId: 'user-1',
-      })
-    );
+    expect(response.statusCode).toBe(410);
+    expect(response.json().code).toBe('PIN_DEPRECATED');
+    expect(mockLogAdminAction).not.toHaveBeenCalled();
   });
 
-  it('logs PIN lockout triggers', async () => {
-    mockPinService.verifyPin.mockResolvedValue({
-      success: false,
-      reason: 'locked',
-      lockoutTriggered: true,
-      failedAttempts: 5,
-      lockedUntil: new Date('2025-01-01T00:10:00Z'),
-    });
-
-    const app = Fastify();
-    await app.register(userRoutes, { prefix: '/users' });
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/users/pin/verify',
-      payload: { pin: '1234' },
-    });
-
-    await app.close();
-
-    expect(response.statusCode).toBe(429);
-    expect(mockLogAdminAction).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        action: 'pin_lockout',
-        entityType: 'user',
-        entityId: 'user-1',
-      })
-    );
-  });
-
-  it('logs credential reveal failures', async () => {
-    mockPinService.consumePinToken.mockResolvedValue({
-      success: false,
-      error: 'PIN token not found',
-    });
-
+  it('returns deprecation response for subscription credentials reveal endpoint', async () => {
     const app = Fastify();
     await app.register(subscriptionRoutes, { prefix: '/subscriptions' });
 
@@ -133,53 +89,84 @@ describe('Audit logging routes', () => {
 
     await app.close();
 
-    expect(response.statusCode).toBe(401);
+    expect(response.statusCode).toBe(410);
+    expect(response.json().code).toBe('CREDENTIAL_REVEAL_MOVED_TO_ORDERS');
     expect(mockLogCredentialRevealAttempt).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         subscriptionId,
         success: false,
-        failureReason: 'pin_token_invalid',
+        failureReason: 'moved_to_orders',
       })
     );
   });
 
-  it('logs credential reveal success', async () => {
-    mockPinService.consumePinToken.mockResolvedValue({
-      success: true,
-      data: {
-        userId: 'user-1',
-        verifiedAt: new Date('2025-01-01T00:00:00Z').toISOString(),
-      },
-    });
-    mockSubscriptionService.getSubscriptionById.mockResolvedValue({
-      success: true,
-      data: {
-        id: subscriptionId,
-        user_id: 'user-1',
-        service_type: 'netflix',
-        service_plan: 'basic',
-        start_date: new Date('2024-12-01T00:00:00Z'),
-        end_date: new Date('2025-02-01T00:00:00Z'),
-        renewal_date: new Date('2025-01-25T00:00:00Z'),
-        status: 'active',
-        credentials_encrypted: 'encrypted-value',
-        created_at: new Date('2024-12-01T00:00:00Z'),
-      },
-    } as any);
+  it('logs order credential reveal failures', async () => {
+    const mockQuery = jest.fn();
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: 'order-1', user_id: 'user-1' }] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockGetDatabasePool.mockReturnValue({ query: mockQuery } as any);
+    mockOrderEntitlementService.listForOrder.mockResolvedValue([]);
 
     const app = Fastify();
-    await app.register(subscriptionRoutes, { prefix: '/subscriptions' });
+    await app.register(orderRoutes, { prefix: '/orders' });
 
     const response = await app.inject({
       method: 'POST',
-      url: `/subscriptions/${subscriptionId}/credentials/reveal`,
-      payload: { pin_token: 'token-token-12345' },
+      url: '/orders/order-1/credentials/reveal',
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(404);
+    expect(mockLogCredentialRevealAttempt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        success: false,
+        failureReason: 'credentials_missing',
+      })
+    );
+  });
+
+  it('logs order credential reveal success', async () => {
+    const mockQuery = jest.fn();
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 'order-1', user_id: 'user-1' }],
+    });
+    mockGetDatabasePool.mockReturnValue({ query: mockQuery } as any);
+    mockOrderEntitlementService.listForOrder.mockResolvedValue([
+      {
+        id: 'ent-1',
+        order_id: 'order-1',
+        order_item_id: null,
+        user_id: 'user-1',
+        status: 'active',
+        starts_at: new Date('2025-01-01T00:00:00Z'),
+        ends_at: new Date('2025-02-01T00:00:00Z'),
+        duration_months_snapshot: 1,
+        credentials_encrypted: 'credential-secret',
+        mmu_cycle_index: 1,
+        mmu_cycle_total: 1,
+        source_subscription_id: subscriptionId,
+        metadata: null,
+        created_at: new Date('2025-01-01T00:00:00Z'),
+        updated_at: new Date('2025-01-01T00:00:00Z'),
+      },
+    ] as any);
+
+    const app = Fastify();
+    await app.register(orderRoutes, { prefix: '/orders' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/orders/order-1/credentials/reveal',
     });
 
     await app.close();
 
     expect(response.statusCode).toBe(200);
+    expect(response.json().data.credentials).toBe('credential-secret');
     expect(mockLogCredentialRevealAttempt).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

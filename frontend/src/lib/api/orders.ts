@@ -3,7 +3,9 @@ import { API_ENDPOINTS } from '$lib/utils/constants.js';
 import type {
   OrdersListResponse,
   OrderSubscriptionResponse,
-  OrderSubscriptionsResponse
+  OrderSubscriptionsResponse,
+  OrderEntitlementsResponse,
+  OrderCredentialRevealResponse
 } from '$lib/types/order.js';
 import { unwrapApiData } from './response.js';
 
@@ -38,6 +40,24 @@ class OrdersService {
       `${API_ENDPOINTS.ORDERS.LIST}/${orderId}/subscriptions`
     );
     return unwrapApiData<OrderSubscriptionsResponse>(response);
+  }
+
+  async getOrderEntitlements(
+    orderId: string
+  ): Promise<OrderEntitlementsResponse> {
+    const response = await apiClient.get(
+      `${API_ENDPOINTS.ORDERS.LIST}/${orderId}/entitlements`
+    );
+    return unwrapApiData<OrderEntitlementsResponse>(response);
+  }
+
+  async revealOrderCredentials(
+    orderId: string
+  ): Promise<OrderCredentialRevealResponse> {
+    const response = await apiClient.post(
+      `${API_ENDPOINTS.ORDERS.LIST}/${orderId}/credentials/reveal`
+    );
+    return unwrapApiData<OrderCredentialRevealResponse>(response);
   }
 }
 

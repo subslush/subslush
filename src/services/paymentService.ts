@@ -44,6 +44,7 @@ import { orderService } from './orderService';
 import { orderItemUpgradeSelectionService } from './orderItemUpgradeSelectionService';
 import { upgradeSelectionService } from './upgradeSelectionService';
 import { couponService } from './couponService';
+import { orderEntitlementService } from './orderEntitlementService';
 import {
   buildTikTokProductProperties,
   tiktokEventsService,
@@ -607,6 +608,35 @@ export class PaymentService {
         orderItemId: item.id,
         autoRenew,
       });
+
+      const subscriptionStartAt =
+        subscription.term_start_at || subscription.start_date;
+      const mmuCycleTotal = termMonths > 1 ? termMonths : null;
+      const mmuCycleIndex = mmuCycleTotal ? 1 : null;
+      const entitlement = await orderEntitlementService.upsertEntitlement({
+        order_id: params.order.id,
+        order_item_id: item.id,
+        user_id: params.order.user_id,
+        status: subscription.status,
+        starts_at: subscriptionStartAt,
+        ends_at: subscription.end_date,
+        duration_months_snapshot: termMonths,
+        credentials_encrypted: selectionRow?.credentials_encrypted ?? null,
+        mmu_cycle_index: mmuCycleIndex,
+        mmu_cycle_total: mmuCycleTotal,
+        source_subscription_id: subscription.id,
+        metadata: {
+          source: 'payment_service.createSubscriptionsForOrder',
+          renewal_method: params.renewalMethod,
+        },
+      });
+      if (!entitlement) {
+        Logger.warn('Failed to upsert order entitlement for order item', {
+          orderId: params.order.id,
+          orderItemId: item.id,
+          subscriptionId: subscription.id,
+        });
+      }
 
       if (selectionRow) {
         if (selectionRow.selection_type) {
@@ -1676,6 +1706,42 @@ export class PaymentService {
             paymentId,
             subResult.data.id
           );
+
+          if (orderId) {
+            const createdSubscription = subResult.data;
+            const subscriptionStartAt =
+              createdSubscription.term_start_at ?? createdSubscription.start_date;
+            const mmuCycleTotal = durationMonths > 1 ? durationMonths : null;
+            const mmuCycleIndex = mmuCycleTotal ? 1 : null;
+
+            const entitlement = await orderEntitlementService.upsertEntitlement({
+              order_id: orderId,
+              order_item_id: null,
+              user_id: payment.userId,
+              status: createdSubscription.status,
+              starts_at: subscriptionStartAt,
+              ends_at: createdSubscription.end_date,
+              duration_months_snapshot: durationMonths,
+              credentials_encrypted: null,
+              mmu_cycle_index: mmuCycleIndex,
+              mmu_cycle_total: mmuCycleTotal,
+              source_subscription_id: createdSubscription.id,
+              metadata: {
+                source: 'paymentService.handleStripeWebhook',
+                renewal_method: 'stripe',
+              },
+            });
+            if (!entitlement) {
+              Logger.warn(
+                'Failed to upsert order entitlement after Stripe subscription create',
+                {
+                  paymentId,
+                  orderId,
+                  subscriptionId: createdSubscription.id,
+                }
+              );
+            }
+          }
         } else {
           Logger.error('Failed to create subscription after Stripe success', {
             paymentId,
@@ -4997,20 +5063,19 @@ export class PaymentService {
       }
 
       for (const item of order.items) {
-        if (!item.product_variant_id) {
-          return { success: false, error: 'order_item_missing_variant' };
-        }
-        const validation = await subscriptionService.canPurchaseSubscription(
-          params.userId,
-          item.product_variant_id
-        );
-        if (!validation.canPurchase) {
-          return {
-            success: false,
-            error: 'purchase_not_allowed',
-            detail: validation.reason || 'Purchase not allowed',
-            itemLabel: this.resolveOrderItemDisplayName(item),
-          };
+        if (item.product_variant_id) {
+          const validation = await subscriptionService.canPurchaseSubscription(
+            params.userId,
+            item.product_variant_id
+          );
+          if (!validation.canPurchase) {
+            return {
+              success: false,
+              error: 'purchase_not_allowed',
+              detail: validation.reason || 'Purchase not allowed',
+              itemLabel: this.resolveOrderItemDisplayName(item),
+            };
+          }
         }
       }
 

@@ -32,8 +32,9 @@ export const load: PageServerLoad = async ({ fetch, params, cookies }) => {
     throw error(500, 'Failed to load product');
   }
 
-  const [labels] = await Promise.all([
-    safeList(() => adminService.listLabels({ limit: 200 }))
+  const [labels, platformProducts] = await Promise.all([
+    safeList(() => adminService.listLabels({ limit: 200 })),
+    safeList(() => adminService.listProducts())
   ]);
 
   return {
@@ -44,5 +45,6 @@ export const load: PageServerLoad = async ({ fetch, params, cookies }) => {
     priceHistory: detail.priceHistory,
     variantTerms: detail.variantTerms || [],
     labels,
+    platformProducts,
   };
 };

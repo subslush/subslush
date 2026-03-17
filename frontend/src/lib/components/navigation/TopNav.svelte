@@ -23,33 +23,119 @@
 	let notificationMenu: HTMLDivElement | null = null;
 	let currencyMenuOpen = false;
 	let pendingCurrency: SupportedCurrency = 'USD';
+	type SupportedLanguage =
+		| 'en'
+		| 'de'
+		| 'es'
+		| 'fr'
+		| 'it'
+		| 'pl'
+		| 'ro'
+		| 'sv'
+		| 'no'
+		| 'da'
+		| 'fi';
+	type LanguageOption = {
+		value: SupportedLanguage;
+		shortLabel: string;
+		label: string;
+		flagCode: 'gb' | 'de' | 'es' | 'fr' | 'it' | 'pl' | 'ro' | 'se' | 'no' | 'dk' | 'fi';
+	};
+	const LANGUAGE_OPTIONS: LanguageOption[] = [
+		{ value: 'en', shortLabel: 'EN', label: 'English', flagCode: 'gb' },
+		{ value: 'de', shortLabel: 'DE', label: 'Deutsch', flagCode: 'de' },
+		{ value: 'es', shortLabel: 'ES', label: 'Espanol', flagCode: 'es' },
+		{ value: 'fr', shortLabel: 'FR', label: 'Francais', flagCode: 'fr' },
+		{ value: 'it', shortLabel: 'IT', label: 'Italiano', flagCode: 'it' },
+		{ value: 'pl', shortLabel: 'PL', label: 'Polski', flagCode: 'pl' },
+		{ value: 'ro', shortLabel: 'RO', label: 'Romana', flagCode: 'ro' },
+		{ value: 'sv', shortLabel: 'SV', label: 'Svenska', flagCode: 'se' },
+		{ value: 'no', shortLabel: 'NO', label: 'Norska', flagCode: 'no' },
+		{ value: 'da', shortLabel: 'DA', label: 'Danska', flagCode: 'dk' },
+		{ value: 'fi', shortLabel: 'FI', label: 'Finska', flagCode: 'fi' }
+	];
+	const DEFAULT_LANGUAGE: SupportedLanguage = 'en';
+	const CURRENCY_SYMBOLS: Record<SupportedCurrency, string> = {
+		USD: '$',
+		EUR: '€',
+		AUD: 'A$',
+		CAD: 'C$',
+		CHF: 'CHF',
+		CNY: '¥',
+		CZK: 'Kc',
+		DKK: 'kr',
+		GBP: '£',
+		HKD: 'HK$',
+		HUF: 'Ft',
+		JPY: '¥',
+		MYR: 'RM',
+		NOK: 'kr',
+		PLN: 'zl',
+		PHP: '₱',
+		RON: 'lei',
+		SEK: 'kr',
+		SGD: 'S$',
+		THB: '฿'
+	};
+	const CURRENCY_LABELS: Record<SupportedCurrency, string> = {
+		USD: 'USD',
+		EUR: 'EURO',
+		AUD: 'AUD',
+		CAD: 'CAD',
+		CHF: 'CHF',
+		CNY: 'CNY',
+		CZK: 'CZK',
+		DKK: 'DKK',
+		GBP: 'GBP',
+		HKD: 'HKD',
+		HUF: 'HUF',
+		JPY: 'JPY',
+		MYR: 'MYR',
+		NOK: 'NOK',
+		PLN: 'PLN',
+		PHP: 'PHP',
+		RON: 'RON',
+		SEK: 'SEK',
+		SGD: 'SGD',
+		THB: 'THB'
+	};
+	let selectedLanguage: SupportedLanguage = DEFAULT_LANGUAGE;
+	let pendingLanguage: SupportedLanguage = DEFAULT_LANGUAGE;
+	let selectedLanguageOption: LanguageOption = LANGUAGE_OPTIONS[0];
+	let pendingLanguageOption: LanguageOption = LANGUAGE_OPTIONS[0];
+	let pendingCurrencySymbol = CURRENCY_SYMBOLS.USD;
+	let pendingCurrencyLabel = CURRENCY_LABELS.USD;
 	let currencyMenuRef: HTMLDivElement | null = null;
 	let currencyMenuTriggerRef: HTMLButtonElement | null = null;
 	let isMobileMenuOpen = false;
 
 	const navItems = [
-		{ label: 'Dashboard', href: '/dashboard' },
-		{ label: 'Order history', href: '/dashboard/orders' },
-		{ label: 'My subscriptions', href: '/dashboard/subscriptions' }
+		{ label: 'Orders', href: '/dashboard/orders' },
+		{ label: 'Settings', href: '/dashboard/settings' },
+		{ label: 'Contact Support', href: '/help' }
 	];
+	const resolveLanguageOption = (value?: string | null): LanguageOption =>
+		LANGUAGE_OPTIONS.find((option) => option.value === value) || LANGUAGE_OPTIONS[0];
+	const resolveCurrencySymbol = (value: SupportedCurrency): string =>
+		CURRENCY_SYMBOLS[value] || value;
+	const resolveCurrencyLabel = (value: SupportedCurrency): string =>
+		CURRENCY_LABELS[value] || value;
 
 	$: currentPath = $page.url.pathname;
 
 	// Intelligent route matching function that handles navigation hierarchy properly
 	function isActivePath(itemHref: string, currentPath: string): boolean {
-		// Exact match for dashboard root
-		if (itemHref === '/dashboard') {
-			return currentPath === '/dashboard';
-		}
-
 		// Match for Order history (includes pagination/query)
 		if (itemHref === '/dashboard/orders') {
-			return currentPath.startsWith('/dashboard/orders');
+			return currentPath === '/dashboard' || currentPath.startsWith('/dashboard/orders');
 		}
 
-		// Match for Your subscriptions (specific child route)
-		if (itemHref === '/dashboard/subscriptions') {
-			return currentPath.startsWith('/dashboard/subscriptions');
+		if (itemHref === '/help') {
+			return currentPath.startsWith('/help');
+		}
+
+		if (itemHref === '/dashboard/settings') {
+			return currentPath.startsWith('/dashboard/settings');
 		}
 
 		// Fallback to exact match for any other routes
@@ -75,7 +161,12 @@
 	$: notificationsEnabled = Boolean(user?.id);
 	$: if (!currencyMenuOpen) {
 		pendingCurrency = $currency as SupportedCurrency;
+		pendingLanguage = selectedLanguage;
 	}
+	$: selectedLanguageOption = resolveLanguageOption(selectedLanguage);
+	$: pendingLanguageOption = resolveLanguageOption(pendingLanguage);
+	$: pendingCurrencySymbol = resolveCurrencySymbol(pendingCurrency);
+	$: pendingCurrencyLabel = resolveCurrencyLabel(pendingCurrency);
 
 	function formatNotificationTime(value?: string | null): string {
 		if (!value) return '';
@@ -124,7 +215,7 @@
 		if (!notificationsEnabled || unreadCount === 0) return;
 		try {
 			await notificationService.markRead();
-			notifications = notifications.map(notification => ({
+			notifications = notifications.map((notification) => ({
 				...notification,
 				read_at: notification.read_at || new Date().toISOString()
 			}));
@@ -149,10 +240,8 @@
 		if (!notificationsEnabled || notification.read_at) return;
 		try {
 			await notificationService.markRead([notification.id]);
-			notifications = notifications.map(item =>
-				item.id === notification.id
-					? { ...item, read_at: new Date().toISOString() }
-					: item
+			notifications = notifications.map((item) =>
+				item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item
 			);
 			unreadCount = Math.max(0, unreadCount - 1);
 		} catch (error) {
@@ -183,8 +272,15 @@
 		if (!nextCurrency) return;
 		pendingCurrency = nextCurrency;
 	};
+	const handlePendingLanguageChange = (event: Event) => {
+		const target = event.currentTarget as HTMLSelectElement | null;
+		const nextLanguage = target?.value as SupportedLanguage | undefined;
+		if (!nextLanguage) return;
+		pendingLanguage = nextLanguage;
+	};
 
 	async function applyCurrencySelection() {
+		selectedLanguage = pendingLanguage;
 		currency.set(pendingCurrency);
 		const currentUrl = `${$page.url.pathname}${$page.url.search ? `?${$page.url.searchParams.toString()}` : ''}`;
 		await goto(currentUrl, { replaceState: true });
@@ -199,7 +295,8 @@
 				isNotificationsOpen = false;
 			}
 			const clickedCurrencyMenu =
-				currencyMenuRef?.contains(target as Node) || currencyMenuTriggerRef?.contains(target as Node);
+				currencyMenuRef?.contains(target as Node) ||
+				currencyMenuTriggerRef?.contains(target as Node);
 			if (!clickedCurrencyMenu) {
 				currencyMenuOpen = false;
 			}
@@ -223,14 +320,14 @@
 >
 	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 		<div class="flex items-center justify-between h-16">
-
 			<!-- LEFT: SubSlush Text Branding -->
 			<a href="/" class="flex items-center">
-				<span class="text-2xl font-extrabold bg-gradient-to-r from-purple-700 to-pink-600 bg-clip-text text-transparent">
+				<span
+					class="text-2xl font-extrabold bg-gradient-to-r from-purple-700 to-pink-600 bg-clip-text text-transparent"
+				>
 					SubSlush
 				</span>
 			</a>
-
 
 			<!-- CENTER: Navigation Links -->
 			<div class="hidden md:flex items-center space-x-1">
@@ -238,7 +335,9 @@
 					<a
 						href={item.href}
 						data-sveltekit-preload-data="hover"
-						class="px-4 py-2 text-sm font-medium rounded-lg transition-colors {getNavClass(item.href)}"
+						class="px-4 py-2 text-sm font-medium rounded-lg transition-colors {getNavClass(
+							item.href
+						)}"
 					>
 						{item.label}
 					</a>
@@ -258,7 +357,7 @@
 							on:click|stopPropagation={toggleCurrencyMenu}
 							bind:this={currencyMenuTriggerRef}
 						>
-							<span class="currency-trigger-value">EN</span>
+							<span class="currency-trigger-value">{selectedLanguageOption.shortLabel}</span>
 							<span class="currency-trigger-divider" aria-hidden="true"></span>
 							<span class="currency-trigger-value">{$currency}</span>
 							<ChevronDown
@@ -272,31 +371,56 @@
 							<div class="currency-menu-dropdown" bind:this={currencyMenuRef}>
 								<div class="currency-menu-panel" role="dialog" aria-label="Language and currency">
 									<p class="currency-menu-label">Languages</p>
-									<button
-										type="button"
-										class="currency-menu-field"
-										aria-label="Selected language"
-										aria-disabled="true"
-									>
-										<span class="currency-menu-flag">EN</span>
-										<span class="currency-menu-field-value">English</span>
-										<ChevronDown size={16} class="currency-menu-caret currency-menu-caret-select" aria-hidden="true" />
-									</button>
+									<div class="currency-menu-field currency-menu-select-wrap">
+										<span
+											class={`currency-menu-prefix currency-menu-language-prefix currency-menu-flag-image currency-menu-flag-${pendingLanguageOption.flagCode}`}
+											aria-hidden="true"
+										></span>
+										<span class="currency-menu-separator" aria-hidden="true">|</span>
+										<span class="currency-menu-field-value">{pendingLanguageOption.label}</span>
+										<select
+											class="currency-menu-select-overlay"
+											aria-label="Select language"
+											bind:value={pendingLanguage}
+											on:change={handlePendingLanguageChange}
+										>
+											{#each LANGUAGE_OPTIONS as option}
+												<option value={option.value}>{option.label}</option>
+											{/each}
+										</select>
+										<ChevronDown
+											size={16}
+											class="currency-menu-caret currency-menu-caret-select"
+											aria-hidden="true"
+										/>
+									</div>
 
 									<p class="currency-menu-label currency-menu-label-gap">Currencies</p>
 									<div class="currency-menu-field currency-menu-select-wrap">
-										<span class="currency-menu-currency-prefix">€</span>
+										<span class="currency-menu-prefix currency-menu-currency-prefix"
+											>{pendingCurrencySymbol}</span
+										>
+										<span class="currency-menu-separator" aria-hidden="true">|</span>
+										<span class="currency-menu-field-value">{pendingCurrencyLabel}</span>
 										<select
-											class="currency-menu-select"
+											class="currency-menu-select-overlay"
 											aria-label="Select currency"
 											bind:value={pendingCurrency}
 											on:change={handlePendingCurrencyChange}
 										>
 											{#each CURRENCY_OPTIONS as option}
-												<option value={option.value}>{option.value}</option>
+												<option value={option.value}>
+													{resolveCurrencySymbol(option.value)} | {resolveCurrencyLabel(
+														option.value
+													)}
+												</option>
 											{/each}
 										</select>
-										<ChevronDown size={16} class="currency-menu-caret" aria-hidden="true" />
+										<ChevronDown
+											size={16}
+											class="currency-menu-caret currency-menu-caret-select"
+											aria-hidden="true"
+										/>
 									</div>
 
 									<button
@@ -323,14 +447,18 @@
 						<Bell size={20} />
 
 						{#if unreadCount > 0}
-							<span class="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-medium">
+							<span
+								class="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-medium"
+							>
 								{unreadCount > 9 ? '9+' : unreadCount}
 							</span>
 						{/if}
 					</button>
 
 					{#if isNotificationsOpen}
-						<div class="absolute right-0 mt-2 w-80 rounded-xl border border-gray-200 bg-white shadow-lg z-50">
+						<div
+							class="absolute right-0 mt-2 w-80 rounded-xl border border-gray-200 bg-white shadow-lg z-50"
+						>
 							<div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
 								<span class="text-sm font-semibold text-gray-900">Notifications</span>
 								<div class="flex items-center gap-2">
@@ -433,7 +561,9 @@
 					transition:fly={{ x: 28, duration: 180 }}
 				>
 					<div class="flex items-center justify-between pb-4 border-b border-slate-700">
-						<span id="mobile-dashboard-menu-title" class="text-sm font-semibold text-white">Menu</span>
+						<span id="mobile-dashboard-menu-title" class="text-sm font-semibold text-white"
+							>Menu</span
+						>
 						<button
 							type="button"
 							class="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
@@ -449,7 +579,9 @@
 							<a
 								href={item.href}
 								data-sveltekit-preload-data="hover"
-								class="flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors {getMobileNavClass(item.href)}"
+								class="flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors {getMobileNavClass(
+									item.href
+								)}"
 								on:click={() => (isMobileMenuOpen = false)}
 							>
 								<span>{item.label}</span>
@@ -458,22 +590,24 @@
 					</div>
 
 					<div class="mt-4 border-t border-slate-700 pt-4 space-y-3">
-						<div class="relative">
-							<select
-								class="lang-select w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm transition-colors duration-150 hover:border-slate-300"
-								aria-label="Language and currency"
-								bind:value={pendingCurrency}
-								on:change={handlePendingCurrencyChange}
+							<div class="relative">
+								<select
+									class="lang-select w-full appearance-none rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors duration-150 hover:border-slate-500"
+									aria-label="Language and currency"
+									bind:value={pendingCurrency}
+									on:change={handlePendingCurrencyChange}
 							>
 								{#each CURRENCY_OPTIONS as option}
-									<option value={option.value}>{option.value}</option>
+									<option value={option.value}>
+										{resolveCurrencySymbol(option.value)} | {resolveCurrencyLabel(option.value)}
+									</option>
 								{/each}
 							</select>
-							<ChevronDown
-								class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"
-								size={14}
-								aria-hidden="true"
-							/>
+								<ChevronDown
+									class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-300"
+									size={14}
+									aria-hidden="true"
+								/>
 						</div>
 						<button
 							type="button"
@@ -504,35 +638,33 @@
 		justify-content: center;
 		gap: 0.46rem;
 		min-height: 2.12rem;
-		border: 1px solid #cbd5e1;
+		border: 1px solid #334155;
 		border-radius: 0.88rem;
-		background: #ffffff;
-		color: #0f172a;
+		background: rgba(15, 23, 42, 0.82);
+		color: #f8fafc;
 		font-size: 0.78rem;
 		font-weight: 700;
 		line-height: 1;
 		padding: 0.46rem 0.7rem;
-		transition: border-color 140ms ease, background 140ms ease;
+		transition:
+			border-color 140ms ease,
+			background 140ms ease;
 	}
 
 	.currency-trigger:hover {
-		border: 1px solid transparent;
-		background:
-			linear-gradient(#ffffff, #ffffff) padding-box,
-			linear-gradient(90deg, #7e22ce 0%, #db2777 100%) border-box;
+		border-color: #475569;
+		background: rgba(15, 23, 42, 0.92);
 	}
 
 	.currency-trigger:focus-visible {
-		border: 1px solid transparent;
-		background:
-			linear-gradient(#ffffff, #ffffff) padding-box,
-			linear-gradient(90deg, #7e22ce 0%, #db2777 100%) border-box;
+		border-color: #7e22ce;
+		background: rgba(15, 23, 42, 0.96);
 		outline: none;
 	}
 
 	.currency-trigger.is-open {
-		border-color: #cbd5e1;
-		background: #ffffff;
+		border-color: #475569;
+		background: rgba(15, 23, 42, 0.96);
 	}
 
 	.currency-trigger-value {
@@ -542,12 +674,12 @@
 	.currency-trigger-divider {
 		width: 1px;
 		height: 0.85rem;
-		background: #d1d5db;
+		background: #64748b;
 	}
 
 	.currency-trigger-chevron {
 		margin-left: 0.22rem;
-		color: #64748b;
+		color: #cbd5e1;
 	}
 
 	.currency-menu-dropdown {
@@ -583,7 +715,7 @@
 		margin-top: 0.45rem;
 		border: 1px solid #d1d5db;
 		border-radius: 9999px;
-		background: #f8fafc;
+		background: #ffffff;
 		color: #0f172a;
 		display: flex;
 		align-items: center;
@@ -591,19 +723,119 @@
 		padding: 0 0.78rem;
 		font-size: 0.94rem;
 		font-weight: 700;
+		position: relative;
+		transition:
+			border-color 140ms ease,
+			box-shadow 140ms ease;
 	}
 
-	.currency-menu-flag {
-		width: 1.38rem;
-		height: 1rem;
-		border-radius: 0.2rem;
-		border: 1px solid #d1d5db;
-		background:
-			linear-gradient(0deg, transparent 42%, #ef4444 42%, #ef4444 58%, transparent 58%),
-			linear-gradient(90deg, transparent 42%, #1d4ed8 42%, #1d4ed8 58%, transparent 58%),
-			#ffffff;
-		color: transparent;
+	.currency-menu-field:focus-within {
+		border-color: #94a3b8;
+		box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.18);
+	}
+
+	.currency-menu-prefix {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.08rem;
+		color: #111827;
+		line-height: 1;
 		flex: 0 0 auto;
+	}
+
+	.currency-menu-language-prefix {
+		min-width: 1.24rem;
+	}
+
+	.currency-menu-currency-prefix {
+		font-size: 0.85rem;
+		font-weight: 800;
+	}
+
+	.currency-menu-separator {
+		color: #64748b;
+		font-size: 0.92rem;
+		font-weight: 700;
+		line-height: 1;
+	}
+
+	.currency-menu-flag-image {
+		width: 1.2rem;
+		height: 0.9rem;
+		border: 1px solid #cbd5e1;
+		border-radius: 0.14rem;
+		overflow: hidden;
+		background-size: cover;
+		background-position: center;
+	}
+
+	.currency-menu-flag-gb {
+		background: url('/flags/gb.svg') center / cover no-repeat;
+	}
+
+	.currency-menu-flag-de {
+		background: linear-gradient(
+			180deg,
+			#000000 0 33.33%,
+			#dd0000 33.33% 66.66%,
+			#ffce00 66.66% 100%
+		);
+	}
+
+	.currency-menu-flag-es {
+		background: linear-gradient(180deg, #aa151b 0 25%, #f1bf00 25% 75%, #aa151b 75% 100%);
+	}
+
+	.currency-menu-flag-fr {
+		background: linear-gradient(
+			90deg,
+			#0055a4 0 33.33%,
+			#ffffff 33.33% 66.66%,
+			#ef4135 66.66% 100%
+		);
+	}
+
+	.currency-menu-flag-it {
+		background: linear-gradient(
+			90deg,
+			#009246 0 33.33%,
+			#ffffff 33.33% 66.66%,
+			#ce2b37 66.66% 100%
+		);
+	}
+
+	.currency-menu-flag-pl {
+		background: linear-gradient(180deg, #ffffff 0 50%, #dc143c 50% 100%);
+	}
+
+	.currency-menu-flag-ro {
+		background: linear-gradient(
+			90deg,
+			#002b7f 0 33.33%,
+			#fcd116 33.33% 66.66%,
+			#ce1126 66.66% 100%
+		);
+	}
+
+	.currency-menu-flag-se {
+		background:
+			linear-gradient(90deg, transparent 29%, #fecd00 29% 40%, transparent 40%),
+			linear-gradient(180deg, transparent 43%, #fecd00 43% 57%, transparent 57%), #006aa7;
+	}
+
+	.currency-menu-flag-no {
+		background: url('/flags/no.svg') center / cover no-repeat;
+	}
+
+	.currency-menu-flag-dk {
+		background: url('/flags/dk.svg') center / cover no-repeat;
+	}
+
+	.currency-menu-flag-fi {
+		background:
+			linear-gradient(90deg, transparent 27.8%, #003580 27.8% 44.4%, transparent 44.4%),
+			linear-gradient(180deg, transparent 36.4%, #003580 36.4% 63.6%, transparent 63.6%), #ffffff;
 	}
 
 	.currency-menu-field-value {
@@ -617,41 +849,26 @@
 		padding-right: 2rem;
 	}
 
-	.currency-menu-currency-prefix {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 1.12rem;
-		height: 1.12rem;
-		border-radius: 9999px;
-		background: #e5e7eb;
-		color: #111827;
-		font-size: 0.75rem;
-		font-weight: 700;
-		flex: 0 0 auto;
-	}
-
-	.currency-menu-select {
+	.currency-menu-select-overlay {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
 		appearance: none;
 		border: 0;
 		background: transparent;
-		color: #111827;
-		font-size: 0.95rem;
-		font-weight: 700;
-		line-height: 1;
-		width: 100%;
-		padding-right: 0;
+		opacity: 0;
 		cursor: pointer;
 	}
 
-	.currency-menu-select:focus {
+	.currency-menu-select-overlay:focus {
 		outline: none;
 	}
 
 	.currency-menu-caret {
-		margin-left: auto;
 		color: #4b5563;
 		flex: 0 0 auto;
+		pointer-events: none;
 	}
 
 	.currency-menu-caret-select {

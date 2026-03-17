@@ -123,7 +123,7 @@ export const ROUTES = {
   SETTINGS: '/dashboard/settings',
   ADMIN: '/admin',
   SUBSCRIPTIONS: {
-    MY_SUBSCRIPTIONS: '/dashboard/subscriptions'
+    MY_SUBSCRIPTIONS: '/dashboard/orders'
   },
   CHECKOUT: '/checkout',
   CHECKOUT_CLAIM: '/checkout/claim',

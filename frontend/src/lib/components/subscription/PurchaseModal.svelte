@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import { Music, Film, TrendingUp, X, CreditCard, Calendar, RotateCcw } from 'lucide-svelte';
+  import { Music, Film, TrendingUp, X, CreditCard, Calendar } from 'lucide-svelte';
   import type { ServicePlanDetails } from '$lib/types/subscription.js';
 
   export let isOpen: boolean;
@@ -9,12 +9,11 @@
   export let isLoading: boolean = false;
 
   const dispatch = createEventDispatcher<{
-    confirm: { plan: ServicePlanDetails; duration: number; autoRenew: boolean };
+    confirm: { plan: ServicePlanDetails; duration: number };
     cancel: void;
   }>();
 
   let selectedDuration = 1;
-  let autoRenew = true;
   let termsAccepted = false;
 
   // Service icons mapping
@@ -44,8 +43,7 @@
 
     dispatch('confirm', {
       plan,
-      duration: selectedDuration,
-      autoRenew
+      duration: selectedDuration
     });
   }
 
@@ -56,7 +54,6 @@
   // Reset form when modal opens/closes
   $: if (isOpen) {
     selectedDuration = 1;
-    autoRenew = true;
     termsAccepted = false;
   }
 </script>
@@ -131,26 +128,6 @@
               </option>
             {/each}
           </select>
-        </div>
-
-        <!-- Auto-renew toggle -->
-        <div>
-          <label class="flex items-center space-x-3 cursor-pointer">
-            <input
-              type="checkbox"
-              bind:checked={autoRenew}
-              class="w-4 h-4 text-cyan-600 bg-white border-gray-300 rounded focus:ring-cyan-500 focus:ring-2"
-            />
-            <div class="flex items-center">
-              <RotateCcw size={16} class="text-gray-600 mr-2" />
-              <span class="text-sm font-medium text-gray-700">
-                Enable auto-renewal
-              </span>
-            </div>
-          </label>
-          <p class="text-xs text-gray-500 mt-1 ml-7">
-            Automatically renew your subscription when it expires
-          </p>
         </div>
 
         <!-- Cost breakdown -->

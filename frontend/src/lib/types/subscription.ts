@@ -176,8 +176,19 @@ export interface ProductDetail {
     terms_conditions?: string[] | null;
     termsConditions?: string[] | null;
     upgrade_options?: UpgradeOptions | null;
+    platform?: string | null;
+    region?: string | null;
+    info_box_text?: string | null;
+    infoBoxText?: string | null;
+    activation_guide?: string | null;
+    activationGuide?: string | null;
   };
   variants: ProductVariantOption[];
+  country_code?: string | null;
+  users_on_page?: number;
+  usersOnPage?: number;
+  units_left?: number;
+  unitsLeft?: number;
 }
 
 export interface SubscriptionsResponse {

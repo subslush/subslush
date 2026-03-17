@@ -11,6 +11,9 @@ export interface Product {
   category?: string | null;
   default_currency?: string | null;
   max_subscriptions?: number | null;
+  duration_months?: number | null;
+  fixed_price_cents?: number | null;
+  fixed_price_currency?: string | null;
   status: ProductStatus;
   metadata?: Record<string, any> | null;
   created_at: Date;
@@ -156,6 +159,9 @@ export interface CreateProductInput {
   category?: string | null;
   default_currency?: string | null;
   max_subscriptions?: number | null;
+  duration_months?: number | null;
+  fixed_price_cents?: number | null;
+  fixed_price_currency?: string | null;
   status?: ProductStatus;
   metadata?: Record<string, any> | null;
 }
@@ -169,6 +175,9 @@ export interface UpdateProductInput {
   category?: string | null;
   default_currency?: string | null;
   max_subscriptions?: number | null;
+  duration_months?: number | null;
+  fixed_price_cents?: number | null;
+  fixed_price_currency?: string | null;
   status?: ProductStatus;
   metadata?: Record<string, any> | null;
 }

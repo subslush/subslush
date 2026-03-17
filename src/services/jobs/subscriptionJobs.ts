@@ -291,6 +291,14 @@ function resolveCurrency(candidate: RenewalCandidate): string {
 }
 
 export async function runSubscriptionRenewalSweep(): Promise<void> {
+  if (!env.SUBSCRIPTION_AUTO_RENEW_SWEEP_ENABLED) {
+    Logger.info('Subscription renewal sweep skipped (auto-renew deprecated)', {
+      featureFlag: 'SUBSCRIPTION_AUTO_RENEW_SWEEP_ENABLED',
+      cutoverDate: '2026-03-11',
+    });
+    return;
+  }
+
   const pool = getDatabasePool();
   const lookaheadMinutes = env.SUBSCRIPTION_RENEWAL_LOOKAHEAD_MINUTES;
   const batchSize = env.SUBSCRIPTION_RENEWAL_BATCH_SIZE;
@@ -966,7 +974,7 @@ export async function runSubscriptionReminderSweep(
               expires_at: endDate.toISOString(),
               reminder_hours: reminder.hours,
               reminder_stage: reminder.stage,
-              link: `/dashboard/subscriptions/${row.id}/renewal`,
+              link: '/dashboard/orders',
             },
             subscriptionId: row.id,
             dedupeKey: notificationDedupeKey,
@@ -1168,7 +1176,7 @@ export async function runUpgradeSelectionReminderSweep(): Promise<void> {
             metadata: {
               subscription_id: subscriptionId,
               reminder_hours: reminderHours,
-              link: `/dashboard/subscriptions/${subscriptionId}`,
+              link: '/dashboard/orders',
             },
             subscriptionId,
             dedupeKey: `selection_reminder_${reminderHours}:${subscriptionId}`,

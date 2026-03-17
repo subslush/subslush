@@ -30,6 +30,8 @@ export type CheckoutPricingItem = {
   input: CheckoutPricingItemInput;
   product: Product;
   variant: ProductVariant;
+  productVariantId: string | null;
+  planCode: string;
   pricingSnapshotId: string;
   termMonths: number;
   currency: string;
@@ -96,7 +98,9 @@ export class CheckoutPricingService {
 
       const { product, variant, snapshot } = pricingResult.data;
       const lockContext = await resolvePricingLockContext({
-        variantId: item.variant_id,
+        variantId:
+          pricingResult.data.productVariantId ||
+          item.variant_id,
         displayCurrency: normalizedCurrency,
         displayPrice: pricingResult.data.price,
       });
@@ -116,6 +120,8 @@ export class CheckoutPricingService {
         input: item,
         product,
         variant,
+        productVariantId: pricingResult.data.productVariantId,
+        planCode: pricingResult.data.planCode,
         pricingSnapshotId: lockContext.snapshotId,
         termMonths: snapshot.termMonths,
         currency: normalizedCurrency,

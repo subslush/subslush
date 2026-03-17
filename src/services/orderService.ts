@@ -390,7 +390,7 @@ export class OrderService {
             .join('')
         : '<li style="margin:0 0 6px 0;">Subscription</li>';
 
-    const dashboardLink = buildAppLink('/dashboard/subscriptions');
+    const dashboardLink = buildAppLink('/dashboard/orders');
     const helpLink = buildAppLink('/help');
     const shouldIssueClaimToken = await this.isGuestUser(userId);
     const guestIdentityId =
@@ -420,13 +420,12 @@ export class OrderService {
           '   The order will be attached to the account you sign in/create.',
           '',
           'After you claim the order:',
-          `3) Open My Subscriptions: ${dashboardLink}`,
-          '4) Click "Manage" on your delivered subscription.',
-          '5) If prompted, set a 4-digit PIN you can remember.',
-          '6) Use the PIN and click "Reveal" to view credentials and activation instructions.',
+          `3) Open My Orders: ${dashboardLink}`,
+          '4) Open your delivered order.',
+          '5) Click "Reveal credentials" to view credentials and activation instructions.',
           '',
           'Important: credentials and activation instructions are NOT automatic.',
-          'You must open Manage and Reveal to finish activation.',
+          'You must open the order and reveal credentials to finish activation.',
           '',
           'Subscriptions delivered:',
           subscriptionsText,
@@ -485,10 +484,9 @@ export class OrderService {
                                 <ol style="margin:0;padding-left:20px;color:#374151;">
                                   <li style="margin:0 0 8px 0;">Click <strong>Claim order now</strong> above.</li>
                                   <li style="margin:0 0 8px 0;">Sign in to an existing SubSlush account, or create a new account. The order attaches to that account.</li>
-                                  <li style="margin:0 0 8px 0;">Open <strong>My Subscriptions</strong> in your dashboard.</li>
-                                  <li style="margin:0 0 8px 0;">Click <strong>Manage</strong> on your delivered subscription.</li>
-                                  <li style="margin:0 0 8px 0;">If needed, set a 4-digit PIN you can remember.</li>
-                                  <li style="margin:0;">Use the PIN and click <strong>Reveal</strong> to view credentials and activation instructions.</li>
+                                  <li style="margin:0 0 8px 0;">Open <strong>My Orders</strong> in your dashboard.</li>
+                                  <li style="margin:0 0 8px 0;">Open your delivered order.</li>
+                                  <li style="margin:0;">Click <strong>Reveal credentials</strong> to view credentials and activation instructions.</li>
                                 </ol>
                               </td>
                             </tr>
@@ -497,7 +495,7 @@ export class OrderService {
                             <tr>
                               <td style="padding:14px 16px;font-size:13px;color:#1e1b4b;text-align:center;">
                                 <strong>Important:</strong> Subscription credentials and activation instructions are not automatic.
-                                You must complete <strong>Manage + Reveal</strong> to finish activation.
+                                You must open the order and <strong>Reveal credentials</strong> to finish activation.
                               </td>
                             </tr>
                           </table>
@@ -572,7 +570,7 @@ export class OrderService {
           'To manage this order in your account:',
           '1) Create a SubSlush account (or sign in) with this same email address.',
           `2) Claim this order within 72 hours: ${claimTokenResult.data.claimLink}`,
-          '3) Open My Subscriptions, click Manage, then Reveal credentials/activation instructions.',
+          '3) Open My Orders, open your delivered order, then click Reveal credentials.',
         ].join('\n');
         claimHtml = `
           <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
@@ -605,12 +603,11 @@ export class OrderService {
       ? [
           '',
           'How to access credentials and activation instructions:',
-          'Click "Manage" on your delivered subscription.',
-          'If prompted, set a 4-digit PIN you can remember.',
-          'Use the PIN and click "Reveal" to view credentials and activation instructions.',
+          'Open your delivered order.',
+          'Click "Reveal credentials" to view credentials and activation instructions.',
           '',
           'Important: credentials and activation instructions are NOT automatic.',
-          'You must open Manage and Reveal to finish activation.',
+          'You must open the order and reveal credentials to finish activation.',
         ].join('\n')
       : '';
     const credentialsGuideHtml = !shouldIssueClaimToken
@@ -620,10 +617,9 @@ export class OrderService {
               <td style="padding:14px 16px;font-size:13px;color:#111827;">
                 <div style="font-weight:600;margin-bottom:8px;color:#0f172a;">How to access credentials and activation instructions</div>
                 <ol style="margin:0;padding-left:20px;color:#374151;">
-                  <li style="margin:0 0 8px 0;">Open <strong>My Subscriptions</strong> in your dashboard.</li>
-                  <li style="margin:0 0 8px 0;">Click <strong>Manage</strong> on your delivered subscription.</li>
-                  <li style="margin:0 0 8px 0;">If prompted, set a 4-digit PIN you can remember.</li>
-                  <li style="margin:0;">Use the PIN and click <strong>Reveal</strong> to view credentials and activation instructions.</li>
+                  <li style="margin:0 0 8px 0;">Open <strong>My Orders</strong> in your dashboard.</li>
+                  <li style="margin:0 0 8px 0;">Open your delivered order.</li>
+                  <li style="margin:0;">Click <strong>Reveal credentials</strong> to view credentials and activation instructions.</li>
                 </ol>
               </td>
             </tr>
@@ -632,7 +628,7 @@ export class OrderService {
             <tr>
               <td style="padding:14px 16px;font-size:13px;color:#1e1b4b;">
                 <strong>Important:</strong> Subscription credentials and activation instructions are not automatic.
-                You must complete <strong>Manage + Reveal</strong> to finish activation.
+                You must open the order and <strong>Reveal credentials</strong> to finish activation.
               </td>
             </tr>
           </table>
@@ -640,12 +636,12 @@ export class OrderService {
       : '';
     const text = [
       `Your order ${orderShort} has been delivered.`,
-      'Your subscription is now active and available in My Subscriptions.',
+      'Your order is now active and available in My Orders.',
       '',
       'Subscriptions activated:',
       subscriptionsText,
       '',
-      `Open My Subscriptions: ${dashboardLink}`,
+      `Open My Orders: ${dashboardLink}`,
       credentialsGuideText,
       `Need help? ${helpLink}`,
       claimText,
@@ -675,8 +671,8 @@ export class OrderService {
                     <td style="padding:28px 32px;">
                       <h1 style="margin:0 0 12px;font-size:20px;">Order delivered</h1>
                       <p style="margin:0 0 16px;font-size:14px;color:#374151;">
-                        Your order ${orderShort} has been delivered and your subscription is now active.
-                        You can access it in your SubSlush dashboard under My Subscriptions.
+                        Your order ${orderShort} has been delivered and is now active.
+                        You can access it in your SubSlush dashboard under My Orders.
                       </p>
                       <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;">
                         <tr>
@@ -692,7 +688,7 @@ export class OrderService {
                         <tr>
                           <td>
                             <a href="${dashboardLink}" style="display:inline-block;background-color:#111827;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;">
-                              View My Subscriptions
+                              View My Orders
                             </a>
                           </td>
                         </tr>
@@ -794,7 +790,7 @@ export class OrderService {
           'To manage this order in your account:',
           '1) Create a SubSlush account (or sign in) with this same email address.',
           `2) Claim this order within 72 hours: ${claimTokenResult.data.claimLink}`,
-          '3) Open My Subscriptions, click Manage, then Reveal credentials/activation instructions.',
+          '3) Open My Orders, open your delivered order, then click Reveal credentials.',
         ].join('\n');
         claimHtml = `
           <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">

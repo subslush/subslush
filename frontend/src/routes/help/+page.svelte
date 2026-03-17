@@ -67,9 +67,9 @@
     {
       tag: 'Renewals',
       question: 'Do subscriptions auto-renew?',
-      answer: 'Renewals are manual. You can start renewal checkout from your dashboard in the renewal window before expiry.',
-      linkHref: '/dashboard/subscriptions',
-      linkText: 'Manage subscriptions',
+      answer: 'Auto-renew is deprecated. Place a new order whenever you want to continue service.',
+      linkHref: '/dashboard/orders',
+      linkText: 'Open orders',
     },
     {
       tag: 'Crypto',

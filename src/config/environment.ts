@@ -327,6 +327,18 @@ const environmentSchema = z.object({
       }
       return true;
     }),
+  SUBSCRIPTION_AUTO_RENEW_SWEEP_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(false)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return false;
+    }),
   SUBSCRIPTION_RENEWAL_INTERVAL: z.coerce.number().default(300000),
   SUBSCRIPTION_RENEWAL_LOOKAHEAD_MINUTES: z.coerce.number().default(1440),
   SUBSCRIPTION_RENEWAL_BATCH_SIZE: z.coerce.number().default(50),

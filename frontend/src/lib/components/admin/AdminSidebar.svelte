@@ -14,8 +14,7 @@
     Users,
     Tag,
     Bell,
-    MessageSquareText,
-    Key
+    MessageSquareText
   } from 'lucide-svelte';
 
   export let isOpen = false;
@@ -29,7 +28,6 @@
     { label: 'Subscriptions', href: '/admin/subscriptions', icon: Repeat },
     { label: 'Credits', href: '/admin/credits', icon: Wallet },
     { label: 'Users', href: '/admin/users', icon: Users },
-    { label: 'PIN reset', href: '/admin/pin-reset', icon: Key },
     { label: 'Rewards', href: '/admin/rewards', icon: Gift },
     { label: 'Coupons', href: '/admin/coupons', icon: Tag },
     { label: 'Tasks', href: '/admin/tasks', icon: ClipboardList },

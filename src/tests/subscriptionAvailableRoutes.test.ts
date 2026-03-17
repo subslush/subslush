@@ -70,6 +70,7 @@ describe('Subscriptions available listing', () => {
     };
 
     mockCatalogService.listActiveListings.mockResolvedValue([listing as any]);
+    mockCatalogService.listActiveFixedProducts.mockResolvedValue([]);
     mockCatalogService.listCurrentPricesForCurrency.mockResolvedValue(
       new Map([['variant-1', price as any]])
     );

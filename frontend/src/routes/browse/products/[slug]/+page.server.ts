@@ -1,10 +1,10 @@
 import { error } from '@sveltejs/kit';
-import type { PageLoad } from './$types';
+import type { PageServerLoad } from './$types';
 import type { ProductDetail } from '$lib/types/subscription';
 import { unwrapApiData } from '$lib/api/response';
 import { API_ENDPOINTS } from '$lib/utils/constants';
 
-export const load: PageLoad = async ({ params, fetch, parent }) => {
+export const load: PageServerLoad = async ({ params, fetch, parent }) => {
   const { slug } = params;
 
   try {
@@ -36,6 +36,19 @@ export const load: PageLoad = async ({ params, fetch, parent }) => {
       throw error(500, 'Invalid product data received from server');
     }
 
+    const usersOnPage =
+      typeof detail.users_on_page === 'number'
+        ? detail.users_on_page
+        : typeof detail.usersOnPage === 'number'
+          ? detail.usersOnPage
+          : 12;
+    const unitsLeft =
+      typeof detail.units_left === 'number'
+        ? detail.units_left
+        : typeof detail.unitsLeft === 'number'
+          ? detail.unitsLeft
+          : 6;
+
     let userCredits = 0;
     if (user?.id) {
       try {
@@ -56,7 +69,10 @@ export const load: PageLoad = async ({ params, fetch, parent }) => {
     return {
       product: detail.product,
       variants: detail.variants || [],
-      userCredits
+      userCredits,
+      requestCountryCode: detail.country_code || null,
+      usersOnPage,
+      unitsLeft
     };
   } catch (err) {
     console.error('Error loading product details:', err);

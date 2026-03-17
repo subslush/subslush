@@ -1,15 +1,11 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { randomInt } from 'crypto';
 import { subscriptionService } from '../services/subscriptionService';
 import { serviceHandlerRegistry } from '../services/handlers';
 import { creditService } from '../services/creditService';
 import { orderService } from '../services/orderService';
 import { catalogService } from '../services/catalogService';
-import { pinService } from '../services/pinService';
 import { paymentService } from '../services/paymentService';
-import {
-  resolveCycleEndDate,
-  subscriptionRenewalService,
-} from '../services/subscriptionRenewalService';
 import { couponService, normalizeCouponCode } from '../services/couponService';
 import {
   buildTikTokProductProperties,
@@ -29,7 +25,6 @@ import {
 import { createRateLimitHandler } from '../middleware/rateLimitMiddleware';
 import { Logger } from '../utils/logger';
 import { validateSubscriptionId } from '../schemas/subscription';
-import { validatePinTokenInput } from '../schemas/pin';
 import { validateUpgradeSelectionSubmission } from '../schemas/upgradeSelection';
 import {
   ServiceType,
@@ -42,9 +37,9 @@ import type {
   PriceHistory,
   ProductVariantTerm,
 } from '../types/catalog';
+import { orderEntitlementService } from '../services/orderEntitlementService';
 import { logCredentialRevealAttempt } from '../services/auditLogService';
 import {
-  computeNextRenewalDates,
   formatSubscriptionDisplayName,
   formatSubscriptionShortId,
   getRenewalState,
@@ -67,11 +62,7 @@ import {
   computeEffectiveMonthlyCents,
   computeTermPricing,
 } from '../utils/termPricing';
-import { credentialsEncryptionService } from '../utils/encryption';
-import {
-  ensureRenewalTask,
-  notifyCreditsRenewalSuccess,
-} from '../services/renewalNotificationService';
+import { redisClient } from '../config/redis';
 
 // Rate limiting handlers (fixes plugin encapsulation issues)
 const subscriptionQueryRateLimit = createRateLimitHandler({
@@ -118,6 +109,52 @@ const credentialRevealRateLimit = createRateLimitHandler({
     return `credential_reveal:${userId}`;
   },
 });
+
+const AUTO_RENEW_DEPRECATED_ON = '2026-03-11';
+const MANUAL_RENEWAL_DEPRECATED_ON = '2026-03-12';
+const CREDENTIAL_REVEAL_MOVED_ON = '2026-03-12';
+
+function sendAutoRenewDeprecated(reply: FastifyReply): FastifyReply {
+  return sendError(
+    reply,
+    HttpStatus.GONE,
+    'Gone',
+    'Auto-renew has been deprecated and disabled as of March 11, 2026. Place a new order when the current service period ends.',
+    'AUTO_RENEW_DEPRECATED',
+    {
+      deprecated_on: AUTO_RENEW_DEPRECATED_ON,
+      replacement: 'manual_purchase_new_order',
+    }
+  );
+}
+
+function sendManualRenewalDeprecated(reply: FastifyReply): FastifyReply {
+  return sendError(
+    reply,
+    HttpStatus.GONE,
+    'Gone',
+    'Manual renewal has been deprecated. Place a new order from the catalog when you want to continue service.',
+    'MANUAL_RENEWAL_DEPRECATED',
+    {
+      deprecated_on: MANUAL_RENEWAL_DEPRECATED_ON,
+      replacement: 'manual_purchase_new_order',
+    }
+  );
+}
+
+function sendCredentialRevealMoved(reply: FastifyReply): FastifyReply {
+  return sendError(
+    reply,
+    HttpStatus.GONE,
+    'Gone',
+    'Credential reveal is now available from Orders. Open the order and reveal credentials there.',
+    'CREDENTIAL_REVEAL_MOVED_TO_ORDERS',
+    {
+      deprecated_on: CREDENTIAL_REVEAL_MOVED_ON,
+      replacement: 'POST /orders/:orderId/credentials/reveal',
+    }
+  );
+}
 
 // Fastify JSON Schema definitions
 const FastifySchemas = {
@@ -225,14 +262,6 @@ const FastifySchemas = {
     },
   } as const,
 
-  pinTokenInput: {
-    type: 'object',
-    required: ['pin_token'],
-    properties: {
-      pin_token: { type: 'string', minLength: 10 },
-    },
-  } as const,
-
   autoRenewConfirmInput: {
     type: 'object',
     required: ['setup_intent_id'],
@@ -297,6 +326,15 @@ const CATALOG_TERMS_UNAVAILABLE_TASK_TYPE = 'support';
 const CATALOG_TERMS_UNAVAILABLE_TASK_PRIORITY: AdminTaskPriority = 'high';
 const CATALOG_TERMS_UNAVAILABLE_DUE_HOURS = 2;
 const TERM_LOOKUP_RETRY_DELAY_MS = 150;
+const USERS_ON_PAGE_MIN = 12;
+const USERS_ON_PAGE_MAX = 39;
+const USERS_ON_PAGE_WINDOW_MS = 15 * 60 * 1000;
+const UNITS_LEFT_MIN = 6;
+const UNITS_LEFT_MAX = 18;
+const UNITS_LEFT_STEP = 3;
+const UNITS_LEFT_STEP_WINDOW_MS = 3 * 60 * 60 * 1000;
+const UNITS_LEFT_CYCLE_MS = 24 * 60 * 60 * 1000;
+const UNITS_LEFT_REDIS_PREFIX = 'browse:units_left:';
 
 function calculateEndDate(durationMonths: number): Date {
   const now = new Date();
@@ -310,31 +348,6 @@ function calculateRenewalDate(durationMonths: number): Date {
   const renewalDate = new Date(endDate);
   renewalDate.setDate(renewalDate.getDate() - 7);
   return renewalDate;
-}
-
-function parseDurationMonths(value: any): number | null {
-  if (value === null || value === undefined) return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  return Math.floor(parsed);
-}
-
-function parseNumber(value: any): number | null {
-  if (value === null || value === undefined) return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  return parsed;
-}
-
-function parseJsonValue(value: any): any | null {
-  if (!value) return null;
-  if (typeof value === 'object') return value;
-  if (typeof value !== 'string') return null;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
 }
 
 function delay(ms: number): Promise<void> {
@@ -364,142 +377,6 @@ async function listVariantTermsWithRetry(
     onlyActive
   );
   return { termMap: retryMap, retried: true };
-}
-
-async function resolveSubscriptionBillingDetails(
-  subscriptionId: string
-): Promise<{
-  priceCents: number | null;
-  currency: string | null;
-  termMonths: number;
-  basePriceCents: number | null;
-  discountPercent: number | null;
-}> {
-  const pool = getDatabasePool();
-  const result = await pool.query(
-    `
-      SELECT
-        s.price_cents as subscription_price_cents,
-        s.base_price_cents as subscription_base_price_cents,
-        s.discount_percent as subscription_discount_percent,
-        s.term_months as subscription_term_months,
-        s.currency as subscription_currency,
-        s.metadata as subscription_metadata,
-        o.metadata as order_metadata,
-        o.currency as order_currency,
-        o.total_cents as order_total_cents,
-        o.coupon_id as order_coupon_id,
-        o.coupon_code as order_coupon_code,
-        o.coupon_discount_cents as order_coupon_discount_cents,
-        o.term_months as order_term_months,
-        oi.unit_price_cents as item_price_cents,
-        oi.currency as item_currency,
-        oi.term_months as item_term_months,
-        oi.base_price_cents as item_base_price_cents,
-        oi.discount_percent as item_discount_percent
-      FROM subscriptions s
-      LEFT JOIN orders o ON o.id = s.order_id
-      LEFT JOIN LATERAL (
-        SELECT unit_price_cents, currency, term_months, base_price_cents, discount_percent
-        FROM order_items
-        WHERE order_id = s.order_id
-        ORDER BY created_at ASC
-        LIMIT 1
-      ) oi ON true
-      WHERE s.id = $1
-    `,
-    [subscriptionId]
-  );
-
-  if (result.rows.length === 0) {
-    return {
-      priceCents: null,
-      currency: null,
-      termMonths: 1,
-      basePriceCents: null,
-      discountPercent: null,
-    };
-  }
-
-  const row = result.rows[0];
-  const orderHasCoupon = Boolean(
-    row.order_coupon_id ||
-      row.order_coupon_code ||
-      (row.order_coupon_discount_cents !== null &&
-        row.order_coupon_discount_cents !== undefined)
-  );
-  const priceCents =
-    row.subscription_price_cents ??
-    row.item_price_cents ??
-    (!orderHasCoupon ? row.order_total_cents : null) ??
-    null;
-  const currency =
-    row.subscription_currency ??
-    row.item_currency ??
-    row.order_currency ??
-    null;
-
-  const subscriptionMetadata = parseJsonValue(row.subscription_metadata) || {};
-  const orderMetadata = parseJsonValue(row.order_metadata) || {};
-  const termMonths =
-    parseDurationMonths(row.subscription_term_months) ??
-    parseDurationMonths(row.item_term_months) ??
-    parseDurationMonths(row.order_term_months) ??
-    parseDurationMonths(subscriptionMetadata.duration_months) ??
-    parseDurationMonths(subscriptionMetadata.term_months) ??
-    parseDurationMonths(subscriptionMetadata.durationMonths) ??
-    parseDurationMonths(subscriptionMetadata.termMonths) ??
-    parseDurationMonths(orderMetadata.duration_months) ??
-    parseDurationMonths(orderMetadata.term_months) ??
-    parseDurationMonths(orderMetadata.durationMonths) ??
-    parseDurationMonths(orderMetadata.termMonths) ??
-    1;
-
-  const basePriceCents =
-    row.subscription_base_price_cents ??
-    row.item_base_price_cents ??
-    parseNumber(subscriptionMetadata.base_price_cents) ??
-    parseNumber(subscriptionMetadata.basePriceCents) ??
-    parseNumber(orderMetadata.base_price_cents) ??
-    parseNumber(orderMetadata.basePriceCents) ??
-    null;
-
-  const discountPercent =
-    row.subscription_discount_percent ??
-    row.item_discount_percent ??
-    parseNumber(subscriptionMetadata.discount_percent) ??
-    parseNumber(subscriptionMetadata.discountPercent) ??
-    parseNumber(orderMetadata.discount_percent) ??
-    parseNumber(orderMetadata.discountPercent) ??
-    null;
-
-  return {
-    priceCents: priceCents !== null ? Number(priceCents) : null,
-    currency: currency ? String(currency) : null,
-    termMonths,
-    basePriceCents: basePriceCents !== null ? Number(basePriceCents) : null,
-    discountPercent: discountPercent !== null ? Number(discountPercent) : null,
-  };
-}
-
-function resolveRenewalPriceCents(details: {
-  priceCents: number | null;
-  basePriceCents: number | null;
-  discountPercent: number | null;
-  termMonths: number;
-}): number | null {
-  if (details.basePriceCents !== null && details.basePriceCents !== undefined) {
-    const snapshot = computeTermPricing({
-      basePriceCents: details.basePriceCents,
-      termMonths: details.termMonths,
-      discountPercent: details.discountPercent ?? 0,
-    });
-    return snapshot.totalPriceCents;
-  }
-  if (details.priceCents !== null && details.priceCents !== undefined) {
-    return Number(details.priceCents);
-  }
-  return null;
 }
 
 function normalizeStringList(value: unknown): string[] {
@@ -548,6 +425,132 @@ function readMetadataList(
     }
   }
   return [];
+}
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seededInt(seed: string, min: number, max: number): number {
+  const range = max - min + 1;
+  return min + (hashString(seed) % range);
+}
+
+function resolveUsersOnPage(productSeed: string, nowMs: number): number {
+  const window = Math.floor(nowMs / USERS_ON_PAGE_WINDOW_MS);
+  return seededInt(
+    `${productSeed}|users|${window}`,
+    USERS_ON_PAGE_MIN,
+    USERS_ON_PAGE_MAX
+  );
+}
+
+type UnitsLeftState = {
+  initialUnits: number;
+  cycleStartedAtMs: number;
+};
+
+function serializeUnitsLeftState(state: UnitsLeftState): string {
+  return `${state.initialUnits}:${state.cycleStartedAtMs}`;
+}
+
+function parseUnitsLeftState(raw: string | null): UnitsLeftState | null {
+  if (!raw) {
+    return null;
+  }
+
+  const [initialRaw, startedRaw] = raw.split(':');
+  const initialUnits = Number(initialRaw);
+  const cycleStartedAtMs = Number(startedRaw);
+  if (
+    !Number.isInteger(initialUnits) ||
+    initialUnits < UNITS_LEFT_MIN ||
+    initialUnits > UNITS_LEFT_MAX ||
+    !Number.isFinite(cycleStartedAtMs) ||
+    cycleStartedAtMs <= 0
+  ) {
+    return null;
+  }
+
+  return { initialUnits, cycleStartedAtMs };
+}
+
+function computeUnitsLeft(state: UnitsLeftState, nowMs: number): number {
+  const elapsedMs = Math.max(0, nowMs - state.cycleStartedAtMs);
+  const elapsedSteps = Math.floor(elapsedMs / UNITS_LEFT_STEP_WINDOW_MS);
+  const floorUnits = ((state.initialUnits - 1) % UNITS_LEFT_STEP) + 1;
+  return Math.max(
+    floorUnits,
+    state.initialUnits - elapsedSteps * UNITS_LEFT_STEP
+  );
+}
+
+function computeUnitsLeftDeterministicFallback(
+  productSeed: string,
+  nowMs: number
+): number {
+  const cycleWindow = Math.floor(nowMs / UNITS_LEFT_CYCLE_MS);
+  const cycleStartedAtMs = cycleWindow * UNITS_LEFT_CYCLE_MS;
+  const initialUnits = seededInt(
+    `${productSeed}|units|${cycleWindow}`,
+    UNITS_LEFT_MIN,
+    UNITS_LEFT_MAX
+  );
+  return computeUnitsLeft({ initialUnits, cycleStartedAtMs }, nowMs);
+}
+
+async function resolveUnitsLeft(
+  productSeed: string,
+  nowMs: number
+): Promise<number> {
+  if (!redisClient.isConnected()) {
+    return computeUnitsLeftDeterministicFallback(productSeed, nowMs);
+  }
+
+  try {
+    const client = redisClient.getClient();
+    const key = `${UNITS_LEFT_REDIS_PREFIX}${productSeed}`;
+    const existing = parseUnitsLeftState(await client.get(key));
+
+    if (existing) {
+      return computeUnitsLeft(existing, nowMs);
+    }
+
+    const nextState: UnitsLeftState = {
+      initialUnits: randomInt(UNITS_LEFT_MIN, UNITS_LEFT_MAX + 1),
+      cycleStartedAtMs: nowMs,
+    };
+    const ttlSeconds = Math.ceil(UNITS_LEFT_CYCLE_MS / 1000);
+    const setResult = await client.set(
+      key,
+      serializeUnitsLeftState(nextState),
+      'EX',
+      ttlSeconds,
+      'NX'
+    );
+
+    if (setResult === 'OK') {
+      return computeUnitsLeft(nextState, nowMs);
+    }
+
+    const latest = parseUnitsLeftState(await client.get(key));
+    if (latest) {
+      return computeUnitsLeft(latest, nowMs);
+    }
+
+    return computeUnitsLeft(nextState, nowMs);
+  } catch (error) {
+    Logger.warn('Failed to resolve units left from Redis; using fallback', {
+      productSeed,
+      error,
+    });
+    return computeUnitsLeftDeterministicFallback(productSeed, nowMs);
+  }
 }
 
 function resolveHandlerPlan(
@@ -819,10 +822,14 @@ export async function subscriptionRoutes(
           ? serviceQuery.service_type.toLowerCase()
           : undefined;
 
-        const listings: CatalogListing[] =
-          await catalogService.listActiveListings(
+        const [listings, fixedProducts] = await Promise.all([
+          catalogService.listActiveListings(
             serviceTypeFilter ? { service_type: serviceTypeFilter } : undefined
-          );
+          ),
+          catalogService.listActiveFixedProducts(
+            serviceTypeFilter ? { service_type: serviceTypeFilter } : undefined
+          ),
+        ]);
         const variantIds = listings.map(listing => listing.variant.id);
         const [currentPriceMap, termLookup] = await Promise.all([
           catalogService.listCurrentPricesForCurrency({
@@ -984,6 +991,75 @@ export async function subscriptionRoutes(
             category: product.category ?? null,
             product_id: product.id,
             variant_id: variant.id,
+          };
+
+          if (!services[serviceType]) {
+            services[serviceType] = [];
+          }
+          services[serviceType].push(planEntry);
+          totalPlans += 1;
+        }
+
+        for (const product of fixedProducts) {
+          const serviceType = product.service_type?.toLowerCase();
+          if (!serviceType) {
+            Logger.warn('Fixed product missing service_type', {
+              productId: product.id,
+              slug: product.slug,
+            });
+            continue;
+          }
+
+          const durationMonths = Number(product.duration_months);
+          const fixedPriceCents = Number(product.fixed_price_cents);
+          const fixedPriceCurrency = normalizeCurrencyCode(
+            product.fixed_price_currency
+          );
+
+          if (
+            !Number.isInteger(durationMonths) ||
+            durationMonths <= 0 ||
+            !Number.isInteger(fixedPriceCents) ||
+            fixedPriceCents < 0 ||
+            !fixedPriceCurrency
+          ) {
+            Logger.warn('Fixed product missing pricing fields', {
+              productId: product.id,
+              durationMonths: product.duration_months,
+              fixedPriceCents: product.fixed_price_cents,
+              fixedPriceCurrency: product.fixed_price_currency,
+            });
+            continue;
+          }
+
+          if (fixedPriceCurrency !== preferredCurrency) {
+            continue;
+          }
+
+          const displayName =
+            readMetadataString(product.metadata, [
+              'display_name',
+              'displayName',
+            ]) || product.name;
+          const features = normalizeStringList(product.metadata?.['features']);
+          const badges = normalizeStringList(product.metadata?.['badges']);
+
+          const planEntry: AvailablePlan = {
+            plan: product.slug,
+            name: displayName,
+            display_name: displayName,
+            description: product.description || '',
+            price: fixedPriceCents / 100,
+            currency: fixedPriceCurrency,
+            features,
+            ...(badges.length > 0 ? { badges } : {}),
+            service_type: serviceType,
+            service_name: product.name,
+            logo_key: product.logo_key ?? null,
+            logoKey: product.logo_key ?? null,
+            category: product.category ?? null,
+            product_id: product.id,
+            variant_id: product.id,
           };
 
           if (!services[serviceType]) {
@@ -1276,9 +1352,14 @@ export async function subscriptionRoutes(
           ? serviceQuery.service_type.toLowerCase()
           : undefined;
 
-        const listings = await catalogService.listActiveListings(
-          serviceTypeFilter ? { service_type: serviceTypeFilter } : undefined
-        );
+        const [listings, fixedProducts] = await Promise.all([
+          catalogService.listActiveListings(
+            serviceTypeFilter ? { service_type: serviceTypeFilter } : undefined
+          ),
+          catalogService.listActiveFixedProducts(
+            serviceTypeFilter ? { service_type: serviceTypeFilter } : undefined
+          ),
+        ]);
         const variantIds = listings.map(listing => listing.variant.id);
         const [currentPriceMap, termLookup] = await Promise.all([
           catalogService.listCurrentPricesForCurrency({
@@ -1434,6 +1515,45 @@ export async function subscriptionRoutes(
           }
         }
 
+        for (const product of fixedProducts) {
+          const fixedPriceCents = Number(product.fixed_price_cents);
+          const durationMonths = Number(product.duration_months);
+          const currency = normalizeCurrencyCode(product.fixed_price_currency);
+
+          if (
+            !Number.isInteger(fixedPriceCents) ||
+            fixedPriceCents < 0 ||
+            !Number.isInteger(durationMonths) ||
+            durationMonths <= 0 ||
+            !currency
+          ) {
+            continue;
+          }
+
+          if (currency !== preferredCurrency) {
+            continue;
+          }
+
+          const effectiveMonthly = computeEffectiveMonthlyCents({
+            totalPriceCents: fixedPriceCents,
+            termMonths: durationMonths,
+          });
+          if (!Number.isFinite(effectiveMonthly)) {
+            continue;
+          }
+
+          const existing = productMap.get(product.id);
+          if (!existing || effectiveMonthly < existing.minMonthlyCents) {
+            productMap.set(product.id, {
+              product,
+              minMonthlyCents: effectiveMonthly,
+              currency,
+              fromTermMonths: durationMonths,
+              fromDiscountPercent: null,
+            });
+          }
+        }
+
         if (missingPriceTasks.length > 0) {
           await Promise.all(missingPriceTasks);
         }
@@ -1484,18 +1604,20 @@ export async function subscriptionRoutes(
       try {
         const { slug } = request.params;
         const preferredCurrency = resolveRequestCurrency(request);
+        const requestCountryCode = resolveCountryFromHeaders(
+          request.headers as Record<string, string | string[] | undefined>
+        );
 
         const product = await catalogService.getProductBySlug(slug);
         if (!product || product.status !== 'active') {
           return ErrorResponses.notFound(reply, 'Product not found');
         }
+        const nowMs = Date.now();
+        const productSeed = product.id || product.slug || slug;
+        const usersOnPage = resolveUsersOnPage(productSeed, nowMs);
+        const unitsLeft = await resolveUnitsLeft(productSeed, nowMs);
 
         const variants = await catalogService.listVariants(product.id, true);
-        if (variants.length === 0) {
-          return ErrorResponses.notFound(reply, 'Product not available');
-        }
-
-        const variantIds = variants.map(variant => variant.id);
         const termsConditions = readMetadataList(product.metadata, [
           'terms_conditions',
           'termsConditions',
@@ -1506,12 +1628,108 @@ export async function subscriptionRoutes(
         const upgradeOptions = upgradeValidation.valid
           ? upgradeOptionsRaw
           : null;
+        const platform = readMetadataString(product.metadata, [
+          'platform',
+          'platform_name',
+          'platformName',
+        ]);
+        const region = readMetadataString(product.metadata, [
+          'region',
+          'region_name',
+          'regionName',
+        ]);
+        const infoBoxText = readMetadataString(product.metadata, [
+          'info_box_text',
+          'infoBoxText',
+          'info_text',
+          'infoText',
+        ]);
+        const activationGuide = readMetadataString(product.metadata, [
+          'activation_guide',
+          'activationGuide',
+          'activation_guide_text',
+          'activationGuideText',
+        ]);
         if (!upgradeValidation.valid) {
           Logger.warn('Invalid upgrade options configuration', {
             productId: product.id,
             reason: upgradeValidation.reason,
           });
         }
+
+        if (variants.length === 0) {
+          const durationMonths = Number(product.duration_months);
+          const fixedPriceCents = Number(product.fixed_price_cents);
+          const fixedPriceCurrency = normalizeCurrencyCode(
+            product.fixed_price_currency
+          );
+
+          if (
+            !Number.isInteger(durationMonths) ||
+            durationMonths <= 0 ||
+            !Number.isInteger(fixedPriceCents) ||
+            fixedPriceCents < 0 ||
+            !fixedPriceCurrency ||
+            fixedPriceCurrency !== preferredCurrency
+          ) {
+            return ErrorResponses.notFound(reply, 'Product not available');
+          }
+
+          const monthlyBase = Math.max(
+            1,
+            Math.round(fixedPriceCents / durationMonths)
+          );
+          const features = normalizeStringList(product.metadata?.['features']);
+          const badges = normalizeStringList(product.metadata?.['badges']);
+
+          return SuccessResponses.ok(reply, {
+            product: {
+              id: product.id,
+              name: product.name,
+              slug: product.slug,
+              description: product.description ?? '',
+              service_type: product.service_type ?? null,
+              logo_key: product.logo_key ?? null,
+              category: product.category ?? null,
+              terms_conditions: termsConditions,
+              upgrade_options: upgradeOptions,
+              platform: platform || null,
+              region: region || null,
+              info_box_text: infoBoxText || null,
+              activation_guide: activationGuide || null,
+            },
+            variants: [
+              {
+                id: product.id,
+                plan_code: product.slug,
+                name: product.name,
+                display_name:
+                  readMetadataString(product.metadata, [
+                    'display_name',
+                    'displayName',
+                  ]) || product.name,
+                description: product.description ?? '',
+                features,
+                badges,
+                base_price: monthlyBase / 100,
+                currency: fixedPriceCurrency,
+                term_options: [
+                  {
+                    months: durationMonths,
+                    total_price: fixedPriceCents / 100,
+                    discount_percent: 0,
+                    is_recommended: true,
+                  },
+                ],
+              },
+            ],
+            country_code: requestCountryCode || null,
+            users_on_page: usersOnPage,
+            units_left: unitsLeft,
+          });
+        }
+
+        const variantIds = variants.map(variant => variant.id);
         const [currentPriceMap, termMap] = await Promise.all([
           catalogService.listCurrentPricesForCurrency({
             variantIds,
@@ -1610,8 +1828,15 @@ export async function subscriptionRoutes(
             category: product.category ?? null,
             terms_conditions: termsConditions,
             upgrade_options: upgradeOptions,
+            platform: platform || null,
+            region: region || null,
+            info_box_text: infoBoxText || null,
+            activation_guide: activationGuide || null,
           },
           variants: variantResponses,
+          country_code: requestCountryCode || null,
+          users_on_page: usersOnPage,
+          units_left: unitsLeft,
         });
       } catch (error) {
         Logger.error('Failed to fetch product detail:', error);
@@ -1792,7 +2017,14 @@ export async function subscriptionRoutes(
           });
         }
 
-        const { product, variant, snapshot, currency } = pricingResult.data;
+        const {
+          product,
+          variant,
+          snapshot,
+          currency,
+          productVariantId,
+          planCode,
+        } = pricingResult.data;
         const upgradeOptionsRaw = normalizeUpgradeOptions(product.metadata);
         const upgradeValidation = validateUpgradeOptions(upgradeOptionsRaw);
         if (!upgradeValidation.valid) {
@@ -1805,7 +2037,6 @@ export async function subscriptionRoutes(
             'Subscription plan is not available'
           );
         }
-        const planCode = variant.service_plan || variant.variant_code;
         if (!planCode || !product.service_type) {
           return ErrorResponses.badRequest(
             reply,
@@ -1882,18 +2113,20 @@ export async function subscriptionRoutes(
         const description = variant.description || '';
 
         // Check if user can purchase
-        const validation = await subscriptionService.canPurchaseSubscription(
-          userId,
-          variant.id
-        );
+        if (productVariantId) {
+          const validation = await subscriptionService.canPurchaseSubscription(
+            userId,
+            productVariantId
+          );
 
-        if (!validation.canPurchase) {
-          return SuccessResponses.ok(reply, {
-            can_purchase: false,
-            reason: validation.reason,
-            required_credits: price,
-            existing_subscription: validation.existing_subscription,
-          });
+          if (!validation.canPurchase) {
+            return SuccessResponses.ok(reply, {
+              can_purchase: false,
+              reason: validation.reason,
+              required_credits: price,
+              existing_subscription: validation.existing_subscription,
+            });
+          }
         }
 
         // Get user balance
@@ -2000,9 +2233,9 @@ export async function subscriptionRoutes(
           variant_id,
           duration_months = 1,
           metadata,
-          auto_renew = false,
           coupon_code,
         } = request.body;
+        const auto_renew = false;
 
         Logger.info('Processing subscription purchase', {
           userId,
@@ -2029,7 +2262,13 @@ export async function subscriptionRoutes(
           );
         }
 
-        const { product, variant, snapshot, currency } = pricingResult.data;
+        const {
+          product,
+          snapshot,
+          currency,
+          productVariantId,
+          planCode,
+        } = pricingResult.data;
         const upgradeOptionsRaw = normalizeUpgradeOptions(product.metadata);
         const upgradeValidation = validateUpgradeOptions(upgradeOptionsRaw);
         if (!upgradeValidation.valid) {
@@ -2043,7 +2282,6 @@ export async function subscriptionRoutes(
           );
         }
         const upgradeOptions = upgradeOptionsRaw;
-        const planCode = variant.service_plan || variant.variant_code;
         if (!planCode || !product.service_type) {
           return ErrorResponses.badRequest(
             reply,
@@ -2052,21 +2290,23 @@ export async function subscriptionRoutes(
         }
 
         // Re-validate purchase eligibility to prevent race conditions
-        const validation = await subscriptionService.canPurchaseSubscription(
-          userId,
-          variant.id,
-          metadata
-        );
-
-        if (!validation.canPurchase) {
-          return sendError(
-            reply,
-            HttpStatus.CONFLICT,
-            'Purchase Not Allowed',
-            validation.reason || 'Purchase validation failed',
-            'PURCHASE_VALIDATION_FAILED',
-            { existingSubscription: validation.existing_subscription }
+        if (productVariantId) {
+          const validation = await subscriptionService.canPurchaseSubscription(
+            userId,
+            productVariantId,
+            metadata
           );
+
+          if (!validation.canPurchase) {
+            return sendError(
+              reply,
+              HttpStatus.CONFLICT,
+              'Purchase Not Allowed',
+              validation.reason || 'Purchase validation failed',
+              'PURCHASE_VALIDATION_FAILED',
+              { existingSubscription: validation.existing_subscription }
+            );
+          }
         }
 
         if (currency !== 'USD') {
@@ -2109,7 +2349,6 @@ export async function subscriptionRoutes(
         );
         const price = finalTotalCents / 100;
         const orderDescription = `Subscription purchase: ${product.service_type} ${planCode} (${snapshot.termMonths} month${snapshot.termMonths > 1 ? 's' : ''})`;
-        const productVariantId = variant.id;
         const orderInput = {
           user_id: userId,
           status: 'pending_payment' as const,
@@ -2467,9 +2706,47 @@ export async function subscriptionRoutes(
           context: buildTikTokRequestContext(request),
         });
 
+        const createdSubscription = subResult.data!;
+        const orderItemId =
+          Array.isArray(order.items) && order.items.length > 0
+            ? (order.items[0]?.id ?? null)
+            : null;
+        const subscriptionStartAt =
+          createdSubscription.term_start_at ?? createdSubscription.start_date;
+        const mmuCycleTotal =
+          snapshot.termMonths > 1 ? snapshot.termMonths : null;
+        const mmuCycleIndex = mmuCycleTotal ? 1 : null;
+
+        const entitlement = await orderEntitlementService.upsertEntitlement({
+          order_id: order.id,
+          order_item_id: orderItemId,
+          user_id: userId,
+          status: createdSubscription.status,
+          starts_at: subscriptionStartAt,
+          ends_at: createdSubscription.end_date,
+          duration_months_snapshot: snapshot.termMonths,
+          credentials_encrypted: null,
+          mmu_cycle_index: mmuCycleIndex,
+          mmu_cycle_total: mmuCycleTotal,
+          source_subscription_id: createdSubscription.id,
+          metadata: {
+            source: 'subscriptions.purchase',
+            renewal_method: 'credits',
+          },
+        });
+        if (!entitlement) {
+          Logger.warn(
+            'Failed to upsert order entitlement after subscription purchase',
+            {
+              orderId: order.id,
+              subscriptionId: createdSubscription.id,
+            }
+          );
+        }
+
         Logger.info('Subscription purchased successfully', {
           userId,
-          subscriptionId: subResult.data!.id,
+          subscriptionId: createdSubscription.id,
           price,
           transactionId: creditResult.transaction!.id,
         });
@@ -3119,7 +3396,7 @@ export async function subscriptionRoutes(
             const subscriptionShort = formatSubscriptionShortId(
               subscription.id
             );
-            const message = `Your ${serviceLabel} subscription (${subscriptionShort}) expires in ${daysUntilExpiry} days. Enable auto-renew or renew now to avoid delays or expiration.`;
+            const message = `Your ${serviceLabel} subscription (${subscriptionShort}) expires in ${daysUntilExpiry} days. Place a new order to avoid delays or expiration.`;
             const endDateIso = endDate.toISOString();
             const reminderHours = daysUntilExpiry * 24;
             const title =
@@ -3137,7 +3414,7 @@ export async function subscriptionRoutes(
                 renewal_method: subscription.renewal_method,
                 expires_at: endDateIso,
                 days_until_expiry: daysUntilExpiry,
-                link: '/dashboard/subscriptions',
+                link: '/dashboard/orders',
               },
               subscriptionId: subscription.id,
               dedupeKey: `subscription_expiring:${subscription.id}:${reminderHours}:${endDateIso}`,
@@ -3248,7 +3525,7 @@ export async function subscriptionRoutes(
     }
   );
 
-  // Enable Stripe auto-renew (returns SetupIntent client secret)
+  // Deprecated: Stripe auto-renew endpoint
   fastify.post<{
     Params: { subscriptionId: string };
   }>(
@@ -3263,65 +3540,26 @@ export async function subscriptionRoutes(
       request: FastifyRequest<{ Params: { subscriptionId: string } }>,
       reply: FastifyReply
     ) => {
-      try {
-        const userId = request.user?.userId;
-        if (!userId) {
-          return ErrorResponses.unauthorized(reply, 'Authentication required');
-        }
-
-        const { subscriptionId } = request.params;
-        if (!validateSubscriptionId(subscriptionId)) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Invalid subscription ID format'
-          );
-        }
-
-        const subscriptionResult =
-          await subscriptionService.getSubscriptionById(subscriptionId, userId);
-        if (!subscriptionResult.success || !subscriptionResult.data) {
-          return ErrorResponses.notFound(reply, 'Subscription not found');
-        }
-
-        if (subscriptionResult.data.status !== 'active') {
-          return ErrorResponses.badRequest(
-            reply,
-            'Auto-renew can only be enabled for active subscriptions'
-          );
-        }
-        if (subscriptionResult.data.cancellation_requested_at) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Cancellation has been requested for this subscription'
-          );
-        }
-        if (subscriptionResult.data.cancellation_requested_at) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Cancellation has been requested for this subscription'
-          );
-        }
-
-        const setupIntent = await paymentService.createStripeSetupIntent({
-          userId,
-          subscriptionId,
-        });
-
-        return SuccessResponses.ok(reply, {
-          clientSecret: setupIntent.clientSecret,
-          setup_intent_id: setupIntent.setupIntentId,
-        });
-      } catch (error) {
-        Logger.error('Failed to enable Stripe auto-renew:', error);
-        return ErrorResponses.internalError(
-          reply,
-          'Failed to enable auto-renew'
-        );
+      const userId = request.user?.userId;
+      if (!userId) {
+        return ErrorResponses.unauthorized(reply, 'Authentication required');
       }
+
+      const { subscriptionId } = request.params;
+      if (!validateSubscriptionId(subscriptionId)) {
+        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+      }
+
+      Logger.info('Deprecated auto-renew endpoint requested', {
+        userId,
+        subscriptionId,
+        endpoint: 'subscriptions:auto-renew:enable',
+      });
+      return sendAutoRenewDeprecated(reply);
     }
   );
 
-  // Confirm Stripe auto-renew after SetupIntent succeeds
+  // Deprecated: Stripe auto-renew confirmation endpoint
   fastify.post<{
     Params: { subscriptionId: string };
     Body: { setup_intent_id: string };
@@ -3341,100 +3579,26 @@ export async function subscriptionRoutes(
       }>,
       reply: FastifyReply
     ) => {
-      try {
-        const userId = request.user?.userId;
-        if (!userId) {
-          return ErrorResponses.unauthorized(reply, 'Authentication required');
-        }
-
-        const { subscriptionId } = request.params;
-        const { setup_intent_id } = request.body;
-
-        if (!validateSubscriptionId(subscriptionId)) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Invalid subscription ID format'
-          );
-        }
-
-        const subscriptionResult =
-          await subscriptionService.getSubscriptionById(subscriptionId, userId);
-        if (!subscriptionResult.success || !subscriptionResult.data) {
-          return ErrorResponses.notFound(reply, 'Subscription not found');
-        }
-
-        if (subscriptionResult.data.status !== 'active') {
-          return ErrorResponses.badRequest(
-            reply,
-            'Auto-renew can only be enabled for active subscriptions'
-          );
-        }
-
-        const { paymentMethodId, customerId } =
-          await paymentService.confirmStripeSetupIntent({
-            userId,
-            setupIntentId: setup_intent_id,
-          });
-
-        const savedMethod = await paymentService.saveStripePaymentMethod({
-          userId,
-          paymentMethodId,
-          customerId,
-          setupIntentId: setup_intent_id,
-        });
-
-        const computeRenewalDate = (endDateValue: string | Date): Date => {
-          const endDate = new Date(endDateValue);
-          const date = new Date(endDate);
-          date.setDate(date.getDate() - 7);
-          return date;
-        };
-
-        const renewalDate = subscriptionResult.data.renewal_date
-          ? new Date(subscriptionResult.data.renewal_date)
-          : computeRenewalDate(subscriptionResult.data.end_date);
-
-        const updateResult = await subscriptionService.updateSubscription(
-          subscriptionId,
-          userId,
-          {
-            auto_renew: true,
-            renewal_method: 'stripe',
-            billing_payment_method_id: savedMethod.id,
-            next_billing_at: renewalDate,
-            auto_renew_enabled_at: new Date(),
-            auto_renew_disabled_at: null,
-          }
-        );
-
-        if (!updateResult.success) {
-          return ErrorResponses.internalError(
-            reply,
-            updateResult.error || 'Failed to enable auto-renew'
-          );
-        }
-
-        return SuccessResponses.ok(reply, {
-          subscription: updateResult.data,
-          payment_method: {
-            id: savedMethod.id,
-            brand: savedMethod.brand,
-            last4: savedMethod.last4,
-            exp_month: savedMethod.exp_month,
-            exp_year: savedMethod.exp_year,
-          },
-        });
-      } catch (error) {
-        Logger.error('Failed to confirm Stripe auto-renew:', error);
-        return ErrorResponses.internalError(
-          reply,
-          'Failed to confirm auto-renew'
-        );
+      const userId = request.user?.userId;
+      if (!userId) {
+        return ErrorResponses.unauthorized(reply, 'Authentication required');
       }
+
+      const { subscriptionId } = request.params;
+      if (!validateSubscriptionId(subscriptionId)) {
+        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+      }
+
+      Logger.info('Deprecated auto-renew endpoint requested', {
+        userId,
+        subscriptionId,
+        endpoint: 'subscriptions:auto-renew:confirm',
+      });
+      return sendAutoRenewDeprecated(reply);
     }
   );
 
-  // Enable credits auto-renew
+  // Deprecated: credits auto-renew endpoint
   fastify.post<{
     Params: { subscriptionId: string };
   }>(
@@ -3449,96 +3613,26 @@ export async function subscriptionRoutes(
       request: FastifyRequest<{ Params: { subscriptionId: string } }>,
       reply: FastifyReply
     ) => {
-      try {
-        const userId = request.user?.userId;
-        if (!userId) {
-          return ErrorResponses.unauthorized(reply, 'Authentication required');
-        }
-
-        const { subscriptionId } = request.params;
-        if (!validateSubscriptionId(subscriptionId)) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Invalid subscription ID format'
-          );
-        }
-
-        const subscriptionResult =
-          await subscriptionService.getSubscriptionById(subscriptionId, userId);
-        if (!subscriptionResult.success || !subscriptionResult.data) {
-          return ErrorResponses.notFound(reply, 'Subscription not found');
-        }
-
-        const subscription = subscriptionResult.data;
-        if (subscription.status !== 'active') {
-          return ErrorResponses.badRequest(
-            reply,
-            'Auto-renew can only be enabled for active subscriptions'
-          );
-        }
-        if (subscription.cancellation_requested_at) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Cancellation has been requested for this subscription'
-          );
-        }
-
-        if (subscription.renewal_method !== 'credits') {
-          return ErrorResponses.badRequest(
-            reply,
-            'Credits auto-renew is only available for credit subscriptions'
-          );
-        }
-
-        let renewalDate = subscription.renewal_date
-          ? new Date(subscription.renewal_date)
-          : null;
-        if (!renewalDate || Number.isNaN(renewalDate.getTime())) {
-          const endDate = subscription.end_date
-            ? new Date(subscription.end_date)
-            : null;
-          if (!endDate || Number.isNaN(endDate.getTime())) {
-            return ErrorResponses.badRequest(
-              reply,
-              'Unable to determine renewal schedule'
-            );
-          }
-          renewalDate = new Date(endDate);
-          renewalDate.setDate(renewalDate.getDate() - 7);
-        }
-
-        const updateResult = await subscriptionService.updateSubscription(
-          subscriptionId,
-          userId,
-          {
-            auto_renew: true,
-            next_billing_at: renewalDate,
-            auto_renew_enabled_at: new Date(),
-            auto_renew_disabled_at: null,
-          }
-        );
-
-        if (!updateResult.success) {
-          return ErrorResponses.internalError(
-            reply,
-            updateResult.error || 'Failed to enable auto-renew'
-          );
-        }
-
-        return SuccessResponses.ok(reply, {
-          subscription: updateResult.data,
-        });
-      } catch (error) {
-        Logger.error('Failed to enable credits auto-renew:', error);
-        return ErrorResponses.internalError(
-          reply,
-          'Failed to enable auto-renew'
-        );
+      const userId = request.user?.userId;
+      if (!userId) {
+        return ErrorResponses.unauthorized(reply, 'Authentication required');
       }
+
+      const { subscriptionId } = request.params;
+      if (!validateSubscriptionId(subscriptionId)) {
+        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+      }
+
+      Logger.info('Deprecated auto-renew endpoint requested', {
+        userId,
+        subscriptionId,
+        endpoint: 'subscriptions:auto-renew:credits-enable',
+      });
+      return sendAutoRenewDeprecated(reply);
     }
   );
 
-  // Disable Stripe auto-renew
+  // Deprecated: Stripe auto-renew disable endpoint
   fastify.post<{
     Params: { subscriptionId: string };
   }>(
@@ -3553,57 +3647,26 @@ export async function subscriptionRoutes(
       request: FastifyRequest<{ Params: { subscriptionId: string } }>,
       reply: FastifyReply
     ) => {
-      try {
-        const userId = request.user?.userId;
-        if (!userId) {
-          return ErrorResponses.unauthorized(reply, 'Authentication required');
-        }
-
-        const { subscriptionId } = request.params;
-        if (!validateSubscriptionId(subscriptionId)) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Invalid subscription ID format'
-          );
-        }
-
-        const subscriptionResult =
-          await subscriptionService.getSubscriptionById(subscriptionId, userId);
-        if (!subscriptionResult.success || !subscriptionResult.data) {
-          return ErrorResponses.notFound(reply, 'Subscription not found');
-        }
-
-        const updateResult = await subscriptionService.updateSubscription(
-          subscriptionId,
-          userId,
-          {
-            auto_renew: false,
-            next_billing_at: null,
-            auto_renew_disabled_at: new Date(),
-          }
-        );
-
-        if (!updateResult.success) {
-          return ErrorResponses.internalError(
-            reply,
-            updateResult.error || 'Failed to disable auto-renew'
-          );
-        }
-
-        return SuccessResponses.ok(reply, {
-          subscription: updateResult.data,
-        });
-      } catch (error) {
-        Logger.error('Failed to disable Stripe auto-renew:', error);
-        return ErrorResponses.internalError(
-          reply,
-          'Failed to disable auto-renew'
-        );
+      const userId = request.user?.userId;
+      if (!userId) {
+        return ErrorResponses.unauthorized(reply, 'Authentication required');
       }
+
+      const { subscriptionId } = request.params;
+      if (!validateSubscriptionId(subscriptionId)) {
+        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+      }
+
+      Logger.info('Deprecated auto-renew endpoint requested', {
+        userId,
+        subscriptionId,
+        endpoint: 'subscriptions:auto-renew:disable',
+      });
+      return sendAutoRenewDeprecated(reply);
     }
   );
 
-  // Manual credits renewal when auto-renew is off
+  // Deprecated: manual credits renewal endpoint
   fastify.post<{
     Params: { subscriptionId: string };
   }>(
@@ -3618,274 +3681,26 @@ export async function subscriptionRoutes(
       request: FastifyRequest<{ Params: { subscriptionId: string } }>,
       reply: FastifyReply
     ) => {
-      try {
-        const userId = request.user?.userId;
-        if (!userId) {
-          return ErrorResponses.unauthorized(reply, 'Authentication required');
-        }
-
-        const { subscriptionId } = request.params;
-        if (!validateSubscriptionId(subscriptionId)) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Invalid subscription ID format'
-          );
-        }
-
-        const subscriptionResult =
-          await subscriptionService.getSubscriptionById(subscriptionId, userId);
-        if (!subscriptionResult.success || !subscriptionResult.data) {
-          return ErrorResponses.notFound(reply, 'Subscription not found');
-        }
-
-        const subscription = subscriptionResult.data;
-        if (subscription.status !== 'active') {
-          return ErrorResponses.badRequest(
-            reply,
-            'Manual renewal is only available for active subscriptions'
-          );
-        }
-        if (subscription.cancellation_requested_at) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Cancelled subscriptions cannot be renewed'
-          );
-        }
-
-        if (subscription.auto_renew) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Disable auto-renew to pay manually'
-          );
-        }
-
-        if (subscription.renewal_method !== 'credits') {
-          return ErrorResponses.badRequest(
-            reply,
-            'Manual credits renewal is only available for credit subscriptions'
-          );
-        }
-
-        const endDate = new Date(subscription.end_date);
-        if (Number.isNaN(endDate.getTime())) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Unable to determine renewal window'
-          );
-        }
-
-        const msPerDay = 1000 * 60 * 60 * 24;
-        const daysUntilExpiry = Math.ceil(
-          (endDate.getTime() - Date.now()) / msPerDay
-        );
-        if (daysUntilExpiry < 0 || daysUntilExpiry > 7) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Manual renewal is only available within 7 days of expiry'
-          );
-        }
-
-        const pool = getDatabasePool();
-        const openRenewalTask = await pool.query(
-          `SELECT 1
-           FROM admin_tasks
-           WHERE subscription_id = $1
-             AND task_type = 'renewal'
-             AND completed_at IS NULL
-           LIMIT 1`,
-          [subscriptionId]
-        );
-        if (openRenewalTask.rows.length > 0) {
-          return ErrorResponses.badRequest(
-            reply,
-            'A renewal is already in progress'
-          );
-        }
-
-        const billingDetails =
-          await resolveSubscriptionBillingDetails(subscriptionId);
-        const priceCents = resolveRenewalPriceCents(billingDetails);
-        if (!priceCents || priceCents <= 0) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Pricing unavailable for this subscription'
-          );
-        }
-
-        const currency =
-          billingDetails.currency || subscription.currency || 'USD';
-        if (currency.toUpperCase() !== 'USD') {
-          return ErrorResponses.badRequest(
-            reply,
-            'Credits renewals are only supported in USD'
-          );
-        }
-
-        const now = new Date();
-        const currentEndDate = new Date(subscription.end_date);
-        const termStartAt = currentEndDate > now ? currentEndDate : now;
-        const nextDates = computeNextRenewalDates({
-          endDate: currentEndDate,
-          termMonths: billingDetails.termMonths,
-          autoRenew: false,
-          now,
-        });
-
-        const cycleEndDate = resolveCycleEndDate({
-          endDate: subscription.end_date,
-          termStartAt: subscription.term_start_at ?? null,
-          termMonths: billingDetails.termMonths,
-        });
-        if (!cycleEndDate) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Unable to determine renewal cycle'
-          );
-        }
-
-        const renewalLock = await subscriptionRenewalService.acquireRenewalLock(
-          {
-            subscriptionId,
-            cycleEndDate,
-          }
-        );
-        if (!renewalLock.acquired) {
-          return ErrorResponses.badRequest(
-            reply,
-            'A renewal is already in progress'
-          );
-        }
-
-        const amountUsd = priceCents / 100;
-        const creditResult = await creditService.spendCredits(
-          userId,
-          amountUsd,
-          `Manual renewal: ${subscription.service_type} ${subscription.service_plan}`,
-          {
-            renewal: true,
-            subscription_id: subscriptionId,
-            service_type: subscription.service_type,
-            service_plan: subscription.service_plan,
-            duration_months: billingDetails.termMonths,
-            term_months: billingDetails.termMonths,
-            base_price_cents: billingDetails.basePriceCents ?? undefined,
-            discount_percent: billingDetails.discountPercent ?? undefined,
-          },
-          {
-            ...(subscription.order_id
-              ? { orderId: subscription.order_id }
-              : {}),
-            ...(subscription.product_variant_id
-              ? { productVariantId: subscription.product_variant_id }
-              : {}),
-            priceCents,
-            termMonths: billingDetails.termMonths,
-            currency,
-            autoRenew: false,
-            renewalMethod: 'credits',
-            statusReason: 'manual_renew_paid_with_credits',
-            ...(billingDetails.basePriceCents !== null &&
-            billingDetails.basePriceCents !== undefined
-              ? { basePriceCents: billingDetails.basePriceCents }
-              : {}),
-            ...(billingDetails.discountPercent !== null &&
-            billingDetails.discountPercent !== undefined
-              ? { discountPercent: billingDetails.discountPercent }
-              : {}),
-          }
-        );
-
-        if (!creditResult.success) {
-          await subscriptionRenewalService.markRenewalFailed({
-            subscriptionId,
-            cycleEndDate,
-          });
-          return ErrorResponses.badRequest(
-            reply,
-            creditResult.error || 'Credit renewal failed'
-          );
-        }
-
-        await subscriptionRenewalService.markRenewalSucceeded({
-          subscriptionId,
-          cycleEndDate,
-        });
-
-        const updateResult = await subscriptionService.updateSubscription(
-          subscriptionId,
-          userId,
-          {
-            term_start_at: termStartAt,
-            end_date: nextDates.endDate,
-            renewal_date: nextDates.renewalDate,
-            next_billing_at: null,
-            status_reason: 'manual_renewed_credits',
-            price_cents: priceCents,
-            ...(billingDetails.basePriceCents !== null
-              ? { base_price_cents: billingDetails.basePriceCents }
-              : {}),
-            ...(billingDetails.discountPercent !== null
-              ? { discount_percent: billingDetails.discountPercent }
-              : {}),
-            term_months: billingDetails.termMonths,
-            currency,
-            renewal_method: 'credits',
-          }
-        );
-
-        if (!updateResult.success) {
-          return ErrorResponses.internalError(
-            reply,
-            updateResult.error || 'Failed to update subscription'
-          );
-        }
-
-        const renewalNotes = `Renewal paid. Manual renewal required for ${subscription.service_type} ${subscription.service_plan}.`;
-        const fulfillmentDueDate = new Date(Date.now() + 72 * 60 * 60 * 1000);
-        await ensureRenewalTask({
-          subscriptionId,
-          userId,
-          orderId: subscription.order_id ?? null,
-          dueDate: fulfillmentDueDate,
-          notes: renewalNotes,
-          priority: 'high',
-        });
-
-        try {
-          await notifyCreditsRenewalSuccess({
-            userId,
-            subscriptionId,
-            serviceType: subscription.service_type,
-            servicePlan: subscription.service_plan,
-            productName: subscription.product_name ?? null,
-            variantName: subscription.variant_name ?? null,
-            termMonths: billingDetails.termMonths,
-          });
-        } catch (error) {
-          Logger.warn('Credits renewal success notification failed', {
-            subscriptionId,
-            error,
-          });
-        }
-
-        return SuccessResponses.ok(reply, {
-          subscription: updateResult.data,
-          transaction: creditResult.transaction
-            ? {
-                transaction_id: creditResult.transaction.id,
-                amount_debited: amountUsd,
-                balance_after: creditResult.transaction.balanceAfter,
-              }
-            : null,
-        });
-      } catch (error) {
-        Logger.error('Failed to process manual credits renewal:', error);
-        return ErrorResponses.internalError(reply, 'Failed to process renewal');
+      const userId = request.user?.userId;
+      if (!userId) {
+        return ErrorResponses.unauthorized(reply, 'Authentication required');
       }
+
+      const { subscriptionId } = request.params;
+      if (!validateSubscriptionId(subscriptionId)) {
+        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+      }
+
+      Logger.info('Deprecated manual renewal endpoint requested', {
+        userId,
+        subscriptionId,
+        endpoint: 'subscriptions:renewal:credits',
+      });
+      return sendManualRenewalDeprecated(reply);
     }
   );
 
-  // Manual card renewal checkout (Pay4bit hosted link)
+  // Deprecated: manual card renewal checkout endpoint
   fastify.post<{
     Params: { subscriptionId: string };
   }>(
@@ -3900,321 +3715,39 @@ export async function subscriptionRoutes(
       request: FastifyRequest<{ Params: { subscriptionId: string } }>,
       reply: FastifyReply
     ) => {
-      try {
-        const userId = request.user?.userId;
-        if (!userId) {
-          return ErrorResponses.unauthorized(reply, 'Authentication required');
-        }
-
-        const { subscriptionId } = request.params;
-        if (!validateSubscriptionId(subscriptionId)) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Invalid subscription ID format'
-          );
-        }
-
-        const subscriptionResult =
-          await subscriptionService.getSubscriptionById(subscriptionId, userId);
-        if (!subscriptionResult.success || !subscriptionResult.data) {
-          return ErrorResponses.notFound(reply, 'Subscription not found');
-        }
-
-        const subscription = subscriptionResult.data;
-        if (subscription.status !== 'active') {
-          return ErrorResponses.badRequest(
-            reply,
-            'Renewal checkout is only available for active subscriptions'
-          );
-        }
-        if (subscription.cancellation_requested_at) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Cancelled subscriptions cannot be renewed'
-          );
-        }
-
-        if (subscription.renewal_method === 'credits') {
-          return ErrorResponses.badRequest(
-            reply,
-            'Use credits renewal for this subscription'
-          );
-        }
-
-        const endDate = new Date(subscription.end_date);
-        if (Number.isNaN(endDate.getTime())) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Unable to determine renewal window'
-          );
-        }
-
-        const msPerDay = 1000 * 60 * 60 * 24;
-        const daysUntilExpiry = Math.ceil(
-          (endDate.getTime() - Date.now()) / msPerDay
-        );
-        if (daysUntilExpiry < 0 || daysUntilExpiry > 7) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Manual renewal is only available within 7 days of expiry'
-          );
-        }
-
-        const billingDetails =
-          await resolveSubscriptionBillingDetails(subscriptionId);
-        if (!billingDetails.priceCents || billingDetails.priceCents <= 0) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Pricing unavailable for this subscription'
-          );
-        }
-
-        const currency =
-          normalizeCurrencyCode(
-            billingDetails.currency || subscription.currency || 'USD'
-          ) ||
-          (billingDetails.currency || subscription.currency || 'USD')
-            .trim()
-            .toUpperCase();
-        const amount = billingDetails.priceCents / 100;
-        const termMonths = Math.max(
-          1,
-          Math.floor(
-            billingDetails.termMonths ||
-              subscription.term_months ||
-              1
-          )
-        );
-        const basePriceCents =
-          billingDetails.basePriceCents ??
-          Math.max(1, Math.round(billingDetails.priceCents / termMonths));
-        const discountPercent = billingDetails.discountPercent ?? 0;
-
-        const cycleEndDate = resolveCycleEndDate({
-          endDate: subscription.end_date,
-          termStartAt: subscription.term_start_at ?? null,
-          termMonths,
-        });
-        if (!cycleEndDate) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Unable to determine renewal cycle'
-          );
-        }
-
-        const renewalLock = await subscriptionRenewalService.acquireRenewalLock(
-          {
-            subscriptionId,
-            cycleEndDate,
-          }
-        );
-        if (!renewalLock.acquired) {
-          return ErrorResponses.badRequest(
-            reply,
-            'A renewal is already in progress'
-          );
-        }
-
-        const orderDescription = `Subscription renewal: ${subscription.service_type} ${subscription.service_plan}`;
-        const orderResult = await orderService.createOrderWithItems(
-          {
-            user_id: userId,
-            status: 'pending_payment',
-            status_reason: 'renewal_payment_created',
-            currency,
-            subtotal_cents: billingDetails.priceCents,
-            discount_cents: 0,
-            coupon_discount_cents: 0,
-            total_cents: billingDetails.priceCents,
-            settlement_currency: currency,
-            settlement_total_cents: billingDetails.priceCents,
-            term_months: termMonths,
-            paid_with_credits: false,
-            auto_renew: false,
-            payment_provider: 'pay4bit',
-            metadata: {
-              renewal: true,
-              renewal_order: true,
-              order_type: 'renewal',
-              subscription_id: subscriptionId,
-              service_type: subscription.service_type,
-              service_plan: subscription.service_plan,
-              duration_months: termMonths,
-              term_months: termMonths,
-              base_price_cents: basePriceCents,
-              discount_percent: discountPercent,
-              total_price_cents: billingDetails.priceCents,
-              expected_end_date: new Date(subscription.end_date).toISOString(),
-              ...(subscription.renewal_date
-                ? {
-                    expected_renewal_date: new Date(
-                      subscription.renewal_date
-                    ).toISOString(),
-                  }
-                : {}),
-              auto_renew: false,
-              renewal_method: null,
-            },
-          },
-          [
-            {
-              product_variant_id: subscription.product_variant_id ?? null,
-              quantity: 1,
-              unit_price_cents: billingDetails.priceCents,
-              base_price_cents: basePriceCents,
-              discount_percent: discountPercent,
-              term_months: termMonths,
-              auto_renew: false,
-              coupon_discount_cents: 0,
-              currency,
-              total_price_cents: billingDetails.priceCents,
-              settlement_currency: currency,
-              settlement_unit_price_cents: billingDetails.priceCents,
-              settlement_base_price_cents: basePriceCents,
-              settlement_coupon_discount_cents: 0,
-              settlement_total_price_cents: billingDetails.priceCents,
-              description: orderDescription,
-              metadata: {
-                renewal: true,
-                renewal_order: true,
-                order_type: 'renewal',
-                subscription_id: subscriptionId,
-                service_type: subscription.service_type,
-                service_plan: subscription.service_plan,
-                duration_months: termMonths,
-                term_months: termMonths,
-                base_price_cents: basePriceCents,
-                discount_percent: discountPercent,
-                total_price_cents: billingDetails.priceCents,
-                expected_end_date: new Date(subscription.end_date).toISOString(),
-                auto_renew: false,
-              },
-            },
-          ]
-        );
-
-        if (!orderResult.success || !orderResult.data) {
-          await subscriptionRenewalService.markRenewalFailed({
-            subscriptionId,
-            cycleEndDate,
-          });
-          return ErrorResponses.internalError(
-            reply,
-            'Failed to start renewal checkout'
-          );
-        }
-
-        const cardResult = await paymentService.createPay4bitCheckoutSession({
-          orderId: orderResult.data.id,
-        });
-        if (!cardResult.success) {
-          await orderService.updateOrderStatus(
-            orderResult.data.id,
-            'cancelled',
-            cardResult.error || 'renewal_checkout_failed'
-          );
-          await subscriptionRenewalService.markRenewalFailed({
-            subscriptionId,
-            cycleEndDate,
-          });
-
-          if (
-            [
-              'payment_provider_unavailable',
-              'payment_provider_rate_limited',
-              'payment_provider_misconfigured',
-            ].includes(cardResult.error || '')
-          ) {
-            return ErrorResponses.serviceUnavailable(
-              reply,
-              'Card renewal checkout is temporarily unavailable. Please try again later.'
-            );
-          }
-
-          if (
-            [
-              'order_not_found',
-              'order_not_pending',
-              'payment_provider_mismatch',
-              'order_missing_items',
-              'invalid_currency',
-              'missing_app_base_url',
-              'own_account_credentials_required',
-              'invalid_settlement',
-            ].includes(cardResult.error || '')
-          ) {
-            return ErrorResponses.badRequest(
-              reply,
-              (cardResult.error || 'invalid_checkout').replace(/_/g, ' ')
-            );
-          }
-
-          return ErrorResponses.internalError(
-            reply,
-            'Failed to start renewal checkout'
-          );
-        }
-
-        if (cardResult.paymentId) {
-          await subscriptionRenewalService.attachPaymentToRenewal({
-            subscriptionId,
-            cycleEndDate,
-            paymentId: cardResult.paymentId,
-            status: 'processing',
-          });
-        } else {
-          await subscriptionRenewalService.beginRenewalProcessing({
-            subscriptionId,
-            cycleEndDate,
-          });
-        }
-
-        await subscriptionService.updateSubscription(subscriptionId, userId, {
-          status_reason: 'renewal_payment_created',
-          auto_renew: false,
-          next_billing_at: null,
-          renewal_method: null,
-          auto_renew_disabled_at: new Date(),
-        });
-
-        return SuccessResponses.ok(reply, {
-          order_id: orderResult.data.id,
-          payment_provider: 'pay4bit',
-          payment_id: cardResult.paymentId,
-          session_id: cardResult.sessionId,
-          session_url: cardResult.sessionUrl,
-          amount,
-          currency,
-          settlement_currency: currency,
-          settlement_total_cents: billingDetails.priceCents,
-        });
-      } catch (error) {
-        Logger.error('Failed to start manual renewal checkout:', error);
-        return ErrorResponses.internalError(
-          reply,
-          'Failed to start renewal checkout'
-        );
+      const userId = request.user?.userId;
+      if (!userId) {
+        return ErrorResponses.unauthorized(reply, 'Authentication required');
       }
+
+      const { subscriptionId } = request.params;
+      if (!validateSubscriptionId(subscriptionId)) {
+        return ErrorResponses.badRequest(reply, 'Invalid subscription ID format');
+      }
+
+      Logger.info('Deprecated manual renewal endpoint requested', {
+        userId,
+        subscriptionId,
+        endpoint: 'subscriptions:renewal:checkout',
+      });
+      return sendManualRenewalDeprecated(reply);
     }
   );
 
-  // Reveal subscription credentials (PIN required)
+  // Deprecated: credential reveal moved to order-centric endpoint
   fastify.post<{
     Params: { subscriptionId: string };
-    Body: { pin_token: string };
   }>(
     '/:subscriptionId/credentials/reveal',
     {
       preHandler: [credentialRevealRateLimit, authPreHandler],
       schema: {
         params: FastifySchemas.subscriptionIdParam,
-        body: FastifySchemas.pinTokenInput,
       },
     },
     async (
       request: FastifyRequest<{
         Params: { subscriptionId: string };
-        Body: { pin_token: string };
       }>,
       reply: FastifyReply
     ) => {
@@ -4230,131 +3763,12 @@ export async function subscriptionRoutes(
           'Invalid subscription ID format'
         );
       }
-
-      const validation = validatePinTokenInput(request.body);
-      if (!validation.success) {
-        await logCredentialRevealAttempt(request, {
-          subscriptionId,
-          success: false,
-          failureReason: 'invalid_pin_token',
-          metadata: { error: validation.error },
-        });
-        return sendError(
-          reply,
-          HttpStatus.BAD_REQUEST,
-          'Invalid PIN token',
-          validation.error,
-          'INVALID_PIN_TOKEN',
-          validation.details
-        );
-      }
-
-      const tokenResult = await pinService.consumePinToken(
-        validation.data.pin_token
-      );
-      if (!tokenResult.success) {
-        const failureReason =
-          tokenResult.error === 'Redis unavailable'
-            ? 'pin_token_unavailable'
-            : 'pin_token_invalid';
-        await logCredentialRevealAttempt(request, {
-          subscriptionId,
-          success: false,
-          failureReason,
-        });
-        if (failureReason === 'pin_token_unavailable') {
-          return sendError(
-            reply,
-            HttpStatus.SERVICE_UNAVAILABLE,
-            'Service Unavailable',
-            'PIN verification temporarily unavailable',
-            'PIN_TOKEN_UNAVAILABLE'
-          );
-        }
-        return sendError(
-          reply,
-          HttpStatus.UNAUTHORIZED,
-          'PIN Verification Required',
-          'PIN verification required',
-          'PIN_TOKEN_INVALID'
-        );
-      }
-
-      if (tokenResult.data.userId !== userId) {
-        await logCredentialRevealAttempt(request, {
-          subscriptionId,
-          success: false,
-          failureReason: 'pin_token_user_mismatch',
-        });
-        return sendError(
-          reply,
-          HttpStatus.FORBIDDEN,
-          'PIN Token Mismatch',
-          'PIN token does not match this account',
-          'PIN_TOKEN_MISMATCH'
-        );
-      }
-
-      const subscriptionResult = await subscriptionService.getSubscriptionById(
-        subscriptionId,
-        userId
-      );
-
-      if (!subscriptionResult.success || !subscriptionResult.data) {
-        await logCredentialRevealAttempt(request, {
-          subscriptionId,
-          success: false,
-          failureReason: 'subscription_not_found',
-        });
-        return ErrorResponses.notFound(reply, 'Subscription not found');
-      }
-
-      const subscription = subscriptionResult.data;
-
-      if (subscription.status !== 'active') {
-        await logCredentialRevealAttempt(request, {
-          subscriptionId,
-          success: false,
-          failureReason: 'subscription_ineligible',
-          metadata: { status: subscription.status },
-        });
-        return ErrorResponses.forbidden(
-          reply,
-          'Subscription is not eligible for credential reveal'
-        );
-      }
-
-      if (!subscription.credentials_encrypted) {
-        await logCredentialRevealAttempt(request, {
-          subscriptionId,
-          success: false,
-          failureReason: 'credentials_missing',
-        });
-        return ErrorResponses.notFound(
-          reply,
-          'Credentials are not available for this subscription'
-        );
-      }
-
-      const decrypted = credentialsEncryptionService.decryptFromString(
-        subscription.credentials_encrypted
-      );
-      if (!decrypted.wasEncrypted && decrypted.migratedPayload) {
-        await subscriptionService.updateSubscriptionCredentialsEncryptedValue({
-          subscriptionId,
-          encryptedValue: decrypted.migratedPayload,
-        });
-      }
-
       await logCredentialRevealAttempt(request, {
         subscriptionId,
-        success: true,
+        success: false,
+        failureReason: 'moved_to_orders',
       });
-
-      return SuccessResponses.ok(reply, {
-        subscription_id: subscriptionId,
-        credentials: decrypted.plaintext,
-      });
+      return sendCredentialRevealMoved(reply);
     }
   );
 

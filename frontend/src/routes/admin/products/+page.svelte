@@ -23,7 +23,10 @@
     slug: '',
     serviceType: '',
     status: 'inactive',
-    description: ''
+    description: '',
+    durationMonths: '',
+    fixedPriceCents: '',
+    fixedPriceCurrency: ''
   };
 
   let newLabel: Partial<AdminProductLabel> = {
@@ -52,11 +55,53 @@
     resetMessages();
     productSaving = true;
     try {
+      const durationMonthsRaw = newProduct.durationMonths.trim();
+      const fixedPriceCentsRaw = newProduct.fixedPriceCents.trim();
+      const fixedPriceCurrencyRaw = newProduct.fixedPriceCurrency.trim();
+      const hasAnyFixedField =
+        durationMonthsRaw !== '' ||
+        fixedPriceCentsRaw !== '' ||
+        fixedPriceCurrencyRaw !== '';
+      const hasAllFixedFields =
+        durationMonthsRaw !== '' &&
+        fixedPriceCentsRaw !== '' &&
+        fixedPriceCurrencyRaw !== '';
+
+      if (hasAnyFixedField && !hasAllFixedFields) {
+        productError =
+          'To use fixed catalog pricing, provide duration, fixed price cents, and currency together.';
+        return;
+      }
+
+      const parsedDurationMonths =
+        durationMonthsRaw === '' ? undefined : Number(durationMonthsRaw);
+      const parsedFixedPriceCents =
+        fixedPriceCentsRaw === '' ? undefined : Number(fixedPriceCentsRaw);
+      if (
+        parsedDurationMonths !== undefined &&
+        (!Number.isInteger(parsedDurationMonths) || parsedDurationMonths <= 0)
+      ) {
+        productError = 'Duration months must be a positive integer.';
+        return;
+      }
+      if (
+        parsedFixedPriceCents !== undefined &&
+        (!Number.isInteger(parsedFixedPriceCents) || parsedFixedPriceCents < 0)
+      ) {
+        productError = 'Fixed price cents must be a non-negative integer.';
+        return;
+      }
+
       const created = await adminService.createProduct({
         name: newProduct.name,
         slug: newProduct.slug,
         description: newProduct.description || undefined,
         service_type: newProduct.serviceType || undefined,
+        duration_months: hasAllFixedFields ? parsedDurationMonths : undefined,
+        fixed_price_cents: hasAllFixedFields ? parsedFixedPriceCents : undefined,
+        fixed_price_currency: hasAllFixedFields
+          ? fixedPriceCurrencyRaw.toUpperCase()
+          : undefined,
         status: newProduct.status as 'active' | 'inactive'
       });
       products = [created, ...products];
@@ -65,7 +110,10 @@
         slug: '',
         serviceType: '',
         status: 'inactive',
-        description: ''
+        description: '',
+        durationMonths: '',
+        fixedPriceCents: '',
+        fixedPriceCurrency: ''
       };
       productMessage = 'Product created successfully.';
     } catch (error) {
@@ -103,13 +151,13 @@
 <div class="space-y-8">
   <section class="flex flex-col gap-2">
     <h1 class="text-2xl font-bold text-gray-900">Catalog Management</h1>
-    <p class="text-sm text-gray-600">Create products and labels, then edit each product for variants, media, and pricing.</p>
+    <p class="text-sm text-gray-600">Create products and labels, then edit each product for fixed pricing or variant-based pricing.</p>
   </section>
 
   <section class="grid gap-6 lg:grid-cols-2">
     <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
       <h2 class="text-lg font-semibold text-gray-900">Create Product</h2>
-      <p class="text-sm text-gray-500 mb-4">Add a new product entry for your service catalog.</p>
+      <p class="text-sm text-gray-500 mb-4">Add a product, optionally with fixed duration and fixed price fields for unique SKUs.</p>
       <form class="space-y-3" on:submit|preventDefault={handleCreateProduct}>
         <div class="grid gap-3 md:grid-cols-2">
           <input
@@ -142,6 +190,35 @@
           placeholder="Description"
           bind:value={newProduct.description}
         ></textarea>
+        <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <p class="text-xs font-semibold text-gray-700">Fixed Catalog Fields (optional)</p>
+          <p class="mt-1 text-xs text-gray-500">
+            Set all three fields to activate a unique product without variants.
+          </p>
+          <div class="mt-2 grid gap-3 md:grid-cols-3">
+            <input
+              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              type="number"
+              min="1"
+              step="1"
+              placeholder="Duration months"
+              bind:value={newProduct.durationMonths}
+            />
+            <input
+              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="Fixed price cents"
+              bind:value={newProduct.fixedPriceCents}
+            />
+            <input
+              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              placeholder="Currency (e.g. USD)"
+              bind:value={newProduct.fixedPriceCurrency}
+            />
+          </div>
+        </div>
         {#if productMessage}
           <p class="text-sm text-green-600">{productMessage}</p>
         {/if}

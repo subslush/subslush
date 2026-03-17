@@ -8,6 +8,7 @@ import { refundService } from '../services/refundService';
 import { subscriptionService } from '../services/subscriptionService';
 import { creditService } from '../services/creditService';
 import { orderService } from '../services/orderService';
+import { orderEntitlementService } from '../services/orderEntitlementService';
 import { resolveVariantPricing } from '../services/variantPricingService';
 import { resolvePricingLockContext } from '../services/pricingLockService';
 import { couponService, normalizeCouponCode } from '../services/couponService';
@@ -952,6 +953,44 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             return ErrorResponses.internalError(
               reply,
               'Subscription creation failed, credits refunded'
+            );
+          }
+
+          const createdSubscription = subResult.data!;
+          const orderItemId =
+            Array.isArray(order.items) && order.items.length > 0
+              ? (order.items[0]?.id ?? null)
+              : null;
+          const subscriptionStartAt =
+            createdSubscription.term_start_at ?? createdSubscription.start_date;
+          const mmuCycleTotal =
+            snapshot.termMonths > 1 ? snapshot.termMonths : null;
+          const mmuCycleIndex = mmuCycleTotal ? 1 : null;
+
+          const entitlement = await orderEntitlementService.upsertEntitlement({
+            order_id: order.id,
+            order_item_id: orderItemId,
+            user_id: user.userId,
+            status: createdSubscription.status,
+            starts_at: subscriptionStartAt,
+            ends_at: createdSubscription.end_date,
+            duration_months_snapshot: snapshot.termMonths,
+            credentials_encrypted: null,
+            mmu_cycle_index: mmuCycleIndex,
+            mmu_cycle_total: mmuCycleTotal,
+            source_subscription_id: createdSubscription.id,
+            metadata: {
+              source: 'payments.create_payment.credits',
+              renewal_method: 'credits',
+            },
+          });
+          if (!entitlement) {
+            Logger.warn(
+              'Failed to upsert order entitlement after payment credit purchase',
+              {
+                orderId: order.id,
+                subscriptionId: createdSubscription.id,
+              }
             );
           }
 

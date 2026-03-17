@@ -76,6 +76,12 @@ export interface AdminProduct {
   defaultCurrency?: string | null;
   max_subscriptions?: number | null;
   maxSubscriptions?: number | null;
+  duration_months?: number | null;
+  durationMonths?: number | null;
+  fixed_price_cents?: number | null;
+  fixedPriceCents?: number | null;
+  fixed_price_currency?: string | null;
+  fixedPriceCurrency?: string | null;
   status?: 'active' | 'inactive';
   metadata?: Record<string, unknown> | null;
   created_at?: string;

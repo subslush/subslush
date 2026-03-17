@@ -133,14 +133,14 @@
                 <h2 class="text-xl font-semibold text-slate-900">Order claimed successfully</h2>
               </div>
               <p class="text-sm leading-6 text-slate-700">
-                This guest order is now linked to your account. You can view order status and manage subscriptions from your dashboard.
+                This guest order is now linked to your account. You can view order status and credentials from your dashboard.
               </p>
               <div class="flex flex-wrap gap-3 pt-2">
                 <a
-                  href="/dashboard/subscriptions"
+                  href="/dashboard/orders"
                   class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
                 >
-                  View subscriptions
+                  View orders
                   <ArrowRight class="h-4 w-4" />
                 </a>
                 <a
@@ -185,7 +185,7 @@
             </div>
             <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 3</p>
-              <p class="mt-1 text-sm text-slate-700">You can track delivery and manage subscriptions from your dashboard going forward.</p>
+              <p class="mt-1 text-sm text-slate-700">You can track delivery and reveal credentials from your dashboard orders going forward.</p>
             </div>
           </div>
 

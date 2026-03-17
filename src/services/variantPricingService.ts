@@ -18,6 +18,9 @@ type PricingResolutionData = {
   price: PriceHistory;
   currency: string;
   snapshot: TermPricingSnapshot;
+  productVariantId: string | null;
+  planCode: string;
+  catalogMode: 'variant' | 'fixed_product';
 };
 
 type PricingResolutionError =
@@ -44,49 +47,146 @@ export async function resolveVariantPricing(params: {
   }
 
   const listing = await catalogService.getVariantWithProduct(params.variantId);
-  if (!listing) {
+  if (listing) {
+    if (params.requireActive !== false) {
+      if (listing.product.status !== 'active' || !listing.variant.is_active) {
+        return { ok: false, error: 'inactive' };
+      }
+    }
+
+    const term = await catalogService.getVariantTerm(
+      params.variantId,
+      params.termMonths,
+      true
+    );
+    if (!term) {
+      return { ok: false, error: 'term_unavailable' };
+    }
+
+    const price = await catalogService.getCurrentPriceForCurrency({
+      variantId: params.variantId,
+      currency: normalizedCurrency,
+      ...(params.atDate ? { atDate: params.atDate } : {}),
+    });
+    if (!price) {
+      return { ok: false, error: 'price_unavailable' };
+    }
+
+    const snapshot = computeTermPricing({
+      basePriceCents: Number(price.price_cents),
+      termMonths: term.months,
+      discountPercent: term.discount_percent ?? 0,
+    });
+
+    const planCode =
+      listing.variant.service_plan ||
+      listing.variant.variant_code ||
+      listing.product.slug;
+
+    return {
+      ok: true,
+      data: {
+        product: listing.product,
+        variant: listing.variant,
+        term,
+        price,
+        currency: normalizedCurrency,
+        snapshot,
+        productVariantId: listing.variant.id,
+        planCode,
+        catalogMode: 'variant',
+      },
+    };
+  }
+
+  const product = await catalogService.getProductById(params.variantId);
+  if (!product) {
     return { ok: false, error: 'variant_not_found' };
   }
 
-  if (params.requireActive !== false) {
-    if (listing.product.status !== 'active' || !listing.variant.is_active) {
-      return { ok: false, error: 'inactive' };
-    }
+  if (params.requireActive !== false && product.status !== 'active') {
+    return { ok: false, error: 'inactive' };
   }
 
-  const term = await catalogService.getVariantTerm(
-    params.variantId,
-    params.termMonths,
-    true
-  );
-  if (!term) {
+  const durationMonths = Number(product.duration_months);
+  const fixedPriceCents = Number(product.fixed_price_cents);
+  const fixedPriceCurrency = normalizeCurrencyCode(product.fixed_price_currency);
+  if (
+    !Number.isInteger(durationMonths) ||
+    durationMonths <= 0 ||
+    !Number.isInteger(fixedPriceCents) ||
+    fixedPriceCents < 0 ||
+    !fixedPriceCurrency
+  ) {
+    return { ok: false, error: 'variant_not_found' };
+  }
+
+  if (params.termMonths !== durationMonths) {
     return { ok: false, error: 'term_unavailable' };
   }
 
-  const price = await catalogService.getCurrentPriceForCurrency({
-    variantId: params.variantId,
-    currency: normalizedCurrency,
-    ...(params.atDate ? { atDate: params.atDate } : {}),
-  });
-  if (!price) {
+  if (fixedPriceCurrency !== normalizedCurrency) {
     return { ok: false, error: 'price_unavailable' };
   }
 
+  const now = params.atDate ?? new Date();
+  const syntheticVariant: ProductVariant = {
+    id: product.id,
+    product_id: product.id,
+    name: product.name,
+    variant_code: null,
+    description: product.description ?? null,
+    service_plan: product.slug,
+    is_active: true,
+    sort_order: 0,
+    metadata: product.metadata ?? null,
+    created_at: product.created_at,
+    updated_at: product.updated_at,
+  };
+  const syntheticTerm: ProductVariantTerm = {
+    id: product.id,
+    product_variant_id: product.id,
+    months: durationMonths,
+    discount_percent: 0,
+    is_active: true,
+    is_recommended: true,
+    sort_order: 0,
+    metadata: null,
+    created_at: product.created_at,
+    updated_at: product.updated_at,
+  };
+  const syntheticPrice: PriceHistory = {
+    id: product.id,
+    product_variant_id: product.id,
+    price_cents: fixedPriceCents,
+    currency: fixedPriceCurrency,
+    starts_at: now,
+    ends_at: null,
+    metadata: {
+      source: 'products.fixed_price',
+      product_id: product.id,
+    },
+    created_at: now,
+  };
+
   const snapshot = computeTermPricing({
-    basePriceCents: Number(price.price_cents),
-    termMonths: term.months,
-    discountPercent: term.discount_percent ?? 0,
+    basePriceCents: fixedPriceCents,
+    termMonths: durationMonths,
+    discountPercent: 0,
   });
 
   return {
     ok: true,
     data: {
-      product: listing.product,
-      variant: listing.variant,
-      term,
-      price,
+      product,
+      variant: syntheticVariant,
+      term: syntheticTerm,
+      price: syntheticPrice,
       currency: normalizedCurrency,
       snapshot,
+      productVariantId: null,
+      planCode: product.slug,
+      catalogMode: 'fixed_product',
     },
   };
 }

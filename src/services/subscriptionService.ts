@@ -174,21 +174,19 @@ export class SubscriptionService {
         variantId: input.product_variant_id,
       });
 
-      // Validate business logic
-      if (!input.product_variant_id) {
-        return createErrorResult(
-          'Cannot purchase subscription: variant_id is required'
+      // Validate business logic for legacy variant-backed subscriptions.
+      // Fixed products can persist a null product_variant_id.
+      if (input.product_variant_id) {
+        const validationResult = await this.canPurchaseSubscription(
+          userId,
+          input.product_variant_id,
+          input.metadata
         );
-      }
-      const validationResult = await this.canPurchaseSubscription(
-        userId,
-        input.product_variant_id,
-        input.metadata
-      );
-      if (!validationResult.canPurchase) {
-        return createErrorResult(
-          `Cannot purchase subscription: ${validationResult.reason}`
-        );
+        if (!validationResult.canPurchase) {
+          return createErrorResult(
+            `Cannot purchase subscription: ${validationResult.reason}`
+          );
+        }
       }
 
       // Validate dates
@@ -1766,7 +1764,7 @@ export class SubscriptionService {
             message: `Your ${subscriptionLabel} subscription is now active - ${subscriptionShortCode}.`,
             metadata: {
               subscription_id: subscription.id,
-              link: '/dashboard/subscriptions',
+              link: '/dashboard/orders',
               status: newStatus,
             },
             orderId: subscription.order_id ?? null,

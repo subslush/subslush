@@ -16,7 +16,6 @@
 
   let filters = {
     status: '',
-    autoRenew: '',
     query: ''
   };
 
@@ -27,7 +26,6 @@
     endDate: '',
     renewalDate: '',
     nextBillingAt: '',
-    autoRenew: false,
     renewalMethod: ''
   };
   let renewalDateTouched = false;
@@ -114,7 +112,6 @@
     try {
       const params: Record<string, string> = {};
       if (filters.status) params.status = filters.status;
-      if (filters.autoRenew) params.auto_renew = filters.autoRenew;
       if (filters.query) params.search = filters.query;
       subscriptions = await adminService.listSubscriptions(params);
     } catch (error) {
@@ -142,7 +139,6 @@
       endDate,
       renewalDate: initialRenewalDate || computeRenewalDate(endDate, startDate),
       nextBillingAt: initialNextBillingAt,
-      autoRenew: !!pickValue(subscription.autoRenew, subscription.auto_renew),
       renewalMethod: (pickValue(subscription.renewalMethod, subscription.renewal_method) as string) || ''
     };
     renewalDateTouched = false;
@@ -219,7 +215,6 @@
         ...(nextBillingAtPayload !== undefined
           ? { next_billing_at: nextBillingAtPayload }
           : {}),
-        auto_renew: editSubscription.autoRenew,
         renewal_method: editSubscription.renewalMethod || undefined
       });
       subscriptions = subscriptions.map(item => (item.id === editSubscriptionId ? { ...item, ...updated } : item));
@@ -228,21 +223,6 @@
       editSubscriptionId = null;
     } catch (error) {
       actionMessage = getErrorMessage(error, 'Failed to update subscription.');
-      actionStatus = 'error';
-    }
-  };
-
-  const toggleAutoRenew = async (subscription: AdminSubscription) => {
-    actionMessage = '';
-    actionStatus = '';
-    try {
-      const nextValue = !pickValue(subscription.autoRenew, subscription.auto_renew);
-      const updated = await adminService.updateSubscription(subscription.id, { auto_renew: nextValue });
-      subscriptions = subscriptions.map(item => (item.id === subscription.id ? { ...item, ...updated } : item));
-      actionMessage = 'Auto-renew updated.';
-      actionStatus = 'success';
-    } catch (error) {
-      actionMessage = getErrorMessage(error, 'Failed to update auto-renew.');
       actionStatus = 'error';
     }
   };
@@ -354,17 +334,20 @@
 
 <svelte:head>
   <title>Subscriptions - Admin</title>
-  <meta name="description" content="Monitor subscriptions, renewals, and auto-renew settings." />
+  <meta name="description" content="Monitor subscriptions, renewals, and fulfillment status." />
 </svelte:head>
 
 <div class="space-y-6">
   <section>
     <h1 class="text-2xl font-bold text-gray-900">Subscriptions</h1>
     <p class="text-sm text-gray-600">Manage subscription lifecycle, renewals, and reward linkages.</p>
+    <p class="text-xs text-gray-500 mt-1">
+      Auto-renew is deprecated and disabled globally as of March 11, 2026.
+    </p>
   </section>
 
   <section class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-4">
-    <div class="grid gap-3 md:grid-cols-4">
+    <div class="grid gap-3 md:grid-cols-3">
       <input
         class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
         placeholder="Search subscription ID"
@@ -376,11 +359,6 @@
         <option value="pending">Pending</option>
         <option value="expired">Expired</option>
         <option value="cancelled">Cancelled</option>
-      </select>
-      <select class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" bind:value={filters.autoRenew}>
-        <option value="">Auto renew: any</option>
-        <option value="true">Auto renew enabled</option>
-        <option value="false">Auto renew disabled</option>
       </select>
       <button
         class="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
@@ -452,9 +430,6 @@
                 <td class="py-3">
                   <div class="flex gap-2 text-xs">
                     <button class="text-cyan-600 font-semibold" on:click={() => startEdit(subscription)}>Edit</button>
-                    <button class="text-gray-600 font-semibold" on:click={() => toggleAutoRenew(subscription)}>
-                      Toggle auto-renew
-                    </button>
                   </div>
                 </td>
               </tr>
@@ -497,10 +472,6 @@
                           bind:value={editSubscription.renewalMethod}
                         />
                       </label>
-                      <label class="flex items-center gap-2 text-sm text-gray-600">
-                        <input type="checkbox" bind:checked={editSubscription.autoRenew} />
-                        Auto renew
-                      </label>
                       <div class="flex gap-2 md:col-span-4">
                         <button
                           class="flex-1 rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white"
@@ -518,7 +489,7 @@
                     </div>
                     <p class="mt-2 text-xs text-gray-500">
                       Renewal date defaults to 7 days before the end date and updates automatically unless you override it.
-                      Next billing at overrides renewal date in renewal sweeps when set.
+                      Next billing at is retained for historical traceability.
                     </p>
                     <div class="mt-6 grid gap-3 md:grid-cols-3">
                       <label class="space-y-1 text-xs font-semibold text-gray-600">
@@ -626,7 +597,7 @@
   <section class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
     <h2 class="text-lg font-semibold text-gray-900">Renewal Timeline</h2>
     <p class="text-sm text-gray-600 mt-2">
-      Next billing dates are tracked via the subscription record and used to schedule renewal tasks.
+      Next billing dates are tracked via the subscription record for historical context only.
     </p>
   </section>
 </div>

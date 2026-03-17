@@ -2,6 +2,7 @@
   import { Shield, CheckCircle, Users } from 'lucide-svelte';
   import visaLogo from '$lib/assets/visa.svg';
   import mastercardLogo from '$lib/assets/mastercard.svg';
+  import paypalLogo from '$lib/assets/paypal-logo.svg';
   import btcLogo from '$lib/assets/btc.svg';
   import ethLogo from '$lib/assets/eth.svg';
   import usdtLogo from '$lib/assets/usdt.svg';
@@ -31,9 +32,24 @@
     <div class="mt-4 flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600">
       <span class="font-medium whitespace-nowrap">Payment methods:</span>
       <img src={visaLogo} alt="Visa" width="50" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
-      <img src={mastercardLogo} alt="Mastercard" width="90" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
+      <img
+        src={mastercardLogo}
+        alt="Mastercard"
+        width="90"
+        height="16"
+        class="h-[18px] w-auto shrink-0"
+        loading="lazy"
+      />
+      <img
+        src={paypalLogo}
+        alt="PayPal"
+        width="124"
+        height="33"
+        class="h-5 w-auto shrink-0"
+        loading="lazy"
+      />
       <img src={btcLogo} alt="Bitcoin" width="77" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
-      <img src={ethLogo} alt="Ethereum" width="64" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
+      <img src={ethLogo} alt="Ethereum" width="64" height="16" class="h-[18px] w-auto shrink-0" loading="lazy" />
       <img src={usdtLogo} alt="USDT" width="18" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
       <span class="text-gray-600 text-xs sm:text-sm font-medium whitespace-nowrap">and 300+ more</span>
     </div>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Receipt, Settings, LogOut, ChevronDown, User, Calendar } from 'lucide-svelte';
+	import { Receipt, Settings, LogOut, ChevronDown, User } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth.js';
 	import { scale } from 'svelte/transition';
@@ -79,18 +79,6 @@
 			</div>
 
 			<!-- Menu Items -->
-			<a
-				href="/dashboard/subscriptions"
-				data-sveltekit-preload-data="hover"
-				class="flex items-center px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors group"
-				on:click={closeMenu}
-			>
-				<div class="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 group-hover:bg-cyan-50 mr-3">
-					<Calendar size={16} class="text-gray-600 group-hover:text-cyan-600" />
-				</div>
-				<span class="font-medium">My subscriptions</span>
-			</a>
-
 			<a
 				href="/dashboard/orders"
 				data-sveltekit-preload-data="hover"

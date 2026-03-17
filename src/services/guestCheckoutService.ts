@@ -627,13 +627,12 @@ export class GuestCheckoutService {
       const coupon = pricing.coupon ?? null;
       const normalizedCoupon = coupon?.code ?? null;
       const pricingSummaryItems = pricing.items.map(item => ({
-        variant_id: item.variant.id,
+        variant_id: item.productVariantId ?? item.product.id,
         product_id: item.product.id,
         product_name: item.product.name,
         service_type: item.product.service_type ?? null,
         variant_name: item.variant.name ?? null,
-        service_plan:
-          item.variant.service_plan ?? item.variant.variant_code ?? null,
+        service_plan: item.planCode,
         pricing_snapshot_id: item.pricingSnapshotId,
         term_months: item.termMonths,
         currency: item.currency,
@@ -824,10 +823,9 @@ export class GuestCheckoutService {
 
       for (const pricedItem of pricing.items) {
         const planCode =
-          pricedItem.variant.service_plan ||
-          pricedItem.variant.variant_code ||
+          pricedItem.planCode ||
           pricedItem.variant.name ||
-          pricedItem.variant.id;
+          pricedItem.product.slug;
         const serviceType =
           pricedItem.product.service_type ||
           pricedItem.product.slug ||
@@ -849,7 +847,7 @@ export class GuestCheckoutService {
            RETURNING id`,
           [
             orderId,
-            pricedItem.input.variant_id,
+            pricedItem.productVariantId,
             pricedItem.finalTotalCents,
             pricedItem.basePriceCents,
             pricedItem.discountPercent,

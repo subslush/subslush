@@ -1257,7 +1257,7 @@
           <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p class="text-sm font-semibold text-slate-900">Renewal mode</p>
             <p class="mt-1 text-xs text-slate-500">
-              Renewals are manual. You can renew from your subscription dashboard before expiry.
+              Auto-renew and manual renewal are deprecated. Place a new order whenever you want to continue service.
             </p>
           </div>
         </section>

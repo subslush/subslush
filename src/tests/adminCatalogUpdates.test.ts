@@ -96,4 +96,48 @@ describe('Admin catalog updates', () => {
       })
     );
   });
+
+  it('accepts nullable fixed catalog fields when updating a product', async () => {
+    mockCatalogService.getProductById.mockResolvedValue({
+      id: 'prod-1',
+      duration_months: 12,
+      fixed_price_cents: 999,
+      fixed_price_currency: 'USD',
+      status: 'inactive',
+    } as any);
+    mockCatalogService.updateProduct.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'prod-1',
+        duration_months: null,
+        fixed_price_cents: null,
+        fixed_price_currency: null,
+      },
+    } as any);
+
+    const app = Fastify();
+    await app.register(adminCatalogRoutes, { prefix: '/admin' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/admin/products/prod-1',
+      payload: {
+        duration_months: null,
+        fixed_price_cents: null,
+        fixed_price_currency: null,
+      },
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(mockCatalogService.updateProduct).toHaveBeenCalledWith(
+      'prod-1',
+      expect.objectContaining({
+        duration_months: null,
+        fixed_price_cents: null,
+        fixed_price_currency: null,
+      })
+    );
+  });
 });

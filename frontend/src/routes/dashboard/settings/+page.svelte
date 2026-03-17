@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createMutation } from '@tanstack/svelte-query';
-  import { User, Mail, Lock, Save, HelpCircle, Coins, Gift } from 'lucide-svelte';
+  import { User, Mail, Lock, Save, Coins, Gift } from 'lucide-svelte';
   import { auth, user as authUser } from '$lib/stores/auth.js';
   import { credits } from '$lib/stores/credits.js';
   import { apiClient } from '$lib/api/client.js';
@@ -248,14 +248,4 @@
     </div>
   </div>
 
-  <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-    <div class="flex items-center gap-2 mb-2 text-gray-900">
-      <HelpCircle size={18} />
-      <h2 class="text-sm font-semibold">PIN reset</h2>
-    </div>
-    <p class="text-sm text-gray-600">
-      Forgot your PIN? Contact support to reset it.
-      <a href="/help" class="text-gray-900 font-medium hover:underline">Go to help</a>.
-    </p>
-  </div>
 </div>

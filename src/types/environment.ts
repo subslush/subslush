@@ -96,6 +96,7 @@ export interface EnvironmentConfig {
   // Background Jobs / Monitors
   JOBS_ENABLED: boolean;
   PAYMENT_MONITORING_AUTO_START: boolean;
+  SUBSCRIPTION_AUTO_RENEW_SWEEP_ENABLED: boolean;
   SUBSCRIPTION_RENEWAL_INTERVAL: number;
   SUBSCRIPTION_RENEWAL_LOOKAHEAD_MINUTES: number;
   SUBSCRIPTION_RENEWAL_BATCH_SIZE: number;
