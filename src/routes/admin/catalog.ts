@@ -6,6 +6,7 @@ import { logAdminAction } from '../../services/auditLogService';
 import { ErrorResponses, SuccessResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
 import { getSupportedCurrencies } from '../../utils/currency';
+import { FX_BASE_CURRENCY } from '../../services/fx/fxConfig';
 
 const parseBoolean = (value: unknown): boolean | undefined => {
   if (value === undefined || value === null) return undefined;
@@ -273,39 +274,25 @@ export async function adminCatalogRoutes(
             }
 
             const variantIds = activeVariants.map(variant => variant.id);
-            const currencyMaps = await Promise.all(
-              requiredCurrencies.map(currency =>
-                catalogService.listCurrentPricesForCurrency({
-                  variantIds,
-                  currency,
-                })
-              )
+            const usdPriceMap =
+              await catalogService.listCurrentPricesForCurrency({
+                variantIds,
+                currency: FX_BASE_CURRENCY,
+              });
+
+            const missingBasePriceVariants = activeVariants.filter(
+              variant => !usdPriceMap.has(variant.id)
             );
 
-            const missingCurrencyByVariant = activeVariants
-              .map(variant => {
-                const missing = requiredCurrencies.filter((_, index) => {
-                  const priceMap = currencyMaps[index];
-                  return !priceMap || !priceMap.has(variant.id);
-                });
-                return missing.length > 0
-                  ? {
-                      name: variant.name || variant.id,
-                      missing,
-                    }
-                  : null;
-              })
-              .filter(Boolean) as Array<{ name: string; missing: string[] }>;
-
-            if (missingCurrencyByVariant.length > 0) {
-              const preview = missingCurrencyByVariant
+            if (missingBasePriceVariants.length > 0) {
+              const preview = missingBasePriceVariants
                 .slice(0, 3)
-                .map(entry => `${entry.name}: ${entry.missing.join(', ')}`)
-                .join('; ');
-              const suffix = missingCurrencyByVariant.length > 3 ? '…' : '';
+                .map(variant => variant.name || variant.id)
+                .join(', ');
+              const suffix = missingBasePriceVariants.length > 3 ? '…' : '';
               return ErrorResponses.badRequest(
                 reply,
-                `Cannot activate product until all active variants have prices for ${requiredCurrencies.join(', ')}. Missing: ${preview}${suffix}`
+                `Cannot activate product until all active variants have an active ${FX_BASE_CURRENCY} base price. Missing: ${preview}${suffix}`
               );
             }
           }
