@@ -251,12 +251,14 @@ export class GuestCheckoutService {
           previewText: 'Confirm your SubSlush checkout email',
         });
 
-        const sendResult = await emailService.send({
+        const emailPayload = {
           to: params.email,
           subject,
           text,
-          html,
-        });
+          ...(html ? { html } : {}),
+        };
+
+        const sendResult = await emailService.send(emailPayload);
 
         emailSent = sendResult.success;
         if (!sendResult.success) {
