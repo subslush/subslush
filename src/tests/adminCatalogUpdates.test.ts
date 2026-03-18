@@ -141,6 +141,52 @@ describe('Admin catalog updates', () => {
     );
   });
 
+  it('defaults duration_months to 1 when activating with fixed price fields only', async () => {
+    mockCatalogService.getProductById.mockResolvedValue({
+      id: 'prod-1',
+      status: 'inactive',
+      duration_months: null,
+      fixed_price_cents: null,
+      fixed_price_currency: null,
+    } as any);
+    mockCatalogService.updateProduct.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'prod-1',
+        status: 'active',
+        duration_months: 1,
+        fixed_price_cents: 999,
+        fixed_price_currency: 'USD',
+      },
+    } as any);
+
+    const app = Fastify();
+    await app.register(adminCatalogRoutes, { prefix: '/admin' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/admin/products/prod-1',
+      payload: {
+        status: 'active',
+        fixed_price_cents: 999,
+        fixed_price_currency: 'USD',
+      },
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(mockCatalogService.updateProduct).toHaveBeenCalledWith(
+      'prod-1',
+      expect.objectContaining({
+        status: 'active',
+        duration_months: 1,
+        fixed_price_cents: 999,
+        fixed_price_currency: 'USD',
+      })
+    );
+  });
+
   it('passes category and sub-category filters when listing products', async () => {
     mockCatalogService.listProducts.mockResolvedValue([
       {

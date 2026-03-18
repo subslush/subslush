@@ -5,7 +5,10 @@ import { catalogService } from '../../services/catalogService';
 import { logAdminAction } from '../../services/auditLogService';
 import { ErrorResponses, SuccessResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
-import { getSupportedCurrencies } from '../../utils/currency';
+import {
+  getSupportedCurrencies,
+  normalizeCurrencyCode,
+} from '../../utils/currency';
 import { FX_BASE_CURRENCY } from '../../services/fx/fxConfig';
 
 const parseBoolean = (value: unknown): boolean | undefined => {
@@ -13,6 +16,21 @@ const parseBoolean = (value: unknown): boolean | undefined => {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'string') return value.toLowerCase() === 'true';
   return undefined;
+};
+
+const hasValue = (value: unknown): boolean => {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  return true;
+};
+
+const parseInteger = (value: unknown): number | null => {
+  if (!hasValue(value)) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || !Number.isInteger(numeric)) {
+    return null;
+  }
+  return numeric;
 };
 
 export async function adminCatalogRoutes(
@@ -266,7 +284,7 @@ export async function adminCatalogRoutes(
         if (payload?.status === 'active' || payload?.status === undefined) {
           return ErrorResponses.badRequest(
             reply,
-            'Create the product as inactive, then add fixed duration/price fields or variant pricing before activation.'
+            'Create the product as inactive, then add fixed pricing fields or variant pricing before activation.'
           );
         }
 
@@ -350,10 +368,11 @@ export async function adminCatalogRoutes(
             payload?.fixed_price_currency !== undefined
               ? payload.fixed_price_currency
               : before.fixed_price_currency;
+          const durationMonths = parseInteger(durationMonthsRaw);
+          const fixedPriceCents = parseInteger(fixedPriceCentsRaw);
           const normalizedFixedCurrency =
-            typeof fixedPriceCurrencyRaw === 'string' &&
-            fixedPriceCurrencyRaw.trim().length > 0
-              ? fixedPriceCurrencyRaw.trim().toUpperCase()
+            typeof fixedPriceCurrencyRaw === 'string'
+              ? normalizeCurrencyCode(fixedPriceCurrencyRaw)
               : null;
           const requiredCurrencies = getSupportedCurrencies();
           const hasSupportedFixedCurrency =
@@ -361,16 +380,20 @@ export async function adminCatalogRoutes(
             requiredCurrencies.includes(
               normalizedFixedCurrency as (typeof requiredCurrencies)[number]
             );
+          const hasPositiveDuration =
+            durationMonths !== null && durationMonths > 0;
           const hasCompleteFixedCatalog =
-            Number.isInteger(durationMonthsRaw) &&
-            Number(durationMonthsRaw) > 0 &&
-            Number.isInteger(fixedPriceCentsRaw) &&
-            Number(fixedPriceCentsRaw) >= 0 &&
+            fixedPriceCents !== null &&
+            fixedPriceCents >= 0 &&
             hasSupportedFixedCurrency;
           const hasAnyFixedCatalogField =
-            (durationMonthsRaw !== undefined && durationMonthsRaw !== null) ||
-            (fixedPriceCentsRaw !== undefined && fixedPriceCentsRaw !== null) ||
-            normalizedFixedCurrency !== null;
+            hasValue(durationMonthsRaw) ||
+            hasValue(fixedPriceCentsRaw) ||
+            hasValue(fixedPriceCurrencyRaw);
+
+          if (hasCompleteFixedCatalog && !hasPositiveDuration) {
+            payload.duration_months = 1;
+          }
 
           if (!hasCompleteFixedCatalog) {
             const activeVariants = await catalogService.listVariants(
@@ -381,7 +404,7 @@ export async function adminCatalogRoutes(
               if (hasAnyFixedCatalogField) {
                 return ErrorResponses.badRequest(
                   reply,
-                  'Cannot activate product: fixed catalog fields are incomplete. Set duration_months, fixed_price_cents, and a supported fixed_price_currency, or configure active variants.'
+                  'Cannot activate product: fixed catalog fields are incomplete. Set fixed_price_cents and a supported fixed_price_currency (duration_months defaults to 1 when omitted), or configure active variants.'
                 );
               }
               return ErrorResponses.badRequest(

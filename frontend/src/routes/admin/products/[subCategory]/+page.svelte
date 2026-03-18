@@ -20,7 +20,6 @@
     slug: '',
     serviceType: '',
     description: '',
-    durationMonths: '',
     fixedPriceCents: '',
     fixedPriceCurrency: ''
   };
@@ -43,36 +42,25 @@
     productSaving = true;
 
     try {
-      const durationMonthsRaw = newProduct.durationMonths.trim();
-      const fixedPriceCentsRaw = newProduct.fixedPriceCents.trim();
-      const fixedPriceCurrencyRaw = newProduct.fixedPriceCurrency.trim();
+      const fixedPriceCentsRaw = String(newProduct.fixedPriceCents ?? '').trim();
+      const fixedPriceCurrencyRaw = String(
+        newProduct.fixedPriceCurrency ?? ''
+      ).trim();
       const hasAnyFixedField =
-        durationMonthsRaw !== '' ||
         fixedPriceCentsRaw !== '' ||
         fixedPriceCurrencyRaw !== '';
-      const hasAllFixedFields =
-        durationMonthsRaw !== '' &&
+      const hasCompleteFixedPricing =
         fixedPriceCentsRaw !== '' &&
         fixedPriceCurrencyRaw !== '';
 
-      if (hasAnyFixedField && !hasAllFixedFields) {
+      if (hasAnyFixedField && !hasCompleteFixedPricing) {
         productError =
-          'To use fixed catalog pricing, provide duration, fixed price cents, and currency together.';
+          'To use fixed catalog pricing, provide fixed price cents and currency together.';
         return;
       }
 
-      const parsedDurationMonths =
-        durationMonthsRaw === '' ? undefined : Number(durationMonthsRaw);
       const parsedFixedPriceCents =
         fixedPriceCentsRaw === '' ? undefined : Number(fixedPriceCentsRaw);
-
-      if (
-        parsedDurationMonths !== undefined &&
-        (!Number.isInteger(parsedDurationMonths) || parsedDurationMonths <= 0)
-      ) {
-        productError = 'Duration months must be a positive integer.';
-        return;
-      }
 
       if (
         parsedFixedPriceCents !== undefined &&
@@ -89,9 +77,11 @@
         service_type: newProduct.serviceType || undefined,
         category: subCategory.category,
         sub_category: subCategory.name,
-        duration_months: hasAllFixedFields ? parsedDurationMonths : undefined,
-        fixed_price_cents: hasAllFixedFields ? parsedFixedPriceCents : undefined,
-        fixed_price_currency: hasAllFixedFields
+        duration_months: hasCompleteFixedPricing ? 1 : undefined,
+        fixed_price_cents: hasCompleteFixedPricing
+          ? parsedFixedPriceCents
+          : undefined,
+        fixed_price_currency: hasCompleteFixedPricing
           ? fixedPriceCurrencyRaw.toUpperCase()
           : undefined,
         status: 'inactive'
@@ -103,7 +93,6 @@
         slug: '',
         serviceType: '',
         description: '',
-        durationMonths: '',
         fixedPriceCents: '',
         fixedPriceCurrency: ''
       };
@@ -174,17 +163,9 @@
       <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
         <p class="text-xs font-semibold text-gray-700">Fixed Catalog Fields (optional)</p>
         <p class="mt-1 text-xs text-gray-500">
-          Set all three fields to activate a unique product without variants.
+          Set fixed price cents and currency for unique products without variants. Duration defaults to 1 month.
         </p>
-        <div class="mt-2 grid gap-3 md:grid-cols-3">
-          <input
-            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-            type="number"
-            min="1"
-            step="1"
-            placeholder="Duration months"
-            bind:value={newProduct.durationMonths}
-          />
+        <div class="mt-2 grid gap-3 md:grid-cols-2">
           <input
             class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             type="number"

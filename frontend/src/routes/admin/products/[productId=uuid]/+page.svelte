@@ -658,17 +658,16 @@
       const fixedPriceCurrencyRaw = String(
         productForm.fixedPriceCurrency ?? ''
       ).trim();
-      const hasAnyFixedField =
+      const hasCompleteFixedPricing =
+        fixedPriceCentsRaw !== '' &&
+        fixedPriceCurrencyRaw !== '';
+      const hasAnyFixedInput =
         durationMonthsRaw !== '' ||
         fixedPriceCentsRaw !== '' ||
         fixedPriceCurrencyRaw !== '';
-      const hasAllFixedFields =
-        durationMonthsRaw !== '' &&
-        fixedPriceCentsRaw !== '' &&
-        fixedPriceCurrencyRaw !== '';
-      if (hasAnyFixedField && !hasAllFixedFields) {
+      if (hasAnyFixedInput && !hasCompleteFixedPricing) {
         productError =
-          'To use fixed catalog pricing, provide duration, fixed price cents, and currency together.';
+          'To use fixed catalog pricing, provide fixed price cents and currency together.';
         return;
       }
 
@@ -714,14 +713,16 @@
         sub_category: subCategoryValue === '' ? null : subCategoryValue,
         max_subscriptions: maxSubscriptions,
         duration_months:
-          hasAllFixedFields && parsedDurationMonths !== null
-            ? parsedDurationMonths
+          hasCompleteFixedPricing
+            ? parsedDurationMonths !== null
+              ? parsedDurationMonths
+              : 1
             : null,
         fixed_price_cents:
-          hasAllFixedFields && parsedFixedPriceCents !== null
+          hasCompleteFixedPricing && parsedFixedPriceCents !== null
             ? parsedFixedPriceCents
             : null,
-        fixed_price_currency: hasAllFixedFields
+        fixed_price_currency: hasCompleteFixedPricing
           ? fixedPriceCurrencyRaw.toUpperCase()
           : null,
         status: productForm.status,
@@ -1289,7 +1290,7 @@
       <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
         <p class="text-xs font-semibold text-gray-700">Fixed Catalog Fields</p>
         <p class="mt-1 text-xs text-gray-500">
-          Use these fields for unique products that do not require variants.
+          Use fixed price cents and currency for unique products without variants. Duration defaults to 1 month when omitted.
         </p>
         <div class="mt-2 grid gap-3 md:grid-cols-3">
           <input
@@ -1297,7 +1298,7 @@
             type="number"
             min="1"
             step="1"
-            placeholder="Duration months"
+            placeholder="Duration months (optional)"
             bind:value={productForm.durationMonths}
           />
           <input
