@@ -140,4 +140,74 @@ describe('Admin catalog updates', () => {
       })
     );
   });
+
+  it('passes category and sub-category filters when listing products', async () => {
+    mockCatalogService.listProducts.mockResolvedValue([
+      {
+        id: 'prod-1',
+        name: 'Netflix Standard',
+        slug: 'netflix-standard',
+      },
+    ] as any);
+
+    const app = Fastify();
+    await app.register(adminCatalogRoutes, { prefix: '/admin' });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/admin/products?category=streaming&sub_category=netflix',
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(mockCatalogService.listProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'streaming',
+        sub_category: 'netflix',
+      })
+    );
+  });
+
+  it('creates a product sub-category', async () => {
+    mockCatalogService.createProductSubCategory.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'subcat-1',
+        category: 'streaming',
+        name: 'Netflix',
+        slug: 'netflix',
+      },
+    } as any);
+
+    const app = Fastify();
+    await app.register(adminCatalogRoutes, { prefix: '/admin' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/product-sub-categories',
+      payload: {
+        category: 'streaming',
+        name: 'Netflix',
+      },
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(201);
+    expect(mockCatalogService.createProductSubCategory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'streaming',
+        name: 'Netflix',
+      })
+    );
+    expect(mockLogAdminAction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: 'catalog.sub_category.create',
+        entityType: 'product_sub_category',
+        entityId: 'subcat-1',
+      })
+    );
+  });
 });

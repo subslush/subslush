@@ -2,6 +2,7 @@ import { apiClient, createApiClient } from './client.js';
 import { API_ENDPOINTS } from '$lib/utils/constants.js';
 import type {
   AdminProduct,
+  AdminProductSubCategory,
   AdminProductVariant,
   AdminProductLabel,
   AdminProductMedia,
@@ -73,6 +74,35 @@ export class AdminService {
   async listProducts(params?: QueryParams): Promise<AdminProduct[]> {
     const response = await this.client.get(API_ENDPOINTS.ADMIN.PRODUCTS, { params });
     return unwrapItems<AdminProduct>(response, 'products');
+  }
+
+  async listProductSubCategories(
+    params?: QueryParams
+  ): Promise<AdminProductSubCategory[]> {
+    const response = await this.client.get(
+      API_ENDPOINTS.ADMIN.PRODUCT_SUB_CATEGORIES,
+      { params }
+    );
+    return unwrapItems<AdminProductSubCategory>(response, 'sub_categories');
+  }
+
+  async getProductSubCategory(slug: string): Promise<AdminProductSubCategory> {
+    const response = await this.client.get(
+      `${API_ENDPOINTS.ADMIN.PRODUCT_SUB_CATEGORIES}/${slug}`
+    );
+    return unwrap<AdminProductSubCategory>(response);
+  }
+
+  async createProductSubCategory(payload: {
+    category: string;
+    name: string;
+    slug?: string;
+  }): Promise<AdminProductSubCategory> {
+    const response = await this.client.post(
+      API_ENDPOINTS.ADMIN.PRODUCT_SUB_CATEGORIES,
+      payload
+    );
+    return unwrap<AdminProductSubCategory>(response);
   }
 
   async getProductDetail(productId: string): Promise<AdminProductDetail> {

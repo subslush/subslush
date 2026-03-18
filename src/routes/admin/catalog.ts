@@ -27,6 +27,8 @@ export async function adminCatalogRoutes(
           properties: {
             status: { type: 'string' },
             service_type: { type: 'string' },
+            category: { type: 'string' },
+            sub_category: { type: 'string' },
             limit: { type: 'number', minimum: 1, maximum: 200 },
             offset: { type: 'number', minimum: 0 },
           },
@@ -36,16 +38,21 @@ export async function adminCatalogRoutes(
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const { status, service_type, limit, offset } = request.query as {
-          status?: string;
-          service_type?: string;
-          limit?: number;
-          offset?: number;
-        };
+        const { status, service_type, category, sub_category, limit, offset } =
+          request.query as {
+            status?: string;
+            service_type?: string;
+            category?: string;
+            sub_category?: string;
+            limit?: number;
+            offset?: number;
+          };
 
         const products = await catalogService.listProducts({
           ...(status ? { status } : {}),
           ...(service_type ? { service_type } : {}),
+          ...(category ? { category } : {}),
+          ...(sub_category ? { sub_category } : {}),
           ...(limit !== undefined ? { limit } : {}),
           ...(offset !== undefined ? { offset } : {}),
         });
@@ -91,6 +98,137 @@ export async function adminCatalogRoutes(
       } catch (error) {
         Logger.error('Admin get product failed:', error);
         return ErrorResponses.internalError(reply, 'Failed to fetch product');
+      }
+    }
+  );
+
+  fastify.get(
+    '/product-sub-categories',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: {
+            category: { type: 'string' },
+            limit: { type: 'number', minimum: 1, maximum: 200 },
+            offset: { type: 'number', minimum: 0 },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { category, limit, offset } = request.query as {
+          category?: string;
+          limit?: number;
+          offset?: number;
+        };
+
+        const subCategories = await catalogService.listProductSubCategories({
+          ...(category ? { category } : {}),
+          ...(limit !== undefined ? { limit } : {}),
+          ...(offset !== undefined ? { offset } : {}),
+        });
+
+        return SuccessResponses.ok(reply, { sub_categories: subCategories });
+      } catch (error) {
+        Logger.error('Admin list product sub-categories failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to list product sub-categories'
+        );
+      }
+    }
+  );
+
+  fastify.get(
+    '/product-sub-categories/:slug',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['slug'],
+          properties: {
+            slug: { type: 'string', minLength: 1 },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { slug } = request.params as { slug: string };
+        const subCategory =
+          await catalogService.getProductSubCategoryBySlug(slug);
+        if (!subCategory) {
+          return ErrorResponses.notFound(
+            reply,
+            'Product sub-category not found'
+          );
+        }
+
+        return SuccessResponses.ok(reply, subCategory);
+      } catch (error) {
+        Logger.error('Admin get product sub-category failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to fetch product sub-category'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/product-sub-categories',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['category', 'name'],
+          properties: {
+            category: { type: 'string', minLength: 1 },
+            name: { type: 'string', minLength: 1 },
+            slug: { type: 'string', minLength: 1 },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const payload = request.body as {
+          category: string;
+          name: string;
+          slug?: string;
+        };
+        const result = await catalogService.createProductSubCategory(payload);
+
+        if (!result.success) {
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to create product sub-category'
+          );
+        }
+
+        await logAdminAction(request, {
+          action: 'catalog.sub_category.create',
+          entityType: 'product_sub_category',
+          entityId: result.data?.id || null,
+          after: result.data || null,
+        });
+
+        return SuccessResponses.created(
+          reply,
+          result.data,
+          'Product sub-category created'
+        );
+      } catch (error) {
+        Logger.error('Admin create product sub-category failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to create product sub-category'
+        );
       }
     }
   );

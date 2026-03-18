@@ -1,36 +1,31 @@
 <script lang="ts">
-  import StatusBadge from '$lib/components/admin/StatusBadge.svelte';
   import AdminEmptyState from '$lib/components/admin/AdminEmptyState.svelte';
   import { adminService } from '$lib/api/admin.js';
-  import { formatOptionalDate, pickValue, statusToneFromMap } from '$lib/utils/admin.js';
-  import type { AdminProduct, AdminProductLabel } from '$lib/types/admin.js';
+  import { formatOptionalDate, pickValue } from '$lib/utils/admin.js';
+  import type {
+    AdminProductLabel,
+    AdminProductSubCategory
+  } from '$lib/types/admin.js';
   import type { PageData } from './$types';
 
   export let data: PageData;
 
-  let products: AdminProduct[] = data.products;
+  let subCategories: AdminProductSubCategory[] = Array.isArray(data.subCategories)
+    ? data.subCategories
+    : [];
 
-  let productMessage = '';
-  let productError = '';
-  let productSaving = false;
-
+  let saving = false;
+  let message = '';
+  let error = '';
+  let labelSaving = false;
   let labelMessage = '';
   let labelError = '';
-  let labelSaving = false;
 
-  let newProduct = {
-    name: '',
-    slug: '',
-    serviceType: '',
+  let form = {
     category: '',
-    subCategory: '',
-    status: 'inactive',
-    description: '',
-    durationMonths: '',
-    fixedPriceCents: '',
-    fixedPriceCurrency: ''
+    name: '',
+    slug: ''
   };
-
   let newLabel: Partial<AdminProductLabel> = {
     name: '',
     slug: '',
@@ -38,100 +33,66 @@
     description: ''
   };
 
-  const productStatusMap = {
-    active: 'success',
-    inactive: 'danger'
-  } as const;
+  const getErrorMessage = (value: unknown, fallback: string): string =>
+    value instanceof Error ? value.message : fallback;
 
-  const getErrorMessage = (error: unknown, fallback: string) =>
-    error instanceof Error ? error.message : fallback;
+  const normalizeSlugInput = (value: string): string =>
+    value
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
 
-  const resetMessages = () => {
-    productMessage = '';
-    productError = '';
-    labelMessage = '';
-    labelError = '';
-  };
+  const sortSubCategories = (items: AdminProductSubCategory[]) =>
+    [...items].sort((a, b) => {
+      const categoryA = (a.category || '').toLowerCase();
+      const categoryB = (b.category || '').toLowerCase();
+      if (categoryA !== categoryB) return categoryA.localeCompare(categoryB);
+      return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+    });
 
-  const handleCreateProduct = async () => {
-    resetMessages();
-    productSaving = true;
+  const handleCreateSubCategory = async () => {
+    message = '';
+    error = '';
+    saving = true;
+
     try {
-      const durationMonthsRaw = newProduct.durationMonths.trim();
-      const fixedPriceCentsRaw = newProduct.fixedPriceCents.trim();
-      const fixedPriceCurrencyRaw = newProduct.fixedPriceCurrency.trim();
-      const hasAnyFixedField =
-        durationMonthsRaw !== '' ||
-        fixedPriceCentsRaw !== '' ||
-        fixedPriceCurrencyRaw !== '';
-      const hasAllFixedFields =
-        durationMonthsRaw !== '' &&
-        fixedPriceCentsRaw !== '' &&
-        fixedPriceCurrencyRaw !== '';
+      const category = form.category.trim();
+      const name = form.name.trim();
+      const slug = form.slug.trim();
 
-      if (hasAnyFixedField && !hasAllFixedFields) {
-        productError =
-          'To use fixed catalog pricing, provide duration, fixed price cents, and currency together.';
+      if (!category || !name) {
+        error = 'Category and sub-category name are required.';
         return;
       }
 
-      const parsedDurationMonths =
-        durationMonthsRaw === '' ? undefined : Number(durationMonthsRaw);
-      const parsedFixedPriceCents =
-        fixedPriceCentsRaw === '' ? undefined : Number(fixedPriceCentsRaw);
-      if (
-        parsedDurationMonths !== undefined &&
-        (!Number.isInteger(parsedDurationMonths) || parsedDurationMonths <= 0)
-      ) {
-        productError = 'Duration months must be a positive integer.';
-        return;
-      }
-      if (
-        parsedFixedPriceCents !== undefined &&
-        (!Number.isInteger(parsedFixedPriceCents) || parsedFixedPriceCents < 0)
-      ) {
-        productError = 'Fixed price cents must be a non-negative integer.';
-        return;
-      }
-
-      const created = await adminService.createProduct({
-        name: newProduct.name,
-        slug: newProduct.slug,
-        description: newProduct.description || undefined,
-        service_type: newProduct.serviceType || undefined,
-        category: newProduct.category.trim() || undefined,
-        sub_category: newProduct.subCategory.trim() || undefined,
-        duration_months: hasAllFixedFields ? parsedDurationMonths : undefined,
-        fixed_price_cents: hasAllFixedFields ? parsedFixedPriceCents : undefined,
-        fixed_price_currency: hasAllFixedFields
-          ? fixedPriceCurrencyRaw.toUpperCase()
-          : undefined,
-        status: newProduct.status as 'active' | 'inactive'
+      const created = await adminService.createProductSubCategory({
+        category,
+        name,
+        ...(slug ? { slug: normalizeSlugInput(slug) } : {})
       });
-      products = [created, ...products];
-      newProduct = {
-        name: '',
-        slug: '',
-        serviceType: '',
+
+      subCategories = sortSubCategories([created, ...subCategories]);
+      form = {
         category: '',
-        subCategory: '',
-        status: 'inactive',
-        description: '',
-        durationMonths: '',
-        fixedPriceCents: '',
-        fixedPriceCurrency: ''
+        name: '',
+        slug: ''
       };
-      productMessage = 'Product created successfully.';
-    } catch (error) {
-      productError = getErrorMessage(error, 'Failed to create product.');
+      message = 'Sub-category created successfully.';
+    } catch (value) {
+      error = getErrorMessage(value, 'Failed to create sub-category.');
     } finally {
-      productSaving = false;
+      saving = false;
     }
   };
 
   const handleCreateLabel = async () => {
-    resetMessages();
+    labelMessage = '';
+    labelError = '';
     labelSaving = true;
+
     try {
       await adminService.createLabel({
         name: newLabel.name,
@@ -139,116 +100,78 @@
         description: newLabel.description || undefined,
         color: newLabel.color || undefined
       });
-      newLabel = { name: '', slug: '', color: '#DB2777', description: '' };
+      newLabel = {
+        name: '',
+        slug: '',
+        color: '#DB2777',
+        description: ''
+      };
       labelMessage = 'Label created successfully.';
-    } catch (error) {
-      labelError = getErrorMessage(error, 'Failed to create label.');
+    } catch (value) {
+      labelError = getErrorMessage(value, 'Failed to create label.');
     } finally {
       labelSaving = false;
     }
   };
+
+  const getProductCount = (item: AdminProductSubCategory): number =>
+    Number(pickValue(item.productCount, item.product_count) || 0);
 </script>
 
 <svelte:head>
-  <title>Products - Admin</title>
-  <meta name="description" content="Create products and labels, then manage product details from the product page." />
+  <title>Product Sub-Categories - Admin</title>
+  <meta
+    name="description"
+    content="Create and manage product sub-categories, then open each sub-category workspace to manage products."
+  />
 </svelte:head>
 
 <div class="space-y-8">
   <section class="flex flex-col gap-2">
-    <h1 class="text-2xl font-bold text-gray-900">Catalog Management</h1>
-    <p class="text-sm text-gray-600">Create products and labels, then edit each product for fixed pricing or variant-based pricing.</p>
+    <h1 class="text-2xl font-bold text-gray-900">Sub-Category Management</h1>
+    <p class="text-sm text-gray-600">
+      Create sub-categories first, then open a sub-category workspace to create and manage products inside it.
+    </p>
   </section>
 
   <section class="grid gap-6 lg:grid-cols-2">
     <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-      <h2 class="text-lg font-semibold text-gray-900">Create Product</h2>
-      <p class="text-sm text-gray-500 mb-4">Add a product, optionally with fixed duration and fixed price fields for unique SKUs.</p>
-      <form class="space-y-3" on:submit|preventDefault={handleCreateProduct}>
-        <div class="grid gap-3 md:grid-cols-2">
-          <input
-            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-            placeholder="Product name"
-            bind:value={newProduct.name}
-            required
-          />
-          <input
-            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-            placeholder="Slug (URL friendly name, unique)"
-            bind:value={newProduct.slug}
-            required
-          />
-        </div>
-        <div class="grid gap-3 md:grid-cols-2">
-          <input
-            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-            placeholder="Service type (e.g. spotify, netflix)"
-            bind:value={newProduct.serviceType}
-          />
-          <select class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" bind:value={newProduct.status}>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-        <div class="grid gap-3 md:grid-cols-2">
+      <h2 class="text-lg font-semibold text-gray-900">Create Sub-Category</h2>
+      <p class="text-sm text-gray-500 mb-4">
+        Sub-category slugs are used in admin URLs, for example <code>/admin/products/netflix</code>.
+      </p>
+      <form class="space-y-3" on:submit|preventDefault={handleCreateSubCategory}>
+        <div class="grid gap-3 md:grid-cols-1">
           <input
             class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             placeholder="Category (e.g. streaming)"
-            bind:value={newProduct.category}
+            bind:value={form.category}
+            required
           />
           <input
             class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-            placeholder="Sub-category (e.g. Netflix)"
-            bind:value={newProduct.subCategory}
+            placeholder="Sub-category name (e.g. Netflix)"
+            bind:value={form.name}
+            required
+          />
+          <input
+            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            placeholder="Slug (optional, e.g. netflix)"
+            bind:value={form.slug}
           />
         </div>
-        <textarea
-          class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-          rows={3}
-          placeholder="Description"
-          bind:value={newProduct.description}
-        ></textarea>
-        <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
-          <p class="text-xs font-semibold text-gray-700">Fixed Catalog Fields (optional)</p>
-          <p class="mt-1 text-xs text-gray-500">
-            Set all three fields to activate a unique product without variants.
-          </p>
-          <div class="mt-2 grid gap-3 md:grid-cols-3">
-            <input
-              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-              type="number"
-              min="1"
-              step="1"
-              placeholder="Duration months"
-              bind:value={newProduct.durationMonths}
-            />
-            <input
-              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="Fixed price cents"
-              bind:value={newProduct.fixedPriceCents}
-            />
-            <input
-              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-              placeholder="Currency (e.g. USD)"
-              bind:value={newProduct.fixedPriceCurrency}
-            />
-          </div>
-        </div>
-        {#if productMessage}
-          <p class="text-sm text-green-600">{productMessage}</p>
+        {#if message}
+          <p class="text-sm text-green-600">{message}</p>
         {/if}
-        {#if productError}
-          <p class="text-sm text-red-600">{productError}</p>
+        {#if error}
+          <p class="text-sm text-red-600">{error}</p>
         {/if}
         <button
           class="w-full rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2 text-sm font-semibold text-white"
           type="submit"
-          disabled={productSaving}
+          disabled={saving}
         >
-          {productSaving ? 'Saving...' : 'Create Product'}
+          {saving ? 'Saving...' : 'Create Sub-Category'}
         </button>
       </form>
     </div>
@@ -303,46 +226,46 @@
   <section class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
     <div class="flex items-center justify-between mb-4">
       <div>
-        <h2 class="text-lg font-semibold text-gray-900">Products</h2>
-        <p class="text-sm text-gray-500">Open a product to manage variants, media, and pricing.</p>
+        <h2 class="text-lg font-semibold text-gray-900">Sub-Categories</h2>
+        <p class="text-sm text-gray-500">Open a sub-category to manage products scoped to it.</p>
       </div>
-      <p class="text-sm text-gray-500">{products.length} total</p>
+      <p class="text-sm text-gray-500">{subCategories.length} total</p>
     </div>
-    {#if products.length === 0}
-      <AdminEmptyState title="No products" message="Create your first product to populate the catalog." />
+
+    {#if subCategories.length === 0}
+      <AdminEmptyState
+        title="No sub-categories"
+        message="Create your first sub-category to start organizing products."
+      />
     {:else}
       <div class="overflow-x-auto">
         <table class="min-w-full text-sm">
           <thead class="text-left text-xs uppercase text-gray-500">
             <tr>
               <th class="py-2">Name</th>
-              <th class="py-2">Service</th>
-              <th class="py-2">Status</th>
+              <th class="py-2">Category</th>
+              <th class="py-2">Slug</th>
+              <th class="py-2">Products</th>
               <th class="py-2">Updated</th>
               <th class="py-2">Action</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100">
-            {#each products as product}
+            {#each subCategories as subCategory}
               <tr>
-                <td class="py-3 font-semibold text-gray-900">
-                  {product.name}
-                  <div class="text-xs text-gray-500">{product.slug}</div>
+                <td class="py-3 font-semibold text-gray-900">{subCategory.name}</td>
+                <td class="py-3 text-gray-600">{subCategory.category}</td>
+                <td class="py-3 text-gray-600">{subCategory.slug}</td>
+                <td class="py-3 text-gray-600">{getProductCount(subCategory)}</td>
+                <td class="py-3 text-gray-600">
+                  {formatOptionalDate(pickValue(subCategory.updatedAt, subCategory.updated_at))}
                 </td>
-                <td class="py-3 text-gray-600">{pickValue(product.serviceType, product.service_type) || '--'}</td>
-                <td class="py-3">
-                  <StatusBadge
-                    label={(product.status || 'inactive').toString()}
-                    tone={statusToneFromMap(product.status || 'inactive', productStatusMap)}
-                  />
-                </td>
-                <td class="py-3 text-gray-600">{formatOptionalDate(pickValue(product.updatedAt, product.updated_at))}</td>
                 <td class="py-3">
                   <a
                     class="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-900 hover:border-gray-300"
-                    href={`/admin/products/${product.id}`}
+                    href={`/admin/products/${subCategory.slug}`}
                   >
-                    Edit
+                    Open
                   </a>
                 </td>
               </tr>

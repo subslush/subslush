@@ -16,11 +16,11 @@ export const load: PageServerLoad = async ({ fetch, cookies }) => {
     .join('; ');
   const adminService = createAdminService(fetch, { cookie: cookieHeader });
 
-  const [products] = await Promise.all([
-    safeList(() => adminService.listProducts({ limit: 100 }))
+  const [subCategories] = await Promise.all([
+    safeList(() => adminService.listProductSubCategories({ limit: 200 }))
   ]);
 
   return {
-    products
+    subCategories
   };
 };

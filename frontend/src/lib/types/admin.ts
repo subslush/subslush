@@ -92,6 +92,19 @@ export interface AdminProduct {
   updatedAt?: string;
 }
 
+export interface AdminProductSubCategory {
+  id: string;
+  category: string;
+  name: string;
+  slug: string;
+  product_count?: number;
+  productCount?: number;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
+}
+
 export interface AdminProductVariant {
   id: string;
   product_id?: string | null;

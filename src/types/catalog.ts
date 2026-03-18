@@ -21,6 +21,16 @@ export interface Product {
   updated_at: Date;
 }
 
+export interface ProductSubCategory {
+  id: string;
+  category: string;
+  name: string;
+  slug: string;
+  product_count?: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export interface ProductVariant {
   id: string;
   product_id: string;
@@ -149,6 +159,18 @@ export interface ListPriceHistoryFilters {
   product_id?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface ListProductSubCategoryFilters {
+  category?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CreateProductSubCategoryInput {
+  category: string;
+  name: string;
+  slug?: string | null;
 }
 
 export interface CreateProductInput {

@@ -2,6 +2,7 @@ import { getDatabasePool } from '../config/database';
 import { Logger } from '../utils/logger';
 import {
   Product,
+  ProductSubCategory,
   ProductVariant,
   ProductVariantTerm,
   ProductLabel,
@@ -23,6 +24,8 @@ import {
   CreateVariantTermInput,
   UpdateVariantTermInput,
   ListVariantTermFilters,
+  ListProductSubCategoryFilters,
+  CreateProductSubCategoryInput,
 } from '../types/catalog';
 import {
   ServiceResult,
@@ -66,6 +69,22 @@ function normalizeTextField(value?: string | null): string | null {
 function normalizeTaxonomyFilterValue(value?: string | null): string | null {
   const normalized = normalizeTextField(value);
   return normalized ? normalized.toLowerCase() : null;
+}
+
+function normalizeSlugField(value?: string | null): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return normalized.length > 0 ? normalized : null;
 }
 
 function normalizeIntegerOrNull(value: unknown): number | null {
@@ -126,6 +145,23 @@ function mapProduct(row: any): Product {
     fixed_price_currency: row.fixed_price_currency,
     status: row.status,
     metadata: parseMetadata(row.metadata),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function mapProductSubCategory(row: any): ProductSubCategory {
+  const productCount =
+    row.product_count !== undefined && row.product_count !== null
+      ? Number(row.product_count)
+      : null;
+
+  return {
+    id: row.id,
+    category: row.category,
+    name: row.name,
+    slug: row.slug,
+    ...(productCount !== null ? { product_count: productCount } : {}),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -681,6 +717,166 @@ export class CatalogService {
     } catch (error) {
       Logger.error('Failed to list products:', error);
       return [];
+    }
+  }
+
+  async listProductSubCategories(
+    filters?: ListProductSubCategoryFilters
+  ): Promise<ProductSubCategory[]> {
+    try {
+      const pool = getDatabasePool();
+      const params: any[] = [];
+      let paramCount = 0;
+      let sql = `
+        SELECT
+          sc.id,
+          sc.category,
+          sc.name,
+          sc.slug,
+          sc.created_at,
+          sc.updated_at,
+          COUNT(p.id)::int AS product_count
+        FROM product_sub_categories sc
+        LEFT JOIN products p
+          ON LOWER(BTRIM(COALESCE(p.category, ''))) = LOWER(BTRIM(sc.category))
+         AND LOWER(BTRIM(COALESCE(p.sub_category, ''))) = LOWER(BTRIM(sc.name))
+      `;
+
+      const normalizedCategory = normalizeTaxonomyFilterValue(
+        filters?.category
+      );
+      if (normalizedCategory) {
+        sql += ` WHERE LOWER(BTRIM(sc.category)) = $${++paramCount}`;
+        params.push(normalizedCategory);
+      }
+
+      sql += `
+        GROUP BY sc.id, sc.category, sc.name, sc.slug, sc.created_at, sc.updated_at
+        ORDER BY LOWER(sc.category) ASC, LOWER(sc.name) ASC
+      `;
+
+      if (filters?.limit) {
+        sql += ` LIMIT $${++paramCount}`;
+        params.push(filters.limit);
+      }
+      if (filters?.offset) {
+        sql += ` OFFSET $${++paramCount}`;
+        params.push(filters.offset);
+      }
+
+      const result = await pool.query(sql, params);
+      return result.rows.map(mapProductSubCategory);
+    } catch (error) {
+      Logger.error('Failed to list product sub-categories:', error);
+      return [];
+    }
+  }
+
+  async getProductSubCategoryBySlug(
+    slug: string
+  ): Promise<ProductSubCategory | null> {
+    try {
+      const normalizedSlug = normalizeSlugField(slug);
+      if (!normalizedSlug) {
+        return null;
+      }
+
+      const pool = getDatabasePool();
+      const result = await pool.query(
+        `
+          SELECT
+            sc.id,
+            sc.category,
+            sc.name,
+            sc.slug,
+            sc.created_at,
+            sc.updated_at,
+            COUNT(p.id)::int AS product_count
+          FROM product_sub_categories sc
+          LEFT JOIN products p
+            ON LOWER(BTRIM(COALESCE(p.category, ''))) = LOWER(BTRIM(sc.category))
+           AND LOWER(BTRIM(COALESCE(p.sub_category, ''))) = LOWER(BTRIM(sc.name))
+          WHERE sc.slug = $1
+          GROUP BY sc.id, sc.category, sc.name, sc.slug, sc.created_at, sc.updated_at
+          LIMIT 1
+        `,
+        [normalizedSlug]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return mapProductSubCategory(result.rows[0]);
+    } catch (error) {
+      Logger.error('Failed to fetch product sub-category by slug:', error);
+      return null;
+    }
+  }
+
+  async createProductSubCategory(
+    input: CreateProductSubCategoryInput
+  ): Promise<ServiceResult<ProductSubCategory>> {
+    try {
+      const category = normalizeTextField(input.category);
+      const name = normalizeTextField(input.name);
+      const slug = normalizeSlugField(input.slug ?? input.name);
+
+      if (!category) {
+        return createErrorResult('Category is required');
+      }
+      if (!name) {
+        return createErrorResult('Sub-category name is required');
+      }
+      if (!slug) {
+        return createErrorResult('Sub-category slug is required');
+      }
+
+      if (
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          slug
+        )
+      ) {
+        return createErrorResult(
+          'Sub-category slug cannot be UUID-like for admin routing clarity'
+        );
+      }
+
+      const pool = getDatabasePool();
+
+      const existingSlugResult = await pool.query(
+        'SELECT id FROM product_sub_categories WHERE slug = $1 LIMIT 1',
+        [slug]
+      );
+      if (existingSlugResult.rows.length > 0) {
+        return createErrorResult('Sub-category slug already exists');
+      }
+
+      const existingNameResult = await pool.query(
+        `SELECT id
+         FROM product_sub_categories
+         WHERE LOWER(BTRIM(category)) = LOWER(BTRIM($1))
+           AND LOWER(BTRIM(name)) = LOWER(BTRIM($2))
+         LIMIT 1`,
+        [category, name]
+      );
+      if (existingNameResult.rows.length > 0) {
+        return createErrorResult(
+          'Sub-category already exists for this category'
+        );
+      }
+
+      const insertResult = await pool.query(
+        `INSERT INTO product_sub_categories (category, name, slug)
+         VALUES ($1, $2, $3)
+         RETURNING id, category, name, slug, created_at, updated_at`,
+        [category, name, slug]
+      );
+
+      return createSuccessResult(mapProductSubCategory(insertResult.rows[0]));
+    } catch (error) {
+      Logger.error('Failed to create product sub-category:', error);
+      return createErrorResult('Failed to create product sub-category');
     }
   }
 

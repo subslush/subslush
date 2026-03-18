@@ -90,6 +90,7 @@ export const API_ENDPOINTS = {
   ADMIN: {
     OVERVIEW: '/admin/overview',
     PRODUCTS: '/admin/products',
+    PRODUCT_SUB_CATEGORIES: '/admin/product-sub-categories',
     PRODUCT_VARIANTS: '/admin/product-variants',
     PRODUCT_VARIANT_TERMS: '/admin/product-variant-terms',
     PRODUCT_LABELS: '/admin/product-labels',
