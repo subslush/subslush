@@ -126,6 +126,7 @@ export interface AvailablePlansResponse {
 
 export interface ProductListing {
   product_id: string;
+  variant_id?: string | null;
   slug: string;
   name: string;
   description: string;
@@ -134,10 +135,15 @@ export interface ProductListing {
   logoKey?: string | null;
   category?: string | null;
   sub_category?: string | null;
+  platform?: string | null;
+  region?: string | null;
   currency: string;
   from_price: number;
   from_term_months: number;
   from_discount_percent?: number | null;
+  max_discount_percent?: number | null;
+  actual_price?: number | null;
+  comparison_price?: number | null;
 }
 
 export interface AvailableProductsResponse {

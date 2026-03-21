@@ -122,6 +122,25 @@
     return [];
   };
 
+  const readMetadataInteger = (
+    metadata: Record<string, unknown>,
+    keys: string[]
+  ): number | null => {
+    for (const key of keys) {
+      const value = metadata[key];
+      if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        const parsed = Number(value.trim());
+        if (Number.isInteger(parsed) && parsed >= 0) {
+          return parsed;
+        }
+      }
+    }
+    return null;
+  };
+
   const buildPlatformOptions = (
     products: AdminProduct[],
     currentValue: string
@@ -284,6 +303,7 @@
       infoBoxText: string;
       platform: string;
       region: string;
+      comparisonPriceCents: string;
       activationGuide: string;
       upgradeOptions: {
         allowNewAccount: boolean;
@@ -320,6 +340,16 @@
       delete next.region;
       delete next.region_name;
       delete next.regionName;
+    }
+
+    const comparisonPriceRaw = input.comparisonPriceCents.trim();
+    if (comparisonPriceRaw) {
+      next.comparison_price_cents = Number(comparisonPriceRaw);
+    } else {
+      delete next.comparison_price_cents;
+      delete next.comparisonPriceCents;
+      delete next.compare_at_price_cents;
+      delete next.compareAtPriceCents;
     }
 
     const activationGuide = input.activationGuide.trim();
@@ -369,6 +399,7 @@
     durationMonths: string;
     fixedPriceCents: string;
     fixedPriceCurrency: string;
+    comparisonPriceCents: string;
     infoBoxText: string;
     platform: string;
     region: string;
@@ -438,6 +469,12 @@
       value.fixedPriceCurrency,
       value.fixed_price_currency
     );
+    const comparisonPriceCents = readMetadataInteger(metadata, [
+      'comparison_price_cents',
+      'comparisonPriceCents',
+      'compare_at_price_cents',
+      'compareAtPriceCents'
+    ]);
     return {
       name: value.name || '',
       slug: value.slug || '',
@@ -461,6 +498,8 @@
           : '',
       fixedPriceCurrency:
         typeof fixedPriceCurrency === 'string' ? fixedPriceCurrency : '',
+      comparisonPriceCents:
+        comparisonPriceCents !== null ? String(comparisonPriceCents) : '',
       infoBoxText: readMetadataString(metadata, [
         'info_box_text',
         'infoBoxText',
@@ -658,6 +697,9 @@
       const fixedPriceCurrencyRaw = String(
         productForm.fixedPriceCurrency ?? ''
       ).trim();
+      const comparisonPriceCentsRaw = String(
+        productForm.comparisonPriceCents ?? ''
+      ).trim();
       const hasCompleteFixedPricing =
         fixedPriceCentsRaw !== '' &&
         fixedPriceCurrencyRaw !== '';
@@ -689,11 +731,23 @@
         productError = 'Fixed price cents must be a non-negative integer.';
         return;
       }
+      const parsedComparisonPriceCents =
+        comparisonPriceCentsRaw === '' ? null : Number(comparisonPriceCentsRaw);
+      if (
+        parsedComparisonPriceCents !== null &&
+        (!Number.isInteger(parsedComparisonPriceCents) ||
+          parsedComparisonPriceCents < 0)
+      ) {
+        productError =
+          'Comparison price cents must be a non-negative integer.';
+        return;
+      }
 
       const metadata = buildProductMetadata(normalizeMetadata(product.metadata), {
         infoBoxText: productForm.infoBoxText,
         platform: productForm.platform,
         region: productForm.region,
+        comparisonPriceCents: comparisonPriceCentsRaw,
         activationGuide: productForm.activationGuide,
         upgradeOptions: {
           allowNewAccount: productForm.allowNewAccount,
@@ -1292,7 +1346,7 @@
         <p class="mt-1 text-xs text-gray-500">
           Use fixed price cents and currency for unique products without variants. Duration defaults to 1 month when omitted.
         </p>
-        <div class="mt-2 grid gap-3 md:grid-cols-3">
+        <div class="mt-2 grid gap-3 md:grid-cols-4">
           <input
             class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             type="number"
@@ -1313,6 +1367,14 @@
             class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             placeholder="Currency (e.g. USD)"
             bind:value={productForm.fixedPriceCurrency}
+          />
+          <input
+            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="Comparison price cents (optional)"
+            bind:value={productForm.comparisonPriceCents}
           />
         </div>
       </div>

@@ -28,6 +28,7 @@
     listName: string;
     emptyState: string;
     products: ProductListing[];
+    subCategoryDiscounts: Record<string, number>;
   };
 
   let searchQuery = '';
@@ -90,6 +91,7 @@
       }
     ]
   };
+  const HOME_SECTION_PRODUCT_CAP = 6;
 
   const normalizeText = (value?: string | null): string =>
     (value || '')
@@ -102,6 +104,9 @@
   const matchesByAlias = (product: ProductListing, aliases: string[]): boolean => {
     const normalizedName = normalizeText(product.name);
     const normalizedSlug = normalizeText(product.slug);
+    const normalizedServiceType = normalizeText(product.service_type);
+    const normalizedSubCategory = normalizeText(product.sub_category);
+    const normalizedLogoKey = normalizeText(product.logo_key ?? product.logoKey);
 
     return aliases.some(alias => {
       const normalizedAlias = normalizeText(alias);
@@ -109,8 +114,13 @@
         normalizedAlias.length > 0 &&
         (normalizedName === normalizedAlias ||
           normalizedSlug === normalizedAlias ||
+          normalizedServiceType === normalizedAlias ||
+          normalizedSubCategory === normalizedAlias ||
+          normalizedLogoKey === normalizedAlias ||
           normalizedName.includes(normalizedAlias) ||
-          normalizedAlias.includes(normalizedName))
+          normalizedAlias.includes(normalizedName) ||
+          normalizedSlug.includes(normalizedAlias) ||
+          normalizedAlias.includes(normalizedSlug))
       );
     });
   };
@@ -118,10 +128,12 @@
   const pickCuratedProducts = (
     products: ProductListing[],
     rules: CuratedProductRule[],
-    fallbackCategory?: string
+    fallbackCategory?: string,
+    limit = rules.length
   ): ProductListing[] => {
     const selected: ProductListing[] = [];
     const usedIds = new Set<string>();
+    const normalizedFallbackCategory = normalizeCategory(fallbackCategory);
 
     const getComparablePrice = (product: ProductListing): number =>
       Number.isFinite(product.from_price) ? product.from_price : Number.POSITIVE_INFINITY;
@@ -153,7 +165,12 @@
 
     for (const rule of rules) {
       const candidate = products.reduce<ProductListing | null>((best, product) => {
-        if (usedIds.has(product.product_id) || !matchesRule(product, rule)) {
+        if (
+          usedIds.has(product.product_id) ||
+          !matchesRule(product, rule) ||
+          (normalizedFallbackCategory &&
+            normalizeCategory(product.category) !== normalizedFallbackCategory)
+        ) {
           return best;
         }
         if (!best) {
@@ -171,14 +188,74 @@
     }
 
     if (!fallbackCategory) {
-      return selected;
+      return selected.slice(0, limit);
     }
 
     const categoryFallback = products.filter(product =>
       normalizeCategory(product.category) === normalizeCategory(fallbackCategory)
       && !usedIds.has(product.product_id)
     );
-    return [...selected, ...categoryFallback].slice(0, rules.length);
+    return [...selected, ...categoryFallback].slice(0, limit);
+  };
+
+  const resolveListingDiscountPercent = (product: ProductListing): number => {
+    let best = 0;
+
+    const maxDiscountPercent = Number(product.max_discount_percent);
+    if (Number.isFinite(maxDiscountPercent) && maxDiscountPercent > 0) {
+      best = Math.max(best, maxDiscountPercent);
+    }
+
+    const fromDiscountPercent = Number(product.from_discount_percent);
+    if (Number.isFinite(fromDiscountPercent) && fromDiscountPercent > 0) {
+      best = Math.max(best, fromDiscountPercent);
+    }
+
+    const fromPrice = Number(product.from_price);
+    const comparisonPrice = Number(product.comparison_price);
+    if (
+      Number.isFinite(fromPrice) &&
+      fromPrice > 0 &&
+      Number.isFinite(comparisonPrice) &&
+      comparisonPrice > fromPrice
+    ) {
+      const comparisonDiscount = Math.round(
+        ((comparisonPrice - fromPrice) / comparisonPrice) * 100
+      );
+      if (comparisonDiscount > 0) {
+        best = Math.max(best, comparisonDiscount);
+      }
+    }
+
+    return best;
+  };
+
+  const buildSubCategoryDiscountMap = (
+    products: ProductListing[],
+    categoryKey: string
+  ): Record<string, number> => {
+    const discounts: Record<string, number> = {};
+    const normalizedCategory = normalizeCategory(categoryKey);
+
+    for (const product of products) {
+      if (normalizeCategory(product.category) !== normalizedCategory) {
+        continue;
+      }
+      const subCategoryKey = normalizeText(product.sub_category);
+      if (!subCategoryKey) {
+        continue;
+      }
+      const discountPercent = resolveListingDiscountPercent(product);
+      if (discountPercent <= 0) {
+        continue;
+      }
+      discounts[subCategoryKey] = Math.max(
+        discounts[subCategoryKey] ?? 0,
+        discountPercent
+      );
+    }
+
+    return discounts;
   };
 
   let allProducts: ProductListing[] = [];
@@ -195,37 +272,44 @@
   $: streamingProducts = pickCuratedProducts(
     allProducts,
     curatedProductsByCategory.streaming,
-    'streaming'
+    'streaming',
+    HOME_SECTION_PRODUCT_CAP
   );
   $: musicProducts = pickCuratedProducts(
     allProducts,
     curatedProductsByCategory.music,
-    'music'
+    'music',
+    HOME_SECTION_PRODUCT_CAP
   );
   $: aiProducts = pickCuratedProducts(
     allProducts,
     curatedProductsByCategory.ai,
-    'ai'
+    'ai',
+    HOME_SECTION_PRODUCT_CAP
   );
   $: productivityProducts = pickCuratedProducts(
     allProducts,
     curatedProductsByCategory.productivity,
-    'productivity'
+    'productivity',
+    HOME_SECTION_PRODUCT_CAP
   );
   $: designProducts = pickCuratedProducts(
     allProducts,
     curatedProductsByCategory.design,
-    'design'
+    'design',
+    HOME_SECTION_PRODUCT_CAP
   );
   $: educationProducts = pickCuratedProducts(
     allProducts,
     curatedProductsByCategory.education,
-    'education'
+    'education',
+    HOME_SECTION_PRODUCT_CAP
   );
   $: fitnessProducts = pickCuratedProducts(
     allProducts,
     curatedProductsByCategory.fitness,
-    'fitness'
+    'fitness',
+    HOME_SECTION_PRODUCT_CAP
   );
   $: homeShowcaseSections = [
     {
@@ -234,7 +318,8 @@
       description: 'Binge-ready subscriptions with verified access and flexible terms.',
       listName: 'Streaming',
       emptyState: 'No streaming products yet. Check back soon.',
-      products: streamingProducts
+      products: streamingProducts,
+      subCategoryDiscounts: buildSubCategoryDiscountMap(allProducts, 'streaming')
     },
     {
       key: 'music',
@@ -242,7 +327,8 @@
       description: 'Hi-fi streaming, curated playlists, and premium listening perks.',
       listName: 'Music',
       emptyState: 'No music products yet. Check back soon.',
-      products: musicProducts
+      products: musicProducts,
+      subCategoryDiscounts: buildSubCategoryDiscountMap(allProducts, 'music')
     },
     {
       key: 'ai',
@@ -250,7 +336,8 @@
       description: 'Upgrade your workflows with leading AI tools and copilots.',
       listName: 'AI',
       emptyState: 'No AI products yet. Check back soon.',
-      products: aiProducts
+      products: aiProducts,
+      subCategoryDiscounts: buildSubCategoryDiscountMap(allProducts, 'ai')
     },
     {
       key: 'productivity',
@@ -258,7 +345,8 @@
       description: 'Core work tools that keep teams fast, focused, and organized.',
       listName: 'Productivity',
       emptyState: 'No productivity products yet. Check back soon.',
-      products: productivityProducts
+      products: productivityProducts,
+      subCategoryDiscounts: buildSubCategoryDiscountMap(allProducts, 'productivity')
     },
     {
       key: 'design',
@@ -266,7 +354,8 @@
       description: 'Professional design stacks for creatives, teams, and solo builders.',
       listName: 'Design',
       emptyState: 'No design products yet. Check back soon.',
-      products: designProducts
+      products: designProducts,
+      subCategoryDiscounts: buildSubCategoryDiscountMap(allProducts, 'design')
     },
     {
       key: 'education',
@@ -274,7 +363,8 @@
       description: 'Learn faster with premium language and study subscriptions.',
       listName: 'Education',
       emptyState: 'No education products yet. Check back soon.',
-      products: educationProducts
+      products: educationProducts,
+      subCategoryDiscounts: buildSubCategoryDiscountMap(allProducts, 'education')
     },
     {
       key: 'fitness',
@@ -282,7 +372,8 @@
       description: 'Build consistency with premium training and nutrition tools.',
       listName: 'Fitness',
       emptyState: 'No fitness products yet. Check back soon.',
-      products: fitnessProducts
+      products: fitnessProducts,
+      subCategoryDiscounts: buildSubCategoryDiscountMap(allProducts, 'fitness')
     }
   ];
 
@@ -382,11 +473,24 @@
         </div>
 
         {#if section.products.length > 0}
-          <SubscriptionGrid
-            products={section.products}
-            listName={section.listName}
-            linkMode="subcategory"
-          />
+          <div class="flex items-stretch gap-2">
+            <div class="min-w-0 flex-1">
+              <SubscriptionGrid
+                products={section.products}
+                listName={section.listName}
+                linkMode="subcategory"
+                subCategoryDiscounts={section.subCategoryDiscounts}
+              />
+            </div>
+            <a
+              href={`/browse?category=${encodeURIComponent(section.key)}`}
+              class="inline-flex shrink-0 items-center justify-center self-stretch min-h-[15rem] w-12 rounded-2xl bg-white text-4xl font-semibold leading-none text-fuchsia-600 transition-colors hover:text-pink-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+              aria-label={`Browse ${section.title} category`}
+              title={`Browse ${section.title}`}
+            >
+              &gt;
+            </a>
+          </div>
         {:else}
           <div class="border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-600">
             {section.emptyState}

@@ -420,6 +420,28 @@ function readMetadataString(
   return undefined;
 }
 
+function readMetadataInteger(
+  metadata: Record<string, unknown> | null | undefined,
+  keys: string[]
+): number | null {
+  if (!metadata || typeof metadata !== 'object') {
+    return null;
+  }
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value.trim());
+      if (Number.isInteger(parsed) && parsed >= 0) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+}
+
 function readMetadataList(
   metadata: Record<string, unknown> | null | undefined,
   keys: string[]
@@ -1439,10 +1461,16 @@ export async function subscriptionRoutes(
           string,
           {
             product: CatalogListing['product'];
+            variantId: string;
             minMonthlyCents: number;
+            actualPriceCents: number;
             currency: string;
             fromTermMonths: number;
             fromDiscountPercent: number | null;
+            maxDiscountPercent: number | null;
+            platform: string | null;
+            region: string | null;
+            comparisonPriceCents: number | null;
           }
         >();
 
@@ -1514,10 +1542,21 @@ export async function subscriptionRoutes(
           }
 
           let minMonthlyCents = Number.POSITIVE_INFINITY;
+          let actualPriceCents = Number.NaN;
           let fromTermMonths = 0;
           let fromDiscountPercent: number | null = null;
+          let maxDiscountPercent: number | null = null;
 
           for (const term of terms) {
+            const rawTermDiscount = Number(term.discount_percent ?? 0);
+            if (Number.isFinite(rawTermDiscount) && rawTermDiscount > 0) {
+              const normalizedTermDiscount = Math.round(rawTermDiscount);
+              maxDiscountPercent =
+                maxDiscountPercent === null
+                  ? normalizedTermDiscount
+                  : Math.max(maxDiscountPercent, normalizedTermDiscount);
+            }
+
             const snapshot = computeTermPricing({
               basePriceCents: priceCents,
               termMonths: term.months,
@@ -1529,23 +1568,67 @@ export async function subscriptionRoutes(
             });
             if (effectiveMonthly < minMonthlyCents) {
               minMonthlyCents = effectiveMonthly;
+              actualPriceCents = snapshot.totalPriceCents;
               fromTermMonths = snapshot.termMonths;
               fromDiscountPercent = term.discount_percent ?? null;
             }
           }
 
-          if (!Number.isFinite(minMonthlyCents)) {
+          if (
+            !Number.isFinite(minMonthlyCents) ||
+            !Number.isFinite(actualPriceCents)
+          ) {
             continue;
+          }
+
+          const platform = readMetadataString(product.metadata, [
+            'platform',
+            'platform_name',
+            'platformName',
+          ]);
+          const region = readMetadataString(product.metadata, [
+            'region',
+            'region_name',
+            'regionName',
+          ]);
+          const comparisonPriceCents = readMetadataInteger(product.metadata, [
+            'comparison_price_cents',
+            'comparisonPriceCents',
+            'compare_at_price_cents',
+            'compareAtPriceCents',
+          ]);
+          if (
+            comparisonPriceCents !== null &&
+            comparisonPriceCents > actualPriceCents &&
+            actualPriceCents > 0
+          ) {
+            const metadataDiscountPercent = Math.round(
+              ((comparisonPriceCents - actualPriceCents) /
+                comparisonPriceCents) *
+                100
+            );
+            if (metadataDiscountPercent > 0) {
+              maxDiscountPercent =
+                maxDiscountPercent === null
+                  ? metadataDiscountPercent
+                  : Math.max(maxDiscountPercent, metadataDiscountPercent);
+            }
           }
 
           const existing = productMap.get(product.id);
           if (!existing || minMonthlyCents < existing.minMonthlyCents) {
             productMap.set(product.id, {
               product,
+              variantId: variant.id,
               minMonthlyCents,
+              actualPriceCents,
               currency,
               fromTermMonths,
               fromDiscountPercent,
+              maxDiscountPercent,
+              platform: platform || null,
+              region: region || null,
+              comparisonPriceCents,
             });
           }
         }
@@ -1577,14 +1660,52 @@ export async function subscriptionRoutes(
             continue;
           }
 
+          const platform = readMetadataString(product.metadata, [
+            'platform',
+            'platform_name',
+            'platformName',
+          ]);
+          const region = readMetadataString(product.metadata, [
+            'region',
+            'region_name',
+            'regionName',
+          ]);
+          const comparisonPriceCents = readMetadataInteger(product.metadata, [
+            'comparison_price_cents',
+            'comparisonPriceCents',
+            'compare_at_price_cents',
+            'compareAtPriceCents',
+          ]);
+          let maxDiscountPercent: number | null = null;
+          if (
+            comparisonPriceCents !== null &&
+            comparisonPriceCents > fixedPriceCents &&
+            fixedPriceCents > 0
+          ) {
+            const metadataDiscountPercent = Math.round(
+              ((comparisonPriceCents - fixedPriceCents) /
+                comparisonPriceCents) *
+                100
+            );
+            if (metadataDiscountPercent > 0) {
+              maxDiscountPercent = metadataDiscountPercent;
+            }
+          }
+
           const existing = productMap.get(product.id);
           if (!existing || effectiveMonthly < existing.minMonthlyCents) {
             productMap.set(product.id, {
               product,
+              variantId: product.id,
               minMonthlyCents: effectiveMonthly,
+              actualPriceCents: fixedPriceCents,
               currency,
               fromTermMonths: durationMonths,
               fromDiscountPercent: null,
+              maxDiscountPercent,
+              platform: platform || null,
+              region: region || null,
+              comparisonPriceCents,
             });
           }
         }
@@ -1601,6 +1722,7 @@ export async function subscriptionRoutes(
 
         const products = Array.from(productMap.values()).map(entry => ({
           product_id: entry.product.id,
+          variant_id: entry.variantId,
           slug: entry.product.slug,
           name: entry.product.name,
           description: entry.product.description ?? '',
@@ -1608,10 +1730,18 @@ export async function subscriptionRoutes(
           logo_key: entry.product.logo_key ?? null,
           category: entry.product.category ?? null,
           sub_category: entry.product.sub_category ?? null,
+          platform: entry.platform,
+          region: entry.region,
           currency: entry.currency,
           from_price: entry.minMonthlyCents / 100,
           from_term_months: entry.fromTermMonths,
           from_discount_percent: entry.fromDiscountPercent,
+          max_discount_percent: entry.maxDiscountPercent,
+          actual_price: entry.actualPriceCents / 100,
+          comparison_price:
+            entry.comparisonPriceCents !== null
+              ? entry.comparisonPriceCents / 100
+              : null,
         }));
 
         return SuccessResponses.ok(reply, {

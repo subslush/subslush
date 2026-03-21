@@ -21,7 +21,8 @@
     serviceType: '',
     description: '',
     fixedPriceCents: '',
-    fixedPriceCurrency: ''
+    fixedPriceCurrency: '',
+    comparisonPriceCents: ''
   };
 
   const productStatusMap = {
@@ -61,6 +62,11 @@
 
       const parsedFixedPriceCents =
         fixedPriceCentsRaw === '' ? undefined : Number(fixedPriceCentsRaw);
+      const comparisonPriceCentsRaw = String(
+        newProduct.comparisonPriceCents ?? ''
+      ).trim();
+      const parsedComparisonPriceCents =
+        comparisonPriceCentsRaw === '' ? undefined : Number(comparisonPriceCentsRaw);
 
       if (
         parsedFixedPriceCents !== undefined &&
@@ -68,6 +74,20 @@
       ) {
         productError = 'Fixed price cents must be a non-negative integer.';
         return;
+      }
+      if (
+        parsedComparisonPriceCents !== undefined &&
+        (!Number.isInteger(parsedComparisonPriceCents) ||
+          parsedComparisonPriceCents < 0)
+      ) {
+        productError =
+          'Comparison price cents must be a non-negative integer.';
+        return;
+      }
+
+      const metadata: Record<string, unknown> = {};
+      if (parsedComparisonPriceCents !== undefined) {
+        metadata.comparison_price_cents = parsedComparisonPriceCents;
       }
 
       const created = await adminService.createProduct({
@@ -84,7 +104,8 @@
         fixed_price_currency: hasCompleteFixedPricing
           ? fixedPriceCurrencyRaw.toUpperCase()
           : undefined,
-        status: 'inactive'
+        status: 'inactive',
+        ...(Object.keys(metadata).length > 0 ? { metadata } : {})
       });
 
       products = [created, ...products];
@@ -94,7 +115,8 @@
         serviceType: '',
         description: '',
         fixedPriceCents: '',
-        fixedPriceCurrency: ''
+        fixedPriceCurrency: '',
+        comparisonPriceCents: ''
       };
       productMessage = 'Product created successfully.';
     } catch (error) {
@@ -165,7 +187,7 @@
         <p class="mt-1 text-xs text-gray-500">
           Set fixed price cents and currency for unique products without variants. Duration defaults to 1 month.
         </p>
-        <div class="mt-2 grid gap-3 md:grid-cols-2">
+        <div class="mt-2 grid gap-3 md:grid-cols-3">
           <input
             class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             type="number"
@@ -178,6 +200,14 @@
             class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             placeholder="Currency (e.g. USD)"
             bind:value={newProduct.fixedPriceCurrency}
+          />
+          <input
+            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="Comparison price cents (optional)"
+            bind:value={newProduct.comparisonPriceCents}
           />
         </div>
       </div>

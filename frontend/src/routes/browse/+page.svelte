@@ -216,16 +216,19 @@
         <!-- Left panel -->
         <div class="space-y-6">
           <div class="border border-gray-200 rounded-xl p-4 shadow-sm">
-            <p class="text-xs font-semibold text-cyan-600 uppercase tracking-wide">
-              {selectedSubCategory ? 'Selected sub-category' : 'Selected category'}
-            </p>
-            <h2 class="text-xl font-bold text-gray-900 mt-1">
-              {selectedSubCategoryLabel || selectedCategoryLabel}
-            </h2>
-            {#if selectedSubCategory && selectedCategory !== 'all'}
-              <p class="text-xs text-gray-500 mt-1">Inside {selectedCategoryLabel}</p>
+            {#if selectedSubCategory}
+              <h2 class="text-xl font-bold text-gray-900">
+                {selectedSubCategoryLabel || selectedCategoryLabel}
+              </h2>
+            {:else}
+              <p class="text-xs font-semibold text-cyan-600 uppercase tracking-wide">
+                Selected category
+              </p>
+              <h2 class="text-xl font-bold text-gray-900 mt-1">
+                {selectedCategoryLabel}
+              </h2>
+              <p class="text-sm text-gray-600">{filteredProducts.length} items</p>
             {/if}
-            <p class="text-sm text-gray-600">{filteredProducts.length} items</p>
           </div>
           <div class="border border-gray-200 rounded-xl p-4 shadow-sm space-y-2">
             <div class="flex items-center justify-between">
@@ -291,7 +294,11 @@
               </button>
             </div>
           {:else}
-            <SubscriptionGrid products={sortedProducts} listName={listName} />
+            <SubscriptionGrid
+              products={sortedProducts}
+              listName={listName}
+              cardMode={selectedSubCategory.length > 0 ? 'subcategory-page' : 'default'}
+            />
           {/if}
         </div>
       </div>
