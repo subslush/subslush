@@ -24,6 +24,9 @@ const mockCatalogService = catalogService as jest.Mocked<typeof catalogService>;
 describe('Subscriptions available listing', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCatalogService.listCurrentFixedProductPricesForCurrency.mockResolvedValue(
+      new Map()
+    );
   });
 
   it('returns DB-driven listings with current price', async () => {

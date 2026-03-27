@@ -37,6 +37,11 @@ type BaseVariantPriceRow = {
   usd_price_cents: number;
 };
 
+type BaseFixedProductPriceRow = {
+  product_id: string;
+  usd_price_cents: number;
+};
+
 type ValidationResult =
   | {
       ok: true;
@@ -114,8 +119,11 @@ export class FxPricingPublisherService {
         };
       }
 
-      const basePrices = await this.loadCurrentUsdBasePrices(client, now);
-      if (basePrices.length === 0) {
+      const [variantBasePrices, fixedProductBasePrices] = await Promise.all([
+        this.loadCurrentUsdVariantBasePrices(client, now),
+        this.loadCurrentUsdFixedProductBasePrices(client),
+      ]);
+      if (variantBasePrices.length === 0 && fixedProductBasePrices.length === 0) {
         await client.query('ROLLBACK');
         transactionOpen = false;
 
@@ -141,14 +149,19 @@ export class FxPricingPublisherService {
       }
 
       let publishedCount = 0;
+      let variantPublishedCount = 0;
+      let fixedProductPublishedCount = 0;
       const roundingRuleVersion =
         env.FX_ROUNDING_RULE_VERSION || FX_ROUNDING_RULE_VERSION_DEFAULT;
 
-      const sortedBasePrices = [...basePrices].sort((a, b) =>
+      const sortedVariantBasePrices = [...variantBasePrices].sort((a, b) =>
         a.product_variant_id.localeCompare(b.product_variant_id)
       );
+      const sortedFixedProductBasePrices = [...fixedProductBasePrices].sort(
+        (a, b) => a.product_id.localeCompare(b.product_id)
+      );
 
-      for (const basePrice of sortedBasePrices) {
+      for (const basePrice of sortedVariantBasePrices) {
         for (const displayCurrency of FX_DISPLAY_CURRENCIES) {
           const fxRate =
             displayCurrency === FX_BASE_CURRENCY
@@ -171,6 +184,7 @@ export class FxPricingPublisherService {
 
           const metadata = {
             snapshot_id: snapshotId,
+            catalog_mode: 'variant',
             fx_rate: fxRate,
             raw_amount: Number(rawAmount.toFixed(8)),
             rounding_profile: rounded.profile,
@@ -187,6 +201,51 @@ export class FxPricingPublisherService {
           });
 
           publishedCount += 1;
+          variantPublishedCount += 1;
+        }
+      }
+
+      for (const basePrice of sortedFixedProductBasePrices) {
+        for (const displayCurrency of FX_DISPLAY_CURRENCIES) {
+          const fxRate =
+            displayCurrency === FX_BASE_CURRENCY
+              ? 1
+              : validation.rates.get(displayCurrency);
+          if (!fxRate || !Number.isFinite(fxRate) || fxRate <= 0) {
+            continue;
+          }
+
+          const rawAmount = (basePrice.usd_price_cents / 100) * fxRate;
+          const rounded = applyPsychologicalRounding({
+            amount: rawAmount,
+            currency: displayCurrency,
+          });
+          const roundedCents = roundedAmountToCents({
+            roundedAmount: rounded.roundedAmount,
+            profile: rounded.profile,
+          });
+          const settlementCurrency = resolveSettlementCurrency(displayCurrency);
+
+          const metadata = {
+            snapshot_id: snapshotId,
+            catalog_mode: 'fixed_product',
+            fx_rate: fxRate,
+            raw_amount: Number(rawAmount.toFixed(8)),
+            rounding_profile: rounded.profile,
+            rounding_rule_version: roundingRuleVersion,
+            settlement_currency: settlementCurrency,
+          };
+
+          await this.replaceCurrentFixedProductPrice(client, {
+            productId: basePrice.product_id,
+            currency: displayCurrency,
+            priceCents: roundedCents,
+            startsAt: now,
+            metadata,
+          });
+
+          publishedCount += 1;
+          fixedProductPublishedCount += 1;
         }
       }
 
@@ -206,6 +265,8 @@ export class FxPricingPublisherService {
           JSON.stringify({
             snapshot_id: snapshotId,
             published_count: publishedCount,
+            published_variant_count: variantPublishedCount,
+            published_fixed_product_count: fixedProductPublishedCount,
             display_currencies: FX_DISPLAY_CURRENCIES,
           }),
         ]
@@ -395,7 +456,7 @@ export class FxPricingPublisherService {
     };
   }
 
-  private async loadCurrentUsdBasePrices(
+  private async loadCurrentUsdVariantBasePrices(
     client: PoolClient,
     atDate: Date
   ): Promise<BaseVariantPriceRow[]> {
@@ -421,6 +482,32 @@ export class FxPricingPublisherService {
 
     return result.rows.map((row: any) => ({
       product_variant_id: row.product_variant_id,
+      usd_price_cents: Number(row.usd_price_cents),
+    }));
+  }
+
+  private async loadCurrentUsdFixedProductBasePrices(
+    client: PoolClient
+  ): Promise<BaseFixedProductPriceRow[]> {
+    const result = await client.query(
+      `SELECT p.id AS product_id,
+              p.fixed_price_cents AS usd_price_cents
+       FROM products p
+       LEFT JOIN product_variants pv
+         ON pv.product_id = p.id
+        AND pv.is_active = TRUE
+       WHERE p.status = 'active'
+         AND p.duration_months IS NOT NULL
+         AND p.fixed_price_cents IS NOT NULL
+         AND p.fixed_price_cents >= 0
+         AND p.fixed_price_currency IS NOT NULL
+         AND UPPER(p.fixed_price_currency) = $1
+         AND pv.id IS NULL`,
+      [FX_BASE_CURRENCY]
+    );
+
+    return result.rows.map((row: any) => ({
+      product_id: row.product_id,
       usd_price_cents: Number(row.usd_price_cents),
     }));
   }
@@ -456,6 +543,50 @@ export class FxPricingPublisherService {
        ) VALUES ($1, $2, $3, $4, NULL, $5::jsonb)`,
       [
         params.variantId,
+        params.priceCents,
+        params.currency,
+        params.startsAt,
+        JSON.stringify(params.metadata),
+      ]
+    );
+  }
+
+  private async replaceCurrentFixedProductPrice(
+    client: PoolClient,
+    params: {
+      productId: string;
+      currency: string;
+      priceCents: number;
+      startsAt: Date;
+      metadata: Record<string, any>;
+    }
+  ): Promise<void> {
+    await client.query(
+      `UPDATE product_fixed_price_history
+       SET ends_at = $1
+       WHERE product_id = $2
+         AND UPPER(currency) = $3
+         AND starts_at < $1
+         AND (ends_at IS NULL OR ends_at > $1)`,
+      [params.startsAt, params.productId, params.currency]
+    );
+
+    await client.query(
+      `INSERT INTO product_fixed_price_history (
+         product_id,
+         price_cents,
+         currency,
+         starts_at,
+         ends_at,
+         metadata
+       ) VALUES ($1, $2, $3, $4, NULL, $5::jsonb)
+       ON CONFLICT (product_id, currency, starts_at)
+       DO UPDATE SET
+         price_cents = EXCLUDED.price_cents,
+         ends_at = EXCLUDED.ends_at,
+         metadata = EXCLUDED.metadata`,
+      [
+        params.productId,
         params.priceCents,
         params.currency,
         params.startsAt,

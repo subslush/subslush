@@ -874,13 +874,19 @@ export async function subscriptionRoutes(
           catalogService.listActiveFixedProducts(listingFilters),
         ]);
         const variantIds = listings.map(listing => listing.variant.id);
-        const [currentPriceMap, termLookup] = await Promise.all([
-          catalogService.listCurrentPricesForCurrency({
-            variantIds,
-            currency: preferredCurrency,
-          }),
-          listVariantTermsWithRetry(variantIds, true),
-        ]);
+        const fixedProductIds = fixedProducts.map(product => product.id);
+        const [currentPriceMap, fixedCurrentPriceMap, termLookup] =
+          await Promise.all([
+            catalogService.listCurrentPricesForCurrency({
+              variantIds,
+              currency: preferredCurrency,
+            }),
+            catalogService.listCurrentFixedProductPricesForCurrency({
+              productIds: fixedProductIds,
+              currency: preferredCurrency,
+            }),
+            listVariantTermsWithRetry(variantIds, true),
+          ]);
         const { termMap, retried: termLookupRetried } = termLookup;
         if (variantIds.length > 0 && termMap.size === 0) {
           Logger.error('Catalog term lookup returned no terms for listings', {
@@ -1059,6 +1065,13 @@ export async function subscriptionRoutes(
           const fixedPriceCurrency = normalizeCurrencyCode(
             product.fixed_price_currency
           );
+          const currentFixedPrice = fixedCurrentPriceMap.get(product.id) ?? null;
+          const currentFixedPriceCents = currentFixedPrice
+            ? Number(currentFixedPrice.price_cents)
+            : Number.NaN;
+          const currentFixedPriceCurrency = normalizeCurrencyCode(
+            currentFixedPrice?.currency
+          );
 
           if (
             !Number.isInteger(durationMonths) ||
@@ -1076,7 +1089,29 @@ export async function subscriptionRoutes(
             continue;
           }
 
-          if (fixedPriceCurrency !== preferredCurrency) {
+          let resolvedPriceCents = Number.NaN;
+          let resolvedCurrency: string | null = null;
+          if (
+            Number.isInteger(currentFixedPriceCents) &&
+            currentFixedPriceCents >= 0 &&
+            currentFixedPriceCurrency === preferredCurrency
+          ) {
+            resolvedPriceCents = currentFixedPriceCents;
+            resolvedCurrency = currentFixedPriceCurrency;
+          } else if (fixedPriceCurrency === preferredCurrency) {
+            resolvedPriceCents = fixedPriceCents;
+            resolvedCurrency = fixedPriceCurrency;
+          }
+
+          if (!Number.isInteger(resolvedPriceCents) || !resolvedCurrency) {
+            missingPriceTasks.push(
+              ensureMissingPriceTask({
+                productId: product.id,
+                variantId: product.id,
+                serviceType,
+                planCode: product.slug,
+              })
+            );
             continue;
           }
 
@@ -1093,8 +1128,8 @@ export async function subscriptionRoutes(
             name: displayName,
             display_name: displayName,
             description: product.description || '',
-            price: fixedPriceCents / 100,
-            currency: fixedPriceCurrency,
+            price: resolvedPriceCents / 100,
+            currency: resolvedCurrency,
             features,
             ...(badges.length > 0 ? { badges } : {}),
             service_type: serviceType,
@@ -1418,13 +1453,19 @@ export async function subscriptionRoutes(
           catalogService.listActiveFixedProducts(listingFilters),
         ]);
         const variantIds = listings.map(listing => listing.variant.id);
-        const [currentPriceMap, termLookup] = await Promise.all([
-          catalogService.listCurrentPricesForCurrency({
-            variantIds,
-            currency: preferredCurrency,
-          }),
-          listVariantTermsWithRetry(variantIds, true),
-        ]);
+        const fixedProductIds = fixedProducts.map(product => product.id);
+        const [currentPriceMap, fixedCurrentPriceMap, termLookup] =
+          await Promise.all([
+            catalogService.listCurrentPricesForCurrency({
+              variantIds,
+              currency: preferredCurrency,
+            }),
+            catalogService.listCurrentFixedProductPricesForCurrency({
+              productIds: fixedProductIds,
+              currency: preferredCurrency,
+            }),
+            listVariantTermsWithRetry(variantIds, true),
+          ]);
         const { termMap, retried: termLookupRetried } = termLookup;
         if (variantIds.length > 0 && termMap.size === 0) {
           Logger.error(
@@ -1634,26 +1675,60 @@ export async function subscriptionRoutes(
         }
 
         for (const product of fixedProducts) {
+          const serviceType = product.service_type?.toLowerCase();
           const fixedPriceCents = Number(product.fixed_price_cents);
           const durationMonths = Number(product.duration_months);
-          const currency = normalizeCurrencyCode(product.fixed_price_currency);
+          const fixedPriceCurrency = normalizeCurrencyCode(
+            product.fixed_price_currency
+          );
+          const currentFixedPrice = fixedCurrentPriceMap.get(product.id) ?? null;
+          const currentFixedPriceCents = currentFixedPrice
+            ? Number(currentFixedPrice.price_cents)
+            : Number.NaN;
+          const currentFixedPriceCurrency = normalizeCurrencyCode(
+            currentFixedPrice?.currency
+          );
 
           if (
             !Number.isInteger(fixedPriceCents) ||
             fixedPriceCents < 0 ||
             !Number.isInteger(durationMonths) ||
             durationMonths <= 0 ||
-            !currency
+            !fixedPriceCurrency
           ) {
             continue;
           }
 
-          if (currency !== preferredCurrency) {
+          let resolvedPriceCents = Number.NaN;
+          let resolvedCurrency: string | null = null;
+          if (
+            Number.isInteger(currentFixedPriceCents) &&
+            currentFixedPriceCents >= 0 &&
+            currentFixedPriceCurrency === preferredCurrency
+          ) {
+            resolvedPriceCents = currentFixedPriceCents;
+            resolvedCurrency = currentFixedPriceCurrency;
+          } else if (fixedPriceCurrency === preferredCurrency) {
+            resolvedPriceCents = fixedPriceCents;
+            resolvedCurrency = fixedPriceCurrency;
+          }
+
+          if (!Number.isInteger(resolvedPriceCents) || !resolvedCurrency) {
+            if (serviceType) {
+              missingPriceTasks.push(
+                ensureMissingPriceTask({
+                  productId: product.id,
+                  variantId: product.id,
+                  serviceType,
+                  planCode: product.slug,
+                })
+              );
+            }
             continue;
           }
 
           const effectiveMonthly = computeEffectiveMonthlyCents({
-            totalPriceCents: fixedPriceCents,
+            totalPriceCents: resolvedPriceCents,
             termMonths: durationMonths,
           });
           if (!Number.isFinite(effectiveMonthly)) {
@@ -1698,8 +1773,8 @@ export async function subscriptionRoutes(
               product,
               variantId: product.id,
               minMonthlyCents: effectiveMonthly,
-              actualPriceCents: fixedPriceCents,
-              currency,
+              actualPriceCents: resolvedPriceCents,
+              currency: resolvedCurrency,
               fromTermMonths: durationMonths,
               fromDiscountPercent: null,
               maxDiscountPercent,
@@ -1829,21 +1904,58 @@ export async function subscriptionRoutes(
           const fixedPriceCurrency = normalizeCurrencyCode(
             product.fixed_price_currency
           );
+          const serviceType = product.service_type?.toLowerCase();
+          const currentFixedPrice =
+            await catalogService.getCurrentFixedProductPriceForCurrency({
+              productId: product.id,
+              currency: preferredCurrency,
+            });
+          const currentFixedPriceCents = currentFixedPrice
+            ? Number(currentFixedPrice.price_cents)
+            : Number.NaN;
+          const currentFixedPriceCurrency = normalizeCurrencyCode(
+            currentFixedPrice?.currency
+          );
 
           if (
             !Number.isInteger(durationMonths) ||
             durationMonths <= 0 ||
             !Number.isInteger(fixedPriceCents) ||
             fixedPriceCents < 0 ||
-            !fixedPriceCurrency ||
-            fixedPriceCurrency !== preferredCurrency
+            !fixedPriceCurrency
           ) {
+            return ErrorResponses.notFound(reply, 'Product not available');
+          }
+
+          let resolvedPriceCents = Number.NaN;
+          let resolvedCurrency: string | null = null;
+          if (
+            Number.isInteger(currentFixedPriceCents) &&
+            currentFixedPriceCents >= 0 &&
+            currentFixedPriceCurrency === preferredCurrency
+          ) {
+            resolvedPriceCents = currentFixedPriceCents;
+            resolvedCurrency = currentFixedPriceCurrency;
+          } else if (fixedPriceCurrency === preferredCurrency) {
+            resolvedPriceCents = fixedPriceCents;
+            resolvedCurrency = fixedPriceCurrency;
+          }
+
+          if (!Number.isInteger(resolvedPriceCents) || !resolvedCurrency) {
+            if (serviceType) {
+              await ensureMissingPriceTask({
+                productId: product.id,
+                variantId: product.id,
+                serviceType,
+                planCode: product.slug,
+              });
+            }
             return ErrorResponses.notFound(reply, 'Product not available');
           }
 
           const monthlyBase = Math.max(
             1,
-            Math.round(fixedPriceCents / durationMonths)
+            Math.round(resolvedPriceCents / durationMonths)
           );
           const features = normalizeStringList(product.metadata?.['features']);
           const badges = normalizeStringList(product.metadata?.['badges']);
@@ -1879,11 +1991,11 @@ export async function subscriptionRoutes(
                 features,
                 badges,
                 base_price: monthlyBase / 100,
-                currency: fixedPriceCurrency,
+                currency: resolvedCurrency,
                 term_options: [
                   {
                     months: durationMonths,
-                    total_price: fixedPriceCents / 100,
+                    total_price: resolvedPriceCents / 100,
                     discount_percent: 0,
                     is_recommended: true,
                   },

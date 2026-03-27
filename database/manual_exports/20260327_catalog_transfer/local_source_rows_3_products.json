@@ -1,0 +1,138 @@
+{
+  "exported_from": "local subscription_platform",
+  "exported_at_utc": "2026-03-27T00:00:00Z",
+  "selected_product_slugs": [
+    "figma-professional-24-months",
+    "bolt-new-pro-12-months",
+    "canva-pro-12-months"
+  ],
+  "sub_categories": [
+    {
+      "id": "b499343a-2737-444d-802e-645d76eaf8ce",
+      "category": "Design",
+      "name": "Figma",
+      "slug": "figma",
+      "created_at": "2026-03-24T21:09:42.568493",
+      "updated_at": "2026-03-24T21:09:42.568493"
+    },
+    {
+      "id": "8b4b7deb-305c-4de5-83c5-64fa42bd4fc0",
+      "category": "AI",
+      "name": "Bolt.new",
+      "slug": "bolt-new",
+      "created_at": "2026-03-25T00:20:57.05429",
+      "updated_at": "2026-03-25T00:20:57.05429"
+    },
+    {
+      "id": "bf04bdd6-9f1c-468e-a10d-6a294c9163aa",
+      "category": "Design, Productivity",
+      "name": "Canva",
+      "slug": "canva",
+      "created_at": "2026-03-27T01:05:39.451826",
+      "updated_at": "2026-03-27T01:05:39.451826"
+    }
+  ],
+  "products": [
+    {
+      "id": "6545eef0-0bf3-497b-b911-6effc46c4f32",
+      "name": "Figma Professional 24 Months Subscription",
+      "slug": "figma-professional-24-months",
+      "description": "Access to all Figma Professional features.",
+      "service_type": "figma",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Access to all Figma Professional features."
+        ],
+        "platform": "Figma",
+        "info_box_text": "This product includes access through a new private account. The account is not shared with other users.\nYou will receive login credentials (email and password). The account email cannot be changed.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order for the product.\nYour order enters the SubSlush fulfillment queue for manual account setup.\nOur team creates a new private account for you.\nDelivery is usually completed within 24 hours, but can take up to 72 hours.\nOnce ready, your login credentials (email and password) are sent to your email inbox.",
+        "comparison_price_cents": 38400
+      },
+      "created_at": "2026-03-24T21:09:42.568493",
+      "updated_at": "2026-03-24T23:53:12.236759",
+      "logo_key": "figma-logo",
+      "category": "Design",
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 24,
+      "fixed_price_cents": 7999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Figma"
+    },
+    {
+      "id": "0fc13ddf-9d89-41a1-a70e-be32abcba88d",
+      "name": "Bolt.new Pro 12 Months Subscription",
+      "slug": "bolt-new-pro-12-months",
+      "description": "Access Bolt.new Pro on your personal account with manual fulfillment by SubSlush.",
+      "service_type": "bolt_new",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Access to all Bolt.new Pro features."
+        ],
+        "platform": "Bolt.new",
+        "info_box_text": "This product is applied to your personal Bolt.new account.\nIf you do not currently have a Bolt.new account, SubSlush can apply it to a newly provisioned account when you select Upgrade New Account.\n\nDelivery is completed by applying a 100% off activation code to your account.\nAfter activation, do not change the billing method or upgrade the plan in the Bolt.new dashboard, as this may trigger automatic cancellation by Bolt.new's internal system.\nSubSlush is not responsible for cancellations caused by user-side account changes.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_and_password"
+        },
+        "activation_guide": "Place your order and choose your upgrade option: Upgrade Own Account or Upgrade New Account (use Upgrade New Account if you do not have a Bolt.new account).\nIf you choose Upgrade Own Account, share your Bolt.new account email and password with SubSlush for fulfillment.\nIf you choose Upgrade New Account, no account details are needed; SubSlush will provision a new Bolt.new account for you.\nYour order is then handled by the SubSlush manual fulfillment queue. The team delivers the product by applying a 100% off activation code to the account.\nMost orders are completed within 24 hours, but delivery can take up to 72 hours.\nOnce activation is completed, you will receive an email notification; if you selected Upgrade New Account, that email will include your login credentials (email and password).\nAfter activation, do not change the billing method or upgrade the plan in the Bolt.new dashboard, as this can trigger automatic cancellation by Bolt.new's internal system.",
+        "comparison_price_cents": 21600
+      },
+      "created_at": "2026-03-25T00:20:57.05429",
+      "updated_at": "2026-03-25T00:29:05.071344",
+      "logo_key": "bolt-logo",
+      "category": "AI",
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 9999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Bolt.new"
+    },
+    {
+      "id": "6d81d186-5254-472d-a3ef-30a87e7078c3",
+      "name": "Canva Pro 12 months",
+      "slug": "canva-pro-12-months",
+      "description": "Canva Pro annual access with invitation delivery sent to your email.",
+      "service_type": "canva",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "You have access to all Canva Pro features (including Photo AI), but excluding video AI."
+        ],
+        "platform": "Canva",
+        "info_box_text": "This product is delivered to your email. Please enter the email address where you want to receive it.",
+        "upgrade_options": {
+          "allow_new_account": false,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_only"
+        },
+        "activation_guide": "During checkout, enter the email address where you want to receive delivery.\nMake sure the email address is correct, since delivery is sent to that exact inbox.\nAfter purchase, you will receive an invitation email to join a Canva Pro plan.\nOpen the invitation email and accept it to activate access.",
+        "comparison_price_cents": 12000
+      },
+      "created_at": "2026-03-27T01:05:39.451826",
+      "updated_at": "2026-03-27T01:06:35.079924",
+      "logo_key": "canva-logo",
+      "category": "Design, Productivity",
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 2999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Canva"
+    }
+  ]
+}

@@ -68,6 +68,9 @@ type PricingPublishRunRow = {
 type ProductRow = {
   id: string;
   status: string;
+  duration_months: number | null;
+  fixed_price_cents: number | null;
+  fixed_price_currency: string | null;
 };
 
 type ProductVariantRow = {
@@ -87,6 +90,17 @@ type PriceHistoryRow = {
   created_at: Date;
 };
 
+type ProductFixedPriceHistoryRow = {
+  id: string;
+  product_id: string;
+  price_cents: number;
+  currency: string;
+  starts_at: Date;
+  ends_at: Date | null;
+  metadata: Record<string, unknown>;
+  created_at: Date;
+};
+
 type FakeDatabaseState = {
   fxRateFetches: FxRateFetchRow[];
   fxRateCache: Map<string, FxRateCacheRow>;
@@ -94,6 +108,7 @@ type FakeDatabaseState = {
   products: ProductRow[];
   productVariants: ProductVariantRow[];
   priceHistory: PriceHistoryRow[];
+  productFixedPriceHistory: ProductFixedPriceHistoryRow[];
 };
 
 function toDate(value: unknown): Date {
@@ -127,7 +142,22 @@ function createFakeDatabasePool(): {
     fxRateFetches: [],
     fxRateCache: new Map<string, FxRateCacheRow>(),
     pricingPublishRuns: [],
-    products: [{ id: 'product-1', status: 'active' }],
+    products: [
+      {
+        id: 'product-1',
+        status: 'active',
+        duration_months: null,
+        fixed_price_cents: null,
+        fixed_price_currency: null,
+      },
+      {
+        id: 'fixed-product-1',
+        status: 'active',
+        duration_months: 12,
+        fixed_price_cents: 2999,
+        fixed_price_currency: 'USD',
+      },
+    ],
     productVariants: [{ id: 'variant-1', product_id: 'product-1', is_active: true }],
     priceHistory: [
       {
@@ -141,6 +171,7 @@ function createFakeDatabasePool(): {
         created_at: new Date('2026-01-01T00:00:00.000Z'),
       },
     ],
+    productFixedPriceHistory: [],
   };
 
   const updateRun = (
@@ -371,6 +402,39 @@ function createFakeDatabasePool(): {
       return { rows };
     }
 
+    if (
+      sql.includes('FROM products p') &&
+      sql.includes('fixed_price_cents AS usd_price_cents') &&
+      sql.includes('LEFT JOIN product_variants pv')
+    ) {
+      const currency = String(values[0]).toUpperCase();
+
+      const rows = state.products
+        .filter(product => product.status === 'active')
+        .filter(
+          product =>
+            Number.isInteger(product.duration_months) &&
+            product.duration_months !== null &&
+            Number.isInteger(product.fixed_price_cents) &&
+            product.fixed_price_cents !== null &&
+            product.fixed_price_cents >= 0 &&
+            typeof product.fixed_price_currency === 'string' &&
+            product.fixed_price_currency.toUpperCase() === currency
+        )
+        .filter(
+          product =>
+            !state.productVariants.some(
+              variant => variant.product_id === product.id && variant.is_active
+            )
+        )
+        .map(product => ({
+          product_id: product.id,
+          usd_price_cents: product.fixed_price_cents,
+        }));
+
+      return { rows };
+    }
+
     if (sql.includes('UPDATE price_history') && sql.includes('SET ends_at = $1')) {
       const endsAt = toDate(values[0]);
       const variantId = String(values[1]);
@@ -404,6 +468,58 @@ function createFakeDatabasePool(): {
         metadata,
         created_at: startsAt,
       });
+      return { rows: [] };
+    }
+
+    if (
+      sql.includes('UPDATE product_fixed_price_history') &&
+      sql.includes('SET ends_at = $1')
+    ) {
+      const endsAt = toDate(values[0]);
+      const productId = String(values[1]);
+      const currency = String(values[2]).toUpperCase();
+      for (const row of state.productFixedPriceHistory) {
+        if (
+          row.product_id === productId &&
+          row.currency.toUpperCase() === currency &&
+          row.starts_at < endsAt &&
+          (row.ends_at === null || row.ends_at > endsAt)
+        ) {
+          row.ends_at = endsAt;
+        }
+      }
+      return { rows: [] };
+    }
+
+    if (sql.includes('INSERT INTO product_fixed_price_history')) {
+      const productId = String(values[0]);
+      const priceCents = Number(values[1]);
+      const currency = String(values[2]).toUpperCase();
+      const startsAt = toDate(values[3]);
+      const metadata = parseJsonObject(values[4]);
+
+      const existing = state.productFixedPriceHistory.find(
+        row =>
+          row.product_id === productId &&
+          row.currency === currency &&
+          row.starts_at.getTime() === startsAt.getTime()
+      );
+      if (existing) {
+        existing.price_cents = priceCents;
+        existing.ends_at = null;
+        existing.metadata = metadata;
+      } else {
+        state.productFixedPriceHistory.push({
+          id: nextId('fixed-price'),
+          product_id: productId,
+          price_cents: priceCents,
+          currency,
+          starts_at: startsAt,
+          ends_at: null,
+          metadata,
+          created_at: startsAt,
+        });
+      }
       return { rows: [] };
     }
 
@@ -520,7 +636,7 @@ describe('FX pipeline integration', () => {
       });
 
     expect(publishResult.status).toBe('succeeded');
-    expect(publishResult.publishedCount).toBe(FX_DISPLAY_CURRENCIES.length);
+    expect(publishResult.publishedCount).toBe(FX_DISPLAY_CURRENCIES.length * 2);
     expect(publishResult.snapshotId).toBeTruthy();
 
     const publishRun = state.pricingPublishRuns.find(
@@ -578,5 +694,16 @@ describe('FX pipeline integration', () => {
     );
     expect(activeUsdRows).toHaveLength(1);
     expect(activeUsdRows[0]?.starts_at.toISOString()).toBe(publishAt.toISOString());
+
+    const fixedEurPrice = state.productFixedPriceHistory.find(
+      row =>
+        row.product_id === 'fixed-product-1' &&
+        row.currency === 'EUR' &&
+        row.starts_at.getTime() === publishAt.getTime() &&
+        row.ends_at === null
+    );
+    expect(fixedEurPrice).toBeDefined();
+    expect(fixedEurPrice?.metadata['snapshot_id']).toBe(publishResult.snapshotId);
+    expect(fixedEurPrice?.metadata['catalog_mode']).toBe('fixed_product');
   });
 });

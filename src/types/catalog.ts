@@ -92,6 +92,17 @@ export interface PriceHistory {
   created_at: Date;
 }
 
+export interface FixedProductPriceHistory {
+  id: string;
+  product_id: string;
+  price_cents: number;
+  currency: string;
+  starts_at: Date;
+  ends_at?: Date | null;
+  metadata?: Record<string, any> | null;
+  created_at: Date;
+}
+
 export interface ProductDetail {
   product: Product;
   variants: ProductVariant[];

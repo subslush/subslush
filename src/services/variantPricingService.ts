@@ -125,11 +125,46 @@ export async function resolveVariantPricing(params: {
     return { ok: false, error: 'term_unavailable' };
   }
 
-  if (fixedPriceCurrency !== normalizedCurrency) {
+  const now = params.atDate ?? new Date();
+  const publishedPrice = await catalogService.getCurrentFixedProductPriceForCurrency(
+    {
+      productId: product.id,
+      currency: normalizedCurrency,
+      ...(params.atDate ? { atDate: params.atDate } : {}),
+    }
+  );
+  const publishedPriceCents = publishedPrice
+    ? Number(publishedPrice.price_cents)
+    : Number.NaN;
+  const publishedCurrency = normalizeCurrencyCode(publishedPrice?.currency);
+
+  let resolvedPriceCents = Number.NaN;
+  let resolvedCurrency = normalizedCurrency;
+  let resolvedPriceMetadata: Record<string, unknown> | null = null;
+
+  if (
+    Number.isInteger(publishedPriceCents) &&
+    publishedPriceCents >= 0 &&
+    publishedCurrency === normalizedCurrency
+  ) {
+    resolvedPriceCents = publishedPriceCents;
+    resolvedCurrency = publishedCurrency;
+    resolvedPriceMetadata = {
+      source: 'product_fixed_price_history',
+      product_id: product.id,
+      ...(publishedPrice?.metadata || {}),
+    };
+  } else if (fixedPriceCurrency === normalizedCurrency) {
+    resolvedPriceCents = fixedPriceCents;
+    resolvedCurrency = fixedPriceCurrency;
+    resolvedPriceMetadata = {
+      source: 'products.fixed_price',
+      product_id: product.id,
+    };
+  } else {
     return { ok: false, error: 'price_unavailable' };
   }
 
-  const now = params.atDate ?? new Date();
   const syntheticVariant: ProductVariant = {
     id: product.id,
     product_id: product.id,
@@ -158,19 +193,16 @@ export async function resolveVariantPricing(params: {
   const syntheticPrice: PriceHistory = {
     id: product.id,
     product_variant_id: product.id,
-    price_cents: fixedPriceCents,
-    currency: fixedPriceCurrency,
+    price_cents: resolvedPriceCents,
+    currency: resolvedCurrency,
     starts_at: now,
     ends_at: null,
-    metadata: {
-      source: 'products.fixed_price',
-      product_id: product.id,
-    },
+    metadata: resolvedPriceMetadata,
     created_at: now,
   };
 
   const snapshot = computeTermPricing({
-    basePriceCents: fixedPriceCents,
+    basePriceCents: resolvedPriceCents,
     termMonths: durationMonths,
     discountPercent: 0,
   });

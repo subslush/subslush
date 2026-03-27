@@ -8,6 +8,7 @@ import {
   ProductLabel,
   ProductMedia,
   PriceHistory,
+  FixedProductPriceHistory,
   ProductDetail,
   CatalogListing,
   CreateProductLabelInput,
@@ -229,6 +230,19 @@ function mapPriceHistory(row: any): PriceHistory {
   return {
     id: row.id,
     product_variant_id: row.product_variant_id,
+    price_cents: row.price_cents,
+    currency: row.currency,
+    starts_at: row.starts_at,
+    ends_at: row.ends_at,
+    metadata: parseMetadata(row.metadata),
+    created_at: row.created_at,
+  };
+}
+
+function mapFixedProductPriceHistory(row: any): FixedProductPriceHistory {
+  return {
+    id: row.id,
+    product_id: row.product_id,
     price_cents: row.price_cents,
     currency: row.currency,
     starts_at: row.starts_at,
@@ -2199,6 +2213,85 @@ export class CatalogService {
       }
     } catch (error) {
       Logger.error('Failed to list current prices for currency:', error);
+    }
+
+    return priceMap;
+  }
+
+  async getCurrentFixedProductPriceForCurrency(params: {
+    productId: string;
+    currency: string;
+    atDate?: Date;
+  }): Promise<FixedProductPriceHistory | null> {
+    try {
+      const pool = getDatabasePool();
+      const atDate = params.atDate ?? new Date();
+      const currency = normalizeCurrencyCode(params.currency);
+      if (!currency) {
+        return null;
+      }
+
+      const result = await pool.query(
+        `SELECT *
+         FROM product_fixed_price_history
+         WHERE product_id = $1
+           AND starts_at <= $2
+           AND (ends_at IS NULL OR ends_at > $2)
+           AND UPPER(currency) = $3
+         ORDER BY starts_at DESC
+         LIMIT 1`,
+        [params.productId, atDate, currency]
+      );
+      return result.rows.length > 0
+        ? mapFixedProductPriceHistory(result.rows[0])
+        : null;
+    } catch (error) {
+      Logger.error(
+        'Failed to fetch current fixed product price for currency:',
+        error
+      );
+      return null;
+    }
+  }
+
+  async listCurrentFixedProductPricesForCurrency(params: {
+    productIds: string[];
+    currency: string;
+    atDate?: Date;
+  }): Promise<Map<string, FixedProductPriceHistory>> {
+    const priceMap = new Map<string, FixedProductPriceHistory>();
+    if (params.productIds.length === 0) {
+      return priceMap;
+    }
+
+    try {
+      const pool = getDatabasePool();
+      const atDate = params.atDate ?? new Date();
+      const currency = normalizeCurrencyCode(params.currency);
+      if (!currency) {
+        return priceMap;
+      }
+
+      const result = await pool.query(
+        `SELECT DISTINCT ON (product_id) *
+         FROM product_fixed_price_history
+         WHERE product_id = ANY($1)
+           AND starts_at <= $2
+           AND (ends_at IS NULL OR ends_at > $2)
+           AND UPPER(currency) = $3
+         ORDER BY product_id, starts_at DESC`,
+        [params.productIds, atDate, currency]
+      );
+
+      for (const row of result.rows) {
+        const price = mapFixedProductPriceHistory(row);
+        priceMap.set(price.product_id, price);
+      }
+    } catch (error) {
+      Logger.error(
+        'Failed to list current fixed product prices for currency:',
+        error
+      );
     }
 
     return priceMap;
