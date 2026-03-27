@@ -32,9 +32,10 @@ export const load: PageServerLoad = async ({ fetch, params, cookies }) => {
     throw error(500, 'Failed to load product');
   }
 
-  const [labels, platformProducts] = await Promise.all([
+  const [labels, platformProducts, subCategories] = await Promise.all([
     safeList(() => adminService.listLabels({ limit: 200 })),
-    safeList(() => adminService.listProducts())
+    safeList(() => adminService.listProducts()),
+    safeList(() => adminService.listProductSubCategories({ limit: 500 }))
   ]);
 
   return {
@@ -46,5 +47,6 @@ export const load: PageServerLoad = async ({ fetch, params, cookies }) => {
     variantTerms: detail.variantTerms || [],
     labels,
     platformProducts,
+    subCategories
   };
 };

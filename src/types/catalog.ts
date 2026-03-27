@@ -16,9 +16,20 @@ export interface Product {
   fixed_price_cents?: number | null;
   fixed_price_currency?: string | null;
   status: ProductStatus;
+  sub_category_ids?: string[];
+  sub_category_assignments?: ProductSubCategoryAssignment[];
+  category_keys?: string[];
   metadata?: Record<string, any> | null;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface ProductSubCategoryAssignment {
+  sub_category_id: string;
+  category: string;
+  sub_category: string;
+  sub_category_slug: string;
+  is_primary: boolean;
 }
 
 export interface ProductSubCategory {
@@ -198,6 +209,7 @@ export interface CreateProductInput {
   fixed_price_cents?: number | null;
   fixed_price_currency?: string | null;
   status?: ProductStatus;
+  sub_category_ids?: string[] | null;
   metadata?: Record<string, any> | null;
 }
 
@@ -215,6 +227,7 @@ export interface UpdateProductInput {
   fixed_price_cents?: number | null;
   fixed_price_currency?: string | null;
   status?: ProductStatus;
+  sub_category_ids?: string[] | null;
   metadata?: Record<string, any> | null;
 }
 

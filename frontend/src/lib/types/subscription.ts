@@ -135,6 +135,7 @@ export interface ProductListing {
   logoKey?: string | null;
   category?: string | null;
   sub_category?: string | null;
+  category_keys?: string[] | null;
   platform?: string | null;
   region?: string | null;
   currency: string;

@@ -110,14 +110,31 @@
     goto(`${url.pathname}${url.search ? `?${url.searchParams.toString()}` : ''}`, { replaceState: true, noScroll: true });
   }
 
-  const getCategoryForProduct = (product: BrowseProduct): string => {
+  const getCategoryKeysForProduct = (product: BrowseProduct): string[] => {
+    const keys = new Set<string>();
+    if (Array.isArray(product.category_keys)) {
+      for (const entry of product.category_keys) {
+        const normalized = normalizeFilterValue(
+          typeof entry === 'string' ? entry : null
+        );
+        if (normalized) {
+          keys.add(normalized);
+        }
+      }
+    }
+
     const category =
       typeof product.category === 'string' ? product.category.trim().toLowerCase() : '';
     if (category) {
-      return category;
+      keys.add(category);
     }
-    const serviceType = product.service_type || product.slug || product.name;
-    return getCategoryForService(serviceType);
+
+    if (keys.size === 0) {
+      const serviceType = product.service_type || product.slug || product.name;
+      keys.add(getCategoryForService(serviceType));
+    }
+
+    return Array.from(keys);
   };
 
   // Filter products based on search and category
@@ -125,8 +142,9 @@
     const matchesSearch = !hasSearchQuery ||
       product.name.toLowerCase().includes(normalizedSearchQuery);
 
-    const matchesCategory = selectedCategory === 'all' ||
-      getCategoryForProduct(product) === selectedCategory;
+    const matchesCategory =
+      selectedCategory === 'all' ||
+      getCategoryKeysForProduct(product).includes(selectedCategory);
 
     const matchesSubCategory =
       !selectedSubCategory ||
@@ -149,7 +167,7 @@
   $: categoryCounts = categories.reduce<Record<string, number>>((acc, category) => {
     acc[category.key] = category.key === 'all'
       ? products.length
-      : products.filter((product: BrowseProduct) => getCategoryForProduct(product) === category.key).length;
+      : products.filter((product: BrowseProduct) => getCategoryKeysForProduct(product).includes(category.key)).length;
     return acc;
   }, {});
 

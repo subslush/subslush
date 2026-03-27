@@ -8,6 +8,8 @@
   import { SUPPORTED_CURRENCIES, type SupportedCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
   import type {
     AdminProduct,
+    AdminProductSubCategoryAssignment,
+    AdminProductSubCategory,
     AdminProductVariant,
     AdminProductVariantTerm,
     AdminProductLabel,
@@ -24,6 +26,9 @@
   let labels: AdminProductLabel[] = data.labels;
   let priceHistory: AdminPriceHistory[] = data.priceHistory || [];
   let platformProducts: AdminProduct[] = data.platformProducts || [];
+  let availableSubCategories: AdminProductSubCategory[] = Array.isArray(data.subCategories)
+    ? data.subCategories
+    : [];
 
   let productMessage = '';
   let productError = '';
@@ -395,6 +400,8 @@
     logoKey: string;
     category: string;
     subCategory: string;
+    selectedSubCategoryIds: string[];
+    primarySubCategoryId: string;
     maxSubscriptions: string;
     durationMonths: string;
     fixedPriceCents: string;
@@ -459,7 +466,64 @@
     isRecommended: !!pickValue(term.isRecommended, term.is_recommended)
   });
 
-  const buildProductForm = (value: AdminProduct): ProductForm => {
+  type ProductSubCategorySelection = {
+    id: string;
+    category: string;
+    name: string;
+    slug: string;
+    isPrimary: boolean;
+  };
+
+  const normalizeProductSubCategoryAssignments = (
+    value: AdminProduct
+  ): ProductSubCategorySelection[] => {
+    const rawAssignments = pickValue(
+      value.subCategoryAssignments,
+      value.sub_category_assignments
+    );
+    if (!Array.isArray(rawAssignments)) {
+      return [];
+    }
+
+    const selections: ProductSubCategorySelection[] = [];
+    for (const raw of rawAssignments) {
+      if (!raw || typeof raw !== 'object') continue;
+      const row = raw as AdminProductSubCategoryAssignment;
+      const idRaw = pickValue(
+        row.subCategoryId,
+        row.sub_category_id
+      ) as unknown;
+      const categoryRaw = row.category;
+      const nameRaw = pickValue(
+        row.subCategory,
+        row.sub_category
+      ) as unknown;
+      const slugRaw = pickValue(
+        row.subCategorySlug,
+        row.sub_category_slug
+      ) as unknown;
+      const primaryRaw = pickValue(
+        row.isPrimary,
+        row.is_primary
+      ) as unknown;
+
+      const id = typeof idRaw === 'string' ? idRaw.trim() : '';
+      const category =
+        typeof categoryRaw === 'string' ? categoryRaw.trim() : '';
+      const name = typeof nameRaw === 'string' ? nameRaw.trim() : '';
+      const slug = typeof slugRaw === 'string' ? slugRaw.trim() : '';
+      const isPrimary = primaryRaw === true;
+      if (!id || !category || !name) continue;
+      selections.push({ id, category, name, slug, isPrimary });
+    }
+
+    return selections;
+  };
+
+  const buildProductForm = (
+    value: AdminProduct,
+    subCategories: AdminProductSubCategory[]
+  ): ProductForm => {
     const metadata = normalizeMetadata(value.metadata);
     const upgradeOptions = readUpgradeOptions(metadata);
     const maxSubscriptions = pickValue(value.maxSubscriptions, value.max_subscriptions);
@@ -475,6 +539,51 @@
       'compare_at_price_cents',
       'compareAtPriceCents'
     ]);
+
+    const normalizedAvailable = subCategories.map(subCategory => ({
+      id: subCategory.id,
+      category: (subCategory.category || '').trim().toLowerCase(),
+      name: (subCategory.name || '').trim().toLowerCase()
+    }));
+
+    const assignments = normalizeProductSubCategoryAssignments(value);
+    const assignmentIds = assignments.map(assignment => assignment.id);
+    const persistedIds = Array.isArray(
+      pickValue(value.subCategoryIds, value.sub_category_ids)
+    )
+      ? (pickValue(value.subCategoryIds, value.sub_category_ids) as string[])
+          .map(id => (typeof id === 'string' ? id.trim() : ''))
+          .filter(Boolean)
+      : [];
+
+    let selectedSubCategoryIds = Array.from(
+      new Set([...assignmentIds, ...persistedIds])
+    );
+
+    if (selectedSubCategoryIds.length === 0) {
+      const legacyCategory = (value.category || '').trim().toLowerCase();
+      const legacySubCategory = (
+        pickValue(value.subCategory, value.sub_category) || ''
+      )
+        .trim()
+        .toLowerCase();
+      const match = normalizedAvailable.find(
+        option =>
+          option.category === legacyCategory && option.name === legacySubCategory
+      );
+      if (match) {
+        selectedSubCategoryIds = [match.id];
+      }
+    }
+
+    const primaryAssignment =
+      assignments.find(assignment => assignment.isPrimary) || assignments[0] || null;
+    const primarySubCategoryId =
+      primaryAssignment?.id || selectedSubCategoryIds[0] || '';
+    const resolvedPrimary =
+      assignments.find(assignment => assignment.id === primarySubCategoryId) ||
+      null;
+
     return {
       name: value.name || '',
       slug: value.slug || '',
@@ -482,8 +591,13 @@
       status: (value.status || 'active') as 'active' | 'inactive',
       description: value.description || '',
       logoKey: pickValue(value.logoKey, value.logo_key) || '',
-      category: value.category || '',
-      subCategory: pickValue(value.subCategory, value.sub_category) || '',
+      category: resolvedPrimary?.category || value.category || '',
+      subCategory:
+        resolvedPrimary?.name ||
+        pickValue(value.subCategory, value.sub_category) ||
+        '',
+      selectedSubCategoryIds,
+      primarySubCategoryId,
       maxSubscriptions:
         maxSubscriptions !== undefined && maxSubscriptions !== null
           ? String(maxSubscriptions)
@@ -530,7 +644,61 @@
     };
   };
 
-  let productForm: ProductForm = buildProductForm(product);
+  let productForm: ProductForm = buildProductForm(
+    product,
+    availableSubCategories
+  );
+  let sortedSubCategoryOptions: AdminProductSubCategory[] = [];
+  $: sortedSubCategoryOptions = [...availableSubCategories].sort((a, b) => {
+    const categoryDiff = (a.category || '').localeCompare(b.category || '', undefined, {
+      sensitivity: 'base'
+    });
+    if (categoryDiff !== 0) return categoryDiff;
+    return (a.name || '').localeCompare(b.name || '', undefined, {
+      sensitivity: 'base'
+    });
+  });
+
+  const isSubCategorySelected = (subCategoryId: string): boolean =>
+    productForm.selectedSubCategoryIds.includes(subCategoryId);
+
+  const toggleSubCategorySelection = (subCategoryId: string) => {
+    const selected = new Set(productForm.selectedSubCategoryIds);
+    if (selected.has(subCategoryId)) {
+      selected.delete(subCategoryId);
+    } else {
+      selected.add(subCategoryId);
+    }
+    productForm.selectedSubCategoryIds = Array.from(selected);
+  };
+
+  $: if (
+    productForm.selectedSubCategoryIds.length > 0 &&
+    !productForm.selectedSubCategoryIds.includes(productForm.primarySubCategoryId)
+  ) {
+    productForm.primarySubCategoryId = productForm.selectedSubCategoryIds[0];
+  }
+
+  $: if (productForm.selectedSubCategoryIds.length === 0 && productForm.primarySubCategoryId) {
+    productForm.primarySubCategoryId = '';
+  }
+
+  $: {
+    const primary = sortedSubCategoryOptions.find(
+      option => option.id === productForm.primarySubCategoryId
+    );
+    if (primary) {
+      const category = primary.category || '';
+      const subCategory = primary.name || '';
+      if (
+        productForm.category !== category ||
+        productForm.subCategory !== subCategory
+      ) {
+        productForm.category = category;
+        productForm.subCategory = subCategory;
+      }
+    }
+  }
   let platformOptions: string[] = buildPlatformOptions(platformProducts, productForm.platform);
   $: platformOptions = buildPlatformOptions(platformProducts, productForm.platform);
   $: selectedPlatformLogo = resolveLogoKeyFromName(productForm.platform);
@@ -690,8 +858,28 @@
         maxSubscriptionsValue === '' || Number.isNaN(parsedMaxSubscriptions)
           ? undefined
           : parsedMaxSubscriptions;
-      const categoryValue = productForm.category.trim();
-      const subCategoryValue = productForm.subCategory.trim();
+      const selectedSubCategoryIds = Array.from(
+        new Set(
+          productForm.selectedSubCategoryIds
+            .map(id => id.trim())
+            .filter(id => id.length > 0)
+        )
+      );
+      if (selectedSubCategoryIds.length === 0) {
+        productError = 'Select at least one sub-category.';
+        return;
+      }
+
+      const primarySubCategory = sortedSubCategoryOptions.find(
+        subCategory => subCategory.id === productForm.primarySubCategoryId
+      );
+      if (!primarySubCategory) {
+        productError = 'Select a valid primary sub-category.';
+        return;
+      }
+
+      const categoryValue = (primarySubCategory.category || '').trim();
+      const subCategoryValue = (primarySubCategory.name || '').trim();
       const durationMonthsRaw = String(productForm.durationMonths ?? '').trim();
       const fixedPriceCentsRaw = String(productForm.fixedPriceCents ?? '').trim();
       const fixedPriceCurrencyRaw = String(
@@ -763,6 +951,7 @@
         description: productForm.description || undefined,
         service_type: productForm.serviceType || undefined,
         logo_key: productForm.logoKey || undefined,
+        sub_category_ids: selectedSubCategoryIds,
         category: categoryValue === '' ? null : categoryValue,
         sub_category: subCategoryValue === '' ? null : subCategoryValue,
         max_subscriptions: maxSubscriptions,
@@ -783,7 +972,7 @@
         metadata
       });
       product = { ...product, ...updated };
-      productForm = buildProductForm(product);
+      productForm = buildProductForm(product, availableSubCategories);
       productMessage = 'Product updated successfully.';
     } catch (error) {
       productError = getErrorMessage(error, 'Failed to update product.');
@@ -1310,17 +1499,66 @@
           </button>
         </div>
       </div>
-      <div class="grid gap-3 md:grid-cols-2">
-        <input
-          class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-          placeholder="Category"
-          bind:value={productForm.category}
-        />
-        <input
-          class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-          placeholder="Sub-category"
-          bind:value={productForm.subCategory}
-        />
+      <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+        <div>
+          <p class="text-xs font-semibold text-gray-700">Sub-category assignments</p>
+          <p class="mt-1 text-xs text-gray-500">
+            Select one or more sub-categories, then choose which one is primary.
+          </p>
+        </div>
+        <div class="grid gap-3 md:grid-cols-2">
+          <div class="max-h-56 overflow-auto rounded-lg border border-gray-200 bg-white p-2 space-y-1">
+            {#if sortedSubCategoryOptions.length === 0}
+              <p class="px-2 py-1 text-xs text-gray-500">
+                No sub-categories found. Create them in Admin Products first.
+              </p>
+            {:else}
+              {#each sortedSubCategoryOptions as subCategory}
+                <label class="flex items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={isSubCategorySelected(subCategory.id)}
+                    on:change={() => toggleSubCategorySelection(subCategory.id)}
+                  />
+                  <span class="leading-5">
+                    <span class="font-medium text-gray-900">{subCategory.name}</span>
+                    <span class="block text-xs text-gray-500">{subCategory.category}</span>
+                  </span>
+                </label>
+              {/each}
+            {/if}
+          </div>
+          <div class="space-y-2">
+            <select
+              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              bind:value={productForm.primarySubCategoryId}
+              disabled={productForm.selectedSubCategoryIds.length === 0}
+            >
+              <option value="" disabled>
+                {productForm.selectedSubCategoryIds.length === 0
+                  ? 'Select sub-categories first'
+                  : 'Select primary sub-category'}
+              </option>
+              {#each sortedSubCategoryOptions.filter(option => productForm.selectedSubCategoryIds.includes(option.id)) as option}
+                <option value={option.id}>
+                  {option.name} ({option.category})
+                </option>
+              {/each}
+            </select>
+            <input
+              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-gray-100 text-gray-600"
+              placeholder="Primary category"
+              bind:value={productForm.category}
+              readonly
+            />
+            <input
+              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-gray-100 text-gray-600"
+              placeholder="Primary sub-category"
+              bind:value={productForm.subCategory}
+              readonly
+            />
+          </div>
+        </div>
       </div>
       <div class="grid gap-3 md:grid-cols-2">
         <input

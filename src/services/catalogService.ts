@@ -1,8 +1,10 @@
 import { getDatabasePool } from '../config/database';
+import { PoolClient } from 'pg';
 import { Logger } from '../utils/logger';
 import {
   Product,
   ProductSubCategory,
+  ProductSubCategoryAssignment,
   ProductVariant,
   ProductVariantTerm,
   ProductLabel,
@@ -129,7 +131,80 @@ function validateFixedCatalogFields(input: {
   return null;
 }
 
+function parseStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const normalized = value
+    .map(entry => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter(entry => entry.length > 0);
+  return Array.from(new Set(normalized));
+}
+
+function parseProductSubCategoryAssignments(
+  value: unknown
+): ProductSubCategoryAssignment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const assignments: ProductSubCategoryAssignment[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const row = entry as Record<string, unknown>;
+    const subCategoryId =
+      typeof row['sub_category_id'] === 'string'
+        ? row['sub_category_id']
+        : null;
+    const category =
+      typeof row['category'] === 'string' ? row['category'].trim() : '';
+    const subCategory =
+      typeof row['sub_category'] === 'string'
+        ? row['sub_category'].trim()
+        : '';
+    const subCategorySlug =
+      typeof row['sub_category_slug'] === 'string'
+        ? row['sub_category_slug'].trim()
+        : '';
+    if (!subCategoryId || !category || !subCategory) {
+      continue;
+    }
+    assignments.push({
+      sub_category_id: subCategoryId,
+      category,
+      sub_category: subCategory,
+      sub_category_slug: subCategorySlug,
+      is_primary: row['is_primary'] === true,
+    });
+  }
+
+  return assignments;
+}
+
+function mapProductSubCategoryAssignment(row: any): ProductSubCategoryAssignment {
+  return {
+    sub_category_id: row.sub_category_id,
+    category: row.category,
+    sub_category: row.sub_category,
+    sub_category_slug: row.sub_category_slug,
+    is_primary: row.is_primary,
+  };
+}
+
 function mapProduct(row: any): Product {
+  const subCategoryIds = parseStringArray(row.sub_category_ids);
+  const subCategoryAssignments = parseProductSubCategoryAssignments(
+    row.sub_category_assignments
+  );
+  const categoryKeys = Array.from(
+    new Set(
+      subCategoryAssignments
+        .map(assignment => normalizeTaxonomyFilterValue(assignment.category))
+        .filter((entry): entry is string => !!entry)
+    )
+  );
   return {
     id: row.id,
     name: row.name,
@@ -145,6 +220,11 @@ function mapProduct(row: any): Product {
     fixed_price_cents: row.fixed_price_cents,
     fixed_price_currency: row.fixed_price_currency,
     status: row.status,
+    ...(subCategoryIds.length > 0 ? { sub_category_ids: subCategoryIds } : {}),
+    ...(subCategoryAssignments.length > 0
+      ? { sub_category_assignments: subCategoryAssignments }
+      : {}),
+    ...(categoryKeys.length > 0 ? { category_keys: categoryKeys } : {}),
     metadata: parseMetadata(row.metadata),
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -252,7 +332,442 @@ function mapFixedProductPriceHistory(row: any): FixedProductPriceHistory {
   };
 }
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export class CatalogService {
+  private async hasProductSubCategoryMapTable(
+    queryable: { query: (text: string, values?: any[]) => Promise<any> }
+  ): Promise<boolean> {
+    try {
+      const result = await queryable.query(
+        `SELECT to_regclass('public.product_sub_category_map') AS relation_name`
+      );
+      return !!result.rows[0]?.relation_name;
+    } catch {
+      return false;
+    }
+  }
+
+  private normalizeSubCategoryIds(
+    subCategoryIds?: string[] | null
+  ): string[] | null {
+    if (subCategoryIds === undefined) {
+      return null;
+    }
+    if (!Array.isArray(subCategoryIds)) {
+      return [];
+    }
+    const normalized = subCategoryIds
+      .map(id => (typeof id === 'string' ? id.trim() : ''))
+      .filter(id => id.length > 0 && UUID_REGEX.test(id));
+    return Array.from(new Set(normalized));
+  }
+
+  private async ensureProductSubCategory(
+    client: PoolClient,
+    categoryRaw?: string | null,
+    subCategoryRaw?: string | null
+  ): Promise<ProductSubCategory | null> {
+    const category = normalizeTextField(categoryRaw);
+    const subCategory = normalizeTextField(subCategoryRaw);
+    if (!category || !subCategory) {
+      return null;
+    }
+
+    const existingResult = await client.query(
+      `SELECT id, category, name, slug, created_at, updated_at
+       FROM product_sub_categories
+       WHERE LOWER(BTRIM(category)) = LOWER(BTRIM($1))
+         AND LOWER(BTRIM(name)) = LOWER(BTRIM($2))
+       LIMIT 1`,
+      [category, subCategory]
+    );
+    if (existingResult.rows.length > 0) {
+      return mapProductSubCategory(existingResult.rows[0]);
+    }
+
+    const baseSlug = normalizeSlugField(subCategory) || 'sub-category';
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const suffix =
+        attempt === 0
+          ? ''
+          : `-${Math.random().toString(16).slice(2, 10).padEnd(8, '0').slice(0, 8)}`;
+      const slug = `${baseSlug}${suffix}`;
+      try {
+        const insertResult = await client.query(
+          `INSERT INTO product_sub_categories (category, name, slug)
+           VALUES ($1, $2, $3)
+           RETURNING id, category, name, slug, created_at, updated_at`,
+          [category, subCategory, slug]
+        );
+        return mapProductSubCategory(insertResult.rows[0]);
+      } catch (error) {
+        const code =
+          error && typeof error === 'object' && 'code' in error
+            ? String((error as { code?: string }).code || '')
+            : '';
+        if (code === '23505') {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    const fallbackResult = await client.query(
+      `SELECT id, category, name, slug, created_at, updated_at
+       FROM product_sub_categories
+       WHERE LOWER(BTRIM(category)) = LOWER(BTRIM($1))
+         AND LOWER(BTRIM(name)) = LOWER(BTRIM($2))
+       LIMIT 1`,
+      [category, subCategory]
+    );
+    if (fallbackResult.rows.length > 0) {
+      return mapProductSubCategory(fallbackResult.rows[0]);
+    }
+    return null;
+  }
+
+  private async listSubCategoryAssignments(
+    client: PoolClient,
+    productId: string
+  ): Promise<ProductSubCategoryAssignment[]> {
+    const hasMapTable = await this.hasProductSubCategoryMapTable(client);
+    if (!hasMapTable) {
+      return [];
+    }
+
+    const result = await client.query(
+      `SELECT
+         pscm.sub_category_id,
+         sc.category,
+         sc.name AS sub_category,
+         sc.slug AS sub_category_slug,
+         pscm.is_primary
+       FROM product_sub_category_map pscm
+       JOIN product_sub_categories sc
+         ON sc.id = pscm.sub_category_id
+       WHERE pscm.product_id = $1
+      ORDER BY pscm.is_primary DESC, LOWER(sc.category), LOWER(sc.name)`,
+      [productId]
+    );
+    return result.rows.map(mapProductSubCategoryAssignment);
+  }
+
+  async listSubCategoryAssignmentsForProducts(
+    productIds: string[]
+  ): Promise<Map<string, ProductSubCategoryAssignment[]>> {
+    const result = new Map<string, ProductSubCategoryAssignment[]>();
+    if (productIds.length === 0) {
+      return result;
+    }
+
+    try {
+      const pool = getDatabasePool();
+      const hasMapTable = await this.hasProductSubCategoryMapTable(pool);
+      if (!hasMapTable) {
+        return result;
+      }
+      const rows = await pool.query(
+        `SELECT
+           pscm.product_id,
+           pscm.sub_category_id,
+           sc.category,
+           sc.name AS sub_category,
+           sc.slug AS sub_category_slug,
+           pscm.is_primary
+         FROM product_sub_category_map pscm
+         JOIN product_sub_categories sc
+           ON sc.id = pscm.sub_category_id
+         WHERE pscm.product_id = ANY($1::uuid[])
+         ORDER BY pscm.product_id, pscm.is_primary DESC, LOWER(sc.category), LOWER(sc.name)`,
+        [productIds]
+      );
+
+      for (const row of rows.rows) {
+        const productId = String(row.product_id);
+        const existing = result.get(productId) || [];
+        existing.push(mapProductSubCategoryAssignment(row));
+        result.set(productId, existing);
+      }
+    } catch (error) {
+      Logger.error('Failed to list product sub-category assignments:', error);
+    }
+
+    return result;
+  }
+
+  private async syncProductSubCategoryAssignments(
+    client: PoolClient,
+    params: {
+      productId: string;
+      subCategoryIds?: string[] | null;
+      category?: string | null;
+      subCategory?: string | null;
+    }
+  ): Promise<{
+    primaryCategory: string | null;
+    primarySubCategory: string | null;
+    subCategoryIds: string[];
+    assignments: ProductSubCategoryAssignment[];
+  }> {
+    const explicitIds = this.normalizeSubCategoryIds(params.subCategoryIds);
+    const normalizedCategory = normalizeTextField(params.category);
+    const normalizedSubCategory = normalizeTextField(params.subCategory);
+    const hasMapTable = await this.hasProductSubCategoryMapTable(client);
+
+    if (!hasMapTable) {
+      if (explicitIds !== null) {
+        if (explicitIds.length === 0) {
+          return {
+            primaryCategory: null,
+            primarySubCategory: null,
+            subCategoryIds: [],
+            assignments: [],
+          };
+        }
+
+        const lookup = await client.query(
+          `SELECT id, category, name, slug
+           FROM product_sub_categories
+           WHERE id = ANY($1::uuid[])
+           ORDER BY LOWER(category), LOWER(name)`,
+          [explicitIds]
+        );
+        if (lookup.rows.length !== explicitIds.length) {
+          throw new Error('One or more sub_category_ids do not exist');
+        }
+
+        let primaryRow =
+          lookup.rows.find(row => {
+            if (!normalizedCategory || !normalizedSubCategory) {
+              return false;
+            }
+            return (
+              normalizeTaxonomyFilterValue(row.category) ===
+                normalizeTaxonomyFilterValue(normalizedCategory) &&
+              normalizeTaxonomyFilterValue(row.name) ===
+                normalizeTaxonomyFilterValue(normalizedSubCategory)
+            );
+          }) || null;
+
+        if (!primaryRow) {
+          primaryRow = lookup.rows[0] || null;
+        }
+
+        const assignments: ProductSubCategoryAssignment[] = lookup.rows.map(
+          row => ({
+            sub_category_id: row.id,
+            category: row.category,
+            sub_category: row.name,
+            sub_category_slug: row.slug,
+            is_primary: !!primaryRow && row.id === primaryRow.id,
+          })
+        );
+
+        return {
+          primaryCategory: primaryRow?.category || null,
+          primarySubCategory: primaryRow?.name || null,
+          subCategoryIds: assignments.map(assignment => assignment.sub_category_id),
+          assignments,
+        };
+      }
+
+      if (normalizedCategory && normalizedSubCategory) {
+        const ensured = await this.ensureProductSubCategory(
+          client,
+          normalizedCategory,
+          normalizedSubCategory
+        );
+        if (ensured) {
+          return {
+            primaryCategory: ensured.category,
+            primarySubCategory: ensured.name,
+            subCategoryIds: [ensured.id],
+            assignments: [
+              {
+                sub_category_id: ensured.id,
+                category: ensured.category,
+                sub_category: ensured.name,
+                sub_category_slug: ensured.slug,
+                is_primary: true,
+              },
+            ],
+          };
+        }
+      }
+
+      return {
+        primaryCategory: normalizedCategory || null,
+        primarySubCategory: normalizedSubCategory || null,
+        subCategoryIds: [],
+        assignments: [],
+      };
+    }
+
+    const existingAssignments = await this.listSubCategoryAssignments(
+      client,
+      params.productId
+    );
+    const existingIds = existingAssignments.map(
+      assignment => assignment.sub_category_id
+    );
+    const existingPrimaryId =
+      existingAssignments.find(assignment => assignment.is_primary)
+        ?.sub_category_id || null;
+
+    let targetIds: string[] | null = null;
+    let primaryId: string | null = null;
+
+    if (explicitIds !== null) {
+      targetIds = explicitIds;
+      if (targetIds.length > 0) {
+        const validation = await client.query(
+          `SELECT id, category, name
+           FROM product_sub_categories
+           WHERE id = ANY($1::uuid[])`,
+          [targetIds]
+        );
+        if (validation.rows.length !== targetIds.length) {
+          throw new Error('One or more sub_category_ids do not exist');
+        }
+
+        const byId = new Map(
+          validation.rows.map(row => [
+            String(row.id),
+            {
+              category: String(row.category),
+              name: String(row.name),
+            },
+          ])
+        );
+
+        if (normalizedCategory && normalizedSubCategory) {
+          primaryId =
+            targetIds.find(id => {
+              const candidate = byId.get(id);
+              if (!candidate) return false;
+              return (
+                normalizeTaxonomyFilterValue(candidate.category) ===
+                  normalizeTaxonomyFilterValue(normalizedCategory) &&
+                normalizeTaxonomyFilterValue(candidate.name) ===
+                  normalizeTaxonomyFilterValue(normalizedSubCategory)
+              );
+            }) || null;
+        }
+      }
+
+      if (!primaryId && existingPrimaryId && targetIds.includes(existingPrimaryId)) {
+        primaryId = existingPrimaryId;
+      }
+      if (!primaryId && targetIds.length > 0) {
+        primaryId = targetIds[0];
+      }
+
+      if (targetIds.length === 0) {
+        await client.query(
+          'DELETE FROM product_sub_category_map WHERE product_id = $1',
+          [params.productId]
+        );
+        return {
+          primaryCategory: null,
+          primarySubCategory: null,
+          subCategoryIds: [],
+          assignments: [],
+        };
+      }
+
+      await client.query(
+        `DELETE FROM product_sub_category_map
+         WHERE product_id = $1
+           AND NOT (sub_category_id = ANY($2::uuid[]))`,
+        [params.productId, targetIds]
+      );
+    } else if (normalizedCategory && normalizedSubCategory) {
+      const ensured = await this.ensureProductSubCategory(
+        client,
+        normalizedCategory,
+        normalizedSubCategory
+      );
+      if (ensured) {
+        primaryId = ensured.id;
+        targetIds = Array.from(new Set([primaryId, ...existingIds]));
+      }
+    }
+
+    if (targetIds && targetIds.length > 0) {
+      for (const subCategoryId of targetIds) {
+        await client.query(
+          `INSERT INTO product_sub_category_map (
+             product_id,
+             sub_category_id,
+             is_primary,
+             created_at,
+             updated_at
+           )
+           VALUES ($1, $2, $3, NOW(), NOW())
+           ON CONFLICT (product_id, sub_category_id) DO UPDATE
+           SET
+             is_primary = EXCLUDED.is_primary,
+             updated_at = NOW()`,
+          [params.productId, subCategoryId, subCategoryId === primaryId]
+        );
+      }
+    } else if (primaryId) {
+      await client.query(
+        `INSERT INTO product_sub_category_map (
+           product_id,
+           sub_category_id,
+           is_primary,
+           created_at,
+           updated_at
+         )
+         VALUES ($1, $2, TRUE, NOW(), NOW())
+         ON CONFLICT (product_id, sub_category_id) DO UPDATE
+         SET
+           is_primary = TRUE,
+           updated_at = NOW()`,
+        [params.productId, primaryId]
+      );
+    }
+
+    if (primaryId) {
+      await client.query(
+        `UPDATE product_sub_category_map
+         SET
+           is_primary = sub_category_id = $2,
+           updated_at = NOW()
+         WHERE product_id = $1`,
+        [params.productId, primaryId]
+      );
+    }
+
+    const assignments = await this.listSubCategoryAssignments(
+      client,
+      params.productId
+    );
+    const fallbackPrimary = assignments.find(assignment => assignment.is_primary);
+    const primary = fallbackPrimary || assignments[0] || null;
+
+    if (!fallbackPrimary && primary) {
+      await client.query(
+        `UPDATE product_sub_category_map
+         SET
+           is_primary = sub_category_id = $2,
+           updated_at = NOW()
+         WHERE product_id = $1`,
+        [params.productId, primary.sub_category_id]
+      );
+    }
+
+    return {
+      primaryCategory: primary?.category || null,
+      primarySubCategory: primary?.sub_category || null,
+      subCategoryIds: assignments.map(assignment => assignment.sub_category_id),
+      assignments,
+    };
+  }
+
   async createProduct(
     input: CreateProductInput
   ): Promise<ServiceResult<Product>> {
@@ -261,6 +776,8 @@ export class CatalogService {
       const fixedPriceCents = normalizeIntegerOrNull(input.fixed_price_cents);
       const fixedPriceCurrency =
         normalizeCurrencyCode(input.fixed_price_currency) || null;
+      const normalizedCategory = normalizeTextField(input.category);
+      const normalizedSubCategory = normalizeTextField(input.sub_category);
 
       if (input.default_currency) {
         const normalizedCurrency = normalizeCurrencyCode(
@@ -295,47 +812,98 @@ export class CatalogService {
       }
 
       const pool = getDatabasePool();
-      const result = await pool.query(
-        `INSERT INTO products
-          (
-            name,
-            slug,
-            description,
-            service_type,
-            logo_key,
-            category,
-            sub_category,
-            default_currency,
-            max_subscriptions,
-            duration_months,
-            fixed_price_cents,
-            fixed_price_currency,
-            status,
-            metadata
-          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         RETURNING *`,
-        [
-          input.name,
-          input.slug,
-          input.description || null,
-          normalizeServiceType(input.service_type),
-          input.logo_key || null,
-          normalizeTextField(input.category),
-          normalizeTextField(input.sub_category),
-          normalizeCurrencyCode(input.default_currency) || null,
-          input.max_subscriptions ?? null,
-          durationMonths,
-          fixedPriceCents,
-          fixedPriceCurrency,
-          input.status || 'active',
-          input.metadata ? JSON.stringify(input.metadata) : null,
-        ]
-      );
+      const client = await pool.connect();
 
-      return createSuccessResult(mapProduct(result.rows[0]));
+      try {
+        await client.query('BEGIN');
+
+        const insertResult = await client.query(
+          `INSERT INTO products
+            (
+              name,
+              slug,
+              description,
+              service_type,
+              logo_key,
+              category,
+              sub_category,
+              default_currency,
+              max_subscriptions,
+              duration_months,
+              fixed_price_cents,
+              fixed_price_currency,
+              status,
+              metadata
+            )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           RETURNING *`,
+          [
+            input.name,
+            input.slug,
+            input.description || null,
+            normalizeServiceType(input.service_type),
+            input.logo_key || null,
+            normalizedCategory,
+            normalizedSubCategory,
+            normalizeCurrencyCode(input.default_currency) || null,
+            input.max_subscriptions ?? null,
+            durationMonths,
+            fixedPriceCents,
+            fixedPriceCurrency,
+            input.status || 'active',
+            input.metadata ? JSON.stringify(input.metadata) : null,
+          ]
+        );
+
+        const created = mapProduct(insertResult.rows[0]);
+
+        const syncResult = await this.syncProductSubCategoryAssignments(client, {
+          productId: created.id,
+          subCategoryIds: input.sub_category_ids,
+          category: normalizedCategory,
+          subCategory: normalizedSubCategory,
+        });
+
+        const shouldUpdatePrimaryFields =
+          syncResult.primaryCategory !== normalizedCategory ||
+          syncResult.primarySubCategory !== normalizedSubCategory;
+        if (shouldUpdatePrimaryFields) {
+          await client.query(
+            `UPDATE products
+             SET
+               category = $2,
+               sub_category = $3,
+               updated_at = NOW()
+             WHERE id = $1`,
+            [
+              created.id,
+              syncResult.primaryCategory,
+              syncResult.primarySubCategory,
+            ]
+          );
+        }
+
+        await client.query('COMMIT');
+        const product = await this.getProductById(created.id);
+        if (!product) {
+          return createErrorResult('Failed to fetch created product');
+        }
+
+        return createSuccessResult(product);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       Logger.error('Failed to create product:', error);
+      if (
+        error instanceof Error &&
+        error.message.includes('sub_category_ids')
+      ) {
+        return createErrorResult(error.message);
+      }
       return createErrorResult('Failed to create product');
     }
   }
@@ -345,24 +913,33 @@ export class CatalogService {
     updates: UpdateProductInput
   ): Promise<ServiceResult<Product>> {
     try {
+      const existingProduct = await this.getProductById(productId);
+      if (!existingProduct) {
+        return createErrorResult('Product not found');
+      }
+
       const updateFields: string[] = [];
       const values: any[] = [];
       let paramCount = 0;
       const pool = getDatabasePool();
+      const taxonomyUpdatesProvided =
+        updates.sub_category_ids !== undefined ||
+        updates.category !== undefined ||
+        updates.sub_category !== undefined;
+      const normalizedCategory =
+        updates.category !== undefined
+          ? normalizeTextField(updates.category)
+          : undefined;
+      const normalizedSubCategory =
+        updates.sub_category !== undefined
+          ? normalizeTextField(updates.sub_category)
+          : undefined;
 
       const fixedFieldUpdatesProvided =
         updates.duration_months !== undefined ||
         updates.fixed_price_cents !== undefined ||
         updates.fixed_price_currency !== undefined;
       let normalizedFixedPriceCurrency: string | null | undefined;
-      let existingProduct: Product | null = null;
-
-      if (fixedFieldUpdatesProvided) {
-        existingProduct = await this.getProductById(productId);
-        if (!existingProduct) {
-          return createErrorResult('Product not found');
-        }
-      }
 
       if (updates.name !== undefined) {
         updateFields.push(`name = $${++paramCount}`);
@@ -383,14 +960,6 @@ export class CatalogService {
       if (updates.logo_key !== undefined) {
         updateFields.push(`logo_key = $${++paramCount}`);
         values.push(updates.logo_key);
-      }
-      if (updates.category !== undefined) {
-        updateFields.push(`category = $${++paramCount}`);
-        values.push(normalizeTextField(updates.category));
-      }
-      if (updates.sub_category !== undefined) {
-        updateFields.push(`sub_category = $${++paramCount}`);
-        values.push(normalizeTextField(updates.sub_category));
       }
       if (updates.default_currency !== undefined) {
         if (updates.default_currency) {
@@ -452,7 +1021,7 @@ export class CatalogService {
         values.push(updates.metadata ? JSON.stringify(updates.metadata) : null);
       }
 
-      if (fixedFieldUpdatesProvided && existingProduct) {
+      if (fixedFieldUpdatesProvided) {
         const durationMonths =
           updates.duration_months !== undefined
             ? normalizeIntegerOrNull(updates.duration_months)
@@ -477,28 +1046,86 @@ export class CatalogService {
         }
       }
 
-      if (updateFields.length === 0) {
+      if (updateFields.length === 0 && !taxonomyUpdatesProvided) {
         return createErrorResult('No valid fields to update');
       }
 
-      updateFields.push(`updated_at = NOW()`);
-      values.push(productId);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
 
-      const result = await pool.query(
-        `UPDATE products
-         SET ${updateFields.join(', ')}
-         WHERE id = $${++paramCount}
-         RETURNING *`,
-        values
-      );
+        if (updateFields.length > 0) {
+          updateFields.push(`updated_at = NOW()`);
+          values.push(productId);
 
-      if (result.rows.length === 0) {
+          const result = await client.query(
+            `UPDATE products
+             SET ${updateFields.join(', ')}
+             WHERE id = $${++paramCount}
+             RETURNING id`,
+            values
+          );
+
+          if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return createErrorResult('Product not found');
+          }
+        }
+
+        if (taxonomyUpdatesProvided) {
+          const syncResult = await this.syncProductSubCategoryAssignments(
+            client,
+            {
+              productId,
+              subCategoryIds: updates.sub_category_ids,
+              category:
+                normalizedCategory !== undefined
+                  ? normalizedCategory
+                  : existingProduct.category,
+              subCategory:
+                normalizedSubCategory !== undefined
+                  ? normalizedSubCategory
+                  : existingProduct.sub_category,
+            }
+          );
+
+          await client.query(
+            `UPDATE products
+             SET
+               category = $2,
+               sub_category = $3,
+               updated_at = NOW()
+             WHERE id = $1`,
+            [
+              productId,
+              syncResult.primaryCategory,
+              syncResult.primarySubCategory,
+            ]
+          );
+        }
+
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      const updatedProduct = await this.getProductById(productId);
+      if (!updatedProduct) {
         return createErrorResult('Product not found');
       }
 
-      return createSuccessResult(mapProduct(result.rows[0]));
+      return createSuccessResult(updatedProduct);
     } catch (error) {
       Logger.error('Failed to update product:', error);
+      if (
+        error instanceof Error &&
+        error.message.includes('sub_category_ids')
+      ) {
+        return createErrorResult(error.message);
+      }
       return createErrorResult('Failed to update product');
     }
   }
@@ -506,9 +1133,41 @@ export class CatalogService {
   async getProductById(productId: string): Promise<Product | null> {
     try {
       const pool = getDatabasePool();
-      const result = await pool.query('SELECT * FROM products WHERE id = $1', [
-        productId,
-      ]);
+      const hasMapTable = await this.hasProductSubCategoryMapTable(pool);
+      const result = hasMapTable
+        ? await pool.query(
+            `SELECT
+               p.*,
+               COALESCE(agg.sub_category_ids, ARRAY[]::uuid[]) AS sub_category_ids,
+               COALESCE(agg.sub_category_assignments, '[]'::jsonb) AS sub_category_assignments
+             FROM products p
+             LEFT JOIN LATERAL (
+               SELECT
+                 ARRAY_AGG(
+                   pscm.sub_category_id
+                   ORDER BY pscm.is_primary DESC, LOWER(sc.category), LOWER(sc.name)
+                 ) AS sub_category_ids,
+                 JSONB_AGG(
+                   JSONB_BUILD_OBJECT(
+                     'sub_category_id', pscm.sub_category_id,
+                     'category', sc.category,
+                     'sub_category', sc.name,
+                     'sub_category_slug', sc.slug,
+                     'is_primary', pscm.is_primary
+                   )
+                   ORDER BY pscm.is_primary DESC, LOWER(sc.category), LOWER(sc.name)
+                 ) AS sub_category_assignments
+               FROM product_sub_category_map pscm
+               JOIN product_sub_categories sc
+                 ON sc.id = pscm.sub_category_id
+               WHERE pscm.product_id = p.id
+             ) agg ON TRUE
+             WHERE p.id = $1`,
+            [productId]
+          )
+        : await pool.query(`SELECT p.* FROM products p WHERE p.id = $1`, [
+            productId,
+          ]);
       return result.rows.length > 0 ? mapProduct(result.rows[0]) : null;
     } catch (error) {
       Logger.error('Failed to fetch product by id:', error);
@@ -519,10 +1178,41 @@ export class CatalogService {
   async getProductBySlug(slug: string): Promise<Product | null> {
     try {
       const pool = getDatabasePool();
-      const result = await pool.query(
-        'SELECT * FROM products WHERE slug = $1',
-        [slug]
-      );
+      const hasMapTable = await this.hasProductSubCategoryMapTable(pool);
+      const result = hasMapTable
+        ? await pool.query(
+            `SELECT
+               p.*,
+               COALESCE(agg.sub_category_ids, ARRAY[]::uuid[]) AS sub_category_ids,
+               COALESCE(agg.sub_category_assignments, '[]'::jsonb) AS sub_category_assignments
+             FROM products p
+             LEFT JOIN LATERAL (
+               SELECT
+                 ARRAY_AGG(
+                   pscm.sub_category_id
+                   ORDER BY pscm.is_primary DESC, LOWER(sc.category), LOWER(sc.name)
+                 ) AS sub_category_ids,
+                 JSONB_AGG(
+                   JSONB_BUILD_OBJECT(
+                     'sub_category_id', pscm.sub_category_id,
+                     'category', sc.category,
+                     'sub_category', sc.name,
+                     'sub_category_slug', sc.slug,
+                     'is_primary', pscm.is_primary
+                   )
+                   ORDER BY pscm.is_primary DESC, LOWER(sc.category), LOWER(sc.name)
+                 ) AS sub_category_assignments
+               FROM product_sub_category_map pscm
+               JOIN product_sub_categories sc
+                 ON sc.id = pscm.sub_category_id
+               WHERE pscm.product_id = p.id
+             ) agg ON TRUE
+             WHERE p.slug = $1`,
+            [slug]
+          )
+        : await pool.query(`SELECT p.* FROM products p WHERE p.slug = $1`, [
+            slug,
+          ]);
       return result.rows.length > 0 ? mapProduct(result.rows[0]) : null;
     } catch (error) {
       Logger.error('Failed to fetch product by slug:', error);
@@ -537,13 +1227,48 @@ export class CatalogService {
       if (!normalizedServiceType) {
         return null;
       }
-      const result = await pool.query(
-        `SELECT * FROM products
-         WHERE LOWER(service_type) = $1
-         ORDER BY created_at DESC
-         LIMIT 1`,
-        [normalizedServiceType]
-      );
+      const hasMapTable = await this.hasProductSubCategoryMapTable(pool);
+      const result = hasMapTable
+        ? await pool.query(
+            `SELECT
+               p.*,
+               COALESCE(agg.sub_category_ids, ARRAY[]::uuid[]) AS sub_category_ids,
+               COALESCE(agg.sub_category_assignments, '[]'::jsonb) AS sub_category_assignments
+             FROM products p
+             LEFT JOIN LATERAL (
+               SELECT
+                 ARRAY_AGG(
+                   pscm.sub_category_id
+                   ORDER BY pscm.is_primary DESC, LOWER(sc.category), LOWER(sc.name)
+                 ) AS sub_category_ids,
+                 JSONB_AGG(
+                   JSONB_BUILD_OBJECT(
+                     'sub_category_id', pscm.sub_category_id,
+                     'category', sc.category,
+                     'sub_category', sc.name,
+                     'sub_category_slug', sc.slug,
+                     'is_primary', pscm.is_primary
+                   )
+                   ORDER BY pscm.is_primary DESC, LOWER(sc.category), LOWER(sc.name)
+                 ) AS sub_category_assignments
+               FROM product_sub_category_map pscm
+               JOIN product_sub_categories sc
+                 ON sc.id = pscm.sub_category_id
+               WHERE pscm.product_id = p.id
+             ) agg ON TRUE
+             WHERE LOWER(p.service_type) = $1
+             ORDER BY p.created_at DESC
+             LIMIT 1`,
+            [normalizedServiceType]
+          )
+        : await pool.query(
+            `SELECT p.*
+             FROM products p
+             WHERE LOWER(p.service_type) = $1
+             ORDER BY p.created_at DESC
+             LIMIT 1`,
+            [normalizedServiceType]
+          );
       return result.rows.length > 0 ? mapProduct(result.rows[0]) : null;
     } catch (error) {
       Logger.error('Failed to fetch product by service type:', error);
@@ -688,34 +1413,72 @@ export class CatalogService {
   }): Promise<Product[]> {
     try {
       const pool = getDatabasePool();
+      const hasMapTable = await this.hasProductSubCategoryMapTable(pool);
       const params: any[] = [];
       let paramCount = 0;
-      let sql = 'SELECT * FROM products WHERE 1=1';
+      let sql = 'SELECT p.* FROM products p WHERE 1=1';
 
       if (filters?.status) {
-        sql += ` AND status = $${++paramCount}`;
+        sql += ` AND p.status = $${++paramCount}`;
         params.push(filters.status);
       }
       if (filters?.service_type) {
-        sql += ` AND service_type = $${++paramCount}`;
+        sql += ` AND p.service_type = $${++paramCount}`;
         params.push(filters.service_type);
       }
       const normalizedCategory = normalizeTaxonomyFilterValue(
         filters?.category
       );
-      if (normalizedCategory) {
-        sql += ` AND LOWER(BTRIM(COALESCE(category, ''))) = $${++paramCount}`;
-        params.push(normalizedCategory);
-      }
       const normalizedSubCategory = normalizeTaxonomyFilterValue(
         filters?.sub_category
       );
-      if (normalizedSubCategory) {
-        sql += ` AND LOWER(BTRIM(COALESCE(sub_category, ''))) = $${++paramCount}`;
-        params.push(normalizedSubCategory);
+      if (normalizedCategory || normalizedSubCategory) {
+        const legacyConditions: string[] = [];
+        if (normalizedCategory) {
+          legacyConditions.push(
+            `LOWER(BTRIM(COALESCE(p.category, ''))) = $${++paramCount}`
+          );
+          params.push(normalizedCategory);
+        }
+        if (normalizedSubCategory) {
+          legacyConditions.push(
+            `LOWER(BTRIM(COALESCE(p.sub_category, ''))) = $${++paramCount}`
+          );
+          params.push(normalizedSubCategory);
+        }
+
+        if (hasMapTable) {
+          const mappingConditions: string[] = [];
+          if (normalizedCategory) {
+            mappingConditions.push(
+              `LOWER(BTRIM(sc.category)) = $${++paramCount}`
+            );
+            params.push(normalizedCategory);
+          }
+          if (normalizedSubCategory) {
+            mappingConditions.push(`LOWER(BTRIM(sc.name)) = $${++paramCount}`);
+            params.push(normalizedSubCategory);
+          }
+
+          sql += `
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM product_sub_category_map pscm
+                JOIN product_sub_categories sc
+                  ON sc.id = pscm.sub_category_id
+                WHERE pscm.product_id = p.id
+                  ${mappingConditions.length > 0 ? `AND ${mappingConditions.join(' AND ')}` : ''}
+              )
+              ${legacyConditions.length > 0 ? `OR (${legacyConditions.join(' AND ')})` : ''}
+            )
+          `;
+        } else if (legacyConditions.length > 0) {
+          sql += ` AND (${legacyConditions.join(' AND ')})`;
+        }
       }
 
-      sql += ' ORDER BY created_at DESC';
+      sql += ' ORDER BY p.created_at DESC';
 
       if (filters?.limit) {
         sql += ` LIMIT $${++paramCount}`;
@@ -739,22 +1502,37 @@ export class CatalogService {
   ): Promise<ProductSubCategory[]> {
     try {
       const pool = getDatabasePool();
+      const hasMapTable = await this.hasProductSubCategoryMapTable(pool);
       const params: any[] = [];
       let paramCount = 0;
-      let sql = `
-        SELECT
-          sc.id,
-          sc.category,
-          sc.name,
-          sc.slug,
-          sc.created_at,
-          sc.updated_at,
-          COUNT(p.id)::int AS product_count
-        FROM product_sub_categories sc
-        LEFT JOIN products p
-          ON LOWER(BTRIM(COALESCE(p.category, ''))) = LOWER(BTRIM(sc.category))
-         AND LOWER(BTRIM(COALESCE(p.sub_category, ''))) = LOWER(BTRIM(sc.name))
-      `;
+      let sql = hasMapTable
+        ? `
+            SELECT
+              sc.id,
+              sc.category,
+              sc.name,
+              sc.slug,
+              sc.created_at,
+              sc.updated_at,
+              COUNT(DISTINCT pscm.product_id)::int AS product_count
+            FROM product_sub_categories sc
+            LEFT JOIN product_sub_category_map pscm
+              ON pscm.sub_category_id = sc.id
+          `
+        : `
+            SELECT
+              sc.id,
+              sc.category,
+              sc.name,
+              sc.slug,
+              sc.created_at,
+              sc.updated_at,
+              COUNT(DISTINCT p.id)::int AS product_count
+            FROM product_sub_categories sc
+            LEFT JOIN products p
+              ON LOWER(BTRIM(COALESCE(p.category, ''))) = LOWER(BTRIM(sc.category))
+             AND LOWER(BTRIM(COALESCE(p.sub_category, ''))) = LOWER(BTRIM(sc.name))
+          `;
 
       const normalizedCategory = normalizeTaxonomyFilterValue(
         filters?.category
@@ -796,26 +1574,47 @@ export class CatalogService {
       }
 
       const pool = getDatabasePool();
-      const result = await pool.query(
-        `
-          SELECT
-            sc.id,
-            sc.category,
-            sc.name,
-            sc.slug,
-            sc.created_at,
-            sc.updated_at,
-            COUNT(p.id)::int AS product_count
-          FROM product_sub_categories sc
-          LEFT JOIN products p
-            ON LOWER(BTRIM(COALESCE(p.category, ''))) = LOWER(BTRIM(sc.category))
-           AND LOWER(BTRIM(COALESCE(p.sub_category, ''))) = LOWER(BTRIM(sc.name))
-          WHERE sc.slug = $1
-          GROUP BY sc.id, sc.category, sc.name, sc.slug, sc.created_at, sc.updated_at
-          LIMIT 1
-        `,
-        [normalizedSlug]
-      );
+      const hasMapTable = await this.hasProductSubCategoryMapTable(pool);
+      const result = hasMapTable
+        ? await pool.query(
+            `
+              SELECT
+                sc.id,
+                sc.category,
+                sc.name,
+                sc.slug,
+                sc.created_at,
+                sc.updated_at,
+                COUNT(DISTINCT pscm.product_id)::int AS product_count
+              FROM product_sub_categories sc
+              LEFT JOIN product_sub_category_map pscm
+                ON pscm.sub_category_id = sc.id
+              WHERE sc.slug = $1
+              GROUP BY sc.id, sc.category, sc.name, sc.slug, sc.created_at, sc.updated_at
+              LIMIT 1
+            `,
+            [normalizedSlug]
+          )
+        : await pool.query(
+            `
+              SELECT
+                sc.id,
+                sc.category,
+                sc.name,
+                sc.slug,
+                sc.created_at,
+                sc.updated_at,
+                COUNT(DISTINCT p.id)::int AS product_count
+              FROM product_sub_categories sc
+              LEFT JOIN products p
+                ON LOWER(BTRIM(COALESCE(p.category, ''))) = LOWER(BTRIM(sc.category))
+               AND LOWER(BTRIM(COALESCE(p.sub_category, ''))) = LOWER(BTRIM(sc.name))
+              WHERE sc.slug = $1
+              GROUP BY sc.id, sc.category, sc.name, sc.slug, sc.created_at, sc.updated_at
+              LIMIT 1
+            `,
+            [normalizedSlug]
+          );
 
       if (result.rows.length === 0) {
         return null;
@@ -1163,6 +1962,7 @@ export class CatalogService {
   }): Promise<CatalogListing[]> {
     try {
       const pool = getDatabasePool();
+      const hasMapTable = await this.hasProductSubCategoryMapTable(pool);
       const params: any[] = [];
       let paramCount = 0;
       let sql = `
@@ -1209,16 +2009,53 @@ export class CatalogService {
       const normalizedCategory = normalizeTaxonomyFilterValue(
         filters?.category
       );
-      if (normalizedCategory) {
-        sql += ` AND LOWER(BTRIM(COALESCE(p.category, ''))) = $${++paramCount}`;
-        params.push(normalizedCategory);
-      }
       const normalizedSubCategory = normalizeTaxonomyFilterValue(
         filters?.sub_category
       );
-      if (normalizedSubCategory) {
-        sql += ` AND LOWER(BTRIM(COALESCE(p.sub_category, ''))) = $${++paramCount}`;
-        params.push(normalizedSubCategory);
+      if (normalizedCategory || normalizedSubCategory) {
+        const legacyConditions: string[] = [];
+        if (normalizedCategory) {
+          legacyConditions.push(
+            `LOWER(BTRIM(COALESCE(p.category, ''))) = $${++paramCount}`
+          );
+          params.push(normalizedCategory);
+        }
+        if (normalizedSubCategory) {
+          legacyConditions.push(
+            `LOWER(BTRIM(COALESCE(p.sub_category, ''))) = $${++paramCount}`
+          );
+          params.push(normalizedSubCategory);
+        }
+
+        if (hasMapTable) {
+          const mappingConditions: string[] = [];
+          if (normalizedCategory) {
+            mappingConditions.push(
+              `LOWER(BTRIM(sc.category)) = $${++paramCount}`
+            );
+            params.push(normalizedCategory);
+          }
+          if (normalizedSubCategory) {
+            mappingConditions.push(`LOWER(BTRIM(sc.name)) = $${++paramCount}`);
+            params.push(normalizedSubCategory);
+          }
+
+          sql += `
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM product_sub_category_map pscm
+                JOIN product_sub_categories sc
+                  ON sc.id = pscm.sub_category_id
+                WHERE pscm.product_id = p.id
+                  ${mappingConditions.length > 0 ? `AND ${mappingConditions.join(' AND ')}` : ''}
+              )
+              ${legacyConditions.length > 0 ? `OR (${legacyConditions.join(' AND ')})` : ''}
+            )
+          `;
+        } else if (legacyConditions.length > 0) {
+          sql += ` AND (${legacyConditions.join(' AND ')})`;
+        }
       }
 
       sql +=
@@ -1272,6 +2109,7 @@ export class CatalogService {
   }): Promise<Product[]> {
     try {
       const pool = getDatabasePool();
+      const hasMapTable = await this.hasProductSubCategoryMapTable(pool);
       const params: any[] = [];
       let paramCount = 0;
       let sql = `
@@ -1295,16 +2133,53 @@ export class CatalogService {
       const normalizedCategory = normalizeTaxonomyFilterValue(
         filters?.category
       );
-      if (normalizedCategory) {
-        sql += ` AND LOWER(BTRIM(COALESCE(p.category, ''))) = $${++paramCount}`;
-        params.push(normalizedCategory);
-      }
       const normalizedSubCategory = normalizeTaxonomyFilterValue(
         filters?.sub_category
       );
-      if (normalizedSubCategory) {
-        sql += ` AND LOWER(BTRIM(COALESCE(p.sub_category, ''))) = $${++paramCount}`;
-        params.push(normalizedSubCategory);
+      if (normalizedCategory || normalizedSubCategory) {
+        const legacyConditions: string[] = [];
+        if (normalizedCategory) {
+          legacyConditions.push(
+            `LOWER(BTRIM(COALESCE(p.category, ''))) = $${++paramCount}`
+          );
+          params.push(normalizedCategory);
+        }
+        if (normalizedSubCategory) {
+          legacyConditions.push(
+            `LOWER(BTRIM(COALESCE(p.sub_category, ''))) = $${++paramCount}`
+          );
+          params.push(normalizedSubCategory);
+        }
+
+        if (hasMapTable) {
+          const mappingConditions: string[] = [];
+          if (normalizedCategory) {
+            mappingConditions.push(
+              `LOWER(BTRIM(sc.category)) = $${++paramCount}`
+            );
+            params.push(normalizedCategory);
+          }
+          if (normalizedSubCategory) {
+            mappingConditions.push(`LOWER(BTRIM(sc.name)) = $${++paramCount}`);
+            params.push(normalizedSubCategory);
+          }
+
+          sql += `
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM product_sub_category_map pscm
+                JOIN product_sub_categories sc
+                  ON sc.id = pscm.sub_category_id
+                WHERE pscm.product_id = p.id
+                  ${mappingConditions.length > 0 ? `AND ${mappingConditions.join(' AND ')}` : ''}
+              )
+              ${legacyConditions.length > 0 ? `OR (${legacyConditions.join(' AND ')})` : ''}
+            )
+          `;
+        } else if (legacyConditions.length > 0) {
+          sql += ` AND (${legacyConditions.join(' AND ')})`;
+        }
       }
 
       sql += ' ORDER BY p.created_at DESC';

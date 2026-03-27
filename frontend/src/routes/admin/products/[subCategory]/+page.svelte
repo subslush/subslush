@@ -95,6 +95,7 @@
         slug: newProduct.slug,
         description: newProduct.description || undefined,
         service_type: newProduct.serviceType || undefined,
+        sub_category_ids: [subCategory.id],
         category: subCategory.category,
         sub_category: subCategory.name,
         duration_months: hasCompleteFixedPricing ? 1 : undefined,

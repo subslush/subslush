@@ -101,6 +101,28 @@
 
   const normalizeCategory = (value?: string | null): string => normalizeText(value);
 
+  const resolveCategoryKeys = (product: ProductListing): string[] => {
+    const keys = new Set<string>();
+    if (Array.isArray(product.category_keys)) {
+      for (const entry of product.category_keys) {
+        const normalized = normalizeCategory(
+          typeof entry === 'string' ? entry : null
+        );
+        if (normalized) {
+          keys.add(normalized);
+        }
+      }
+    }
+    const fallbackCategory = normalizeCategory(product.category);
+    if (fallbackCategory) {
+      keys.add(fallbackCategory);
+    }
+    return Array.from(keys);
+  };
+
+  const hasCategoryKey = (product: ProductListing, categoryKey: string): boolean =>
+    resolveCategoryKeys(product).includes(normalizeCategory(categoryKey));
+
   const matchesByAlias = (product: ProductListing, aliases: string[]): boolean => {
     const normalizedName = normalizeText(product.name);
     const normalizedSlug = normalizeText(product.slug);
@@ -201,7 +223,7 @@
           usedGroupKeys.has(groupKey) ||
           !matchesRule(product, rule) ||
           (normalizedFallbackCategory &&
-            normalizeCategory(product.category) !== normalizedFallbackCategory)
+            !hasCategoryKey(product, normalizedFallbackCategory))
         ) {
           return best;
         }
@@ -225,7 +247,7 @@
 
     const categoryFallback = uniqueBySubCategory
       .filter(product =>
-        normalizeCategory(product.category) === normalizedFallbackCategory
+        hasCategoryKey(product, normalizedFallbackCategory)
           && !usedGroupKeys.has(getGroupKey(product))
       )
       .sort((a, b) => getComparablePrice(a) - getComparablePrice(b));
@@ -277,7 +299,7 @@
     const normalizedCategory = normalizeCategory(categoryKey);
 
     for (const product of products) {
-      if (normalizeCategory(product.category) !== normalizedCategory) {
+      if (!hasCategoryKey(product, normalizedCategory)) {
         continue;
       }
       const subCategoryKey = normalizeText(product.sub_category);

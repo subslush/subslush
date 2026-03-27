@@ -74,6 +74,10 @@ export interface AdminProduct {
   category?: string | null;
   sub_category?: string | null;
   subCategory?: string | null;
+  sub_category_ids?: string[] | null;
+  subCategoryIds?: string[] | null;
+  sub_category_assignments?: AdminProductSubCategoryAssignment[] | null;
+  subCategoryAssignments?: AdminProductSubCategoryAssignment[] | null;
   default_currency?: string | null;
   defaultCurrency?: string | null;
   max_subscriptions?: number | null;
@@ -90,6 +94,18 @@ export interface AdminProduct {
   createdAt?: string;
   updated_at?: string;
   updatedAt?: string;
+}
+
+export interface AdminProductSubCategoryAssignment {
+  sub_category_id?: string;
+  subCategoryId?: string;
+  category: string;
+  sub_category?: string;
+  subCategory?: string;
+  sub_category_slug?: string;
+  subCategorySlug?: string;
+  is_primary?: boolean;
+  isPrimary?: boolean;
 }
 
 export interface AdminProductSubCategory {

@@ -266,6 +266,11 @@ export async function adminCatalogRoutes(
             logo_key: { type: 'string' },
             category: { type: 'string' },
             sub_category: { type: 'string' },
+            sub_category_ids: {
+              type: 'array',
+              items: { type: 'string' },
+              uniqueItems: true,
+            },
             default_currency: { type: 'string' },
             max_subscriptions: { type: 'integer', minimum: 0 },
             duration_months: { type: ['integer', 'null'], minimum: 1 },
@@ -333,6 +338,11 @@ export async function adminCatalogRoutes(
             logo_key: { type: 'string' },
             category: { type: 'string' },
             sub_category: { type: 'string' },
+            sub_category_ids: {
+              type: 'array',
+              items: { type: 'string' },
+              uniqueItems: true,
+            },
             default_currency: { type: 'string' },
             max_subscriptions: { type: 'integer', minimum: 0 },
             duration_months: { type: ['integer', 'null'], minimum: 1 },

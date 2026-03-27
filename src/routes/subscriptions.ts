@@ -35,6 +35,7 @@ import {
 import type {
   CatalogListing,
   PriceHistory,
+  ProductSubCategoryAssignment,
   ProductVariantTerm,
 } from '../types/catalog';
 import { orderEntitlementService } from '../services/orderEntitlementService';
@@ -287,6 +288,7 @@ type AvailablePlan = {
   logoKey?: string | null;
   category?: string | null;
   sub_category?: string | null;
+  category_keys?: string[] | null;
   product_id: string;
   variant_id: string;
 };
@@ -319,6 +321,82 @@ const normalizeQueryText = (value?: string | null): string | undefined => {
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
 };
+
+const normalizeCategoryKey = (value?: string | null): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const buildCategoryKeys = (
+  assignments: ProductSubCategoryAssignment[] | undefined,
+  fallbackCategory?: string | null
+): string[] => {
+  const keys = new Set<string>();
+  for (const assignment of assignments || []) {
+    const key = normalizeCategoryKey(assignment.category);
+    if (key) {
+      keys.add(key);
+    }
+  }
+  const fallback = normalizeCategoryKey(fallbackCategory);
+  if (fallback) {
+    keys.add(fallback);
+  }
+  return Array.from(keys);
+};
+
+const toAssignmentMap = (
+  value: unknown
+): Map<string, ProductSubCategoryAssignment[]> => {
+  if (!(value instanceof Map)) {
+    return new Map<string, ProductSubCategoryAssignment[]>();
+  }
+
+  const normalized = new Map<string, ProductSubCategoryAssignment[]>();
+  for (const [key, entries] of value.entries()) {
+    if (typeof key !== 'string') {
+      continue;
+    }
+    if (!Array.isArray(entries)) {
+      normalized.set(key, []);
+      continue;
+    }
+    normalized.set(
+      key,
+      entries.filter(
+        (entry): entry is ProductSubCategoryAssignment =>
+          !!entry &&
+          typeof entry === 'object' &&
+          typeof entry.sub_category_id === 'string' &&
+          typeof entry.category === 'string' &&
+          typeof entry.sub_category === 'string'
+      )
+    );
+  }
+
+  return normalized;
+};
+
+const safeListSubCategoryAssignmentsForProducts = async (
+  productIds: string[]
+): Promise<Map<string, ProductSubCategoryAssignment[]>> => {
+  if (productIds.length === 0) {
+    return new Map<string, ProductSubCategoryAssignment[]>();
+  }
+
+  try {
+    const result =
+      await catalogService.listSubCategoryAssignmentsForProducts(productIds);
+    return toAssignmentMap(result);
+  } catch (error) {
+    Logger.error('Failed to list product sub-category assignments:', error);
+    return new Map<string, ProductSubCategoryAssignment[]>();
+  }
+};
+
 const MISSING_PRICE_TASK_TYPE = 'support';
 const MISSING_PRICE_TASK_PRIORITY: AdminTaskPriority = 'high';
 const MISSING_PRICE_DUE_HOURS = 24;
@@ -912,6 +990,33 @@ export async function subscriptionRoutes(
           );
         }
 
+        const assignmentMap = await safeListSubCategoryAssignmentsForProducts([
+          ...new Set([
+            ...listings.map(listing => listing.product.id),
+            ...fixedProducts.map(product => product.id),
+          ]),
+        ]);
+
+        const resolveProductTaxonomy = (product: {
+          id: string;
+          category?: string | null;
+          sub_category?: string | null;
+          sub_category_assignments?: ProductSubCategoryAssignment[];
+        }) => {
+          const assignments =
+            assignmentMap.get(product.id) || product.sub_category_assignments || [];
+          const primaryAssignment =
+            assignments.find(assignment => assignment.is_primary) ||
+            assignments[0] ||
+            null;
+          return {
+            category: primaryAssignment?.category ?? product.category ?? null,
+            subCategory:
+              primaryAssignment?.sub_category ?? product.sub_category ?? null,
+            categoryKeys: buildCategoryKeys(assignments, product.category ?? null),
+          };
+        };
+
         const services: Record<string, AvailablePlan[]> = {};
         const missingPriceTasks: Array<Promise<boolean>> = [];
         const missingPlanTasks: Array<Promise<boolean>> = [];
@@ -1025,6 +1130,14 @@ export async function subscriptionRoutes(
           const badges = normalizeStringList(variant.metadata?.['badges']);
 
           const planEntry: AvailablePlan = {
+            ...(() => {
+              const taxonomy = resolveProductTaxonomy(product);
+              return {
+                category: taxonomy.category,
+                sub_category: taxonomy.subCategory,
+                category_keys: taxonomy.categoryKeys,
+              };
+            })(),
             plan: planCode,
             name: displayName,
             display_name: displayName,
@@ -1037,8 +1150,6 @@ export async function subscriptionRoutes(
             service_name: product.name,
             logo_key: product.logo_key ?? null,
             logoKey: product.logo_key ?? null,
-            category: product.category ?? null,
-            sub_category: product.sub_category ?? null,
             product_id: product.id,
             variant_id: variant.id,
           };
@@ -1124,6 +1235,14 @@ export async function subscriptionRoutes(
           const badges = normalizeStringList(product.metadata?.['badges']);
 
           const planEntry: AvailablePlan = {
+            ...(() => {
+              const taxonomy = resolveProductTaxonomy(product);
+              return {
+                category: taxonomy.category,
+                sub_category: taxonomy.subCategory,
+                category_keys: taxonomy.categoryKeys,
+              };
+            })(),
             plan: product.slug,
             name: displayName,
             display_name: displayName,
@@ -1136,8 +1255,6 @@ export async function subscriptionRoutes(
             service_name: product.name,
             logo_key: product.logo_key ?? null,
             logoKey: product.logo_key ?? null,
-            category: product.category ?? null,
-            sub_category: product.sub_category ?? null,
             product_id: product.id,
             variant_id: product.id,
           };
@@ -1795,7 +1912,33 @@ export async function subscriptionRoutes(
           await Promise.all(missingTermTasks);
         }
 
+        const productAssignments =
+          await safeListSubCategoryAssignmentsForProducts(
+            Array.from(productMap.keys())
+          );
+
         const products = Array.from(productMap.values()).map(entry => ({
+          ...(function () {
+            const assignments =
+              productAssignments.get(entry.product.id) ||
+              entry.product.sub_category_assignments ||
+              [];
+            const primaryAssignment =
+              assignments.find(assignment => assignment.is_primary) ||
+              assignments[0] ||
+              null;
+            return {
+              category: primaryAssignment?.category ?? entry.product.category ?? null,
+              sub_category:
+                primaryAssignment?.sub_category ??
+                entry.product.sub_category ??
+                null,
+              category_keys: buildCategoryKeys(
+                assignments,
+                entry.product.category ?? null
+              ),
+            };
+          })(),
           product_id: entry.product.id,
           variant_id: entry.variantId,
           slug: entry.product.slug,
@@ -1803,8 +1946,6 @@ export async function subscriptionRoutes(
           description: entry.product.description ?? '',
           service_type: entry.product.service_type ?? null,
           logo_key: entry.product.logo_key ?? null,
-          category: entry.product.category ?? null,
-          sub_category: entry.product.sub_category ?? null,
           platform: entry.platform,
           region: entry.region,
           currency: entry.currency,
@@ -1970,6 +2111,7 @@ export async function subscriptionRoutes(
               logo_key: product.logo_key ?? null,
               category: product.category ?? null,
               sub_category: product.sub_category ?? null,
+              category_keys: product.category_keys ?? null,
               terms_conditions: termsConditions,
               upgrade_options: upgradeOptions,
               platform: platform || null,
@@ -2106,6 +2248,7 @@ export async function subscriptionRoutes(
             logo_key: product.logo_key ?? null,
             category: product.category ?? null,
             sub_category: product.sub_category ?? null,
+            category_keys: product.category_keys ?? null,
             terms_conditions: termsConditions,
             upgrade_options: upgradeOptions,
             platform: platform || null,
