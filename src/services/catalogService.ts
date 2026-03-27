@@ -661,7 +661,7 @@ export class CatalogService {
         primaryId = existingPrimaryId;
       }
       if (!primaryId && targetIds.length > 0) {
-        primaryId = targetIds[0];
+        primaryId = targetIds[0] ?? null;
       }
 
       if (targetIds.length === 0) {
@@ -857,12 +857,24 @@ export class CatalogService {
 
         const created = mapProduct(insertResult.rows[0]);
 
-        const syncResult = await this.syncProductSubCategoryAssignments(client, {
+        const syncParams: {
+          productId: string;
+          subCategoryIds?: string[] | null;
+          category?: string | null;
+          subCategory?: string | null;
+        } = {
           productId: created.id,
-          subCategoryIds: input.sub_category_ids,
           category: normalizedCategory,
           subCategory: normalizedSubCategory,
-        });
+        };
+        if (input.sub_category_ids !== undefined) {
+          syncParams.subCategoryIds = input.sub_category_ids;
+        }
+
+        const syncResult = await this.syncProductSubCategoryAssignments(
+          client,
+          syncParams
+        );
 
         const shouldUpdatePrimaryFields =
           syncResult.primaryCategory !== normalizedCategory ||
@@ -1073,20 +1085,29 @@ export class CatalogService {
         }
 
         if (taxonomyUpdatesProvided) {
+          const syncParams: {
+            productId: string;
+            subCategoryIds?: string[] | null;
+            category?: string | null;
+            subCategory?: string | null;
+          } = {
+            productId,
+            category:
+              normalizedCategory !== undefined
+                ? normalizedCategory
+                : existingProduct.category,
+            subCategory:
+              normalizedSubCategory !== undefined
+                ? normalizedSubCategory
+                : existingProduct.sub_category,
+          };
+          if (updates.sub_category_ids !== undefined) {
+            syncParams.subCategoryIds = updates.sub_category_ids;
+          }
+
           const syncResult = await this.syncProductSubCategoryAssignments(
             client,
-            {
-              productId,
-              subCategoryIds: updates.sub_category_ids,
-              category:
-                normalizedCategory !== undefined
-                  ? normalizedCategory
-                  : existingProduct.category,
-              subCategory:
-                normalizedSubCategory !== undefined
-                  ? normalizedSubCategory
-                  : existingProduct.sub_category,
-            }
+            syncParams
           );
 
           await client.query(
