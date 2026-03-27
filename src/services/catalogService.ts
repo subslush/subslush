@@ -1090,17 +1090,21 @@ export class CatalogService {
             subCategoryIds?: string[] | null;
             category?: string | null;
             subCategory?: string | null;
-          } = {
-            productId,
-            category:
-              normalizedCategory !== undefined
-                ? normalizedCategory
-                : existingProduct.category,
-            subCategory:
-              normalizedSubCategory !== undefined
-                ? normalizedSubCategory
-                : existingProduct.sub_category,
-          };
+          } = { productId };
+          const resolvedCategory =
+            normalizedCategory !== undefined
+              ? normalizedCategory
+              : existingProduct.category;
+          const resolvedSubCategory =
+            normalizedSubCategory !== undefined
+              ? normalizedSubCategory
+              : existingProduct.sub_category;
+          if (resolvedCategory !== undefined) {
+            syncParams.category = resolvedCategory;
+          }
+          if (resolvedSubCategory !== undefined) {
+            syncParams.subCategory = resolvedSubCategory;
+          }
           if (updates.sub_category_ids !== undefined) {
             syncParams.subCategoryIds = updates.sub_category_ids;
           }
