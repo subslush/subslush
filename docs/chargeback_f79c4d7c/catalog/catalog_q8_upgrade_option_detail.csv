@@ -1,0 +1,12 @@
+snapshot_ts_utc,snapshot_source,upgrade_options
+2026-01-31 01:39:21.401119,catalog.product.create,null
+2026-01-31 01:40:17.213987,catalog.product.update,"{""allow_new_account"":true,""allow_own_account"":false,""manual_monthly_upgrade"":false}"
+2026-01-31 01:43:55.258052,catalog.variant.create,null
+2026-01-31 01:53:27.223853,catalog.product.update,"{""allow_new_account"":true,""allow_own_account"":false,""manual_monthly_upgrade"":false}"
+2026-01-31 01:53:40.292667,catalog.product.update,"{""allow_new_account"":true,""allow_own_account"":false,""manual_monthly_upgrade"":false}"
+2026-01-31 01:53:48.346403,catalog.product.update,"{""allow_new_account"":true,""allow_own_account"":false,""manual_monthly_upgrade"":false}"
+2026-01-31 02:04:54.948763,catalog.variant.update,null
+2026-01-31 02:14:59.185025,catalog.variant.update,null
+2026-01-31 02:15:06.210864,catalog.variant.update,null
+2026-01-31 02:19:07.689575,catalog.variant.update,null
+2026-01-31 11:40:11.463358,checkout.order.metadata,"{""allow_new_account"":true,""allow_own_account"":false,""manual_monthly_upgrade"":false}"

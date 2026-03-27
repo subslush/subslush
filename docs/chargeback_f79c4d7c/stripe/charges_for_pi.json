@@ -1,0 +1,149 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "ch_3SvcX9BH0OzDZCqh016mpjdJ",
+      "object": "charge",
+      "amount": 5947,
+      "amount_captured": 5947,
+      "amount_refunded": 0,
+      "application": null,
+      "application_fee": null,
+      "application_fee_amount": null,
+      "balance_transaction": "txn_3SvcX9BH0OzDZCqh0XR3gnpF",
+      "billing_details": {
+        "address": {
+          "city": null,
+          "country": "US",
+          "line1": null,
+          "line2": null,
+          "postal_code": "63090",
+          "state": null
+        },
+        "email": "andrew.ngui@gmail.com",
+        "name": "",
+        "phone": null,
+        "tax_id": null
+      },
+      "calculated_statement_descriptor": "SUBSLUSH.COM",
+      "captured": true,
+      "created": 1769859654,
+      "currency": "usd",
+      "customer": null,
+      "description": "Subscription: google google-aipro-veo (12 months)",
+      "destination": null,
+      "dispute": "du_1T9HpABH0OzDZCqhs67KYVo8",
+      "disputed": true,
+      "failure_balance_transaction": null,
+      "failure_code": null,
+      "failure_message": null,
+      "fraud_details": {},
+      "invoice": null,
+      "livemode": true,
+      "metadata": {
+        "auto_renew": "false",
+        "base_price_cents": "583",
+        "coupon_code": "NEW15",
+        "coupon_discount_cents": "1049",
+        "coupon_percent_off": "15",
+        "currency": "USD",
+        "discount_percent": "0",
+        "duration_months": "12",
+        "orderId": "f79c4d7c-a188-4d3d-91e4-b62c6772d830",
+        "price_cents": "5947",
+        "product_variant_id": "2120cfb0-3512-434f-aae8-50e28f792861",
+        "service_plan": "google-aipro-veo",
+        "service_type": "google",
+        "subscription_price_cents": "6996",
+        "term_months": "12",
+        "total_price_cents": "5947",
+        "upgrade_options": "{\"allow_new_account\":true,\"allow_own_account\":false,\"manual_monthly_upgrade\":false}",
+        "userId": "421f2f2f-7181-4aa5-b802-87bf324848b0"
+      },
+      "on_behalf_of": null,
+      "order": null,
+      "outcome": {
+        "advice_code": null,
+        "network_advice_code": null,
+        "network_decline_code": null,
+        "network_status": "approved_by_network",
+        "reason": null,
+        "risk_level": "normal",
+        "seller_message": "Payment complete.",
+        "type": "authorized"
+      },
+      "paid": true,
+      "payment_intent": "pi_3SvcX9BH0OzDZCqh0nK6kHFx",
+      "payment_method": "pm_1SvcXpBH0OzDZCqhMZL38gSU",
+      "payment_method_details": {
+        "card": {
+          "amount_authorized": 5947,
+          "authorization_code": "01644I",
+          "brand": "visa",
+          "checks": {
+            "address_line1_check": null,
+            "address_postal_code_check": "pass",
+            "cvc_check": "pass"
+          },
+          "country": "US",
+          "exp_month": 1,
+          "exp_year": 2030,
+          "extended_authorization": {
+            "status": "disabled"
+          },
+          "fingerprint": "EQn32sKqV55PLqyA",
+          "funding": "credit",
+          "incremental_authorization": {
+            "status": "unavailable"
+          },
+          "installments": null,
+          "last4": "8629",
+          "mandate": null,
+          "multicapture": {
+            "status": "unavailable"
+          },
+          "network": "visa",
+          "network_token": {
+            "used": false
+          },
+          "network_transaction_id": "346031420548457",
+          "overcapture": {
+            "maximum_amount_capturable": 5947,
+            "status": "unavailable"
+          },
+          "regulated_status": "unregulated",
+          "three_d_secure": null,
+          "wallet": {
+            "dynamic_last4": null,
+            "link": {},
+            "type": "link"
+          }
+        },
+        "type": "card"
+      },
+      "radar_options": {},
+      "receipt_email": null,
+      "receipt_number": "1822-6385",
+      "receipt_url": "https://pay.stripe.com/receipts/payment/CAcQARoXChVhY2N0XzE4aE43MkJIME96RFpDcWgoweWAzgYyBgrFUtmyXjosFmt5nR2ITR2mnHkF_R9Afaovl6kGy1iYM59m3ZQSYyadlH04GXiJLF9uGXM",
+      "refunded": false,
+      "refunds": {
+        "object": "list",
+        "data": [],
+        "has_more": false,
+        "total_count": 0,
+        "url": "/v1/charges/ch_3SvcX9BH0OzDZCqh016mpjdJ/refunds"
+      },
+      "review": null,
+      "shipping": null,
+      "source": null,
+      "source_transfer": null,
+      "statement_descriptor": null,
+      "statement_descriptor_suffix": null,
+      "status": "succeeded",
+      "transfer_data": null,
+      "transfer_group": null
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/charges"
+}

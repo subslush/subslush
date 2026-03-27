@@ -1,0 +1,97 @@
+{
+  "object": "list",
+  "count": 1,
+  "data": [
+    {
+      "id": "du_1T9HpABH0OzDZCqhs67KYVo8",
+      "object": "dispute",
+      "amount": 5947,
+      "balance_transaction": "txn_1T9HpLBH0OzDZCqhZxdtP2CN",
+      "balance_transactions": [
+        {
+          "id": "txn_1T9HpLBH0OzDZCqhZxdtP2CN",
+          "object": "balance_transaction",
+          "amount": -54785,
+          "available_on": 1773116606,
+          "balance_type": "payments",
+          "created": 1773116606,
+          "currency": "sek",
+          "description": "Chargeback withdrawal for ch_3SvcX9BH0OzDZCqh016mpjdJ",
+          "exchange_rate": null,
+          "fee": 20000,
+          "fee_details": [
+            {
+              "amount": 20000,
+              "application": null,
+              "currency": "sek",
+              "description": "Dispute fee",
+              "type": "stripe_fee"
+            }
+          ],
+          "net": -74785,
+          "reporting_category": "dispute",
+          "source": "du_1T9HpABH0OzDZCqhs67KYVo8",
+          "status": "available",
+          "type": "adjustment"
+        }
+      ],
+      "charge": "ch_3SvcX9BH0OzDZCqh016mpjdJ",
+      "created": 1773116596,
+      "currency": "usd",
+      "enhanced_eligibility_types": [],
+      "evidence": {
+        "access_activity_log": null,
+        "billing_address": "63090, US",
+        "cancellation_policy": null,
+        "cancellation_policy_disclosure": null,
+        "cancellation_rebuttal": null,
+        "customer_communication": null,
+        "customer_email_address": "andrew.ngui@gmail.com",
+        "customer_name": null,
+        "customer_purchase_ip": "136.23.56.251",
+        "customer_signature": null,
+        "duplicate_charge_documentation": null,
+        "duplicate_charge_explanation": null,
+        "duplicate_charge_id": null,
+        "enhanced_evidence": {},
+        "product_description": "Subscription: google google-aipro-veo (12 months)",
+        "receipt": null,
+        "refund_policy": null,
+        "refund_policy_disclosure": null,
+        "refund_refusal_explanation": null,
+        "service_date": null,
+        "service_documentation": null,
+        "shipping_address": null,
+        "shipping_carrier": null,
+        "shipping_date": null,
+        "shipping_documentation": null,
+        "shipping_tracking_number": null,
+        "uncategorized_file": null,
+        "uncategorized_text": null
+      },
+      "evidence_details": {
+        "due_by": 1774483199,
+        "enhanced_eligibility": {},
+        "has_evidence": false,
+        "past_due": false,
+        "submission_count": 0
+      },
+      "is_charge_refundable": false,
+      "livemode": true,
+      "metadata": {},
+      "payment_intent": "pi_3SvcX9BH0OzDZCqh0nK6kHFx",
+      "payment_method_details": {
+        "card": {
+          "brand": "visa",
+          "case_type": "chargeback",
+          "network_reason_code": "13.3"
+        },
+        "type": "card"
+      },
+      "reason": "product_unacceptable",
+      "status": "needs_response"
+    }
+  ],
+  "has_more": false,
+  "url": "/v1/disputes"
+}

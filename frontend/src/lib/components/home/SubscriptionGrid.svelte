@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/stores';
   import { resolveLogoKey, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
   import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
   import { Plus, ShoppingCart } from 'lucide-svelte';
@@ -194,7 +195,22 @@
       return subCategoryHref;
     }
     if (!product.slug) return '/browse';
-    return `/browse/products/${encodeURIComponent(product.slug)}`;
+    const searchParams = new URLSearchParams();
+    const currentCategory = ($page.url.searchParams.get('category') || '').trim();
+    const currentSubCategory = ($page.url.searchParams.get('sub_category') || '').trim();
+    const shouldCarryBrowseFilters = $page.url.pathname === '/browse';
+
+    if (shouldCarryBrowseFilters) {
+      if (currentCategory && currentCategory.toLowerCase() !== 'all') {
+        searchParams.set('category', currentCategory.toLowerCase());
+      }
+      if (currentSubCategory) {
+        searchParams.set('sub_category', currentSubCategory.toLowerCase());
+      }
+    }
+
+    const query = searchParams.toString();
+    return `/browse/products/${encodeURIComponent(product.slug)}${query ? `?${query}` : ''}`;
   }
 
   function getCardAriaLabel(product: ProductListing): string {

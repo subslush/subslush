@@ -1,0 +1,5 @@
+id,subscription_id,task_type,due_date,completed_at,assigned_admin,notes,priority,created_at,order_id,user_id,task_category,sla_due_at,is_issue,payment_confirmed_at,mmu_cycle_index,mmu_cycle_total
+0d7b39cd-b7ed-48f8-bd90-c63b86c054ee,d2aacda0-6cd4-484d-83bc-0b5a54767aad,support,2026-02-03 11:40:55.563,2026-01-31 11:41:07.805969,,"Selection required for google google-aipro-veo. Subscription d2aacda0-6cd4-484d-83bc-0b5a54767aad Order f79c4d7c-a188-4d3d-91e4-b62c6772d830
+[2026-01-31T11:41:07.803Z] Selection submitted",medium,2026-01-31 11:40:55.56595,f79c4d7c-a188-4d3d-91e4-b62c6772d830,421f2f2f-7181-4aa5-b802-87bf324848b0,selection_pending,2026-02-03 11:40:55.563,f,,,
+397ba550-e876-4a08-b31a-c79eb9fe63d7,d2aacda0-6cd4-484d-83bc-0b5a54767aad,credential_provision,2026-02-03 11:41:07.798,2026-01-31 18:11:20.435232,9bb2e6c4-2d0d-4b83-804e-1af8d4aeb324,"Selection submitted: upgrade_new_account. Subscription d2aacda0-6cd4-484d-83bc-0b5a54767aad.
+[2026-01-31T18:11:20.432Z] Auto-completed on delivery",high,2026-01-31 11:41:07.800782,f79c4d7c-a188-4d3d-91e4-b62c6772d830,421f2f2f-7181-4aa5-b802-87bf324848b0,order_fulfillment,2026-02-03 11:41:07.798,f,,,

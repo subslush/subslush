@@ -1,0 +1,80 @@
+Refund and Warranty Policy
+
+Last updated: January 4, 2026
+
+1. Warranty coverage (subscriptions)
+
+SubSlush provides and covers a warranty for the entire subscription period (the
+"Subscription Period"). Replacement and refunds are handled case-by-case, at SubSlush's
+discretion.
+
+All warranty inquiries must be sent to hello@subslush.com with:
+
+- Order ID
+
+- Product name
+
+- description of the issue
+
+- screenshots or evidence (where relevant)
+
+2. Third-Party Service outages and service quality
+
+SubSlush should not be held responsible for disruptions caused by Third-Party Services
+(for example, Netflix, Spotify, or ChatGPT downtime, lag, delays, or feature changes).
+SubSlush provides the premium subscription upgrade or access; we do not control the
+Third-Party Service's infrastructure or service quality.
+
+If the Third-Party Service is down, you should contact the provider about the outage
+itself. You may contact SubSlush if you believe your entitlement or upgrade was not
+delivered correctly.
+
+3. No returns or refunds after delivery (digital nature)
+
+Due to the nature of digital Products, no returns or refunds can be made once the premium
+subscription has been provided (or a key or code has been delivered or revealed), except
+where mandatory law requires otherwise (for example, if SubSlush fails to deliver what
+was purchased).
+
+4. Cancellation before delivery (24 hour target / up to 72 hours)
+
+SubSlush aims to deliver within 24 hours, but delivery may take up to 72 hours.
+
+During this window, the customer may contact SubSlush (live chat or hello@subslush.com)
+to request cancellation. If the subscription has not yet been delivered, we will cancel
+the Order and refund as set out below. If it has already been delivered, we cannot
+cancel or refund under this section.
+
+5. Refund amount and third-party fees
+
+If we cancel and refund before delivery at the customer's request, SubSlush may refund
+the total amount minus any non-recoverable third-party transaction or processing fees,
+determined by the payment method (for example, card refund fees or crypto network fees).
+
+SubSlush will not charge any internal cancellation fee. Only third-party fees may be deducted.
+
+6. Customer-caused issues (no remedy)
+
+If issues are caused by the customer (for example, illegal use or violating a
+Third-Party Service's policies leading to restriction, limitation, or disablement),
+SubSlush bears no responsibility and will not provide replacements or refunds after
+investigation.
+
+7. SubSlush-caused issues (remedy under warranty)
+
+If SubSlush bears responsibility (for example, access not granted, wrong plan or period,
+incorrect delivery), SubSlush will provide a solution under warranty at our discretion,
+which may include:
+
+- re-delivery or replacement
+
+- extension of the Subscription Period
+
+- store credit
+
+- partial or full refund (where appropriate)
+
+8. Abuse, fraud, chargebacks
+
+We may refuse warranty or refund support where we reasonably suspect fraud, abuse, or
+chargeback misuse.

@@ -132,11 +132,42 @@
     limit = rules.length
   ): ProductListing[] => {
     const selected: ProductListing[] = [];
-    const usedIds = new Set<string>();
+    const usedGroupKeys = new Set<string>();
     const normalizedFallbackCategory = normalizeCategory(fallbackCategory);
 
     const getComparablePrice = (product: ProductListing): number =>
       Number.isFinite(product.from_price) ? product.from_price : Number.POSITIVE_INFINITY;
+
+    const getGroupKey = (product: ProductListing): string => {
+      const subCategoryKey = normalizeText(product.sub_category);
+      if (subCategoryKey) {
+        return `subcategory:${subCategoryKey}`;
+      }
+
+      const slugKey = normalizeText(product.slug);
+      if (slugKey) {
+        return `slug:${slugKey}`;
+      }
+
+      const productIdKey = normalizeText(product.product_id);
+      if (productIdKey) {
+        return `id:${productIdKey}`;
+      }
+
+      return `name:${normalizeText(product.name)}`;
+    };
+
+    const uniqueBySubCategory = (() => {
+      const bestByGroup = new Map<string, ProductListing>();
+      for (const product of products) {
+        const groupKey = getGroupKey(product);
+        const existing = bestByGroup.get(groupKey);
+        if (!existing || getComparablePrice(product) < getComparablePrice(existing)) {
+          bestByGroup.set(groupKey, product);
+        }
+      }
+      return Array.from(bestByGroup.values());
+    })();
 
     const matchesRule = (
       product: ProductListing,
@@ -164,9 +195,10 @@
     };
 
     for (const rule of rules) {
-      const candidate = products.reduce<ProductListing | null>((best, product) => {
+      const candidate = uniqueBySubCategory.reduce<ProductListing | null>((best, product) => {
+        const groupKey = getGroupKey(product);
         if (
-          usedIds.has(product.product_id) ||
+          usedGroupKeys.has(groupKey) ||
           !matchesRule(product, rule) ||
           (normalizedFallbackCategory &&
             normalizeCategory(product.category) !== normalizedFallbackCategory)
@@ -183,7 +215,7 @@
 
       if (candidate) {
         selected.push(candidate);
-        usedIds.add(candidate.product_id);
+        usedGroupKeys.add(getGroupKey(candidate));
       }
     }
 
@@ -191,10 +223,13 @@
       return selected.slice(0, limit);
     }
 
-    const categoryFallback = products.filter(product =>
-      normalizeCategory(product.category) === normalizeCategory(fallbackCategory)
-      && !usedIds.has(product.product_id)
-    );
+    const categoryFallback = uniqueBySubCategory
+      .filter(product =>
+        normalizeCategory(product.category) === normalizedFallbackCategory
+          && !usedGroupKeys.has(getGroupKey(product))
+      )
+      .sort((a, b) => getComparablePrice(a) - getComparablePrice(b));
+
     return [...selected, ...categoryFallback].slice(0, limit);
   };
 
@@ -211,16 +246,20 @@
       best = Math.max(best, fromDiscountPercent);
     }
 
-    const fromPrice = Number(product.from_price);
+    const actualPrice = Number(product.actual_price);
+    const displayPrice =
+      Number.isFinite(actualPrice) && actualPrice >= 0
+        ? actualPrice
+        : Number(product.from_price);
     const comparisonPrice = Number(product.comparison_price);
     if (
-      Number.isFinite(fromPrice) &&
-      fromPrice > 0 &&
+      Number.isFinite(displayPrice) &&
+      displayPrice > 0 &&
       Number.isFinite(comparisonPrice) &&
-      comparisonPrice > fromPrice
+      comparisonPrice > displayPrice
     ) {
       const comparisonDiscount = Math.round(
-        ((comparisonPrice - fromPrice) / comparisonPrice) * 100
+        ((comparisonPrice - displayPrice) / comparisonPrice) * 100
       );
       if (comparisonDiscount > 0) {
         best = Math.max(best, comparisonDiscount);

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
   import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
@@ -209,12 +210,52 @@
     };
   };
 
+  const normalizeFilterValue = (value?: string | null): string =>
+    typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+  const toDisplayLabel = (value: string): string =>
+    value
+      .split(/[\s_-]+/)
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+
+  const buildBrowseHref = (categoryKey: string, subCategoryKey: string): string => {
+    const params = new URLSearchParams();
+    if (categoryKey && categoryKey !== 'all') {
+      params.set('category', categoryKey);
+    }
+    if (subCategoryKey) {
+      params.set('sub_category', subCategoryKey);
+    }
+    const query = params.toString();
+    return query ? `/browse?${query}` : '/browse';
+  };
+
   $: infoBoxText = readProductText([
     'info_box_text',
     'infoBoxText',
     'info_text',
     'infoText'
   ]);
+  $: breadcrumbCategoryKey = normalizeFilterValue(
+    $page.url.searchParams.get('category')
+  );
+  $: breadcrumbSubCategoryKey = normalizeFilterValue(
+    $page.url.searchParams.get('sub_category')
+  );
+  $: productSubCategoryLabel = (product?.sub_category || '').trim();
+  $: breadcrumbSubCategoryLabel =
+    breadcrumbSubCategoryKey.length > 0
+      ? productSubCategoryLabel &&
+        normalizeFilterValue(productSubCategoryLabel) === breadcrumbSubCategoryKey
+        ? productSubCategoryLabel
+        : toDisplayLabel(breadcrumbSubCategoryKey)
+      : '';
+  $: browseHref = buildBrowseHref(
+    breadcrumbCategoryKey,
+    breadcrumbSubCategoryKey
+  );
   $: infoBoxHtml = renderInfoBoxHtml(infoBoxText);
   $: platformLabel =
     readProductText(['platform', 'platform_name', 'platformName']) ||
@@ -517,9 +558,18 @@
 
   <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
     <div class="mb-6 flex flex-wrap items-center gap-2 text-sm">
-      <a href="/browse" class="font-semibold text-fuchsia-700 hover:text-fuchsia-800">
+      <a href={browseHref} class="font-semibold text-fuchsia-700 hover:text-fuchsia-800">
         Browse
       </a>
+      {#if breadcrumbSubCategoryLabel}
+        <span class="text-slate-400">/</span>
+        <a
+          href={browseHref}
+          class="font-semibold text-slate-700 transition-colors hover:text-fuchsia-700"
+        >
+          {breadcrumbSubCategoryLabel}
+        </a>
+      {/if}
       <span class="text-slate-400">/</span>
       <span class="font-semibold text-slate-800">{product.name}</span>
     </div>
@@ -534,8 +584,8 @@
                   image={productLogo}
                   alt={`${product.name} logo`}
                   sizes="(min-width: 1024px) 250px, 46vw"
-                  pictureClass="relative z-10 block h-full w-full p-7"
-                  imgClass="h-full w-full object-contain"
+                  pictureClass="relative z-10 block h-full w-full"
+                  imgClass="h-full w-full object-cover object-center"
                   loading="eager"
                   decoding="async"
                 />
