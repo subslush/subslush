@@ -37,7 +37,6 @@ export const load: PageServerLoad = async ({ fetch, params, cookies }) => {
     safeList(() =>
       adminService.listProducts({
         limit: 200,
-        category: subCategory.category,
         sub_category: subCategory.name
       })
     )

@@ -35,7 +35,7 @@ import {
 import type {
   CatalogListing,
   PriceHistory,
-  ProductSubCategoryAssignment,
+  ProductCategoryAssignment,
   ProductVariantTerm,
 } from '../types/catalog';
 import { orderEntitlementService } from '../services/orderEntitlementService';
@@ -331,12 +331,14 @@ const normalizeCategoryKey = (value?: string | null): string | null => {
 };
 
 const buildCategoryKeys = (
-  assignments: ProductSubCategoryAssignment[] | undefined,
+  assignments: ProductCategoryAssignment[] | undefined,
   fallbackCategory?: string | null
 ): string[] => {
   const keys = new Set<string>();
   for (const assignment of assignments || []) {
-    const key = normalizeCategoryKey(assignment.category);
+    const key =
+      normalizeCategoryKey(assignment.category_key) ||
+      normalizeCategoryKey(assignment.category);
     if (key) {
       keys.add(key);
     }
@@ -350,12 +352,12 @@ const buildCategoryKeys = (
 
 const toAssignmentMap = (
   value: unknown
-): Map<string, ProductSubCategoryAssignment[]> => {
+): Map<string, ProductCategoryAssignment[]> => {
   if (!(value instanceof Map)) {
-    return new Map<string, ProductSubCategoryAssignment[]>();
+    return new Map<string, ProductCategoryAssignment[]>();
   }
 
-  const normalized = new Map<string, ProductSubCategoryAssignment[]>();
+  const normalized = new Map<string, ProductCategoryAssignment[]>();
   for (const [key, entries] of value.entries()) {
     if (typeof key !== 'string') {
       continue;
@@ -367,12 +369,11 @@ const toAssignmentMap = (
     normalized.set(
       key,
       entries.filter(
-        (entry): entry is ProductSubCategoryAssignment =>
+        (entry): entry is ProductCategoryAssignment =>
           !!entry &&
           typeof entry === 'object' &&
-          typeof entry.sub_category_id === 'string' &&
-          typeof entry.category === 'string' &&
-          typeof entry.sub_category === 'string'
+          typeof entry.category_key === 'string' &&
+          typeof entry.category === 'string'
       )
     );
   }
@@ -380,20 +381,20 @@ const toAssignmentMap = (
   return normalized;
 };
 
-const safeListSubCategoryAssignmentsForProducts = async (
+const safeListCategoryAssignmentsForProducts = async (
   productIds: string[]
-): Promise<Map<string, ProductSubCategoryAssignment[]>> => {
+): Promise<Map<string, ProductCategoryAssignment[]>> => {
   if (productIds.length === 0) {
-    return new Map<string, ProductSubCategoryAssignment[]>();
+    return new Map<string, ProductCategoryAssignment[]>();
   }
 
   try {
     const result =
-      await catalogService.listSubCategoryAssignmentsForProducts(productIds);
+      await catalogService.listCategoryAssignmentsForProducts(productIds);
     return toAssignmentMap(result);
   } catch (error) {
-    Logger.error('Failed to list product sub-category assignments:', error);
-    return new Map<string, ProductSubCategoryAssignment[]>();
+    Logger.error('Failed to list product category assignments:', error);
+    return new Map<string, ProductCategoryAssignment[]>();
   }
 };
 
@@ -990,30 +991,36 @@ export async function subscriptionRoutes(
           );
         }
 
-        const assignmentMap = await safeListSubCategoryAssignmentsForProducts([
-          ...new Set([
-            ...listings.map(listing => listing.product.id),
-            ...fixedProducts.map(product => product.id),
-          ]),
-        ]);
+        const categoryAssignmentMap =
+          await safeListCategoryAssignmentsForProducts([
+            ...new Set([
+              ...listings.map(listing => listing.product.id),
+              ...fixedProducts.map(product => product.id),
+            ]),
+          ]);
 
         const resolveProductTaxonomy = (product: {
           id: string;
           category?: string | null;
           sub_category?: string | null;
-          sub_category_assignments?: ProductSubCategoryAssignment[];
+          category_assignments?: ProductCategoryAssignment[];
         }) => {
-          const assignments =
-            assignmentMap.get(product.id) || product.sub_category_assignments || [];
-          const primaryAssignment =
-            assignments.find(assignment => assignment.is_primary) ||
-            assignments[0] ||
+          const categoryAssignments =
+            categoryAssignmentMap.get(product.id) ||
+            product.category_assignments ||
+            [];
+          const primaryCategoryAssignment =
+            categoryAssignments.find(assignment => assignment.is_primary) ||
+            categoryAssignments[0] ||
             null;
           return {
-            category: primaryAssignment?.category ?? product.category ?? null,
-            subCategory:
-              primaryAssignment?.sub_category ?? product.sub_category ?? null,
-            categoryKeys: buildCategoryKeys(assignments, product.category ?? null),
+            category:
+              primaryCategoryAssignment?.category ?? product.category ?? null,
+            subCategory: product.sub_category ?? null,
+            categoryKeys: buildCategoryKeys(
+              categoryAssignments,
+              primaryCategoryAssignment?.category ?? product.category ?? null
+            ),
           };
         };
 
@@ -1176,7 +1183,8 @@ export async function subscriptionRoutes(
           const fixedPriceCurrency = normalizeCurrencyCode(
             product.fixed_price_currency
           );
-          const currentFixedPrice = fixedCurrentPriceMap.get(product.id) ?? null;
+          const currentFixedPrice =
+            fixedCurrentPriceMap.get(product.id) ?? null;
           const currentFixedPriceCents = currentFixedPrice
             ? Number(currentFixedPrice.price_cents)
             : Number.NaN;
@@ -1798,7 +1806,8 @@ export async function subscriptionRoutes(
           const fixedPriceCurrency = normalizeCurrencyCode(
             product.fixed_price_currency
           );
-          const currentFixedPrice = fixedCurrentPriceMap.get(product.id) ?? null;
+          const currentFixedPrice =
+            fixedCurrentPriceMap.get(product.id) ?? null;
           const currentFixedPriceCents = currentFixedPrice
             ? Number(currentFixedPrice.price_cents)
             : Number.NaN;
@@ -1912,30 +1921,28 @@ export async function subscriptionRoutes(
           await Promise.all(missingTermTasks);
         }
 
-        const productAssignments =
-          await safeListSubCategoryAssignmentsForProducts(
+        const productCategoryAssignments =
+          await safeListCategoryAssignmentsForProducts(
             Array.from(productMap.keys())
           );
 
         const products = Array.from(productMap.values()).map(entry => ({
           ...(function () {
             const assignments =
-              productAssignments.get(entry.product.id) ||
-              entry.product.sub_category_assignments ||
+              productCategoryAssignments.get(entry.product.id) ||
+              entry.product.category_assignments ||
               [];
             const primaryAssignment =
               assignments.find(assignment => assignment.is_primary) ||
               assignments[0] ||
               null;
             return {
-              category: primaryAssignment?.category ?? entry.product.category ?? null,
-              sub_category:
-                primaryAssignment?.sub_category ??
-                entry.product.sub_category ??
-                null,
+              category:
+                primaryAssignment?.category ?? entry.product.category ?? null,
+              sub_category: entry.product.sub_category ?? null,
               category_keys: buildCategoryKeys(
                 assignments,
-                entry.product.category ?? null
+                primaryAssignment?.category ?? entry.product.category ?? null
               ),
             };
           })(),

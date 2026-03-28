@@ -128,7 +128,7 @@ export async function adminCatalogRoutes(
           type: 'object',
           properties: {
             category: { type: 'string' },
-            limit: { type: 'number', minimum: 1, maximum: 200 },
+            limit: { type: 'number', minimum: 1, maximum: 500 },
             offset: { type: 'number', minimum: 0 },
           },
         },
@@ -265,6 +265,11 @@ export async function adminCatalogRoutes(
             service_type: { type: 'string' },
             logo_key: { type: 'string' },
             category: { type: 'string' },
+            categories: {
+              type: 'array',
+              items: { type: 'string' },
+              uniqueItems: true,
+            },
             sub_category: { type: 'string' },
             sub_category_ids: {
               type: 'array',
@@ -337,6 +342,11 @@ export async function adminCatalogRoutes(
             service_type: { type: 'string' },
             logo_key: { type: 'string' },
             category: { type: 'string' },
+            categories: {
+              type: 'array',
+              items: { type: 'string' },
+              uniqueItems: true,
+            },
             sub_category: { type: 'string' },
             sub_category_ids: {
               type: 'array',

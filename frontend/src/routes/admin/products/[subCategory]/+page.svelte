@@ -89,14 +89,23 @@
       if (parsedComparisonPriceCents !== undefined) {
         metadata.comparison_price_cents = parsedComparisonPriceCents;
       }
+      const categoryValues = Array.from(
+        new Map(
+          String(subCategory.category || '')
+            .split(',')
+            .map(entry => entry.trim())
+            .filter(entry => entry.length > 0)
+            .map(entry => [entry.toLowerCase(), entry] as const)
+        ).values()
+      );
 
       const created = await adminService.createProduct({
         name: newProduct.name,
         slug: newProduct.slug,
         description: newProduct.description || undefined,
         service_type: newProduct.serviceType || undefined,
-        sub_category_ids: [subCategory.id],
-        category: subCategory.category,
+        categories: categoryValues,
+        category: categoryValues[0] || subCategory.category,
         sub_category: subCategory.name,
         duration_months: hasCompleteFixedPricing ? 1 : undefined,
         fixed_price_cents: hasCompleteFixedPricing

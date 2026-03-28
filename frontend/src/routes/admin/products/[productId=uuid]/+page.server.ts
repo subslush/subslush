@@ -32,11 +32,20 @@ export const load: PageServerLoad = async ({ fetch, params, cookies }) => {
     throw error(500, 'Failed to load product');
   }
 
-  const [labels, platformProducts, subCategories] = await Promise.all([
+  const [labels, platformProducts] = await Promise.all([
     safeList(() => adminService.listLabels({ limit: 200 })),
-    safeList(() => adminService.listProducts()),
-    safeList(() => adminService.listProductSubCategories({ limit: 500 }))
+    safeList(() => adminService.listProducts())
   ]);
+
+  let subCategoriesLoadError = false;
+  let subCategories = [] as Awaited<
+    ReturnType<typeof adminService.listProductSubCategories>
+  >;
+  try {
+    subCategories = await adminService.listProductSubCategories({ limit: 500 });
+  } catch {
+    subCategoriesLoadError = true;
+  }
 
   return {
     product: detail.product,
@@ -47,6 +56,7 @@ export const load: PageServerLoad = async ({ fetch, params, cookies }) => {
     variantTerms: detail.variantTerms || [],
     labels,
     platformProducts,
-    subCategories
+    subCategories,
+    subCategoriesLoadError
   };
 };

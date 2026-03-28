@@ -72,8 +72,13 @@ export interface AdminProduct {
   logo_key?: string | null;
   logoKey?: string | null;
   category?: string | null;
+  categories?: string[] | null;
   sub_category?: string | null;
   subCategory?: string | null;
+  category_keys?: string[] | null;
+  categoryKeys?: string[] | null;
+  category_assignments?: AdminProductCategoryAssignment[] | null;
+  categoryAssignments?: AdminProductCategoryAssignment[] | null;
   sub_category_ids?: string[] | null;
   subCategoryIds?: string[] | null;
   sub_category_assignments?: AdminProductSubCategoryAssignment[] | null;
@@ -94,6 +99,14 @@ export interface AdminProduct {
   createdAt?: string;
   updated_at?: string;
   updatedAt?: string;
+}
+
+export interface AdminProductCategoryAssignment {
+  category_key?: string;
+  categoryKey?: string;
+  category: string;
+  is_primary?: boolean;
+  isPrimary?: boolean;
 }
 
 export interface AdminProductSubCategoryAssignment {
