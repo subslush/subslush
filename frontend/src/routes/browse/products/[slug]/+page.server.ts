@@ -3,7 +3,23 @@ import type { PageServerLoad } from './$types';
 import type { ProductDetail } from '$lib/types/subscription';
 import { unwrapApiData } from '$lib/api/response';
 import { API_ENDPOINTS } from '$lib/utils/constants';
-import { resolveCountryFromHeaders } from '$lib/utils/currency.js';
+
+const normalizeClientIp = (value?: string | null): string | null => {
+  if (!value) return null;
+  const first = value.split(',')[0]?.trim();
+  return first || null;
+};
+
+const resolveClientIpFromRequest = (request: Request): string | null => {
+  const headers = request.headers;
+  return (
+    normalizeClientIp(headers.get('cf-connecting-ip')) ||
+    normalizeClientIp(headers.get('x-real-ip')) ||
+    normalizeClientIp(headers.get('x-forwarded-for')) ||
+    normalizeClientIp(headers.get('x-vercel-forwarded-for')) ||
+    normalizeClientIp(headers.get('true-client-ip'))
+  );
+};
 
 export const load: PageServerLoad = async ({
   params,
@@ -15,13 +31,13 @@ export const load: PageServerLoad = async ({
 
   try {
     const { currency, user } = await parent();
-    const requestCountryCode = resolveCountryFromHeaders(request.headers);
+    const clientIp = resolveClientIpFromRequest(request);
     const requestHeaders: Record<string, string> = {};
     if (currency) {
       requestHeaders['X-Currency'] = currency;
     }
-    if (requestCountryCode) {
-      requestHeaders['X-Country-Code'] = requestCountryCode;
+    if (clientIp) {
+      requestHeaders['X-Client-IP'] = clientIp;
     }
     const headers =
       Object.keys(requestHeaders).length > 0 ? requestHeaders : undefined;
@@ -85,7 +101,7 @@ export const load: PageServerLoad = async ({
       product: detail.product,
       variants: detail.variants || [],
       userCredits,
-      requestCountryCode: requestCountryCode || null,
+      requestCountryCode: detail.country_code || null,
       usersOnPage,
       unitsLeft
     };

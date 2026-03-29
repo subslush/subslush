@@ -57,6 +57,7 @@ import {
   resolvePreferredCurrency,
   type SupportedCurrency,
 } from '../utils/currency';
+import { resolveCountryCodeFromRequestIp } from '../utils/countryFromIp';
 import { notificationService } from '../services/notificationService';
 import { resolveVariantPricing } from '../services/variantPricingService';
 import {
@@ -1993,9 +1994,11 @@ export async function subscriptionRoutes(
       try {
         const { slug } = request.params;
         const preferredCurrency = resolveRequestCurrency(request);
-        const requestCountryCode = resolveCountryFromHeaders(
-          request.headers as Record<string, string | string[] | undefined>
-        );
+        const requestCountryCode =
+          resolveCountryCodeFromRequestIp(request) ||
+          resolveCountryFromHeaders(
+            request.headers as Record<string, string | string[] | undefined>
+          );
 
         const product = await catalogService.getProductBySlug(slug);
         if (!product || product.status !== 'active') {
