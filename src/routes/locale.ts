@@ -5,14 +5,17 @@ import {
   resolveCountryFromHeaders,
   resolvePreferredCurrency,
 } from '../utils/currency';
+import { resolveCountryCodeFromRequestIp } from '../utils/countryFromIp';
 
 export async function localeRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
     const cookieCurrency = request.cookies?.['preferred_currency'];
     const headerCurrency = request.headers['x-currency'];
-    const headerCountry = resolveCountryFromHeaders(
-      request.headers as Record<string, string | string[] | undefined>
-    );
+    const requestCountry =
+      resolveCountryCodeFromRequestIp(request) ||
+      resolveCountryFromHeaders(
+        request.headers as Record<string, string | string[] | undefined>
+      );
 
     const currency = resolvePreferredCurrency({
       queryCurrency: null,
@@ -20,7 +23,7 @@ export async function localeRoutes(fastify: FastifyInstance): Promise<void> {
         typeof headerCurrency === 'string' ? headerCurrency : null,
       cookieCurrency:
         typeof cookieCurrency === 'string' ? cookieCurrency : null,
-      headerCountry,
+      headerCountry: requestCountry,
       fallback: 'USD',
     });
 
@@ -34,7 +37,7 @@ export async function localeRoutes(fastify: FastifyInstance): Promise<void> {
 
     return SuccessResponses.ok(reply, {
       currency,
-      country: headerCountry,
+      country: requestCountry,
     });
   });
 }
