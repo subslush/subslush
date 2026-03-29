@@ -719,23 +719,27 @@ export class CatalogService {
           ? ''
           : `-${Math.random().toString(16).slice(2, 10).padEnd(8, '0').slice(0, 8)}`;
       const slug = `${baseSlug}${suffix}`;
-      try {
-        const insertResult = await client.query(
-          `INSERT INTO product_sub_categories (category, name, slug)
-           VALUES ($1, $2, $3)
-           RETURNING id, category, name, slug, created_at, updated_at`,
-          [category, subCategory, slug]
-        );
+      const insertResult = await client.query(
+        `INSERT INTO product_sub_categories (category, name, slug)
+         VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING
+         RETURNING id, category, name, slug, created_at, updated_at`,
+        [category, subCategory, slug]
+      );
+      if (insertResult.rows.length > 0) {
         return mapProductSubCategory(insertResult.rows[0]);
-      } catch (error) {
-        const code =
-          error && typeof error === 'object' && 'code' in error
-            ? String((error as { code?: string }).code || '')
-            : '';
-        if (code === '23505') {
-          continue;
-        }
-        throw error;
+      }
+
+      const conflictLookupResult = await client.query(
+        `SELECT id, category, name, slug, created_at, updated_at
+         FROM product_sub_categories
+         WHERE LOWER(BTRIM(category)) = LOWER(BTRIM($1))
+           AND LOWER(BTRIM(name)) = LOWER(BTRIM($2))
+         LIMIT 1`,
+        [category, subCategory]
+      );
+      if (conflictLookupResult.rows.length > 0) {
+        return mapProductSubCategory(conflictLookupResult.rows[0]);
       }
     }
 
@@ -1014,15 +1018,47 @@ export class CatalogService {
            AND NOT (sub_category_id = ANY($2::uuid[]))`,
         [params.productId, targetIds]
       );
-    } else if (normalizedCategory && normalizedSubCategory) {
-      const ensured = await this.ensureProductSubCategory(
-        client,
-        normalizedCategory,
+    } else if (normalizedSubCategory) {
+      const normalizedSubCategoryKey = normalizeTaxonomyFilterValue(
         normalizedSubCategory
       );
-      if (ensured) {
-        primaryId = ensured.id;
+      const normalizedCategoryKey =
+        normalizeTaxonomyFilterValue(normalizedCategory);
+
+      const matchingExistingAssignment =
+        existingAssignments.find(assignment => {
+          if (
+            normalizeTaxonomyFilterValue(assignment.sub_category) !==
+            normalizedSubCategoryKey
+          ) {
+            return false;
+          }
+          return (
+            !normalizedCategoryKey ||
+            normalizeTaxonomyFilterValue(assignment.category) ===
+              normalizedCategoryKey
+          );
+        }) ||
+        existingAssignments.find(
+          assignment =>
+            normalizeTaxonomyFilterValue(assignment.sub_category) ===
+            normalizedSubCategoryKey
+        ) ||
+        null;
+
+      if (matchingExistingAssignment) {
+        primaryId = matchingExistingAssignment.sub_category_id;
         targetIds = Array.from(new Set([primaryId, ...existingIds]));
+      } else if (normalizedCategory) {
+        const ensured = await this.ensureProductSubCategory(
+          client,
+          normalizedCategory,
+          normalizedSubCategory
+        );
+        if (ensured) {
+          primaryId = ensured.id;
+          targetIds = Array.from(new Set([primaryId, ...existingIds]));
+        }
       }
     }
 
