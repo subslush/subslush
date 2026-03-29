@@ -111,28 +111,38 @@ export const detectCurrencyFromLocale = (
   return resolveCurrencyForCountry(country);
 };
 
-export const resolveCurrencyFromHeaders = (
-  headers: Headers
-): SupportedCurrency | null => {
-  const headerKeys = [
-    'cf-ipcountry',
-    'x-vercel-ip-country',
-    'x-country-code',
-    'x-geo-country',
-    'cloudfront-viewer-country',
-    'fastly-client-country',
-    'x-appengine-country'
-  ];
+const COUNTRY_HEADER_KEYS = [
+  'x-country-code',
+  'x-vercel-ip-country',
+  'cf-ipcountry',
+  'x-geo-country',
+  'cloudfront-viewer-country',
+  'fastly-client-country',
+  'x-appengine-country'
+] as const;
 
-  for (const key of headerKeys) {
-    const value = headers.get(key);
-    if (value) {
-      const resolved = resolveCurrencyForCountry(value);
-      if (resolved) return resolved;
-    }
+const normalizeCountryCode = (value?: string | null): string | null => {
+  if (!value) return null;
+  const primary = value.split(',')[0]?.trim().toUpperCase() || '';
+  if (!/^[A-Z]{2}$/.test(primary)) return null;
+  if (primary === 'XX' || primary === 'T1') return null;
+  return primary;
+};
+
+export const resolveCountryFromHeaders = (headers: Headers): string | null => {
+  for (const key of COUNTRY_HEADER_KEYS) {
+    const normalized = normalizeCountryCode(headers.get(key));
+    if (normalized) return normalized;
   }
 
   return null;
+};
+
+export const resolveCurrencyFromHeaders = (
+  headers: Headers
+): SupportedCurrency | null => {
+  const countryCode = resolveCountryFromHeaders(headers);
+  return resolveCurrencyForCountry(countryCode);
 };
 
 export const getCurrencyCookie = (

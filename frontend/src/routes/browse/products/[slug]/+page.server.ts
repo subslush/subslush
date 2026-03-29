@@ -3,13 +3,28 @@ import type { PageServerLoad } from './$types';
 import type { ProductDetail } from '$lib/types/subscription';
 import { unwrapApiData } from '$lib/api/response';
 import { API_ENDPOINTS } from '$lib/utils/constants';
+import { resolveCountryFromHeaders } from '$lib/utils/currency.js';
 
-export const load: PageServerLoad = async ({ params, fetch, parent }) => {
+export const load: PageServerLoad = async ({
+  params,
+  fetch,
+  parent,
+  request,
+}) => {
   const { slug } = params;
 
   try {
     const { currency, user } = await parent();
-    const headers = currency ? { 'X-Currency': currency } : undefined;
+    const requestCountryCode = resolveCountryFromHeaders(request.headers);
+    const requestHeaders: Record<string, string> = {};
+    if (currency) {
+      requestHeaders['X-Currency'] = currency;
+    }
+    if (requestCountryCode) {
+      requestHeaders['X-Country-Code'] = requestCountryCode;
+    }
+    const headers =
+      Object.keys(requestHeaders).length > 0 ? requestHeaders : undefined;
 
     const response = await fetch(
       `/api/v1${API_ENDPOINTS.SUBSCRIPTIONS.PRODUCT_DETAIL}/${slug}`,
@@ -70,7 +85,7 @@ export const load: PageServerLoad = async ({ params, fetch, parent }) => {
       product: detail.product,
       variants: detail.variants || [],
       userCredits,
-      requestCountryCode: detail.country_code || null,
+      requestCountryCode: requestCountryCode || null,
       usersOnPage,
       unitsLeft
     };
