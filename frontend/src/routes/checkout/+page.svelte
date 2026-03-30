@@ -73,6 +73,7 @@
   let showDiscountCodeInput = false;
 
   let paymentMethod: 'card' | 'crypto' | 'credits' | null = null;
+  let immediatePerformanceConsent = false;
   let redirecting = false;
   let actionError = '';
   let lastPaymentMethod: 'card' | 'crypto' | 'credits' | null = null;
@@ -1195,6 +1196,11 @@
 
   const handleCardCheckout = async () => {
     actionError = '';
+    if (!immediatePerformanceConsent) {
+      actionError =
+        'Please confirm immediate digital performance and withdrawal acknowledgement before continuing.';
+      return;
+    }
     if (!ensureContactEmailBeforeCheckout()) {
       return;
     }
@@ -1261,6 +1267,11 @@
   const handleCryptoInvoice = async () => {
     actionError = '';
     invoiceError = '';
+    if (!immediatePerformanceConsent) {
+      actionError =
+        'Please confirm immediate digital performance and withdrawal acknowledgement before continuing.';
+      return;
+    }
     if (!ensureContactEmailBeforeCheckout()) {
       return;
     }
@@ -1335,6 +1346,11 @@
 
   const handleCreditsCheckout = async () => {
     actionError = '';
+    if (!immediatePerformanceConsent) {
+      actionError =
+        'Please confirm immediate digital performance and withdrawal acknowledgement before continuing.';
+      return;
+    }
     if (!ensureContactEmailBeforeCheckout()) {
       return;
     }
@@ -2097,6 +2113,24 @@
 
             <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_14px_28px_rgba(15,23,42,0.08)] sm:p-6">
               <h3 class="text-sm font-semibold text-slate-900">Payment method</h3>
+
+              <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <label class="flex items-start gap-2.5 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    class="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-fuchsia-300"
+                    bind:checked={immediatePerformanceConsent}
+                  />
+                  <span>
+                    I request immediate digital performance and acknowledge that for delivered digital content,
+                    withdrawal/cancellation rights end once delivery/activation/performance begins (subject to mandatory law and the Money Back Guarantee).
+                  </span>
+                </label>
+                <p class="mt-2 text-[11px] text-slate-500">
+                  This acknowledgement is required to continue checkout.
+                </p>
+              </div>
+
               <div class="mt-3 space-y-3">
                 <label class="flex cursor-not-allowed items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 opacity-80">
                   <input
@@ -2269,6 +2303,7 @@
                   class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(126,34,206,0.28)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={
                     !paymentMethod ||
+                    !immediatePerformanceConsent ||
                     redirecting ||
                     invoiceLoading ||
                     creditsInsufficient
