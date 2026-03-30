@@ -25,10 +25,10 @@
 
         <p class="text-sm text-gray-400 leading-relaxed mb-4">
           3NITY DIGITAL LIMITED<br />
+          Address:<br />
           <br />
-          UNIT B, 12/F, HANG SENG CAUSEWAY BAY BUILDING,<br />
-          28 YEE WO STREET, CAUSEWAY BAY,<br />
-          HONG KONG<br />
+          UNIT B, 12/F, HANG SENG CAUSEWAY BAY BUILDING, 28 YEE WO STREET, <br />
+          CAUSEWAY BAY, HONG KONG <br />
           <br />
           Business registration number:<br />
           79886556
