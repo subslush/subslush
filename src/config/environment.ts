@@ -44,14 +44,18 @@ const environmentSchema = z.object({
       }
       return true;
     }),
-  STRIPE_SECRET_KEY: z.preprocess(
-    value => (typeof value === 'string' ? value.trim() : value),
-    z.string().optional()
-  ).default(''),
-  STRIPE_WEBHOOK_SECRET: z.preprocess(
-    value => (typeof value === 'string' ? value.trim() : value),
-    z.string().optional()
-  ).default(''),
+  STRIPE_SECRET_KEY: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  STRIPE_WEBHOOK_SECRET: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
   PAY4BIT_ENABLED: z
     .union([z.string(), z.boolean()])
     .optional()
@@ -64,22 +68,66 @@ const environmentSchema = z.object({
       }
       return false;
     }),
-  PAY4BIT_PUBLIC_KEY: z.preprocess(
-    value => (typeof value === 'string' ? value.trim() : value),
-    z.string().optional()
-  ).default(''),
-  PAY4BIT_SECRET_KEY: z.preprocess(
-    value => (typeof value === 'string' ? value.trim() : value),
-    z.string().optional()
-  ).default(''),
-  PAY4BIT_CALLBACK_URL: z.preprocess(
-    value => (typeof value === 'string' ? value.trim() : value),
-    z.string().optional()
-  ).default(''),
-  PAY4BIT_BASE_URL: z.preprocess(
-    value => (typeof value === 'string' ? value.trim() : value),
-    z.string().optional()
-  ).default(''),
+  PAY4BIT_PUBLIC_KEY: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  PAY4BIT_SECRET_KEY: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  PAY4BIT_CALLBACK_URL: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  PAY4BIT_BASE_URL: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  MAXMIND_MINFRAUD_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(false)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return false;
+    }),
+  MAXMIND_ACCOUNT_ID: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  MAXMIND_LICENSE_KEY: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  MAXMIND_MINFRAUD_ENDPOINT: z
+    .string()
+    .url('Invalid MaxMind minFraud endpoint')
+    .default('https://minfraud.maxmind.com/minfraud/v2.0/factors'),
+  MAXMIND_TIMEOUT_MS: z.coerce.number().default(2500),
+  MAXMIND_REVIEW_SCORE: z.coerce.number().default(45),
+  MAXMIND_BLOCK_SCORE: z.coerce.number().default(80),
+  MAXMIND_SIGNAL_LOOKBACK_DAYS: z.coerce.number().default(180),
+  MAXMIND_REPEAT_HIGH_VALUE_MULTIPLIER: z.coerce.number().default(2.5),
+  MAXMIND_REPEAT_HIGH_VALUE_ABSOLUTE_CENTS: z.coerce.number().default(20000),
+  MAXMIND_REPEAT_FAST_MINUTES: z.coerce.number().default(10),
+  MAXMIND_REPEAT_DORMANCY_DAYS: z.coerce.number().default(45),
   COOKIE_SECRET: z
     .string()
     .min(16, 'Cookie secret must be at least 16 characters')
@@ -123,10 +171,12 @@ const environmentSchema = z.object({
   NOWPAYMENTS_CURRENCY_CACHE_TTL: z.coerce.number().default(3600),
   NOWPAYMENTS_CURRENCY_LKG_TTL: z.coerce.number().default(86400),
   NOWPAYMENTS_CURRENCY_REFRESH_INTERVAL: z.coerce.number().default(900000),
-  CURRENCYAPI_KEY: z.preprocess(
-    value => (typeof value === 'string' ? value.trim() : value),
-    z.string().optional()
-  ).default(''),
+  CURRENCYAPI_KEY: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
   FX_ENGINE_ENABLED: z
     .union([z.string(), z.boolean()])
     .optional()
@@ -166,14 +216,8 @@ const environmentSchema = z.object({
   FX_FETCH_SCHEDULE_CRON: z.string().default('0 0 * * *'),
   FX_PUBLISH_SCHEDULE_CRON: z.string().default('59 23 * * 0'),
   FX_RATE_STALE_MINUTES: z.coerce.number().int().positive().default(1560),
-  FX_RATE_MAX_STALE_MINUTES: z.coerce.number()
-    .int()
-    .positive()
-    .default(2880),
-  FX_ROUNDING_RULE_VERSION: z
-    .string()
-    .min(1)
-    .default('2026-02-v1'),
+  FX_RATE_MAX_STALE_MINUTES: z.coerce.number().int().positive().default(2880),
+  FX_ROUNDING_RULE_VERSION: z.string().min(1).default('2026-02-v1'),
   PASSWORD_RESET_REDIRECT_URL: z.preprocess(
     value =>
       typeof value === 'string' && value.trim() === '' ? undefined : value,
@@ -358,7 +402,7 @@ const environmentSchema = z.object({
 
 function isValidAbsoluteUrl(value: string): boolean {
   try {
-    new URL(value);
+    new globalThis.URL(value);
     return true;
   } catch {
     return false;
@@ -400,7 +444,8 @@ function validateEnvironment(): EnvironmentConfig {
 
     if (withTestOverrides.STRIPE_ENABLED) {
       const missing: string[] = [];
-      if (!withTestOverrides.STRIPE_SECRET_KEY) missing.push('STRIPE_SECRET_KEY');
+      if (!withTestOverrides.STRIPE_SECRET_KEY)
+        missing.push('STRIPE_SECRET_KEY');
       if (!withTestOverrides.STRIPE_WEBHOOK_SECRET) {
         missing.push('STRIPE_WEBHOOK_SECRET');
       }
@@ -441,6 +486,72 @@ function validateEnvironment(): EnvironmentConfig {
       }
     }
 
+    if (withTestOverrides.MAXMIND_MINFRAUD_ENABLED) {
+      const missing: string[] = [];
+      if (!withTestOverrides.MAXMIND_ACCOUNT_ID) {
+        missing.push('MAXMIND_ACCOUNT_ID');
+      }
+      if (!withTestOverrides.MAXMIND_LICENSE_KEY) {
+        missing.push('MAXMIND_LICENSE_KEY');
+      }
+      if (missing.length > 0) {
+        throw new Error(
+          `MaxMind configuration missing required fields: ${missing.join(', ')}`
+        );
+      }
+    }
+
+    if (withTestOverrides.MAXMIND_TIMEOUT_MS <= 0) {
+      throw new Error('MAXMIND_TIMEOUT_MS must be greater than 0');
+    }
+
+    if (
+      withTestOverrides.MAXMIND_REVIEW_SCORE < 0 ||
+      withTestOverrides.MAXMIND_REVIEW_SCORE > 100
+    ) {
+      throw new Error('MAXMIND_REVIEW_SCORE must be between 0 and 100');
+    }
+
+    if (
+      withTestOverrides.MAXMIND_BLOCK_SCORE < 0 ||
+      withTestOverrides.MAXMIND_BLOCK_SCORE > 100
+    ) {
+      throw new Error('MAXMIND_BLOCK_SCORE must be between 0 and 100');
+    }
+
+    if (
+      withTestOverrides.MAXMIND_BLOCK_SCORE <
+      withTestOverrides.MAXMIND_REVIEW_SCORE
+    ) {
+      throw new Error(
+        'MAXMIND_BLOCK_SCORE must be greater than or equal to MAXMIND_REVIEW_SCORE'
+      );
+    }
+
+    if (withTestOverrides.MAXMIND_SIGNAL_LOOKBACK_DAYS <= 0) {
+      throw new Error('MAXMIND_SIGNAL_LOOKBACK_DAYS must be greater than 0');
+    }
+
+    if (withTestOverrides.MAXMIND_REPEAT_HIGH_VALUE_MULTIPLIER <= 1) {
+      throw new Error(
+        'MAXMIND_REPEAT_HIGH_VALUE_MULTIPLIER must be greater than 1'
+      );
+    }
+
+    if (withTestOverrides.MAXMIND_REPEAT_HIGH_VALUE_ABSOLUTE_CENTS < 0) {
+      throw new Error(
+        'MAXMIND_REPEAT_HIGH_VALUE_ABSOLUTE_CENTS must be greater than or equal to 0'
+      );
+    }
+
+    if (withTestOverrides.MAXMIND_REPEAT_FAST_MINUTES <= 0) {
+      throw new Error('MAXMIND_REPEAT_FAST_MINUTES must be greater than 0');
+    }
+
+    if (withTestOverrides.MAXMIND_REPEAT_DORMANCY_DAYS <= 0) {
+      throw new Error('MAXMIND_REPEAT_DORMANCY_DAYS must be greater than 0');
+    }
+
     if (
       withTestOverrides.FX_FETCH_JOB_ENABLED ||
       withTestOverrides.FX_PUBLISH_JOB_ENABLED
@@ -452,8 +563,13 @@ function validateEnvironment(): EnvironmentConfig {
       }
     }
 
-    if (withTestOverrides.FX_ENGINE_ENABLED && !withTestOverrides.CURRENCYAPI_KEY) {
-      throw new Error('CURRENCYAPI_KEY is required when FX_ENGINE_ENABLED is true');
+    if (
+      withTestOverrides.FX_ENGINE_ENABLED &&
+      !withTestOverrides.CURRENCYAPI_KEY
+    ) {
+      throw new Error(
+        'CURRENCYAPI_KEY is required when FX_ENGINE_ENABLED is true'
+      );
     }
 
     if (

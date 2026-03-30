@@ -265,6 +265,14 @@ export class AdminService {
     return unwrap<AdminOrder>(response);
   }
 
+  async recheckOrderRisk(orderId: string): Promise<Record<string, unknown>> {
+    const response = await this.client.post(
+      `${API_ENDPOINTS.ADMIN.ORDERS}/${orderId}/risk/recheck`,
+      {}
+    );
+    return unwrap<Record<string, unknown>>(response);
+  }
+
   async listPayments(params?: QueryParams): Promise<AdminPayment[]> {
     const response = await this.client.get(API_ENDPOINTS.ADMIN.PAYMENTS, { params });
     return unwrapItems<AdminPayment>(response, 'payments');

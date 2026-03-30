@@ -3,6 +3,7 @@ import { authPreHandler } from '../../middleware/authMiddleware';
 import { adminPreHandler } from '../../middleware/adminMiddleware';
 import { orderService } from '../../services/orderService';
 import { subscriptionService } from '../../services/subscriptionService';
+import { orderRiskService } from '../../services/orderRiskService';
 import { logAdminAction } from '../../services/auditLogService';
 import { getDatabasePool } from '../../config/database';
 import { ErrorResponses, SuccessResponses } from '../../utils/response';
@@ -398,6 +399,74 @@ export async function adminOrderRoutes(
   );
 
   fastify.post(
+    '/:orderId/risk/recheck',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId'],
+          properties: {
+            orderId: { type: 'string' },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { orderId } = request.params as { orderId: string };
+        if (!isValidUuid(orderId)) {
+          return ErrorResponses.badRequest(reply, 'Invalid order ID format');
+        }
+
+        const order = await orderService.getOrderById(orderId);
+        if (!order) {
+          return ErrorResponses.notFound(reply, 'Order not found');
+        }
+
+        const riskResult = await orderRiskService.evaluateOrderRisk({
+          orderId,
+        });
+
+        await logAdminAction(request, {
+          action: 'orders.risk.recheck',
+          entityType: 'order',
+          entityId: orderId,
+          metadata: {
+            decision: riskResult.decision,
+            should_run: riskResult.shouldRun,
+            trigger_type: riskResult.triggerType,
+            trigger_reasons: riskResult.triggerReasons,
+            risk_score: riskResult.riskScore,
+            risk_score_reason: riskResult.riskScoreReason,
+            hold_fulfillment: riskResult.holdFulfillment,
+            error: riskResult.error ?? null,
+          },
+        });
+
+        return SuccessResponses.ok(reply, {
+          order_id: orderId,
+          decision: riskResult.decision,
+          should_run: riskResult.shouldRun,
+          trigger_type: riskResult.triggerType,
+          trigger_reasons: riskResult.triggerReasons,
+          risk_score: riskResult.riskScore,
+          risk_score_reason: riskResult.riskScoreReason,
+          hold_fulfillment: riskResult.holdFulfillment,
+          success: riskResult.success,
+          error: riskResult.error ?? null,
+        });
+      } catch (error) {
+        Logger.error('Admin order risk recheck failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to recheck order risk'
+        );
+      }
+    }
+  );
+
+  fastify.post(
     '/:orderId/replay-delivery',
     {
       schema: {
@@ -447,10 +516,7 @@ export async function adminOrderRoutes(
         const resendEmail = body.resend_email !== false;
         const requireCredentials = body.require_credentials ?? true;
         if (!recalcDates && !resendEmail) {
-          return ErrorResponses.badRequest(
-            reply,
-            'No replay action selected'
-          );
+          return ErrorResponses.badRequest(reply, 'No replay action selected');
         }
 
         const adminUserId = request.user?.userId || 'admin';

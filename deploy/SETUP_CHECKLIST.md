@@ -80,6 +80,16 @@
 - `www.subslush.com` → CNAME to Vercel (proxy ON)
 - `api.subslush.com` → A record to VPS (DNS-only for stability + real IPs)
 
+## 11.1) Cloudflare fraud baseline (frontend routes)
+- Apply WAF managed challenge to:
+  - `/auth/login`
+  - `/auth/forgot-password`
+  - `/checkout*`
+  - `/dashboard/orders*`
+- See runbook: `deploy/FRAUD_EDGE_PROTECTION_RUNBOOK.md`
+- Optional script:
+  - `CF_API_TOKEN=... CF_ZONE_ID=... ./deploy/scripts/configure_cloudflare_baseline_protection.sh`
+
 ## 12) Supabase auth URLs
 - Site URL: `https://subslush.com`
 - Redirect URLs:

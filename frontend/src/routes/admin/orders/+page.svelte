@@ -24,6 +24,7 @@
   };
 
   let statusUpdateOrderId: string | null = null;
+  let riskRecheckOrderId: string | null = null;
   let statusUpdate = {
     status: '',
     reason: ''
@@ -109,6 +110,24 @@
       };
     } finally {
       orderItemsLoading = { ...orderItemsLoading, [orderId]: false };
+    }
+  };
+
+  const runRiskRecheck = async (orderId: string) => {
+    statusMessage = '';
+    riskRecheckOrderId = orderId;
+    try {
+      const result = await adminService.recheckOrderRisk(orderId);
+      const decision = (result.decision as string | undefined) || 'unknown';
+      const score = result.risk_score as number | null | undefined;
+      statusMessage =
+        score !== null && score !== undefined
+          ? `Risk recheck completed for ${orderId}. Decision: ${decision} (score: ${score}).`
+          : `Risk recheck completed for ${orderId}. Decision: ${decision}.`;
+    } catch (error) {
+      statusMessage = getErrorMessage(error, 'Failed to recheck order risk.');
+    } finally {
+      riskRecheckOrderId = null;
     }
   };
 
@@ -281,6 +300,13 @@
                     on:click={() => toggleOrderItems(order.id)}
                   >
                     {viewItemsOrderId === order.id ? 'Hide items' : 'View items'}
+                  </button>
+                  <button
+                    class="ml-3 text-amber-700 font-semibold text-xs"
+                    on:click={() => runRiskRecheck(order.id)}
+                    disabled={riskRecheckOrderId === order.id}
+                  >
+                    {riskRecheckOrderId === order.id ? 'Rechecking...' : 'Recheck risk'}
                   </button>
                 </td>
               </tr>
