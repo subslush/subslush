@@ -972,9 +972,19 @@ export class GuestCheckoutService {
               duration_months: pricedItem.termMonths,
               discount_percent: pricedItem.discountPercent,
               base_price_cents: pricedItem.basePriceCents,
+              term_subtotal_cents: pricedItem.termSubtotalCents,
+              term_discount_cents: pricedItem.termDiscountCents,
+              term_total_cents: pricedItem.termTotalCents,
               total_price_cents: pricedItem.finalTotalCents,
+              final_total_cents: pricedItem.finalTotalCents,
+              catalog_mode: pricedItem.catalogMode,
               settlement_currency: pricedItem.settlementCurrency,
               settlement_base_price_cents: pricedItem.settlementBasePriceCents,
+              settlement_term_subtotal_cents:
+                pricedItem.settlementTermSubtotalCents,
+              settlement_term_discount_cents:
+                pricedItem.settlementTermDiscountCents,
+              settlement_term_total_cents: pricedItem.settlementTermTotalCents,
               settlement_total_price_cents:
                 pricedItem.settlementFinalTotalCents,
               settlement_coupon_discount_cents:

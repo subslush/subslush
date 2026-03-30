@@ -2,6 +2,7 @@ import { catalogService } from './catalogService';
 import { normalizeCurrencyCode } from '../utils/currency';
 import {
   computeTermPricing,
+  computeFixedTermPricing,
   type TermPricingSnapshot,
 } from '../utils/termPricing';
 import type {
@@ -110,7 +111,9 @@ export async function resolveVariantPricing(params: {
 
   const durationMonths = Number(product.duration_months);
   const fixedPriceCents = Number(product.fixed_price_cents);
-  const fixedPriceCurrency = normalizeCurrencyCode(product.fixed_price_currency);
+  const fixedPriceCurrency = normalizeCurrencyCode(
+    product.fixed_price_currency
+  );
   if (
     !Number.isInteger(durationMonths) ||
     durationMonths <= 0 ||
@@ -126,13 +129,12 @@ export async function resolveVariantPricing(params: {
   }
 
   const now = params.atDate ?? new Date();
-  const publishedPrice = await catalogService.getCurrentFixedProductPriceForCurrency(
-    {
+  const publishedPrice =
+    await catalogService.getCurrentFixedProductPriceForCurrency({
       productId: product.id,
       currency: normalizedCurrency,
       ...(params.atDate ? { atDate: params.atDate } : {}),
-    }
-  );
+    });
   const publishedPriceCents = publishedPrice
     ? Number(publishedPrice.price_cents)
     : Number.NaN;
@@ -151,6 +153,7 @@ export async function resolveVariantPricing(params: {
     resolvedCurrency = publishedCurrency;
     resolvedPriceMetadata = {
       source: 'product_fixed_price_history',
+      catalog_mode: 'fixed_product',
       product_id: product.id,
       ...(publishedPrice?.metadata || {}),
     };
@@ -159,6 +162,7 @@ export async function resolveVariantPricing(params: {
     resolvedCurrency = fixedPriceCurrency;
     resolvedPriceMetadata = {
       source: 'products.fixed_price',
+      catalog_mode: 'fixed_product',
       product_id: product.id,
     };
   } else {
@@ -201,10 +205,10 @@ export async function resolveVariantPricing(params: {
     created_at: now,
   };
 
-  const snapshot = computeTermPricing({
-    basePriceCents: resolvedPriceCents,
+  const snapshot = computeFixedTermPricing({
+    termTotalCents: resolvedPriceCents,
     termMonths: durationMonths,
-    discountPercent: 0,
+    basePriceCents: resolvedPriceCents,
   });
 
   return {

@@ -8,7 +8,10 @@ import {
 } from '../types/service';
 import { normalizeCurrencyCode } from '../utils/currency';
 import { computeCouponAllocation } from '../utils/couponAllocation';
-import { computeTermPricing } from '../utils/termPricing';
+import {
+  computeFixedTermPricing,
+  computeTermPricing,
+} from '../utils/termPricing';
 import type { Coupon } from '../types/coupon';
 import type { Product, ProductVariant } from '../types/catalog';
 
@@ -32,6 +35,7 @@ export type CheckoutPricingItem = {
   variant: ProductVariant;
   productVariantId: string | null;
   planCode: string;
+  catalogMode: 'variant' | 'fixed_product';
   pricingSnapshotId: string;
   termMonths: number;
   currency: string;
@@ -97,24 +101,30 @@ export class CheckoutPricingService {
       }
 
       const { product, variant, snapshot } = pricingResult.data;
+      const isFixedProductPricing =
+        pricingResult.data.catalogMode === 'fixed_product';
       const lockContext = await resolvePricingLockContext({
-        variantId:
-          pricingResult.data.productVariantId ||
-          item.variant_id,
+        variantId: pricingResult.data.productVariantId || item.variant_id,
         displayCurrency: normalizedCurrency,
         displayPrice: pricingResult.data.price,
       });
       if (!lockContext) {
         return createErrorResult('price_unavailable');
       }
-      const termSubtotalCents = snapshot.basePriceCents * snapshot.termMonths;
+      const termSubtotalCents = snapshot.termSubtotalCents;
       const termDiscountCents = snapshot.discountCents;
       const termTotalCents = snapshot.totalPriceCents;
-      const settlementSnapshot = computeTermPricing({
-        basePriceCents: lockContext.settlementBasePriceCents,
-        termMonths: snapshot.termMonths,
-        discountPercent: snapshot.discountPercent,
-      });
+      const settlementSnapshot = isFixedProductPricing
+        ? computeFixedTermPricing({
+            termTotalCents: lockContext.settlementBasePriceCents,
+            termMonths: snapshot.termMonths,
+            basePriceCents: lockContext.settlementBasePriceCents,
+          })
+        : computeTermPricing({
+            basePriceCents: lockContext.settlementBasePriceCents,
+            termMonths: snapshot.termMonths,
+            discountPercent: snapshot.discountPercent,
+          });
 
       pricingItems.push({
         input: item,
@@ -122,6 +132,7 @@ export class CheckoutPricingService {
         variant,
         productVariantId: pricingResult.data.productVariantId,
         planCode: pricingResult.data.planCode,
+        catalogMode: pricingResult.data.catalogMode,
         pricingSnapshotId: lockContext.snapshotId,
         termMonths: snapshot.termMonths,
         currency: normalizedCurrency,
@@ -134,8 +145,7 @@ export class CheckoutPricingService {
         finalTotalCents: termTotalCents,
         settlementCurrency: lockContext.settlementCurrency,
         settlementBasePriceCents: lockContext.settlementBasePriceCents,
-        settlementTermSubtotalCents:
-          settlementSnapshot.basePriceCents * settlementSnapshot.termMonths,
+        settlementTermSubtotalCents: settlementSnapshot.termSubtotalCents,
         settlementTermDiscountCents: settlementSnapshot.discountCents,
         settlementTermTotalCents: settlementSnapshot.totalPriceCents,
         settlementCouponDiscountCents: 0,
@@ -143,7 +153,9 @@ export class CheckoutPricingService {
       });
     }
 
-    const snapshotIds = new Set(pricingItems.map(item => item.pricingSnapshotId));
+    const snapshotIds = new Set(
+      pricingItems.map(item => item.pricingSnapshotId)
+    );
     if (snapshotIds.size !== 1) {
       return createErrorResult('price_unavailable');
     }

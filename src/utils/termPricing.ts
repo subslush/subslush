@@ -2,6 +2,7 @@ export type TermPricingSnapshot = {
   basePriceCents: number;
   termMonths: number;
   discountPercent: number;
+  termSubtotalCents: number;
   totalPriceCents: number;
   discountCents: number;
 };
@@ -42,8 +43,31 @@ export const computeTermPricing = (params: {
     basePriceCents,
     termMonths,
     discountPercent,
+    termSubtotalCents: totalBeforeDiscount,
     totalPriceCents,
     discountCents,
+  };
+};
+
+export const computeFixedTermPricing = (params: {
+  termTotalCents: number;
+  termMonths: number;
+  basePriceCents?: number | null;
+}): TermPricingSnapshot => {
+  const termMonths = Math.max(1, Math.floor(params.termMonths));
+  const termTotalCents = Math.max(0, Math.round(params.termTotalCents));
+  const basePriceCents =
+    params.basePriceCents !== null && params.basePriceCents !== undefined
+      ? Math.max(0, Math.round(params.basePriceCents))
+      : termTotalCents;
+
+  return {
+    basePriceCents,
+    termMonths,
+    discountPercent: 0,
+    termSubtotalCents: termTotalCents,
+    totalPriceCents: termTotalCents,
+    discountCents: 0,
   };
 };
 

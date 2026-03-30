@@ -391,6 +391,10 @@ export class PaymentService {
 
     for (const item of params.orderItems) {
       const metadata = this.resolveOrderItemMetadata(item);
+      const catalogMode =
+        typeof metadata['catalog_mode'] === 'string'
+          ? metadata['catalog_mode']
+          : null;
       const termMonths = this.resolveOrderItemTermMonths(item, metadata);
       const basePriceCents = parseNonNegativeInt(item.base_price_cents);
       const discountPercent = parsePercent(item.discount_percent ?? 0) ?? 0;
@@ -398,17 +402,30 @@ export class PaymentService {
         0,
         parseNonNegativeInt(item.coupon_discount_cents) ?? 0
       );
+      const metadataTermSubtotalCents = parseNonNegativeInt(
+        metadata['term_subtotal_cents']
+      );
+      const metadataTermDiscountCents = parseNonNegativeInt(
+        metadata['term_discount_cents']
+      );
 
       let subtotalCents = Math.max(0, item.total_price_cents);
       let discountCents = couponDiscountCents;
 
-      if (basePriceCents !== null && termMonths !== null) {
+      if (metadataTermSubtotalCents !== null) {
+        subtotalCents = metadataTermSubtotalCents;
+        discountCents = (metadataTermDiscountCents ?? 0) + couponDiscountCents;
+      } else if (catalogMode === 'fixed_product') {
+        subtotalCents =
+          Math.max(0, item.total_price_cents) + couponDiscountCents;
+        discountCents = couponDiscountCents;
+      } else if (basePriceCents !== null && termMonths !== null) {
         const snapshot = computeTermPricing({
           basePriceCents,
           termMonths,
           discountPercent,
         });
-        subtotalCents = snapshot.basePriceCents * snapshot.termMonths;
+        subtotalCents = snapshot.termSubtotalCents;
         discountCents = snapshot.discountCents + couponDiscountCents;
       }
 
@@ -519,16 +536,28 @@ export class PaymentService {
         parsePositiveInt(params.order.term_months) ??
         1;
 
+      const catalogMode =
+        typeof itemMetadata['catalog_mode'] === 'string'
+          ? itemMetadata['catalog_mode']
+          : null;
       const basePriceCents = parseNonNegativeInt(item.base_price_cents);
       const discountPercent = parsePercent(item.discount_percent ?? 0) ?? 0;
       const couponDiscountCents = Math.max(
         0,
         parseNonNegativeInt(item.coupon_discount_cents) ?? 0
       );
+      const metadataTermTotalCents = parseNonNegativeInt(
+        itemMetadata['term_total_cents']
+      );
 
       let termTotalCents =
         Math.max(0, item.total_price_cents) + couponDiscountCents;
-      if (basePriceCents !== null && termMonths !== null) {
+      if (metadataTermTotalCents !== null) {
+        termTotalCents = metadataTermTotalCents;
+      } else if (catalogMode === 'fixed_product') {
+        termTotalCents =
+          Math.max(0, item.total_price_cents) + couponDiscountCents;
+      } else if (basePriceCents !== null && termMonths !== null) {
         const snapshot = computeTermPricing({
           basePriceCents,
           termMonths,
@@ -1710,27 +1739,30 @@ export class PaymentService {
           if (orderId) {
             const createdSubscription = subResult.data;
             const subscriptionStartAt =
-              createdSubscription.term_start_at ?? createdSubscription.start_date;
+              createdSubscription.term_start_at ??
+              createdSubscription.start_date;
             const mmuCycleTotal = durationMonths > 1 ? durationMonths : null;
             const mmuCycleIndex = mmuCycleTotal ? 1 : null;
 
-            const entitlement = await orderEntitlementService.upsertEntitlement({
-              order_id: orderId,
-              order_item_id: null,
-              user_id: payment.userId,
-              status: createdSubscription.status,
-              starts_at: subscriptionStartAt,
-              ends_at: createdSubscription.end_date,
-              duration_months_snapshot: durationMonths,
-              credentials_encrypted: null,
-              mmu_cycle_index: mmuCycleIndex,
-              mmu_cycle_total: mmuCycleTotal,
-              source_subscription_id: createdSubscription.id,
-              metadata: {
-                source: 'paymentService.handleStripeWebhook',
-                renewal_method: 'stripe',
-              },
-            });
+            const entitlement = await orderEntitlementService.upsertEntitlement(
+              {
+                order_id: orderId,
+                order_item_id: null,
+                user_id: payment.userId,
+                status: createdSubscription.status,
+                starts_at: subscriptionStartAt,
+                ends_at: createdSubscription.end_date,
+                duration_months_snapshot: durationMonths,
+                credentials_encrypted: null,
+                mmu_cycle_index: mmuCycleIndex,
+                mmu_cycle_total: mmuCycleTotal,
+                source_subscription_id: createdSubscription.id,
+                metadata: {
+                  source: 'paymentService.handleStripeWebhook',
+                  renewal_method: 'stripe',
+                },
+              }
+            );
             if (!entitlement) {
               Logger.warn(
                 'Failed to upsert order entitlement after Stripe subscription create',
@@ -3346,7 +3378,10 @@ export class PaymentService {
     discountPercent: number | null;
     currency: string | null;
   } | null {
-    const orderMetadata = parseJsonValue<Record<string, any>>(order.metadata, {});
+    const orderMetadata = parseJsonValue<Record<string, any>>(
+      order.metadata,
+      {}
+    );
     const renewalFlag =
       this.isTruthyFlag(orderMetadata['renewal']) ||
       this.isTruthyFlag(orderMetadata['renewal_order']) ||
@@ -3454,11 +3489,13 @@ export class PaymentService {
       return false;
     }
 
-    const renewalLock = await subscriptionRenewalService.beginRenewalProcessing({
-      subscriptionId: renewalContext.subscriptionId,
-      cycleEndDate,
-      paymentId: params.payment.id ?? params.localpayId,
-    });
+    const renewalLock = await subscriptionRenewalService.beginRenewalProcessing(
+      {
+        subscriptionId: renewalContext.subscriptionId,
+        cycleEndDate,
+        paymentId: params.payment.id ?? params.localpayId,
+      }
+    );
     if (!renewalLock.acquired && renewalLock.status === 'succeeded') {
       Logger.info('Pay4bit renewal already processed', {
         orderId: params.order.id,
@@ -3469,8 +3506,8 @@ export class PaymentService {
       return true;
     }
 
-    const updateResult = await subscriptionService.updateSubscriptionForRenewalWithGuard(
-      {
+    const updateResult =
+      await subscriptionService.updateSubscriptionForRenewalWithGuard({
         subscriptionId: renewalContext.subscriptionId,
         updates: {
           term_start_at: termStartAt,
@@ -3491,11 +3528,12 @@ export class PaymentService {
             ? { discount_percent: renewalContext.discountPercent }
             : {}),
           ...(termMonths ? { term_months: termMonths } : {}),
-          ...(renewalContext.currency ? { currency: renewalContext.currency } : {}),
+          ...(renewalContext.currency
+            ? { currency: renewalContext.currency }
+            : {}),
         },
         expectedEndDate: renewalContext.expectedEndDate,
-      }
-    );
+      });
     if (!updateResult.success) {
       Logger.error('Pay4bit renewal update failed', {
         orderId: params.order.id,
@@ -3696,7 +3734,10 @@ export class PaymentService {
       params.localpayId,
       params.method
     );
-    await this.setCachedPay4bitCallbackResponse(idempotencyRef, params.response);
+    await this.setCachedPay4bitCallbackResponse(
+      idempotencyRef,
+      params.response
+    );
 
     if (!params.payment) {
       return;
@@ -3709,10 +3750,7 @@ export class PaymentService {
     const existingCallbacks =
       metadata['pay4bit_callback_responses'] &&
       typeof metadata['pay4bit_callback_responses'] === 'object'
-        ? ({ ...metadata['pay4bit_callback_responses'] } as Record<
-            string,
-            any
-          >)
+        ? ({ ...metadata['pay4bit_callback_responses'] } as Record<string, any>)
         : {};
     existingCallbacks[idempotencyRef] = params.response;
     metadata['pay4bit_callback_responses'] = existingCallbacks;
@@ -3968,9 +4006,7 @@ export class PaymentService {
     }
   }
 
-  async createPay4bitCheckoutSession(params: {
-    orderId: string;
-  }): Promise<
+  async createPay4bitCheckoutSession(params: { orderId: string }): Promise<
     | {
         success: true;
         sessionId: string;
@@ -4059,7 +4095,8 @@ export class PaymentService {
         createdPaymentInput.orderItemId = singleItemId;
       }
 
-      const createdPayment = await paymentRepository.create(createdPaymentInput);
+      const createdPayment =
+        await paymentRepository.create(createdPaymentInput);
 
       await orderService.updateOrderPayment(order.id, {
         payment_provider: 'pay4bit',
@@ -4225,8 +4262,9 @@ export class PaymentService {
 
       const order = await orderService.getOrderWithItems(payload.account);
       if (!order) {
-        const maybeSubscription =
-          await subscriptionService.getSubscriptionById(payload.account);
+        const maybeSubscription = await subscriptionService.getSubscriptionById(
+          payload.account
+        );
         const response: Pay4bitCallbackResponse = {
           statusCode: 404,
           body: this.buildPay4bitCallbackResponse(

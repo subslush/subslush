@@ -39,7 +39,10 @@ import {
   resolvePreferredCurrency,
   type SupportedCurrency,
 } from '../utils/currency';
-import { computeTermPricing } from '../utils/termPricing';
+import {
+  computeFixedTermPricing,
+  computeTermPricing,
+} from '../utils/termPricing';
 import {
   createPaymentRequestJsonSchema,
   minAmountRequestJsonSchema,
@@ -112,11 +115,7 @@ const readPay4bitParam = (
     source['params'] && typeof source['params'] === 'object'
       ? (source['params'] as Record<string, unknown>)[key]
       : undefined;
-  const candidates = [
-    source[key],
-    source[`params[${key}]`],
-    nestedParams,
-  ];
+  const candidates = [source[key], source[`params[${key}]`], nestedParams];
 
   for (const candidate of candidates) {
     if (typeof candidate === 'string') {
@@ -338,7 +337,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
-        const { product, variant, price, snapshot, currency } =
+        const { product, variant, price, snapshot, currency, catalogMode } =
           pricingResult.data;
         const lockContext = await resolvePricingLockContext({
           variantId: variant.id,
@@ -351,15 +350,22 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             'Unable to lock pricing snapshot for checkout.'
           );
         }
-        const subtotalCents = snapshot.basePriceCents * snapshot.termMonths;
+        const subtotalCents = snapshot.termSubtotalCents;
         const termDiscountCents = snapshot.discountCents;
         let couponDiscountCents = 0;
         let totalCents = snapshot.totalPriceCents;
-        const settlementPricing = computeTermPricing({
-          basePriceCents: lockContext.settlementBasePriceCents,
-          termMonths: snapshot.termMonths,
-          discountPercent: snapshot.discountPercent,
-        });
+        const settlementPricing =
+          catalogMode === 'fixed_product'
+            ? computeFixedTermPricing({
+                termTotalCents: lockContext.settlementBasePriceCents,
+                termMonths: snapshot.termMonths,
+                basePriceCents: lockContext.settlementBasePriceCents,
+              })
+            : computeTermPricing({
+                basePriceCents: lockContext.settlementBasePriceCents,
+                termMonths: snapshot.termMonths,
+                discountPercent: snapshot.discountPercent,
+              });
 
         const normalizedCoupon = normalizeCouponCode(coupon_code);
         if (normalizedCoupon) {
@@ -478,10 +484,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
               : payment_method;
         const cardProvider = env.PAY4BIT_ENABLED ? 'pay4bit' : 'stripe';
 
-        if (
-          requestedPaymentMethod === 'pay4bit' &&
-          !env.PAY4BIT_ENABLED
-        ) {
+        if (requestedPaymentMethod === 'pay4bit' && !env.PAY4BIT_ENABLED) {
           return ErrorResponses.badRequest(
             reply,
             'Pay4bit checkout is not enabled'
@@ -525,8 +528,14 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
-        const { product, variant, price: displayPrice, snapshot, currency } =
-          pricingResult.data;
+        const {
+          product,
+          variant,
+          price: displayPrice,
+          snapshot,
+          currency,
+          catalogMode,
+        } = pricingResult.data;
         const lockContext = await resolvePricingLockContext({
           variantId: variant.id,
           displayCurrency: currency,
@@ -566,13 +575,20 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
-        const termSubtotalCents = snapshot.basePriceCents * snapshot.termMonths;
+        const termSubtotalCents = snapshot.termSubtotalCents;
         const termTotalCents = snapshot.totalPriceCents;
-        const settlementTermPricing = computeTermPricing({
-          basePriceCents: lockContext.settlementBasePriceCents,
-          termMonths: snapshot.termMonths,
-          discountPercent: snapshot.discountPercent,
-        });
+        const settlementTermPricing =
+          catalogMode === 'fixed_product'
+            ? computeFixedTermPricing({
+                termTotalCents: lockContext.settlementBasePriceCents,
+                termMonths: snapshot.termMonths,
+                basePriceCents: lockContext.settlementBasePriceCents,
+              })
+            : computeTermPricing({
+                basePriceCents: lockContext.settlementBasePriceCents,
+                termMonths: snapshot.termMonths,
+                discountPercent: snapshot.discountPercent,
+              });
         let couponDiscountCents = 0;
         let coupon: { id: string; code: string; percent_off: number } | null =
           null;
@@ -614,7 +630,8 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             ? Math.min(
                 settlementTermPricing.totalPriceCents,
                 Math.round(
-                  (couponDiscountCents * settlementTermPricing.totalPriceCents) /
+                  (couponDiscountCents *
+                    settlementTermPricing.totalPriceCents) /
                     termTotalCents
                 )
               )
@@ -652,12 +669,16 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             duration_months: snapshot.termMonths,
             discount_percent: snapshot.discountPercent,
             base_price_cents: snapshot.basePriceCents,
+            term_subtotal_cents: termSubtotalCents,
+            term_discount_cents: snapshot.discountCents,
+            term_total_cents: termTotalCents,
             total_price_cents: finalTotalCents,
             display_currency: lockContext.displayCurrency,
             display_total_cents: finalTotalCents,
             pricing_snapshot_id: lockContext.snapshotId,
             settlement_currency: lockContext.settlementCurrency,
             settlement_total_cents: settlementFinalTotalCents,
+            catalog_mode: catalogMode,
             checkout_key: checkoutKey,
             checkout_context: {
               variant_id: variant.id,
@@ -701,11 +722,15 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
               duration_months: snapshot.termMonths,
               discount_percent: snapshot.discountPercent,
               base_price_cents: snapshot.basePriceCents,
+              term_subtotal_cents: termSubtotalCents,
+              term_discount_cents: snapshot.discountCents,
+              term_total_cents: termTotalCents,
               total_price_cents: finalTotalCents,
               settlement_currency: lockContext.settlementCurrency,
               settlement_base_price_cents: lockContext.settlementBasePriceCents,
               settlement_coupon_discount_cents: settlementCouponDiscountCents,
               settlement_total_cents: settlementFinalTotalCents,
+              catalog_mode: catalogMode,
               ...(upgradeOptions ? { upgrade_options: upgradeOptions } : {}),
               ...(coupon
                 ? {

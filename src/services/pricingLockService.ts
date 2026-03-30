@@ -34,6 +34,18 @@ const parsePositiveCents = (value: unknown): number | null => {
   return normalized > 0 ? normalized : null;
 };
 
+type LockablePrice = Pick<
+  PriceHistory,
+  'price_cents' | 'starts_at' | 'metadata'
+>;
+
+const resolveCatalogMode = (
+  metadata: Record<string, unknown> | null | undefined
+): 'variant' | 'fixed_product' => {
+  const raw = normalizeString(metadata?.['catalog_mode']);
+  return raw === 'fixed_product' ? 'fixed_product' : 'variant';
+};
+
 export type PricingLockContext = {
   snapshotId: string;
   displayCurrency: string;
@@ -49,7 +61,9 @@ export async function resolvePricingLockContext(params: {
   atDate?: Date;
 }): Promise<PricingLockContext | null> {
   const displayCurrency = resolveCurrency(params.displayCurrency);
-  const displayBasePriceCents = parsePositiveCents(params.displayPrice.price_cents);
+  const displayBasePriceCents = parsePositiveCents(
+    params.displayPrice.price_cents
+  );
   if (!displayCurrency || !displayBasePriceCents) {
     return null;
   }
@@ -67,16 +81,24 @@ export async function resolvePricingLockContext(params: {
     ? resolveCurrency(settlementCurrencyRaw)
     : resolveSettlementCurrency(displayCurrency);
 
-  let settlementPrice = params.displayPrice;
+  const catalogMode = resolveCatalogMode(displayMetadata);
+  let settlementPrice: LockablePrice = params.displayPrice;
   if (settlementCurrency !== displayCurrency) {
     const fallbackAtDate = params.displayPrice.starts_at
       ? new Date(params.displayPrice.starts_at)
       : new Date();
-    const fetchedSettlement = await catalogService.getCurrentPriceForCurrency({
-      variantId: params.variantId,
-      currency: settlementCurrency,
-      atDate: params.atDate ?? fallbackAtDate,
-    });
+    const fetchedSettlement =
+      catalogMode === 'fixed_product'
+        ? await catalogService.getCurrentFixedProductPriceForCurrency({
+            productId: params.variantId,
+            currency: settlementCurrency,
+            atDate: params.atDate ?? fallbackAtDate,
+          })
+        : await catalogService.getCurrentPriceForCurrency({
+            variantId: params.variantId,
+            currency: settlementCurrency,
+            atDate: params.atDate ?? fallbackAtDate,
+          });
     if (!fetchedSettlement) {
       return null;
     }
@@ -99,7 +121,9 @@ export async function resolvePricingLockContext(params: {
     return null;
   }
 
-  const settlementBasePriceCents = parsePositiveCents(settlementPrice.price_cents);
+  const settlementBasePriceCents = parsePositiveCents(
+    settlementPrice.price_cents
+  );
   if (!settlementBasePriceCents) {
     return null;
   }

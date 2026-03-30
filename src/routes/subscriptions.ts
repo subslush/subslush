@@ -2482,7 +2482,7 @@ export async function subscriptionRoutes(
           ? resolveHandlerPlan(product.service_type, planCode)
           : null;
 
-        const termSubtotalCents = snapshot.basePriceCents * snapshot.termMonths;
+        const termSubtotalCents = snapshot.termSubtotalCents;
         const termTotalCents = snapshot.totalPriceCents;
         let couponDiscountCents = 0;
 
@@ -2695,8 +2695,14 @@ export async function subscriptionRoutes(
           );
         }
 
-        const { product, snapshot, currency, productVariantId, planCode } =
-          pricingResult.data;
+        const {
+          product,
+          snapshot,
+          currency,
+          productVariantId,
+          planCode,
+          catalogMode,
+        } = pricingResult.data;
         const upgradeOptionsRaw = normalizeUpgradeOptions(product.metadata);
         const upgradeValidation = validateUpgradeOptions(upgradeOptionsRaw);
         if (!upgradeValidation.valid) {
@@ -2744,7 +2750,7 @@ export async function subscriptionRoutes(
           );
         }
 
-        const termSubtotalCents = snapshot.basePriceCents * snapshot.termMonths;
+        const termSubtotalCents = snapshot.termSubtotalCents;
         const termTotalCents = snapshot.totalPriceCents;
         let couponDiscountCents = 0;
         let coupon: { id: string; code: string; percent_off: number } | null =
@@ -2798,7 +2804,11 @@ export async function subscriptionRoutes(
             duration_months: snapshot.termMonths,
             discount_percent: snapshot.discountPercent,
             base_price_cents: snapshot.basePriceCents,
+            term_subtotal_cents: termSubtotalCents,
+            term_discount_cents: snapshot.discountCents,
+            term_total_cents: termTotalCents,
             total_price_cents: finalTotalCents,
+            catalog_mode: catalogMode,
             ...(upgradeOptions ? { upgrade_options: upgradeOptions } : {}),
             ...(coupon
               ? {
@@ -2829,7 +2839,11 @@ export async function subscriptionRoutes(
               duration_months: snapshot.termMonths,
               discount_percent: snapshot.discountPercent,
               base_price_cents: snapshot.basePriceCents,
+              term_subtotal_cents: termSubtotalCents,
+              term_discount_cents: snapshot.discountCents,
+              term_total_cents: termTotalCents,
               total_price_cents: finalTotalCents,
+              catalog_mode: catalogMode,
               ...(upgradeOptions ? { upgrade_options: upgradeOptions } : {}),
               ...(coupon
                 ? {
