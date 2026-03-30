@@ -612,6 +612,26 @@
 		return formatCurrency(product.from_price, displayCurrency);
 	};
 
+	const shouldContainOfferLogoInTile = (product: ProductListing | null): boolean => {
+		if (!product) return false;
+		const logoHints = [
+			product.slug,
+			product.logo_key,
+			product.logoKey,
+			product.service_type,
+			product.name
+		];
+		const darkTileKeywords = ['appletv'];
+
+		return logoHints.some(
+			(value) =>
+				typeof value === 'string' &&
+				darkTileKeywords.some((keyword) =>
+					value.toLowerCase().replace(/[^a-z0-9]+/g, '').includes(keyword)
+				)
+		);
+	};
+
 	const shouldLoadFallbackCatalog = (): boolean => catalogProducts.length === 0;
 
 	const loadFallbackCatalogProducts = async (force = false): Promise<void> => {
@@ -745,6 +765,7 @@
 	let activeOfferHref = '/browse?category=streaming';
 	let activeOfferTitle = 'Streaming Deals';
 	let activeOfferPriceLabel: string | null = null;
+	let activeOfferNeedsDarkTile = false;
 	let selectedLanguageOption: LanguageOption = LANGUAGE_OPTIONS[0];
 	let pendingLanguageOption: LanguageOption = LANGUAGE_OPTIONS[0];
 	let pendingCurrencySymbol = CURRENCY_SYMBOLS.USD;
@@ -788,6 +809,7 @@
 		activeMegaCategory?.featured.title ||
 		'Featured product';
 	$: activeOfferPriceLabel = resolveOfferPriceLabel(activeOfferProduct);
+	$: activeOfferNeedsDarkTile = shouldContainOfferLogoInTile(activeOfferProduct);
 	$: hasExternalCatalogProducts = catalogProducts.length > 0;
 	$: effectiveCatalogProducts = hasExternalCatalogProducts
 		? catalogProducts
@@ -1421,7 +1443,7 @@
 										<p class="mega-right-head">Seal the deal!</p>
 										<a
 											href={activeOfferHref}
-											class="mega-offer-image-wrap"
+											class={`mega-offer-image-wrap ${activeOfferNeedsDarkTile ? 'is-dark' : ''}`}
 											on:click={closeMegaMenuImmediately}
 										>
 											{#if activeOfferImage.kind === 'picture'}
@@ -1429,8 +1451,12 @@
 													image={activeOfferImage.value}
 													alt={activeOfferTitle}
 													sizes="(min-width: 1024px) 280px, 92vw"
-													pictureClass="block"
-													imgClass="mega-offer-image"
+													pictureClass={activeOfferNeedsDarkTile
+														? 'mega-offer-image-picture--contain'
+														: 'block'}
+													imgClass={activeOfferNeedsDarkTile
+														? 'mega-offer-image mega-offer-image--contain'
+														: 'mega-offer-image'}
 													loading="lazy"
 													decoding="async"
 												/>
@@ -1977,11 +2003,36 @@
 		margin-top: 0.55rem;
 	}
 
+	.mega-offer-image-wrap.is-dark {
+		height: 7.45rem;
+		border-radius: 0.72rem;
+		background: #020617;
+		overflow: hidden;
+	}
+
+	.mega-offer-image-picture--contain {
+		display: flex;
+		width: 100%;
+		height: 100%;
+		align-items: center;
+		justify-content: center;
+		padding: 0.8rem;
+	}
+
 	.mega-offer-image {
 		width: 100%;
 		height: 7.45rem;
 		border-radius: 0.72rem;
 		object-fit: cover;
+	}
+
+	.mega-offer-image--contain {
+		width: auto;
+		height: auto;
+		max-width: 100%;
+		max-height: 100%;
+		border-radius: 0;
+		object-fit: contain;
 	}
 
 	.mega-offer-title {
