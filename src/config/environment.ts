@@ -117,17 +117,68 @@ const environmentSchema = z.object({
     )
     .default(''),
   MAXMIND_MINFRAUD_ENDPOINT: z
-    .string()
-    .url('Invalid MaxMind minFraud endpoint')
+    .preprocess(
+      value =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z.string().url('Invalid MaxMind minFraud endpoint')
+    )
     .default('https://minfraud.maxmind.com/minfraud/v2.0/factors'),
-  MAXMIND_TIMEOUT_MS: z.coerce.number().default(2500),
-  MAXMIND_REVIEW_SCORE: z.coerce.number().default(45),
-  MAXMIND_BLOCK_SCORE: z.coerce.number().default(80),
-  MAXMIND_SIGNAL_LOOKBACK_DAYS: z.coerce.number().default(180),
-  MAXMIND_REPEAT_HIGH_VALUE_MULTIPLIER: z.coerce.number().default(2.5),
-  MAXMIND_REPEAT_HIGH_VALUE_ABSOLUTE_CENTS: z.coerce.number().default(20000),
-  MAXMIND_REPEAT_FAST_MINUTES: z.coerce.number().default(10),
-  MAXMIND_REPEAT_DORMANCY_DAYS: z.coerce.number().default(45),
+  MAXMIND_TIMEOUT_MS: z
+    .preprocess(
+      value =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z.coerce.number()
+    )
+    .default(2500),
+  MAXMIND_REVIEW_SCORE: z
+    .preprocess(
+      value =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z.coerce.number()
+    )
+    .default(45),
+  MAXMIND_BLOCK_SCORE: z
+    .preprocess(
+      value =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z.coerce.number()
+    )
+    .default(80),
+  MAXMIND_SIGNAL_LOOKBACK_DAYS: z
+    .preprocess(
+      value =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z.coerce.number()
+    )
+    .default(180),
+  MAXMIND_REPEAT_HIGH_VALUE_MULTIPLIER: z
+    .preprocess(
+      value =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z.coerce.number()
+    )
+    .default(2.5),
+  MAXMIND_REPEAT_HIGH_VALUE_ABSOLUTE_CENTS: z
+    .preprocess(
+      value =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z.coerce.number()
+    )
+    .default(20000),
+  MAXMIND_REPEAT_FAST_MINUTES: z
+    .preprocess(
+      value =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z.coerce.number()
+    )
+    .default(10),
+  MAXMIND_REPEAT_DORMANCY_DAYS: z
+    .preprocess(
+      value =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z.coerce.number()
+    )
+    .default(45),
   COOKIE_SECRET: z
     .string()
     .min(16, 'Cookie secret must be at least 16 characters')
@@ -499,57 +550,57 @@ function validateEnvironment(): EnvironmentConfig {
           `MaxMind configuration missing required fields: ${missing.join(', ')}`
         );
       }
-    }
 
-    if (withTestOverrides.MAXMIND_TIMEOUT_MS <= 0) {
-      throw new Error('MAXMIND_TIMEOUT_MS must be greater than 0');
-    }
+      if (withTestOverrides.MAXMIND_TIMEOUT_MS <= 0) {
+        throw new Error('MAXMIND_TIMEOUT_MS must be greater than 0');
+      }
 
-    if (
-      withTestOverrides.MAXMIND_REVIEW_SCORE < 0 ||
-      withTestOverrides.MAXMIND_REVIEW_SCORE > 100
-    ) {
-      throw new Error('MAXMIND_REVIEW_SCORE must be between 0 and 100');
-    }
+      if (
+        withTestOverrides.MAXMIND_REVIEW_SCORE < 0 ||
+        withTestOverrides.MAXMIND_REVIEW_SCORE > 100
+      ) {
+        throw new Error('MAXMIND_REVIEW_SCORE must be between 0 and 100');
+      }
 
-    if (
-      withTestOverrides.MAXMIND_BLOCK_SCORE < 0 ||
-      withTestOverrides.MAXMIND_BLOCK_SCORE > 100
-    ) {
-      throw new Error('MAXMIND_BLOCK_SCORE must be between 0 and 100');
-    }
+      if (
+        withTestOverrides.MAXMIND_BLOCK_SCORE < 0 ||
+        withTestOverrides.MAXMIND_BLOCK_SCORE > 100
+      ) {
+        throw new Error('MAXMIND_BLOCK_SCORE must be between 0 and 100');
+      }
 
-    if (
-      withTestOverrides.MAXMIND_BLOCK_SCORE <
-      withTestOverrides.MAXMIND_REVIEW_SCORE
-    ) {
-      throw new Error(
-        'MAXMIND_BLOCK_SCORE must be greater than or equal to MAXMIND_REVIEW_SCORE'
-      );
-    }
+      if (
+        withTestOverrides.MAXMIND_BLOCK_SCORE <
+        withTestOverrides.MAXMIND_REVIEW_SCORE
+      ) {
+        throw new Error(
+          'MAXMIND_BLOCK_SCORE must be greater than or equal to MAXMIND_REVIEW_SCORE'
+        );
+      }
 
-    if (withTestOverrides.MAXMIND_SIGNAL_LOOKBACK_DAYS <= 0) {
-      throw new Error('MAXMIND_SIGNAL_LOOKBACK_DAYS must be greater than 0');
-    }
+      if (withTestOverrides.MAXMIND_SIGNAL_LOOKBACK_DAYS <= 0) {
+        throw new Error('MAXMIND_SIGNAL_LOOKBACK_DAYS must be greater than 0');
+      }
 
-    if (withTestOverrides.MAXMIND_REPEAT_HIGH_VALUE_MULTIPLIER <= 1) {
-      throw new Error(
-        'MAXMIND_REPEAT_HIGH_VALUE_MULTIPLIER must be greater than 1'
-      );
-    }
+      if (withTestOverrides.MAXMIND_REPEAT_HIGH_VALUE_MULTIPLIER <= 1) {
+        throw new Error(
+          'MAXMIND_REPEAT_HIGH_VALUE_MULTIPLIER must be greater than 1'
+        );
+      }
 
-    if (withTestOverrides.MAXMIND_REPEAT_HIGH_VALUE_ABSOLUTE_CENTS < 0) {
-      throw new Error(
-        'MAXMIND_REPEAT_HIGH_VALUE_ABSOLUTE_CENTS must be greater than or equal to 0'
-      );
-    }
+      if (withTestOverrides.MAXMIND_REPEAT_HIGH_VALUE_ABSOLUTE_CENTS < 0) {
+        throw new Error(
+          'MAXMIND_REPEAT_HIGH_VALUE_ABSOLUTE_CENTS must be greater than or equal to 0'
+        );
+      }
 
-    if (withTestOverrides.MAXMIND_REPEAT_FAST_MINUTES <= 0) {
-      throw new Error('MAXMIND_REPEAT_FAST_MINUTES must be greater than 0');
-    }
+      if (withTestOverrides.MAXMIND_REPEAT_FAST_MINUTES <= 0) {
+        throw new Error('MAXMIND_REPEAT_FAST_MINUTES must be greater than 0');
+      }
 
-    if (withTestOverrides.MAXMIND_REPEAT_DORMANCY_DAYS <= 0) {
-      throw new Error('MAXMIND_REPEAT_DORMANCY_DAYS must be greater than 0');
+      if (withTestOverrides.MAXMIND_REPEAT_DORMANCY_DAYS <= 0) {
+        throw new Error('MAXMIND_REPEAT_DORMANCY_DAYS must be greater than 0');
+      }
     }
 
     if (
