@@ -58,6 +58,8 @@
   let contactEmailNeedsAttention = false;
   let contactEmailAttentionMessage = '';
   let contactEmailPulseTimer: ReturnType<typeof setTimeout> | null = null;
+  let consentNeedsAttention = false;
+  let consentAttentionTimer: ReturnType<typeof setTimeout> | null = null;
   let ownAccountAttentionByItemId: Record<string, boolean> = {};
   let ownAccountAttentionMessageByItemId: Record<string, string> = {};
   let ownAccountAttentionPulseTimers: Record<string, ReturnType<typeof setTimeout>> =
@@ -352,6 +354,51 @@
       return true;
     }
     focusContactEmailCard();
+    return false;
+  };
+
+  const clearConsentAttention = (): void => {
+    consentNeedsAttention = false;
+    if (consentAttentionTimer) {
+      clearTimeout(consentAttentionTimer);
+      consentAttentionTimer = null;
+    }
+  };
+
+  const focusConsentCard = (): void => {
+    consentNeedsAttention = true;
+
+    if (browser) {
+      requestAnimationFrame(() => {
+        const card = document.getElementById('checkout-consent-card');
+        card?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+        const checkbox = document.getElementById(
+          'checkout-consent-checkbox'
+        ) as HTMLInputElement | null;
+        checkbox?.focus();
+      });
+    }
+
+    if (consentAttentionTimer) {
+      clearTimeout(consentAttentionTimer);
+    }
+    consentAttentionTimer = setTimeout(() => {
+      consentNeedsAttention = false;
+      consentAttentionTimer = null;
+    }, 1600);
+  };
+
+  const ensureConsentBeforeCheckout = (): boolean => {
+    if (immediatePerformanceConsent) {
+      return true;
+    }
+
+    actionError =
+      'Please confirm that you agree to the Terms and Refund Policy before continuing.';
+    focusConsentCard();
     return false;
   };
 
@@ -1196,9 +1243,7 @@
 
   const handleCardCheckout = async () => {
     actionError = '';
-    if (!immediatePerformanceConsent) {
-      actionError =
-        'Please confirm that you agree to the Terms and Refund Policy before continuing.';
+    if (!ensureConsentBeforeCheckout()) {
       return;
     }
     if (!ensureContactEmailBeforeCheckout()) {
@@ -1267,9 +1312,7 @@
   const handleCryptoInvoice = async () => {
     actionError = '';
     invoiceError = '';
-    if (!immediatePerformanceConsent) {
-      actionError =
-        'Please confirm that you agree to the Terms and Refund Policy before continuing.';
+    if (!ensureConsentBeforeCheckout()) {
       return;
     }
     if (!ensureContactEmailBeforeCheckout()) {
@@ -1346,9 +1389,7 @@
 
   const handleCreditsCheckout = async () => {
     actionError = '';
-    if (!immediatePerformanceConsent) {
-      actionError =
-        'Please confirm that you agree to the Terms and Refund Policy before continuing.';
+    if (!ensureConsentBeforeCheckout()) {
       return;
     }
     if (!ensureContactEmailBeforeCheckout()) {
@@ -1600,6 +1641,10 @@
     lastPaymentMethod = paymentMethod;
   }
 
+  $: if (immediatePerformanceConsent) {
+    clearConsentAttention();
+  }
+
   $: cryptoCurrencyOptions = supportedCurrencies
     .map(normalizeCryptoCurrencyOption)
     .filter((option): option is CryptoCurrencyOption => option !== null)
@@ -1659,9 +1704,6 @@
   let showPrimaryActionButton = true;
   let selectedCryptoCoinLabel = '';
   let selectedCryptoNetworkLabel = '';
-  let settlementCurrency: SupportedCurrency | null = null;
-  let settlementTotal = 0;
-  let showSettlementNotice = false;
 
   $: orderCurrency =
     normalizeCurrencyCode(pricing?.display_currency) ||
@@ -1686,13 +1728,6 @@
     pricing?.order_total_cents !== undefined
       ? pricing.order_total_cents / 100
       : fallbackTotal;
-  $: settlementCurrency = normalizeCurrencyCode(pricing?.settlement_currency);
-  $: settlementTotal =
-    pricing?.order_settlement_total_cents !== undefined
-      ? pricing.order_settlement_total_cents / 100
-      : total;
-  $: showSettlementNotice =
-    settlementCurrency !== null && settlementCurrency !== orderCurrency;
   $: cryptoInvoiceMatchesSelection =
     paymentMethod === 'crypto' &&
     Boolean(invoice) &&
@@ -1717,6 +1752,9 @@
     }
     if (contactEmailPulseTimer) {
       clearTimeout(contactEmailPulseTimer);
+    }
+    if (consentAttentionTimer) {
+      clearTimeout(consentAttentionTimer);
     }
     for (const timer of Object.values(ownAccountAttentionPulseTimers)) {
       clearTimeout(timer);
@@ -2044,89 +2082,64 @@
                 <p class="mt-1 text-3xl font-black leading-none tracking-tight text-slate-900">
                   {draftLoading ? '--' : formatCurrency(total, orderCurrency)}
                 </p>
-                {#if showSettlementNotice && settlementCurrency}
-                  <p class="mt-1 text-[11px] text-slate-500">
-                    Charged in {settlementCurrency}: {draftLoading
-                      ? '--'
-                      : formatCurrency(settlementTotal, settlementCurrency)}
-                  </p>
-                {/if}
               </div>
 
-              <div class="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+              <div class="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600">
                 <ShieldCheck size={14} class="text-cyan-600" />
-                <span>
+                <span class="whitespace-nowrap leading-none">
                   This order is backed by our
                   <span class="font-bold bg-gradient-to-r from-pink-500 to-purple-700 bg-clip-text text-transparent">Money-Back Guarantee</span>.
                 </span>
               </div>
-
-            </div>
-
-            <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_14px_28px_rgba(15,23,42,0.08)] sm:p-6">
-              <button
-                type="button"
-                class="inline-flex items-center gap-1 text-sm font-semibold"
-                on:click={() => {
-                  showDiscountCodeInput = !showDiscountCodeInput;
-                }}
-              >
-                <span class="gradient-text">Got a discount code?</span>
-              </button>
-              {#if showDiscountCodeInput}
-                <div class="mt-3 space-y-3">
-                  <h3 class="text-sm font-semibold text-slate-900">Discount code</h3>
-                  <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <input
-                      class="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 sm:flex-1"
-                      placeholder="Enter code"
-                      bind:value={couponCode}
-                    />
-                    <div class="flex w-full gap-2 sm:w-auto">
-                      <button
-                        type="button"
-                        class="gradient-outline-btn flex-1 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900 transition hover:brightness-[0.98] disabled:opacity-60 sm:flex-none sm:whitespace-nowrap"
-                        on:click={handleApplyCoupon}
-                        disabled={draftLoading}
-                      >
-                        <span class="gradient-text">APPLY</span>
-                      </button>
-                      {#if appliedCouponCode}
+              <div class="mt-4 border-t border-slate-200 pt-3">
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-1 text-sm font-semibold"
+                  on:click={() => {
+                    showDiscountCodeInput = !showDiscountCodeInput;
+                  }}
+                >
+                  <span class="gradient-text">Got a discount code?</span>
+                </button>
+                {#if showDiscountCodeInput}
+                  <div class="mt-3 space-y-3">
+                    <h3 class="text-sm font-semibold text-slate-900">Discount code</h3>
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <input
+                        class="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 sm:flex-1"
+                        placeholder="Enter code"
+                        bind:value={couponCode}
+                      />
+                      <div class="flex w-full gap-2 sm:w-auto">
                         <button
                           type="button"
-                          class="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 sm:flex-none sm:whitespace-nowrap"
-                          on:click={handleClearCoupon}
+                          class="gradient-outline-btn flex-1 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900 transition hover:brightness-[0.98] disabled:opacity-60 sm:flex-none sm:whitespace-nowrap"
+                          on:click={handleApplyCoupon}
+                          disabled={draftLoading}
                         >
-                          CLEAR
+                          <span class="gradient-text">APPLY</span>
                         </button>
-                      {/if}
+                        {#if appliedCouponCode}
+                          <button
+                            type="button"
+                            class="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 sm:flex-none sm:whitespace-nowrap"
+                            on:click={handleClearCoupon}
+                          >
+                            CLEAR
+                          </button>
+                        {/if}
+                      </div>
                     </div>
+                    {#if couponMessage}
+                      <p class="text-xs whitespace-pre-line text-slate-500">{couponMessage}</p>
+                    {/if}
                   </div>
-                  {#if couponMessage}
-                    <p class="text-xs whitespace-pre-line text-slate-500">{couponMessage}</p>
-                  {/if}
-                </div>
-              {/if}
+                {/if}
+              </div>
             </div>
 
             <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_14px_28px_rgba(15,23,42,0.08)] sm:p-6">
-              <h3 class="text-sm font-semibold text-slate-900">Payment method</h3>
-
-              <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                <label class="flex items-start gap-2.5 text-xs text-slate-700">
-                  <input
-                    type="checkbox"
-                    class="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-fuchsia-300"
-                    bind:checked={immediatePerformanceConsent}
-                  />
-                  <span>
-                    I have read and agree to the
-                    <a href="/terms" class="underline underline-offset-2 hover:text-slate-900">Terms &amp; Conditions</a>
-                    and
-                    <a href="/returns" class="underline underline-offset-2 hover:text-slate-900">Refund Policy</a>.
-                  </span>
-                </label>
-              </div>
+              <h3 class="text-sm font-semibold text-slate-900">Choose payment method</h3>
 
               <div class="mt-3 space-y-3">
                 <label class="flex cursor-not-allowed items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 opacity-80">
@@ -2288,6 +2301,41 @@
                 </div>
               {/if}
 
+              <div
+                id="checkout-consent-card"
+                class={`mt-3 rounded-xl border bg-slate-50 px-3 py-3 ${
+                  consentNeedsAttention
+                    ? 'consent-attention-pulse border-fuchsia-300'
+                    : 'border-slate-200'
+                }`}
+              >
+                <label class="flex items-start gap-2.5 text-xs text-slate-700">
+                  <input
+                    id="checkout-consent-checkbox"
+                    type="checkbox"
+                    class="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-fuchsia-300"
+                    bind:checked={immediatePerformanceConsent}
+                    on:change={() => {
+                      actionError = '';
+                      if (immediatePerformanceConsent) {
+                        clearConsentAttention();
+                      }
+                    }}
+                  />
+                  <span>
+                    I have read and agree to the
+                    <a href="/terms" class="underline underline-offset-2 hover:text-slate-900">Terms &amp; Conditions</a>
+                    and
+                    <a href="/returns" class="underline underline-offset-2 hover:text-slate-900">Refund Policy</a>.
+                  </span>
+                </label>
+                {#if consentNeedsAttention}
+                  <p class="mt-2 text-xs font-medium text-fuchsia-700">
+                    Please confirm this to continue with checkout.
+                  </p>
+                {/if}
+              </div>
+
               {#if actionError}
                 <div class="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
                   {actionError}
@@ -2300,7 +2348,6 @@
                   class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(126,34,206,0.28)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={
                     !paymentMethod ||
-                    !immediatePerformanceConsent ||
                     redirecting ||
                     invoiceLoading ||
                     creditsInsufficient
@@ -2422,6 +2469,10 @@
   }
 
   .account-attention-pulse {
+    animation: emailAttentionPulse 820ms ease-in-out 2;
+  }
+
+  .consent-attention-pulse {
     animation: emailAttentionPulse 820ms ease-in-out 2;
   }
 </style>

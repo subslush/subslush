@@ -203,7 +203,7 @@
 		{ label: 'Spotify', href: '/browse?sub_category=spotify' },
 		{
 			label: 'Adobe Creative Cloud',
-			href: '/browse?sub_category=adobe%20creative%20cloud'
+			href: '/browse?sub_category=adobe'
 		},
 		{ label: 'Netflix', href: '/browse?sub_category=netflix' },
 		{
@@ -382,7 +382,7 @@
 			popular: [
 				{
 					label: 'Adobe Creative Cloud',
-					href: '/browse/products/adobe-creative-cloud',
+					href: '/browse?sub_category=adobe',
 					slug: 'adobe-creative-cloud',
 					aliases: ['adobe creative cloud', 'adobe']
 				},
