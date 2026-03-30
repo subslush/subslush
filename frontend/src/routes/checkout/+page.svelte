@@ -1947,6 +1947,12 @@
                           <p class="mt-2 text-[10px] text-slate-500">
                             Details are encrypted and only used to complete this order.
                           </p>
+                          <p class="mt-1 text-[10px] text-slate-500">
+                            Personal Information Collection Statement: We collect these details to fulfill your order,
+                            run fraud/security checks, and support your request. We may share relevant data with
+                            payment, fraud-screening, and fulfillment providers as needed.
+                            <a href="/privacy" class="underline underline-offset-2 hover:text-slate-700">Privacy Policy</a>
+                          </p>
                         </div>
                       </div>
                     {/if}
@@ -2001,6 +2007,12 @@
                     {contactEmailAttentionMessage}
                   </p>
                 {/if}
+                <p class="mt-2 text-[11px] text-slate-500">
+                  Personal Information Collection Statement: We collect your delivery email to send order updates and
+                  delivery details, monitor fraud/risk signals, and provide support. Relevant data may be shared with
+                  payment, fraud-screening, and communication providers.
+                  <a href="/privacy" class="underline underline-offset-2 hover:text-slate-700">Privacy Policy</a>
+                </p>
               </div>
             {/if}
 

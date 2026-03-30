@@ -32,7 +32,7 @@
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">2. Data user (controller) and contact</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">2. Controller identity and contact</h2>
         <p class="mt-2">
           Data user / trader: <span class="font-semibold">3NITY DIGITAL LIMITED</span> (BRN:
           <span class="font-semibold">79886556</span>)
@@ -50,22 +50,24 @@
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">3. Collection notice timing</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">3. Personal Information Collection Statement timing</h2>
         <p class="mt-2">
-          We provide this privacy notice on our website and at checkout so users are informed at or before collection
-          of personal data, including delivery details, fraud review data, and technical identifiers such as IP address.
+          We provide a Personal Information Collection Statement (PICS) on or before collection points (for example checkout
+          and account-input forms), together with this full policy, so users are informed before data is collected.
         </p>
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">4. Personal data we collect</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">4. Categories of personal data</h2>
 
         <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">4.1 Data you provide</h3>
         <ul class="mt-2 list-disc pl-5 space-y-1">
-          <li>identity and contact data: name, email, country/region, and any support contact information you provide</li>
+          <li>identity and contact data: name, email, phone (if provided or requested for verification), country/region, and support contact details</li>
+          <li>billing and transaction data: payer name, billing details supplied through payment processors, transaction references, and payment status</li>
           <li>account data: account credentials (stored using security controls), preferences</li>
-          <li>order data: products purchased, duration, delivery method, pricing records, refund/complaint status</li>
+          <li>order and account history: products purchased, duration, delivery method, pricing records, refund/complaint history, and support outcomes</li>
           <li>fulfillment data: details needed to deliver the product, such as target account email/identifier and, where required, account credentials for account-applied fulfillment</li>
+          <li>marketing preference data: subscription/opt-out choices and communication preferences</li>
           <li>support data: messages, screenshots, files, and case notes</li>
         </ul>
 
@@ -95,16 +97,29 @@
           <li>prevent fraud, abuse, chargeback misuse, and unauthorized payments</li>
           <li>comply with legal, tax, and accounting obligations</li>
           <li>improve Platform performance and user experience</li>
-          <li>send marketing communications only where permitted and in line with PDPO direct marketing rules (see Section 10)</li>
+          <li>send marketing communications only where permitted and in line with PDPO direct marketing rules (see Section 11)</li>
         </ul>
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">6. Disclosure / sharing</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">6. Legal basis (EEA/UK transparency)</h2>
+        <p class="mt-2">Where EEA/UK data protection laws apply, we rely on the following legal bases:</p>
+        <ul class="mt-2 list-disc pl-5 space-y-1">
+          <li><span class="font-semibold">Contract:</span> to create accounts, process orders, and deliver products.</li>
+          <li><span class="font-semibold">Legal obligation:</span> to meet tax, accounting, fraud, and regulatory requirements.</li>
+          <li><span class="font-semibold">Legitimate interests:</span> to secure the Platform, prevent abuse/fraud, improve services, and defend legal claims.</li>
+          <li><span class="font-semibold">Consent:</span> for direct marketing and non-essential cookies/tracking where consent is required.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2 class="text-base font-semibold uppercase tracking-wide">7. Sharing / recipients</h2>
         <p class="mt-2">We may disclose data to:</p>
         <ul class="mt-2 list-disc pl-5 space-y-1">
           <li>payment providers, anti-fraud services, and chargeback processing partners</li>
-          <li>hosting, email, and support tooling providers</li>
+          <li>hosting/cloud providers and security/monitoring providers</li>
+          <li>helpdesk/CRM and support tooling providers</li>
+          <li>email delivery and communication providers</li>
           <li>wholesale suppliers or fulfillment partners (only what is necessary to deliver)</li>
           <li>analytics or advertising partners (where enabled and permitted)</li>
           <li>professional advisers (accounting and legal) where needed</li>
@@ -114,7 +129,19 @@
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">7. Retention</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">8. International transfers</h2>
+        <p class="mt-2">
+          Personal data may be processed in jurisdictions outside Hong Kong, including locations where our processors
+          and technology providers operate.
+        </p>
+        <p class="mt-2">
+          Where required, we use safeguards such as contractual data-protection commitments, transfer risk assessments,
+          and equivalent protection controls appropriate to applicable law.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-base font-semibold uppercase tracking-wide">9. Retention</h2>
         <p class="mt-2">
           We keep personal data only as long as necessary for the purposes listed in this policy, and to meet legal,
           accounting, security, and dispute-handling obligations.
@@ -122,34 +149,33 @@
         <p class="mt-2">Typical retention periods are:</p>
         <ul class="mt-2 list-disc pl-5 space-y-1">
           <li>order/payment/accounting records: up to 7 years where required by law</li>
+          <li>fraud-screening and risk review records: normally up to 24 months</li>
           <li>support and complaint records: normally up to 3 years after case closure</li>
           <li>security and audit logs: normally up to 24 months</li>
           <li>fulfillment credentials shared for account-applied delivery: kept only as long as needed for fulfillment/support resolution and then removed or minimized</li>
         </ul>
+        <p class="mt-2">
+          We determine retention periods based on legal obligations, fraud/security risk, operational necessity,
+          contractual commitments, and limitation periods for legal claims.
+        </p>
         <p class="mt-2">We may retain records longer where legal claims, investigations, or mandatory legal obligations require it.</p>
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">8. Security</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">10. Fraud screening and automated decision-making</h2>
         <p class="mt-2">
-          We use technical and organizational measures to protect data, including access controls, encryption where appropriate,
-          and monitoring for unauthorized activity.
+          Orders may be screened using automated and semi-automated fraud/risk checks before fulfillment.
+          Data points may include IP address, device/browser signals, geolocation (country-level), transaction velocity,
+          billing consistency, and payment-provider risk signals.
         </p>
         <p class="mt-2">
-          No system is perfectly secure, but we continuously work to reduce risk and respond to incidents.
-        </p>
-      </section>
-
-      <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">9. International transfers</h2>
-        <p class="mt-2">
-          Our service providers and systems may operate outside Hong Kong. Where cross-border transfers occur, we apply
-          contractual and operational safeguards appropriate to the transferred data and applicable law.
+          Suspicious orders may be delayed, cancelled, or escalated for manual review. We do not intend to rely solely on fully
+          automated decisions with legal or similarly significant effects without appropriate human review where required by law.
         </p>
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">10. Direct marketing (PDPO)</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">11. Direct marketing (PDPO)</h2>
         <p class="mt-2">
           If we use your personal data for direct marketing, we will comply with PDPO requirements,
           including that we must not use personal data in direct marketing without your consent or
@@ -161,24 +187,39 @@
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">11. Your rights (PDPO)</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">12. Your rights and complaint routes</h2>
+        <p class="mt-2">Depending on applicable law, you may have rights to:</p>
+        <ul class="mt-2 list-disc pl-5 space-y-1">
+          <li>access your personal data;</li>
+          <li>correct inaccurate personal data;</li>
+          <li>request deletion/erasure where applicable;</li>
+          <li>object to or request restriction of certain processing where applicable;</li>
+          <li>withdraw consent at any time where processing is consent-based;</li>
+          <li>lodge a complaint with a competent supervisory authority.</li>
+        </ul>
         <p class="mt-2">
-          Under PDPO, individuals have rights of access and correction of personal data (DPP6).
-          To request access or correction, contact hello@subslush.com. We may need to verify
+          Under Hong Kong PDPO, individuals have rights of access and correction of personal data (DPP6).
+          To exercise rights, contact
+          <a href="mailto:hello@subslush.com" class="underline underline-offset-2 text-gray-900 hover:text-gray-700">hello@subslush.com</a>.
+          We may need to verify
           identity before processing requests.
+        </p>
+        <p class="mt-2">
+          Hong Kong users may also contact the Office of the Privacy Commissioner for Personal Data (PCPD).
+          EEA/UK users may contact their local supervisory authority where applicable.
         </p>
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">12. Cookies and online tracking</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">13. Cookies and online tracking</h2>
 
-        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">12.1 What cookies are</h3>
+        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">13.1 What cookies are</h3>
         <p class="mt-2">
           Cookies are small files stored on your device to enable site functionality, analytics,
           and preferences.
         </p>
 
-        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">12.2 How we use cookies</h3>
+        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">13.2 How we use cookies</h3>
         <ul class="mt-2 list-disc pl-5 space-y-1">
           <li>strictly necessary: login, session, security, checkout</li>
           <li>preferences: language and settings</li>
@@ -186,13 +227,14 @@
           <li>marketing (if enabled): measure campaigns</li>
         </ul>
 
-        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">12.3 Managing cookies</h3>
+        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">13.3 Managing cookies and consent</h3>
         <p class="mt-2">
           You can control cookies via browser settings. Where we implement a cookie banner or
-          controls, you can adjust preferences there as well.
+          controls, you can adjust preferences there as well. Non-essential cookies (for example analytics
+          or marketing) are used only where required consent has been obtained.
         </p>
 
-        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">12.4 Cookie list</h3>
+        <h3 class="mt-4 text-sm font-semibold uppercase tracking-wide">13.4 Cookie list</h3>
         <p class="mt-2">
           The cookies currently set by SubSlush are listed below. These are strictly necessary
           for authentication and security. We will update this list if additional cookies are
@@ -228,7 +270,7 @@
           </table>
         </div>
 
-        <h3 class="mt-6 text-sm font-semibold uppercase tracking-wide">12.5 Advertising pixels and hashed identifiers</h3>
+        <h3 class="mt-6 text-sm font-semibold uppercase tracking-wide">13.5 Advertising pixels and hashed identifiers</h3>
         <p class="mt-2">
           We may use advertising pixels and similar technologies (such as TikTok, Meta, and other
           ad platforms) to measure ad performance, attribute conversions, and improve marketing
@@ -249,7 +291,21 @@
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">13. Children and age limits</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">14. Security summary</h2>
+        <ul class="mt-2 list-disc pl-5 space-y-1">
+          <li>encryption in transit and other technical safeguards where appropriate;</li>
+          <li>role-based access controls and need-to-know access management;</li>
+          <li>logging and monitoring for unauthorized access or abuse;</li>
+          <li>incident response procedures and remediation workflows;</li>
+          <li>vendor and processor due diligence with contractual data-protection controls.</li>
+        </ul>
+        <p class="mt-2">
+          No system is perfectly secure, but we continuously work to reduce risk and respond to incidents.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-base font-semibold uppercase tracking-wide">15. Children and age limits</h2>
         <p class="mt-2">
           Our service is intended for adults who can legally contract. We do not knowingly collect personal data from children
           who are not legally permitted to place orders in their jurisdiction.
@@ -257,12 +313,12 @@
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">14. Changes</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">16. Changes</h2>
         <p class="mt-2">We may update this policy. The "Last updated" date reflects the current version.</p>
       </section>
 
       <section>
-        <h2 class="text-base font-semibold uppercase tracking-wide">15. Contact</h2>
+        <h2 class="text-base font-semibold uppercase tracking-wide">17. Contact</h2>
         <p class="mt-2">
           Privacy questions:
           <a href="mailto:hello@subslush.com" class="underline underline-offset-2 text-gray-900 hover:text-gray-700">hello@subslush.com</a>
