@@ -16,6 +16,7 @@
   import ltcIcon from '$lib/assets/litecoin-icon.svg';
   import solIcon from '$lib/assets/solana-icon.svg';
   import xrpIcon from '$lib/assets/xrp-icon.svg';
+  import { SHOW_PAYPAL_LOGO } from '$lib/config/paymentBrandVisibility.js';
   import { cart } from '$lib/stores/cart.js';
   import { cartSidebar } from '$lib/stores/cartSidebar.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
@@ -752,7 +753,7 @@
               !
             </span>
             <p class="text-xs font-medium text-slate-700">
-              Hurry up! Only <span class="font-semibold text-slate-900">{unitsLeft}</span> units left in this price.
+              Hurry up! Only <span class="font-semibold text-pink-500">{unitsLeft}</span> units left in this price.
             </p>
           </div>
 
@@ -852,7 +853,9 @@
             </button>
           </div>
 
-          <div class="mt-3 grid grid-cols-5 gap-2">
+          <div
+            class={`mt-3 grid gap-2 ${SHOW_PAYPAL_LOGO ? 'grid-cols-5' : 'grid-cols-4'}`}
+          >
             <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
               <img src={visaLogo} alt="Visa" class="h-4 w-auto object-contain" loading="lazy" />
             </span>
@@ -864,14 +867,16 @@
                 loading="lazy"
               />
             </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img
-                src={paypalIcon}
-                alt="PayPal"
-                class="h-5 w-auto object-contain"
-                loading="lazy"
-              />
-            </span>
+            {#if SHOW_PAYPAL_LOGO}
+              <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+                <img
+                  src={paypalIcon}
+                  alt="PayPal"
+                  class="h-5 w-auto object-contain"
+                  loading="lazy"
+                />
+              </span>
+            {/if}
             <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
               <img src={btcIcon} alt="Bitcoin" class="h-5 w-auto object-contain" loading="lazy" />
             </span>

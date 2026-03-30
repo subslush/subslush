@@ -6,6 +6,7 @@
   import btcLogo from '$lib/assets/btc.svg';
   import ethLogo from '$lib/assets/eth.svg';
   import usdtLogo from '$lib/assets/usdt.svg';
+  import { SHOW_PAYPAL_LOGO } from '$lib/config/paymentBrandVisibility.js';
 </script>
 
 <div class="bg-gray-50 border-t border-gray-200 py-4">
@@ -40,14 +41,16 @@
         class="h-[18px] w-auto shrink-0"
         loading="lazy"
       />
-      <img
-        src={paypalLogo}
-        alt="PayPal"
-        width="124"
-        height="33"
-        class="h-5 w-auto shrink-0"
-        loading="lazy"
-      />
+      {#if SHOW_PAYPAL_LOGO}
+        <img
+          src={paypalLogo}
+          alt="PayPal"
+          width="124"
+          height="33"
+          class="h-5 w-auto shrink-0"
+          loading="lazy"
+        />
+      {/if}
       <img src={btcLogo} alt="Bitcoin" width="77" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
       <img src={ethLogo} alt="Ethereum" width="64" height="16" class="h-[18px] w-auto shrink-0" loading="lazy" />
       <img src={usdtLogo} alt="USDT" width="18" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
