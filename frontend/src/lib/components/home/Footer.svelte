@@ -10,7 +10,7 @@
 <footer class="bg-gray-900 text-gray-300 py-12">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <!-- Top Section -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-[1.6fr_1fr_1fr] gap-8 mb-8">
       <!-- Company Info -->
       <div>
         <!-- SubSlush Text Branding (NOT logo image) -->
@@ -23,16 +23,14 @@
           </span>
         </div>
 
-        <p class="text-sm text-gray-400 leading-relaxed mb-4">
-          3NITY DIGITAL LIMITED<br />
-          Address:<br />
-          <br />
-          UNIT B, 12/F, HANG SENG CAUSEWAY BAY BUILDING, 28 YEE WO STREET, <br />
-          CAUSEWAY BAY, HONG KONG <br />
-          <br />
-          Business registration number:<br />
-          79886556
-        </p>
+        <div class="mb-4 font-serif text-[13px] leading-6 text-gray-400">
+          <p class="font-semibold tracking-[0.02em] text-gray-300">3NITY DIGITAL LIMITED</p>
+          <p>Address:</p>
+          <p>UNIT B, 12/F, HANG SENG CAUSEWAY BAY BUILDING, 28 YEE WO STREET,</p>
+          <p>CAUSEWAY BAY, HONG KONG</p>
+          <p>Business registration number:</p>
+          <p>79886556</p>
+        </div>
 
         <div class="text-sm">
           <p class="font-medium text-gray-300 mb-2">
