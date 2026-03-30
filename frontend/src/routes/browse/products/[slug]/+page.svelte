@@ -19,6 +19,7 @@
   import { cart } from '$lib/stores/cart.js';
   import { cartSidebar } from '$lib/stores/cartSidebar.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
+  import { renderRichTextWithBullets, renderTextWithBoldMarkers } from '$lib/utils/richText.js';
   import { subscriptionService } from '$lib/api/subscriptions.js';
   import { trackAddToCart, trackViewItem } from '$lib/utils/analytics.js';
   import {
@@ -159,39 +160,6 @@
     return '';
   };
 
-  const escapeHtml = (value: string): string =>
-    value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-
-  const renderInfoBoxHtml = (value: string): string => {
-    if (!value) return '';
-
-    const renderLine = (line: string): string => {
-      let html = '';
-      let cursor = 0;
-      const boldPattern = /\*\*(.+?)\*\*/g;
-
-      for (const match of line.matchAll(boldPattern)) {
-        const index = match.index ?? 0;
-        html += escapeHtml(line.slice(cursor, index));
-        html += `<strong>${escapeHtml(match[1] || '')}</strong>`;
-        cursor = index + match[0].length;
-      }
-
-      html += escapeHtml(line.slice(cursor));
-      return html;
-    };
-
-    return value
-      .split(/\r?\n/)
-      .map(renderLine)
-      .join('<br />');
-  };
-
   const buildDescriptionPreview = (
     value: string,
     maxWords: number,
@@ -276,7 +244,7 @@
     breadcrumbCategoryKey,
     breadcrumbSubCategoryKey
   );
-  $: infoBoxHtml = renderInfoBoxHtml(infoBoxText);
+  $: infoBoxHtml = renderTextWithBoldMarkers(infoBoxText);
   $: platformLabel =
     readProductText(['platform', 'platform_name', 'platformName']) ||
     product.name ||
@@ -307,6 +275,7 @@
     descriptionExpanded || !hasTruncatedDescription
       ? productDescription
       : descriptionPreview.text;
+  $: visibleDescriptionHtml = renderRichTextWithBullets(visibleDescription);
   $: if (!hasTruncatedDescription) {
     descriptionExpanded = false;
   }
@@ -732,9 +701,9 @@
           </div>
           {#if visibleDescription}
             <div class="relative mt-3">
-              <p class="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                {visibleDescription}
-              </p>
+              <div class="text-sm leading-relaxed text-slate-700 space-y-2">
+                {@html visibleDescriptionHtml}
+              </div>
               {#if !descriptionExpanded && hasTruncatedDescription}
                 <div class="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent"></div>
               {/if}

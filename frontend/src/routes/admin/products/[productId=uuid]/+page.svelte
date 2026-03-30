@@ -4,6 +4,7 @@
   import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
   import { adminService } from '$lib/api/admin.js';
   import { formatCents, formatOptionalDate, pickValue, statusToneFromMap } from '$lib/utils/admin.js';
+  import { renderRichTextWithBullets } from '$lib/utils/richText.js';
   import { logoKeys, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
   import { SUPPORTED_CURRENCIES, type SupportedCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
   import type {
@@ -635,6 +636,10 @@
   let productForm: ProductForm = buildProductForm(
     product,
     availableSubCategories
+  );
+  let productDescriptionPreviewHtml = '';
+  $: productDescriptionPreviewHtml = renderRichTextWithBullets(
+    productForm.description || ''
   );
   let sortedSubCategoryOptions: AdminProductSubCategory[] = [];
   $: sortedSubCategoryOptions = [...availableSubCategories].sort((a, b) => {
@@ -1535,6 +1540,17 @@
         placeholder="Description"
         bind:value={productForm.description}
       ></textarea>
+      <p class="mt-1 text-[11px] text-gray-500">
+        Use <code>**text**</code> for bold. Start a new line with <code>- </code>, <code>* </code>, or <code>• </code> for bullet points.
+      </p>
+      {#if productForm.description.trim().length > 0}
+        <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Description preview</p>
+          <div class="mt-2 text-sm leading-relaxed text-gray-700 space-y-2">
+            {@html productDescriptionPreviewHtml}
+          </div>
+        </div>
+      {/if}
       <div class="grid gap-3 md:grid-cols-2">
         <div>
           <label for="product-platform" class="text-xs font-semibold text-gray-500">Platform</label>

@@ -3,6 +3,7 @@
   import AdminEmptyState from '$lib/components/admin/AdminEmptyState.svelte';
   import { adminService } from '$lib/api/admin.js';
   import { formatOptionalDate, pickValue, statusToneFromMap } from '$lib/utils/admin.js';
+  import { renderRichTextWithBullets } from '$lib/utils/richText.js';
   import type { AdminProduct, AdminProductSubCategory } from '$lib/types/admin.js';
   import type { PageData } from './$types';
 
@@ -24,6 +25,10 @@
     fixedPriceCurrency: '',
     comparisonPriceCents: ''
   };
+  let descriptionPreviewHtml = '';
+  $: descriptionPreviewHtml = renderRichTextWithBullets(
+    newProduct.description || ''
+  );
 
   const productStatusMap = {
     active: 'success',
@@ -191,6 +196,17 @@
         placeholder="Description"
         bind:value={newProduct.description}
       ></textarea>
+      <p class="mt-1 text-[11px] text-gray-500">
+        Use <code>**text**</code> for bold. Start a new line with <code>- </code>, <code>* </code>, or <code>• </code> for bullet points.
+      </p>
+      {#if newProduct.description.trim().length > 0}
+        <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Description preview</p>
+          <div class="mt-2 text-sm leading-relaxed text-gray-700 space-y-2">
+            {@html descriptionPreviewHtml}
+          </div>
+        </div>
+      {/if}
 
       <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
         <p class="text-xs font-semibold text-gray-700">Fixed Catalog Fields (optional)</p>
