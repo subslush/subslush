@@ -2055,7 +2055,10 @@
 
               <div class="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
                 <ShieldCheck size={14} class="text-cyan-600" />
-                This order is backed by the Money Back Guarantee.
+                <span>
+                  This order is backed by our
+                  <span class="font-bold bg-gradient-to-r from-pink-500 to-purple-700 bg-clip-text text-transparent">Money-Back Guarantee</span>.
+                </span>
               </div>
 
             </div>
