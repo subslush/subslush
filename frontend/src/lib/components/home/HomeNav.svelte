@@ -53,6 +53,7 @@
 		href: string;
 		slug?: string;
 		aliases?: string[];
+		force_product_slug?: boolean;
 	};
 
 	type FeaturedCard = {
@@ -161,13 +162,54 @@
 			.replace(/[^a-z0-9]+/g, ' ')
 			.trim();
 
+	const parseCategoryTokens = (value?: string | null): string[] =>
+		(value || '')
+			.split(',')
+			.map((entry) => normalizeText(entry))
+			.filter((entry) => entry.length > 0);
+
+	const resolveProductCategoryKeys = (product: ProductListing): string[] => {
+		const keys = new Set<string>();
+
+		if (Array.isArray(product.category_keys)) {
+			for (const entry of product.category_keys) {
+				if (typeof entry !== 'string') continue;
+				const normalized = normalizeText(entry);
+				if (normalized) {
+					keys.add(normalized);
+				}
+			}
+		}
+
+		for (const categoryToken of parseCategoryTokens(product.category)) {
+			keys.add(categoryToken);
+		}
+
+		return Array.from(keys);
+	};
+
+	const productBelongsToCategory = (
+		product: ProductListing,
+		categoryKey?: string
+	): boolean => {
+		const normalizedCategoryKey = normalizeText(categoryKey);
+		if (!normalizedCategoryKey) return false;
+		return resolveProductCategoryKeys(product).includes(normalizedCategoryKey);
+	};
+
 	const quickLinks: MenuLink[] = [
-		{ label: 'ChatGPT', href: '/browse/products/chatgpt' },
-		{ label: 'Google AI', href: '/browse?search=google%20ai' },
-		{ label: 'Spotify', href: '/browse/products/spotify' },
-		{ label: 'Adobe Creative Cloud', href: '/browse?search=adobe%20creative%20cloud' },
-		{ label: 'Netflix', href: '/browse/products/netflix' },
-		{ label: 'Amazon Prime Video', href: '/browse?search=amazon%20prime%20video' }
+		{ label: 'ChatGPT', href: '/browse?sub_category=chatgpt' },
+		{ label: 'Youtube', href: '/browse?sub_category=youtube' },
+		{ label: 'Spotify', href: '/browse?sub_category=spotify' },
+		{
+			label: 'Adobe Creative Cloud',
+			href: '/browse?sub_category=adobe%20creative%20cloud'
+		},
+		{ label: 'Netflix', href: '/browse?sub_category=netflix' },
+		{
+			label: 'Amazon Prime Video',
+			href: '/browse?sub_category=amazon%20prime%20video'
+		}
 	];
 
 	const megaCategories: MegaCategory[] = [
@@ -273,10 +315,10 @@
 					aliases: ['chatgpt']
 				},
 				{
-					label: 'Google AI',
-					href: '/browse/products/google',
-					slug: 'google',
-					aliases: ['google ai', 'google']
+					label: 'Youtube',
+					href: '/browse?sub_category=youtube',
+					slug: 'youtube',
+					aliases: ['youtube']
 				},
 				{
 					label: 'Perplexity',
@@ -545,8 +587,12 @@
 	const resolveOfferHref = (
 		product: ProductListing | null,
 		fallbackHref?: string,
-		categoryKey?: string
+		categoryKey?: string,
+		options?: { forceProductSlug?: boolean }
 	): string => {
+		if (options?.forceProductSlug && product?.slug) {
+			return `/browse/products/${encodeURIComponent(product.slug)}`;
+		}
 		const subCategoryHref = resolveSubCategoryHref(product, categoryKey);
 		if (subCategoryHref) {
 			return subCategoryHref;
@@ -610,6 +656,63 @@
 		megaCategories.map((category) => [category.key, 0])
 	) as Record<string, number>;
 
+	const resolveMegaMenuLinksForCategory = (categoryKey?: string): MenuLink[] => {
+		if (!categoryKey) return [];
+		const staticCategory =
+			megaCategories.find((category) => category.key === categoryKey) || null;
+		const staticFallbackLinks = staticCategory?.popular || [];
+		if (effectiveCatalogProducts.length === 0) {
+			return staticFallbackLinks;
+		}
+
+		const bySlug = new Map<string, ProductListing>();
+		for (const product of effectiveCatalogProducts) {
+			if (!productBelongsToCategory(product, categoryKey)) continue;
+			const normalizedSlug = normalizeText(product.slug);
+			if (!normalizedSlug) continue;
+			const existing = bySlug.get(normalizedSlug);
+			if (!existing) {
+				bySlug.set(normalizedSlug, product);
+				continue;
+			}
+			const existingPrice = Number(existing.from_price);
+			const nextPrice = Number(product.from_price);
+			if (!Number.isFinite(existingPrice) || nextPrice < existingPrice) {
+				bySlug.set(normalizedSlug, product);
+			}
+		}
+
+		const products = Array.from(bySlug.values()).sort((a, b) => {
+			const subCategoryCompare = normalizeText(a.sub_category).localeCompare(
+				normalizeText(b.sub_category)
+			);
+			if (subCategoryCompare !== 0) return subCategoryCompare;
+
+			const nameCompare = (a.name || '').localeCompare(b.name || '', undefined, {
+				sensitivity: 'base'
+			});
+			if (nameCompare !== 0) return nameCompare;
+
+			const termCompare =
+				(Number(a.from_term_months) || Number.POSITIVE_INFINITY) -
+				(Number(b.from_term_months) || Number.POSITIVE_INFINITY);
+			if (termCompare !== 0) return termCompare;
+
+			return (a.slug || '').localeCompare(b.slug || '');
+		});
+
+		if (products.length === 0) {
+			return staticFallbackLinks;
+		}
+
+		return products.map((product) => ({
+			label: product.name,
+			href: `/browse/products/${encodeURIComponent(product.slug)}`,
+			slug: product.slug,
+			force_product_slug: true
+		}));
+	};
+
 	let megaMenuOpen = false;
 	let megaMenuPinned = false;
 	let activeMegaCategoryKey = megaMenuCategories[0]?.key ?? 'streaming';
@@ -636,6 +739,7 @@
 	let lastFallbackCurrency: SupportedCurrency | null = null;
 	let hasExternalCatalogProducts = false;
 	let effectiveCatalogProducts: ProductListing[] = [];
+	let activeMegaCategoryLinks: MenuLink[] = [];
 	let activeOfferImage: OfferImage = resolveCategoryFallbackImage('streaming');
 	let activeOfferProduct: ProductListing | null = null;
 	let activeOfferHref = '/browse?category=streaming';
@@ -655,6 +759,7 @@
 	$: userEmail = $auth.user?.email;
 	$: activeMegaCategory =
 		megaCategories.find((category) => category.key === activeMegaCategoryKey) || megaCategories[0];
+	$: activeMegaCategoryLinks = resolveMegaMenuLinksForCategory(activeMegaCategory?.key);
 	$: if (!currencyMenuOpen) {
 		pendingCurrency = $currency as SupportedCurrency;
 		pendingLanguage = selectedLanguage;
@@ -665,16 +770,17 @@
 	$: pendingCurrencyLabel = resolveCurrencyLabel(pendingCurrency);
 	$: activePopularIndex = Math.min(
 		Math.max(activePopularIndexByCategory[activeMegaCategoryKey] ?? 0, 0),
-		Math.max((activeMegaCategory?.popular.length ?? 1) - 1, 0)
+		Math.max((activeMegaCategoryLinks.length ?? 1) - 1, 0)
 	);
 	$: activePopularLink =
-		activeMegaCategory?.popular[activePopularIndex] ?? activeMegaCategory?.popular[0];
+		activeMegaCategoryLinks[activePopularIndex] ?? activeMegaCategory?.popular[0];
 	$: activeOfferProduct = resolveCatalogProductForLink(activePopularLink, activeMegaCategory?.key);
 	$: activeOfferImage = resolveOfferImage(activeOfferProduct, activeMegaCategory?.key);
 	$: activeOfferHref = resolveOfferHref(
 		activeOfferProduct,
 		activePopularLink?.href || activeMegaCategory?.featured.href,
-		activeMegaCategory?.key
+		activeMegaCategory?.key,
+		{ forceProductSlug: Boolean(activePopularLink?.force_product_slug || activePopularLink?.slug) }
 	);
 	$: activeOfferTitle =
 		activeOfferProduct?.name ||
@@ -1279,7 +1385,8 @@
 											</a>
 										</div>
 										<div class="mega-middle-list">
-											{#each activeMegaCategory.popular.slice(0, 6) as link, linkIndex}
+											{#if activeMegaCategoryLinks.length > 0}
+												{#each activeMegaCategoryLinks as link, linkIndex}
 												{@const linkProduct = resolveCatalogProductForLink(
 													link,
 													activeMegaCategory?.key
@@ -1287,7 +1394,12 @@
 												{@const linkHref = resolveOfferHref(
 													linkProduct,
 													link.href,
-													activeMegaCategory?.key
+													activeMegaCategory?.key,
+													{
+														forceProductSlug: Boolean(
+															link.force_product_slug || link.slug
+														)
+													}
 												)}
 												<a
 													href={linkHref}
@@ -1298,7 +1410,10 @@
 												>
 													{link.label}
 												</a>
-											{/each}
+												{/each}
+											{:else}
+												<p class="mega-sub-empty">No products available in this category yet.</p>
+											{/if}
 										</div>
 									</div>
 
@@ -1831,6 +1946,18 @@
 		margin-top: 0.72rem;
 		display: grid;
 		gap: 0.46rem;
+		max-height: 18.6rem;
+		overflow-y: auto;
+		padding-right: 0.2rem;
+	}
+
+	.mega-middle-list::-webkit-scrollbar {
+		width: 0.45rem;
+	}
+
+	.mega-middle-list::-webkit-scrollbar-thumb {
+		border-radius: 999px;
+		background: #cbd5e1;
 	}
 
 	.mega-right {
@@ -2001,6 +2128,12 @@
 		color: #ffffff;
 		padding-left: 0.68rem;
 		padding-right: 0.68rem;
+	}
+
+	.mega-sub-empty {
+		margin: 0.4rem 0 0;
+		font-size: 0.92rem;
+		color: #64748b;
 	}
 
 	@media (max-width: 767px) {
