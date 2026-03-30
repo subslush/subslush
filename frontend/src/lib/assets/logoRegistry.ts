@@ -93,7 +93,13 @@ export const logoKeys = Object.keys(logoRegistry) as LogoKey[];
 
 const logoAliases: Record<string, LogoKey> = {
   'hbo max': 'hbomax-logo',
-  'spotify premium': 'spotify'
+  'spotify premium': 'spotify',
+  'amazon prime video': 'amazonprimevideo-logo',
+  'amazon-prime-video': 'amazonprimevideo-logo',
+  amazonprimevideo: 'amazonprimevideo-logo',
+  'prime video': 'amazonprimevideo-logo',
+  loveable: 'lovable-logo',
+  'loveable-ai': 'lovable-logo'
 };
 
 const buildLogoCandidates = (value: string): string[] => {
@@ -104,6 +110,24 @@ const buildLogoCandidates = (value: string): string[] => {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   const compact = normalized.replace(/[^a-z0-9]+/g, '');
+  const tokens = normalized
+    .split(/[^a-z0-9]+/g)
+    .map(token => token.trim())
+    .filter(Boolean);
+  const tokenCandidates = tokens.flatMap(token => [token, `${token}-logo`]);
+  const phraseCandidates: string[] = [];
+  for (const size of [2, 3]) {
+    if (tokens.length >= size) {
+      const phrase = tokens.slice(0, size).join('-');
+      const compactPhrase = phrase.replace(/-/g, '');
+      phraseCandidates.push(
+        phrase,
+        compactPhrase,
+        `${phrase}-logo`,
+        `${compactPhrase}-logo`
+      );
+    }
+  }
   const alias =
     logoAliases[normalized] ||
     logoAliases[dashed] ||
@@ -113,6 +137,8 @@ const buildLogoCandidates = (value: string): string[] => {
     normalized,
     dashed,
     compact,
+    ...tokenCandidates,
+    ...phraseCandidates,
     dashed ? `${dashed}-logo` : '',
     compact ? `${compact}-logo` : '',
     alias || ''

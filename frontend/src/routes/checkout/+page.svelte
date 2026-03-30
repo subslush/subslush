@@ -4,6 +4,8 @@
   import { onDestroy, onMount } from 'svelte';
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
+  import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
+  import { resolveLogoKey, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
   import { cart, type CartItem } from '$lib/stores/cart.js';
   import { auth, user } from '$lib/stores/auth.js';
   import { currency } from '$lib/stores/currency.js';
@@ -29,7 +31,7 @@
   } from '$lib/types/checkout.js';
   import type { Currency } from '$lib/types/payment.js';
   import type { OwnAccountCredentialRequirement } from '$lib/types/subscription.js';
-  import { Loader2, Mail, ShieldCheck, Trash2 } from 'lucide-svelte';
+  import { Eye, EyeOff, Loader2, ShieldCheck, Trash2 } from 'lucide-svelte';
 
   const DRAFT_STORAGE_KEY = 'checkout_draft_state';
   const CHECKOUT_INITIATE_TRACKING_KEY = 'checkout_initiate_tracking';
@@ -52,6 +54,18 @@
   let draftInitialized = false;
   let initiateCheckoutEventId: string | null = null;
   let initiateCheckoutTracked = false;
+  let contactEmailCardRef: HTMLDivElement | null = null;
+  let contactEmailNeedsAttention = false;
+  let contactEmailAttentionMessage = '';
+  let contactEmailPulseTimer: ReturnType<typeof setTimeout> | null = null;
+  let ownAccountAttentionByItemId: Record<string, boolean> = {};
+  let ownAccountAttentionMessageByItemId: Record<string, string> = {};
+  let ownAccountAttentionPulseTimers: Record<string, ReturnType<typeof setTimeout>> =
+    {};
+  let ownAccountPasswordVisibleByItemId: Record<string, boolean> = {};
+  let showItemRemoveConfirm = false;
+  let pendingRemoveItemId: string | null = null;
+  let pendingRemoveItemName = '';
 
   let couponCode = '';
   let appliedCouponCode: string | null = null;
@@ -106,6 +120,16 @@
   let creditsRequired: number | null = null;
   let creditsInsufficient = false;
 
+  const resolveItemQuantity = (item: CartItem): number => {
+    if (typeof item.quantity !== 'number' || !Number.isFinite(item.quantity)) {
+      return 1;
+    }
+    return Math.max(1, Math.floor(item.quantity));
+  };
+
+  const clampItemQuantity = (value: number): number =>
+    Math.min(99, Math.max(1, Math.floor(value)));
+
   const normalizeEmail = (value: string): string => value.trim().toLowerCase();
   const isValidEmail = (value: string): boolean => EMAIL_REGEX.test(value.trim());
   const isProviderMismatchMessage = (message: string): boolean =>
@@ -113,6 +137,8 @@
     message.toLowerCase().includes('payment_provider_mismatch');
   const normalizeTicker = (value: string | null | undefined): string =>
     (value || '').trim().toLowerCase();
+  const normalizeNetworkToken = (value: string | null | undefined): string =>
+    (value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const mapCouponErrorMessage = (message: string): string => {
     const normalized = message
       .trim()
@@ -194,55 +220,138 @@
     return 'USD';
   };
 
-  const resolvePricingItemForCartItem = (
-    item: CartItem,
-    index: number
-  ): CheckoutPricingSummaryItem | null => {
-    if (!pricing || !Array.isArray(pricing.items)) {
-      return null;
-    }
-
-    const expectedVariantId = item.variantId || '';
-    const expectedTermMonths =
-      typeof item.termMonths === 'number' && Number.isFinite(item.termMonths)
-        ? Math.max(1, Math.floor(item.termMonths))
-        : null;
-
-    const indexed = pricing.items[index];
-    if (
-      indexed &&
-      indexed.variant_id === expectedVariantId &&
-      (expectedTermMonths === null || indexed.term_months === expectedTermMonths)
-    ) {
-      return indexed;
-    }
-
-    return (
-      pricing.items.find(
-        pricingItem =>
-          pricingItem.variant_id === expectedVariantId &&
-          (expectedTermMonths === null ||
-            pricingItem.term_months === expectedTermMonths)
-      ) ?? null
-    );
-  };
-
   const resolveCheckoutLineTotal = (
     item: CartItem,
     index: number
   ): { amount: number; currency: SupportedCurrency } => {
-    const pricedItem = resolvePricingItemForCartItem(item, index);
-    if (pricedItem) {
-      return {
-        amount: pricedItem.final_total_cents / 100,
-        currency: normalizeCurrencyCode(pricedItem.currency) || orderCurrency
-      };
+    if (pricing && Array.isArray(pricing.items) && pricing.items.length > 0) {
+      const quantity = resolveItemQuantity(item);
+      const startOffset = $cart
+        .slice(0, index)
+        .reduce((sum, cartItem) => sum + resolveItemQuantity(cartItem), 0);
+      const matchedItems = pricing.items.slice(startOffset, startOffset + quantity);
+
+      if (matchedItems.length > 0) {
+        const amount = matchedItems.reduce(
+          (sum, pricingItem) => sum + pricingItem.final_total_cents,
+          0
+        ) / 100;
+        const currency =
+          normalizeCurrencyCode(matchedItems[0]?.currency) || orderCurrency;
+        return { amount, currency };
+      }
     }
 
     return {
-      amount: item.price * item.quantity,
+      amount: item.price * resolveItemQuantity(item),
       currency: normalizeCurrencyCode(item.currency) || orderCurrency
     };
+  };
+
+  const updateItemQuantity = (item: CartItem, quantity: number): void => {
+    const normalizedQuantity = clampItemQuantity(quantity);
+    if (normalizedQuantity === resolveItemQuantity(item)) {
+      return;
+    }
+    cart.updateItem(item.id, { quantity: normalizedQuantity });
+  };
+
+  const requestItemRemovalConfirmation = (item: CartItem): void => {
+    pendingRemoveItemId = item.id;
+    pendingRemoveItemName = item.serviceName;
+    showItemRemoveConfirm = true;
+  };
+
+  const cancelItemRemovalConfirmation = (): void => {
+    showItemRemoveConfirm = false;
+    pendingRemoveItemId = null;
+    pendingRemoveItemName = '';
+  };
+
+  const confirmItemRemoval = (): void => {
+    if (pendingRemoveItemId) {
+      cart.removeItem(pendingRemoveItemId);
+    }
+    cancelItemRemovalConfirmation();
+  };
+
+  const decrementItemQuantity = (item: CartItem): void => {
+    const quantity = resolveItemQuantity(item);
+    if (quantity <= 1) {
+      requestItemRemovalConfirmation(item);
+      return;
+    }
+    cart.updateItem(item.id, { quantity: quantity - 1 });
+  };
+
+  const incrementItemQuantity = (item: CartItem): void => {
+    const quantity = resolveItemQuantity(item);
+    cart.updateItem(item.id, { quantity: clampItemQuantity(quantity + 1) });
+  };
+
+  const handleItemQuantityInput = (item: CartItem, rawValue: string): void => {
+    const normalized = rawValue.trim();
+    if (!normalized) {
+      return;
+    }
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return;
+    }
+    updateItemQuantity(item, parsed);
+  };
+
+  const handleItemQuantityCommit = (item: CartItem, rawValue: string): void => {
+    const normalized = rawValue.trim();
+    if (!normalized) {
+      cart.updateItem(item.id, { quantity: 1 });
+      return;
+    }
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      cart.updateItem(item.id, { quantity: 1 });
+      return;
+    }
+    updateItemQuantity(item, parsed);
+  };
+
+  const focusContactEmailCard = (
+    message = 'We need your contact email to deliver this order.'
+  ): void => {
+    emailTouched = true;
+    if (!isValidEmail(contactEmail)) {
+      emailError = 'Enter a valid email address.';
+    }
+    contactEmailAttentionMessage = message;
+    contactEmailNeedsAttention = true;
+
+    if (!browser || !$auth.isAuthenticated) {
+      requestAnimationFrame(() => {
+        contactEmailCardRef?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+        const input = document.getElementById(
+          'checkout-contact-email'
+        ) as HTMLInputElement | null;
+        input?.focus();
+      });
+    }
+
+    if (contactEmailPulseTimer) {
+      clearTimeout(contactEmailPulseTimer);
+    }
+    contactEmailPulseTimer = setTimeout(() => {
+      contactEmailNeedsAttention = false;
+    }, 1600);
+  };
+
+  const ensureContactEmailBeforeCheckout = (): boolean => {
+    if (isValidEmail(contactEmail)) {
+      return true;
+    }
+    focusContactEmailCard();
+    return false;
   };
 
   const CRYPTO_COIN_PRIORITY = [
@@ -276,7 +385,63 @@
     'base',
     'avaxc'
   ];
-
+  const CRYPTO_NETWORK_LABEL_OVERRIDES: Record<string, string> = {
+    trc20: 'TRON (TRC20)',
+    erc20: 'Ethereum (ERC20)',
+    bep20: 'BNB Smart Chain (BEP20)',
+    bep2: 'BNB Beacon Chain (BEP2)',
+    bsc: 'BNB Smart Chain (BEP20)',
+    arbitrum: 'Arbitrum',
+    arb: 'Arbitrum',
+    optimism: 'Optimism',
+    op: 'Optimism',
+    polygon: 'Polygon',
+    matic: 'Polygon',
+    solana: 'Solana',
+    sol: 'Solana',
+    avaxc: 'Avalanche C-Chain',
+    avax: 'Avalanche',
+    base: 'Base',
+    ton: 'TON',
+    algo: 'Algorand',
+    near: 'Near'
+  };
+  const CRYPTO_NATIVE_NETWORK_NAMES: Record<string, string> = {
+    btc: 'Bitcoin Mainnet',
+    ltc: 'Litecoin Mainnet',
+    xrp: 'Ripple Mainnet',
+    sol: 'Solana Mainnet',
+    trx: 'Tron Mainnet',
+    bch: 'Bitcoin Cash Mainnet',
+    ada: 'Cardano Mainnet',
+    doge: 'Dogecoin Mainnet',
+    xlm: 'Stellar Mainnet',
+    xmr: 'Monero Mainnet',
+    dot: 'Polkadot Mainnet',
+    atom: 'Cosmos Hub',
+    algo: 'Algorand Mainnet',
+    near: 'Near Mainnet',
+    avax: 'Avalanche Mainnet',
+    ton: 'TON Mainnet',
+    fil: 'Filecoin Mainnet',
+    bnb: 'BNB Beacon Chain',
+    eth: 'Ethereum Mainnet',
+    matic: 'Polygon Mainnet',
+    etc: 'Ethereum Classic Mainnet',
+    zec: 'Zcash Mainnet',
+    dash: 'Dash Mainnet',
+    eos: 'EOS Mainnet',
+    icp: 'Internet Computer'
+  };
+  const CRYPTO_NATIVE_TOKEN_NETWORK_OVERRIDES: Record<string, string> = {
+    usdc: 'Ethereum (ERC20)',
+    usdt: 'Ethereum (ERC20)',
+    dai: 'Ethereum (ERC20)',
+    tusd: 'Ethereum (ERC20)',
+    usdp: 'Ethereum (ERC20)',
+    usdr: 'Ethereum (ERC20)',
+    busd: 'BNB Smart Chain (BEP20)'
+  };
   const resolveCoinRank = (coin: string): number => {
     const index = CRYPTO_COIN_PRIORITY.indexOf(coin);
     return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
@@ -285,6 +450,45 @@
   const resolveNetworkRank = (networkCode: string): number => {
     const index = CRYPTO_NETWORK_PRIORITY.indexOf(networkCode);
     return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
+  };
+
+  const resolveCheckoutCryptoNetworkLabel = (
+    currencyOption: Currency,
+    baseCode: string,
+    networkCode: string
+  ): string => {
+    const networkValue = (currencyOption.network || '').toString().trim();
+    const normalizedNetworkValue = normalizeNetworkToken(networkValue);
+    const normalizedNetworkCode = normalizeNetworkToken(networkCode);
+    const isGenericMainnetLabel =
+      normalizedNetworkCode === 'mainnet' ||
+      normalizedNetworkValue === 'mainnet' ||
+      normalizedNetworkCode === `${baseCode}mainnet` ||
+      normalizedNetworkValue === `${baseCode}mainnet`;
+    const isNativeNetwork =
+      normalizedNetworkCode === 'native' ||
+      normalizedNetworkValue === 'native' ||
+      normalizedNetworkValue === 'nativenetwork';
+
+    if (isNativeNetwork || isGenericMainnetLabel) {
+      const tokenOverride = CRYPTO_NATIVE_TOKEN_NETWORK_OVERRIDES[baseCode];
+      if (tokenOverride) {
+        return tokenOverride;
+      }
+      return (
+        CRYPTO_NATIVE_NETWORK_NAMES[baseCode] || `${baseCode.toUpperCase()} Mainnet`
+      );
+    }
+
+    if (networkValue) {
+      return networkValue;
+    }
+
+    const fallbackCode = normalizeNetworkToken(currencyOption.networkCode || networkCode);
+    return (
+      CRYPTO_NETWORK_LABEL_OVERRIDES[fallbackCode] ||
+      (currencyOption.networkCode || networkCode || 'Network').toString().trim()
+    );
   };
 
   const normalizeCryptoCurrencyOption = (
@@ -297,10 +501,11 @@
     const networkCode = (currencyOption.networkCode || 'native')
       .trim()
       .toLowerCase();
-    const networkLabel =
-      (currencyOption.network || currencyOption.networkCode || 'Network')
-        .toString()
-        .trim();
+    const networkLabel = resolveCheckoutCryptoNetworkLabel(
+      currencyOption,
+      baseCode,
+      networkCode
+    );
     return {
       code,
       baseCode,
@@ -312,22 +517,27 @@
   };
 
   const buildDraftItems = (items: CartItem[]) =>
-    items.map(item => ({
-      variant_id: item.variantId || '',
-      term_months: item.termMonths ?? null,
-      auto_renew: false,
-      selection_type: item.upgradeSelectionType ?? null,
-      account_identifier:
-        item.upgradeSelectionType === 'upgrade_own_account'
-          ? (ownAccountInputs[item.id]?.accountIdentifier?.trim() || null)
-          : null,
-      credentials:
-        item.upgradeSelectionType === 'upgrade_own_account' &&
-        ownAccountRequiresPassword(item)
-          ? (ownAccountInputs[item.id]?.credentials?.trim() || null)
-          : null,
-      manual_monthly_acknowledged: item.manualMonthlyAcknowledged ?? null
-    }));
+    items.flatMap(item => {
+      const quantity = resolveItemQuantity(item);
+      const payload = {
+        variant_id: item.variantId || '',
+        term_months: item.termMonths ?? null,
+        auto_renew: false,
+        selection_type: item.upgradeSelectionType ?? null,
+        account_identifier:
+          item.upgradeSelectionType === 'upgrade_own_account'
+            ? (ownAccountInputs[item.id]?.accountIdentifier?.trim() || null)
+            : null,
+        credentials:
+          item.upgradeSelectionType === 'upgrade_own_account' &&
+          ownAccountRequiresPassword(item)
+            ? (ownAccountInputs[item.id]?.credentials?.trim() || null)
+            : null,
+        manual_monthly_acknowledged: item.manualMonthlyAcknowledged ?? null
+      };
+
+      return Array.from({ length: quantity }, () => payload);
+    });
 
   type PaymentAnalyticsMethod = 'card' | 'crypto' | 'credits';
 
@@ -341,7 +551,7 @@
       item_variant: item.plan,
       price: item.price,
       currency: normalizeCurrencyCode(item.currency || orderCurrency) || orderCurrency,
-      quantity: item.quantity,
+      quantity: resolveItemQuantity(item),
       index
     }));
 
@@ -457,7 +667,7 @@
               ? Boolean(ownAccountInputs[item.id]?.credentials?.trim())
               : null,
           manual_monthly_acknowledged: item.manualMonthlyAcknowledged ?? null,
-          quantity: item.quantity
+          quantity: resolveItemQuantity(item)
         }))
         .sort((a, b) => a.id.localeCompare(b.id))
     };
@@ -648,7 +858,10 @@
               ? Number((response.pricing.order_total_cents / 100).toFixed(2))
               : Number(
                   items
-                    .reduce((sum, item) => sum + item.price * item.quantity, 0)
+                    .reduce(
+                      (sum, item) => sum + item.price * resolveItemQuantity(item),
+                      0
+                    )
                     .toFixed(2)
                 );
           trackBeginCheckout(
@@ -855,47 +1068,137 @@
     if (invoiceError) {
       invoiceError = '';
     }
+
+    const cartItem = $cart.find(item => item.id === itemId);
+    if (!cartItem || cartItem.upgradeSelectionType !== 'upgrade_own_account') {
+      return;
+    }
+
+    const nextAccountIdentifier =
+      field === 'accountIdentifier'
+        ? value.trim()
+        : (ownAccountInputs[itemId]?.accountIdentifier?.trim() || '');
+    const nextCredentials =
+      field === 'credentials'
+        ? value.trim()
+        : (ownAccountInputs[itemId]?.credentials?.trim() || '');
+    const missingEmail = nextAccountIdentifier.length === 0;
+    const missingPassword =
+      ownAccountRequiresPassword(cartItem) && nextCredentials.length === 0;
+
+    if (!missingEmail && !missingPassword) {
+      const nextAttention = { ...ownAccountAttentionByItemId };
+      delete nextAttention[itemId];
+      ownAccountAttentionByItemId = nextAttention;
+
+      const nextMessages = { ...ownAccountAttentionMessageByItemId };
+      delete nextMessages[itemId];
+      ownAccountAttentionMessageByItemId = nextMessages;
+
+      const existingTimer = ownAccountAttentionPulseTimers[itemId];
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        const nextTimers = { ...ownAccountAttentionPulseTimers };
+        delete nextTimers[itemId];
+        ownAccountAttentionPulseTimers = nextTimers;
+      }
+    }
   };
 
-  const resolveOwnAccountValidationError = (): string | null => {
-    const missingFields: string[] = [];
+  const toggleOwnAccountPasswordVisibility = (itemId: string): void => {
+    ownAccountPasswordVisibleByItemId = {
+      ...ownAccountPasswordVisibleByItemId,
+      [itemId]: !ownAccountPasswordVisibleByItemId[itemId]
+    };
+  };
 
-    for (const item of $cart) {
-      if (item.upgradeSelectionType !== 'upgrade_own_account') {
-        continue;
-      }
+  const resolveOwnAccountAttentionMessage = (
+    requiresPassword: boolean
+  ): string =>
+    requiresPassword
+      ? 'Please provide the required account email and password to continue.'
+      : 'Please provide the required account email to continue.';
 
-      const input = ownAccountInputs[item.id];
-      const accountIdentifier = input?.accountIdentifier?.trim() ?? '';
-      const credentials = input?.credentials?.trim() ?? '';
-      if (!accountIdentifier) {
-        missingFields.push(`${item.serviceName} (${item.plan}): account email`);
+  const ensureOwnAccountDetailsBeforeCheckout = (): boolean => {
+    const missingItems = $cart
+      .filter(item => item.upgradeSelectionType === 'upgrade_own_account')
+      .map(item => {
+        const input = ownAccountInputs[item.id];
+        const missingEmail = !(input?.accountIdentifier?.trim() ?? '');
+        const missingPassword =
+          ownAccountRequiresPassword(item) &&
+          !(input?.credentials?.trim() ?? '');
+        return {
+          item,
+          missingEmail,
+          missingPassword
+        };
+      })
+      .filter(entry => entry.missingEmail || entry.missingPassword);
+
+    if (missingItems.length === 0) {
+      return true;
+    }
+
+    const nextAttention: Record<string, boolean> = { ...ownAccountAttentionByItemId };
+    const nextMessages: Record<string, string> = {
+      ...ownAccountAttentionMessageByItemId
+    };
+
+    for (const entry of missingItems) {
+      nextAttention[entry.item.id] = true;
+      nextMessages[entry.item.id] = resolveOwnAccountAttentionMessage(
+        ownAccountRequiresPassword(entry.item)
+      );
+
+      const existingTimer = ownAccountAttentionPulseTimers[entry.item.id];
+      if (existingTimer) {
+        clearTimeout(existingTimer);
       }
-      if (ownAccountRequiresPassword(item) && !credentials) {
-        missingFields.push(
-          `${item.serviceName} (${item.plan}): account password`
+      ownAccountAttentionPulseTimers[entry.item.id] = setTimeout(() => {
+        ownAccountAttentionByItemId = {
+          ...ownAccountAttentionByItemId,
+          [entry.item.id]: false
+        };
+        const nextTimers = { ...ownAccountAttentionPulseTimers };
+        delete nextTimers[entry.item.id];
+        ownAccountAttentionPulseTimers = nextTimers;
+      }, 1600);
+    }
+
+    ownAccountAttentionByItemId = nextAttention;
+    ownAccountAttentionMessageByItemId = nextMessages;
+
+    const firstMissing = missingItems[0];
+    if (browser && firstMissing) {
+      requestAnimationFrame(() => {
+        const card = document.getElementById(
+          `account-access-card-${firstMissing.item.id}`
         );
-      }
+        card?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+
+        const firstTargetId = firstMissing.missingEmail
+          ? `account-email-${firstMissing.item.id}`
+          : `account-password-${firstMissing.item.id}`;
+        const firstInput = document.getElementById(firstTargetId) as
+          | HTMLInputElement
+          | null;
+        firstInput?.focus();
+      });
     }
 
-    if (missingFields.length === 0) {
-      return null;
-    }
-
-    return `Please fill in the required account details before payment: ${missingFields.join(', ')}.`;
+    return false;
   };
 
   const handleCardCheckout = async () => {
     actionError = '';
-    if (!isValidEmail(contactEmail)) {
-      emailTouched = true;
-      emailError = 'Enter a valid email address.';
-      actionError = 'Please enter a valid checkout email before continuing.';
+    if (!ensureContactEmailBeforeCheckout()) {
       return;
     }
-    const ownAccountValidationError = resolveOwnAccountValidationError();
-    if (ownAccountValidationError) {
-      actionError = ownAccountValidationError;
+    if (!ensureOwnAccountDetailsBeforeCheckout()) {
       return;
     }
 
@@ -958,9 +1261,10 @@
   const handleCryptoInvoice = async () => {
     actionError = '';
     invoiceError = '';
-    const ownAccountValidationError = resolveOwnAccountValidationError();
-    if (ownAccountValidationError) {
-      invoiceError = ownAccountValidationError;
+    if (!ensureContactEmailBeforeCheckout()) {
+      return;
+    }
+    if (!ensureOwnAccountDetailsBeforeCheckout()) {
       return;
     }
     if (invoiceLoading) {
@@ -1031,9 +1335,10 @@
 
   const handleCreditsCheckout = async () => {
     actionError = '';
-    const ownAccountValidationError = resolveOwnAccountValidationError();
-    if (ownAccountValidationError) {
-      actionError = ownAccountValidationError;
+    if (!ensureContactEmailBeforeCheckout()) {
+      return;
+    }
+    if (!ensureOwnAccountDetailsBeforeCheckout()) {
       return;
     }
     if (!$auth.isAuthenticated) {
@@ -1108,6 +1413,11 @@
     emailError = '';
   }
 
+  $: if (contactEmailAttentionMessage && isValidEmail(contactEmail)) {
+    contactEmailAttentionMessage = '';
+    contactEmailNeedsAttention = false;
+  }
+
   $: if (contactEmail && isValidEmail(contactEmail)) {
     const normalized = normalizeEmail(contactEmail);
     if (identityEmail && normalized !== identityEmail) {
@@ -1146,6 +1456,60 @@
 
     if (changed) {
       ownAccountInputs = nextInputs;
+    }
+  }
+
+  $: {
+    const cartItemIds = new Set($cart.map(item => item.id));
+
+    const nextAttentionEntries = Object.entries(ownAccountAttentionByItemId).filter(
+      ([itemId]) => cartItemIds.has(itemId)
+    );
+    if (nextAttentionEntries.length !== Object.keys(ownAccountAttentionByItemId).length) {
+      ownAccountAttentionByItemId = Object.fromEntries(nextAttentionEntries);
+    }
+
+    const nextMessageEntries = Object.entries(
+      ownAccountAttentionMessageByItemId
+    ).filter(([itemId]) => cartItemIds.has(itemId));
+    if (
+      nextMessageEntries.length !==
+      Object.keys(ownAccountAttentionMessageByItemId).length
+    ) {
+      ownAccountAttentionMessageByItemId = Object.fromEntries(nextMessageEntries);
+    }
+
+    const nextTimerEntries = Object.entries(ownAccountAttentionPulseTimers).filter(
+      ([itemId]) => cartItemIds.has(itemId)
+    );
+    if (nextTimerEntries.length !== Object.keys(ownAccountAttentionPulseTimers).length) {
+      for (const [itemId, timer] of Object.entries(ownAccountAttentionPulseTimers)) {
+        if (!cartItemIds.has(itemId)) {
+          clearTimeout(timer);
+        }
+      }
+      ownAccountAttentionPulseTimers = Object.fromEntries(nextTimerEntries);
+    }
+
+    const ownAccountPasswordItemIds = new Set(
+      $cart
+        .filter(
+          item =>
+            item.upgradeSelectionType === 'upgrade_own_account' &&
+            ownAccountRequiresPassword(item)
+        )
+        .map(item => item.id)
+    );
+    const nextVisiblePasswordEntries = Object.entries(
+      ownAccountPasswordVisibleByItemId
+    ).filter(([itemId]) => ownAccountPasswordItemIds.has(itemId));
+    if (
+      nextVisiblePasswordEntries.length !==
+      Object.keys(ownAccountPasswordVisibleByItemId).length
+    ) {
+      ownAccountPasswordVisibleByItemId = Object.fromEntries(
+        nextVisiblePasswordEntries
+      );
     }
   }
 
@@ -1287,7 +1651,7 @@
     normalizeCurrencyCode(pricing?.display_currency) ||
     resolveOrderCurrency($cart, $currency);
   $: fallbackTotal = $cart.reduce(
-    (sum, item) => sum + item.price * item.quantity,
+    (sum, item) => sum + item.price * resolveItemQuantity(item),
     0
   );
   $: subtotal =
@@ -1335,7 +1699,21 @@
     if (draftTimer) {
       clearTimeout(draftTimer);
     }
+    if (contactEmailPulseTimer) {
+      clearTimeout(contactEmailPulseTimer);
+    }
+    for (const timer of Object.values(ownAccountAttentionPulseTimers)) {
+      clearTimeout(timer);
+    }
   });
+
+  $: if (
+    showItemRemoveConfirm &&
+    pendingRemoveItemId &&
+    !$cart.some(item => item.id === pendingRemoveItemId)
+  ) {
+    cancelItemRemovalConfirmation();
+  }
 </script>
 
 <svelte:head>
@@ -1346,465 +1724,654 @@
   />
 </svelte:head>
 
-<div class="min-h-screen bg-slate-50">
+<div class="min-h-screen bg-white">
   <HomeNav />
 
-  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6">
-    <div>
-      <h1 class="text-3xl font-semibold text-slate-900">Checkout</h1>
-      <p class="text-sm text-slate-600 mt-1">
-        Review your cart, confirm your email, and choose a payment method.
-      </p>
-    </div>
+  <main class="relative overflow-hidden">
+    <div class="checkout-top-glow pointer-events-none absolute inset-x-0 top-0 h-56"></div>
 
-    {#if $cart.length === 0}
-      <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
-        <p class="text-lg font-semibold text-slate-900">Your cart is empty</p>
-        <p class="text-sm text-slate-600 mt-2">
-          Browse subscriptions to add items before checking out.
-        </p>
-        <a
-          href="/browse"
-          class="mt-4 inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90"
-        >
-          Browse subscriptions
-        </a>
-      </div>
-    {:else}
-      <div class="grid gap-6 lg:grid-cols-[2fr,1fr]">
-        <section class="space-y-6">
-          <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex items-center justify-between">
-              <h2 class="text-lg font-semibold text-slate-900">Your items</h2>
-              <span class="text-xs text-slate-500">{ $cart.length } item(s)</span>
-            </div>
-            <div class="mt-4 space-y-4">
-              {#each $cart as item, index (item.id)}
-                {@const displayLineTotal = resolveCheckoutLineTotal(item, index)}
-                <div class="rounded-xl border border-slate-200 p-4">
-                  <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p class="text-base font-semibold text-slate-900">{item.serviceName}</p>
-                      <p class="text-sm text-slate-500 capitalize">
-                        {item.plan}
-                        {#if item.termMonths}
-                          · {item.termMonths} months
-                        {/if}
-                      </p>
-                      {#if item.upgradeSelectionType}
-                        <p class="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600">
-                          Upgrade option: {item.upgradeSelectionType === 'upgrade_new_account'
-                            ? 'New account'
-                            : 'Own account'}
-                        </p>
-                      {/if}
-                    </div>
-                    <div class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 sm:w-auto sm:min-w-[210px] sm:border-0 sm:bg-transparent sm:p-0 sm:pl-6">
-                      <div class="flex items-end justify-between sm:block sm:text-right">
-                        <p class="text-xs text-slate-500 sm:mb-0.5">Total</p>
-                        <p class="text-2xl font-semibold leading-none text-slate-900 sm:text-xl">
-                          {formatCurrency(displayLineTotal.amount, displayLineTotal.currency)}
-                        </p>
-                      </div>
-                      <div class="mt-2 flex items-center justify-between sm:mt-3 sm:justify-end sm:gap-2">
-                        <span class="inline-flex items-center rounded-md border border-slate-200 px-2 py-1 text-[11px] text-slate-600">
-                          Manual renewal
-                        </span>
-                        <button
-                          type="button"
-                          class="rounded-lg p-2 text-rose-500 hover:bg-rose-50"
-                          on:click={() => cart.removeItem(item.id)}
-                          aria-label="Remove item"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+    <section class="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+      {#if $cart.length === 0}
+        <div class="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+          <p class="text-lg font-semibold text-slate-900">Your cart is empty</p>
+          <p class="mt-2 text-sm text-slate-600">
+            Browse subscriptions to add items before checking out.
+          </p>
+          <a
+            href="/browse"
+            class="mt-5 inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-95"
+          >
+            Browse subscriptions
+          </a>
+        </div>
+      {:else}
+        <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_23.5rem] lg:items-start">
+          <section class="space-y-3">
+            <h2 class="text-base font-semibold text-slate-900">Your items</h2>
 
-                  {#if item.upgradeSelectionType === 'upgrade_own_account'}
-                    {@const requiresPassword = ownAccountRequiresPassword(item)}
-                    <div class="mt-4 border-t border-slate-200 pt-4">
-                      <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
-                        <div>
-                          <p class="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                            <ShieldCheck size={14} class="text-cyan-600" />
-                            Account access details
+            <div class="space-y-3">
+                {#each $cart as item, index (item.id)}
+                  {@const displayLineTotal = resolveCheckoutLineTotal(item, index)}
+                  {@const itemLogo =
+                    resolveLogoKey(item.logoKey || null) ||
+                    resolveLogoKey(item.serviceType || item.serviceName) ||
+                    resolveLogoKeyFromName(item.serviceType || item.serviceName) ||
+                    resolveLogoKeyFromName(item.serviceName) ||
+                    resolveLogoKeyFromName(item.plan) ||
+                    resolveLogoKeyFromName(item.variantId)}
+                  <div class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-start">
+                      <div class="flex min-w-0 items-start gap-2.5">
+                        <div class="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+                          {#if itemLogo}
+                            <ResponsiveImage
+                              image={itemLogo}
+                              alt={`${item.serviceName} logo`}
+                              sizes="44px"
+                              pictureClass="block h-full w-full"
+                              imgClass="h-full w-full object-cover object-center"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          {:else}
+                            <span class="text-xs font-black uppercase text-slate-800">
+                              {item.serviceName.slice(0, 2)}
+                            </span>
+                          {/if}
+                        </div>
+                        <div class="min-w-0">
+                          <p class="text-sm font-semibold text-slate-900">{item.serviceName}</p>
+                        </div>
+                      </div>
+
+                      <div class="justify-self-start sm:justify-self-center">
+                        <div class="inline-flex items-center rounded-xl border border-slate-200 bg-white">
+                          <button
+                            type="button"
+                            class="inline-flex h-8 w-8 items-center justify-center text-lg font-medium text-slate-700 transition hover:bg-slate-50"
+                            aria-label="Decrease quantity"
+                            on:click={() => decrementItemQuantity(item)}
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            inputmode="numeric"
+                            class="h-8 w-16 border-x border-slate-200 bg-white text-center text-xs font-semibold text-slate-900 focus:outline-none"
+                            value={resolveItemQuantity(item)}
+                            on:input={(event) =>
+                              handleItemQuantityInput(
+                                item,
+                                (event.currentTarget as HTMLInputElement).value
+                              )}
+                            on:change={(event) =>
+                              handleItemQuantityCommit(
+                                item,
+                                (event.currentTarget as HTMLInputElement).value
+                              )}
+                          />
+                          <button
+                            type="button"
+                            class="inline-flex h-8 w-8 items-center justify-center text-lg font-medium text-slate-700 transition hover:bg-slate-50"
+                            aria-label="Increase quantity"
+                            on:click={() => incrementItemQuantity(item)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="w-full sm:w-auto sm:min-w-[132px]">
+                        <div class="flex items-end justify-between sm:block sm:text-right">
+                          <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 sm:mb-0.5">
+                            Total
                           </p>
-                          <p class="mt-1 text-xs text-slate-600">
-                            {requiresPassword
-                              ? 'Enter the account email and password we should use to apply the subscription.'
-                              : 'Enter the account email we should use to apply the subscription'}
+                          <p class="text-2xl font-black leading-none tracking-tight text-slate-900 sm:text-2xl">
+                            {formatCurrency(displayLineTotal.amount, displayLineTotal.currency)}
                           </p>
                         </div>
-                        <div class={`mt-3 grid gap-3 ${requiresPassword ? 'md:grid-cols-2' : ''}`}>
-                          <div class="space-y-1.5">
-                            <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-500" for={`account-email-${item.id}`}>
-                              Account email
-                            </label>
-                            <input
-                              id={`account-email-${item.id}`}
-                              type="email"
-                              class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
-                              placeholder="name@example.com"
-                              autocomplete="off"
-                              value={ownAccountInputs[item.id]?.accountIdentifier ?? ''}
-                              on:input={(event) =>
-                                updateOwnAccountInput(
-                                  item.id,
-                                  'accountIdentifier',
-                                  (event.currentTarget as HTMLInputElement).value
-                                )}
-                            />
+                        <div class="mt-1 flex items-center justify-end sm:mt-2">
+                          <button
+                            type="button"
+                            class="rounded-lg p-1.5 text-rose-500 transition hover:bg-rose-50"
+                            on:click={() => requestItemRemovalConfirmation(item)}
+                            aria-label="Remove item"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {#if item.upgradeSelectionType === 'upgrade_new_account'}
+                      <div class="mt-2 border-t border-slate-200"></div>
+                    {/if}
+
+                    {#if item.upgradeSelectionType === 'upgrade_own_account'}
+                      {@const requiresPassword = ownAccountRequiresPassword(item)}
+                      <div class="mt-3 border-t border-slate-200 pt-3">
+                        <div
+                          id={`account-access-card-${item.id}`}
+                          class={`rounded-xl border bg-slate-50/70 p-3 ${
+                            ownAccountAttentionByItemId[item.id]
+                              ? 'account-attention-pulse border-fuchsia-300'
+                              : 'border-slate-200'
+                          }`}
+                        >
+                          <div>
+                            <p class="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                              <ShieldCheck size={13} class="text-cyan-600" />
+                              Account access details
+                            </p>
                           </div>
-                          {#if requiresPassword}
+                          {#if ownAccountAttentionMessageByItemId[item.id]}
+                            <p class="mt-2 text-xs font-medium text-fuchsia-700">
+                              {ownAccountAttentionMessageByItemId[item.id]}
+                            </p>
+                          {/if}
+                          <div class={`mt-2.5 grid gap-2 ${requiresPassword ? 'md:grid-cols-2' : ''}`}>
                             <div class="space-y-1.5">
-                              <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-500" for={`account-password-${item.id}`}>
-                                Account password
+                              <label class="text-[10px] font-semibold uppercase tracking-wide text-slate-500" for={`account-email-${item.id}`}>
+                                Account email
                               </label>
-                              <textarea
-                                id={`account-password-${item.id}`}
-                                class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
-                                rows={3}
-                                placeholder="Password and optional login notes"
+                              <input
+                                id={`account-email-${item.id}`}
+                                type="email"
+                                class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+                                placeholder="name@example.com"
                                 autocomplete="off"
-                                value={ownAccountInputs[item.id]?.credentials ?? ''}
+                                value={ownAccountInputs[item.id]?.accountIdentifier ?? ''}
                                 on:input={(event) =>
                                   updateOwnAccountInput(
                                     item.id,
-                                    'credentials',
-                                    (event.currentTarget as HTMLTextAreaElement).value
+                                    'accountIdentifier',
+                                    (event.currentTarget as HTMLInputElement).value
                                   )}
-                              ></textarea>
+                              />
                             </div>
-                          {/if}
+                            {#if requiresPassword}
+                              <div class="space-y-1.5">
+                                <label class="text-[10px] font-semibold uppercase tracking-wide text-slate-500" for={`account-password-${item.id}`}>
+                                  Account password
+                                </label>
+                                <div class="relative">
+                                  <input
+                                    id={`account-password-${item.id}`}
+                                    type={ownAccountPasswordVisibleByItemId[item.id] ? 'text' : 'password'}
+                                    class="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 pr-9 text-xs text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+                                    autocomplete="off"
+                                    value={ownAccountInputs[item.id]?.credentials ?? ''}
+                                    on:input={(event) =>
+                                      updateOwnAccountInput(
+                                        item.id,
+                                        'credentials',
+                                        (event.currentTarget as HTMLInputElement).value
+                                      )}
+                                  />
+                                  <button
+                                    type="button"
+                                    class="absolute inset-y-0 right-0 inline-flex w-9 items-center justify-center text-slate-500 transition hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+                                    aria-label={ownAccountPasswordVisibleByItemId[item.id]
+                                      ? 'Hide password'
+                                      : 'Show password'}
+                                    on:click={() => toggleOwnAccountPasswordVisibility(item.id)}
+                                  >
+                                    {#if ownAccountPasswordVisibleByItemId[item.id]}
+                                      <EyeOff size={16} />
+                                    {:else}
+                                      <Eye size={16} />
+                                    {/if}
+                                  </button>
+                                </div>
+                              </div>
+                            {/if}
+                          </div>
+                          <p class="mt-2 text-[10px] text-slate-500">
+                            Details are encrypted and only used to complete this order.
+                          </p>
                         </div>
-                        <p class="mt-3 text-[11px] text-slate-500">
-                          Details are encrypted and only used to complete this order.
+                      </div>
+                    {/if}
+
+                    {#if item.upgradeSelectionType}
+                      <div class="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50/45 px-2.5 py-2">
+                        <p class="text-[10px] font-semibold uppercase tracking-[0.08em] text-fuchsia-700">
+                          Delivery type
+                        </p>
+                        <p class="mt-1 text-xs text-slate-700">
+                          {item.upgradeSelectionType === 'upgrade_new_account'
+                            ? 'This order will be fulfilled with a newly created private account and delivered with login credentials.'
+                            : 'This order will be fulfilled on your existing account using the details you provide.'}
                         </p>
                       </div>
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-            {#if draftError}
-              <div class="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                {draftError}
-              </div>
-            {/if}
-          </div>
+                    {/if}
 
-          {#if !$auth.isAuthenticated}
-            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-              <div class="flex items-center gap-2">
-                <Mail size={16} class="text-slate-500" />
-                <h3 class="text-sm font-semibold text-slate-900">Contact email</h3>
-              </div>
-              <p class="text-xs text-slate-500">
-                We will send your confirmation and claim link to this email.
-              </p>
-              <input
-                type="email"
-                class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                placeholder="you@example.com"
-                bind:value={contactEmail}
-                on:input={() => (emailTouched = true)}
-              />
-              {#if emailError}
-                <p class="text-xs text-rose-600">{emailError}</p>
-              {/if}
-            </div>
-          {/if}
-
-        </section>
-
-        <aside class="space-y-6">
-          <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-            <h3 class="text-sm font-semibold text-slate-900">Order summary</h3>
-            <div class="space-y-2 text-sm text-slate-600">
-              <div class="flex items-center justify-between">
-                <span>Subtotal</span>
-                <span>{draftLoading ? '--' : formatCurrency(subtotal, orderCurrency)}</span>
-              </div>
-              {#if termDiscount > 0}
-                <div class="flex items-center justify-between">
-                  <span>Term discount</span>
-                  <span class="text-emerald-600">
-                    -{draftLoading ? '--' : formatCurrency(termDiscount, orderCurrency)}
-                  </span>
-                </div>
-              {/if}
-              {#if couponDiscount > 0}
-                <div class="flex items-center justify-between">
-                  <span>Coupon discount</span>
-                  <span class="text-emerald-600">
-                    -{draftLoading ? '--' : formatCurrency(couponDiscount, orderCurrency)}
-                  </span>
-                </div>
-              {/if}
-              <div class="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-900">
-                <span>Total</span>
-                <span>{draftLoading ? '--' : formatCurrency(total, orderCurrency)}</span>
-              </div>
-              {#if showSettlementNotice && settlementCurrency}
-                <p class="text-[11px] text-slate-500">
-                  Charged in {settlementCurrency}: {draftLoading
-                    ? '--'
-                    : formatCurrency(settlementTotal, settlementCurrency)}
-                </p>
-              {/if}
-            </div>
-            <div class="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              <ShieldCheck size={14} class="text-cyan-600" />
-              Orders are backed by our warranty policy.
-            </div>
-          </div>
-
-          <div class="px-1">
-            <button
-              type="button"
-              class="text-sm font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4 hover:text-slate-900"
-              on:click={() => {
-                showDiscountCodeInput = !showDiscountCodeInput;
-              }}
-            >
-              Got a discount code?
-            </button>
-            {#if showDiscountCodeInput}
-              <div class="mt-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-                <h3 class="text-sm font-semibold text-slate-900">Discount code</h3>
-                <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <input
-                    class="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm sm:flex-1"
-                    placeholder="Enter code"
-                    bind:value={couponCode}
-                  />
-                  <div class="flex w-full gap-2 sm:w-auto">
-                    <button
-                      type="button"
-                      class="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:flex-none sm:whitespace-nowrap"
-                      on:click={handleApplyCoupon}
-                      disabled={draftLoading}
-                    >
-                      APPLY
-                    </button>
-                    {#if appliedCouponCode}
-                      <button
-                        type="button"
-                        class="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50 sm:flex-none sm:whitespace-nowrap"
-                        on:click={handleClearCoupon}
-                      >
-                        CLEAR
-                      </button>
+                    {#if item.upgradeSelectionType === 'upgrade_new_account'}
+                      <div class="mt-2 border-t border-slate-200"></div>
                     {/if}
                   </div>
-                </div>
-                {#if couponMessage}
-                  <p class="text-xs text-slate-500 whitespace-pre-line">{couponMessage}</p>
+                {/each}
+            </div>
+          </section>
+
+          <aside class="space-y-6 lg:sticky lg:top-24">
+            {#if !$auth.isAuthenticated}
+              <div
+                bind:this={contactEmailCardRef}
+                class={`rounded-2xl border bg-slate-50/70 p-3 sm:p-4 ${
+                  contactEmailNeedsAttention
+                    ? 'email-attention-pulse border-fuchsia-300'
+                    : 'border-slate-200'
+                }`}
+              >
+                <label class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500" for="checkout-contact-email">
+                  DELIVERY EMAIL
+                </label>
+                <input
+                  id="checkout-contact-email"
+                  type="email"
+                  class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+                  placeholder="you@example.com"
+                  bind:value={contactEmail}
+                  on:input={() => (emailTouched = true)}
+                />
+                {#if emailError}
+                  <p class="mt-2 text-xs text-rose-600">{emailError}</p>
                 {/if}
-              </div>
-            {/if}
-          </div>
-
-          <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <h3 class="text-sm font-semibold text-slate-900">Payment method</h3>
-            <label class="flex cursor-not-allowed items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 opacity-80">
-              <input
-                type="radio"
-                name="payment-method"
-                value="card"
-                bind:group={paymentMethod}
-                class="mt-1 h-4 w-4 text-slate-900"
-                disabled
-              />
-              <div>
-                <p class="text-sm font-semibold text-slate-900">Pay with card</p>
-                <p class="mt-1 text-xs font-medium text-rose-600">
-                  Card payments are temporarily disabled while we migrate to a new payment processor. Card
-                  checkout will be available again once this migration is complete.
-                </p>
-              </div>
-            </label>
-
-            <label class="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 hover:bg-slate-50">
-              <input
-                type="radio"
-                name="payment-method"
-                value="crypto"
-                bind:group={paymentMethod}
-                class="mt-1 h-4 w-4 text-slate-900"
-              />
-              <div>
-                <p class="text-sm font-semibold text-slate-900">Pay with crypto</p>
-              </div>
-            </label>
-
-            {#if paymentMethod === 'crypto'}
-              <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 space-y-2">
-                <p class="text-xs font-semibold text-slate-600">Select crypto</p>
-                {#if currenciesLoading}
-                  <div class="flex items-center gap-2 text-xs text-slate-500">
-                    <Loader2 class="h-4 w-4 animate-spin" />
-                    Loading currencies...
-                  </div>
-                {:else if currenciesError}
-                  <p class="text-xs text-rose-600">{currenciesError}</p>
-                {:else}
-                  <div class="space-y-2">
-                    <div>
-                      <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Coin
-                      </p>
-                      <select
-                        class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
-                        bind:value={payCoin}
-                        on:change={() => {
-                          invoice = null;
-                          invoiceError = '';
-                          cryptoMinimum = null;
-                          cryptoMinimumError = '';
-                          lastCryptoMinimumKey = '';
-                        }}
-                      >
-                        {#each cryptoCoinOptions as coinOption}
-                          <option value={coinOption.value}>{coinOption.label}</option>
-                        {/each}
-                      </select>
-                    </div>
-
-                    <div>
-                      <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Network
-                      </p>
-                      <select
-                        class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
-                        bind:value={payCurrency}
-                        on:change={() => {
-                          invoice = null;
-                          invoiceError = '';
-                          cryptoMinimum = null;
-                          cryptoMinimumError = '';
-                          lastCryptoMinimumKey = '';
-                        }}
-                      >
-                        {#each cryptoNetworkOptions as networkOption}
-                          <option value={networkOption.code}>
-                            {networkOption.networkLabel}
-                          </option>
-                        {/each}
-                      </select>
-                    </div>
-                  </div>
-                {/if}
-
-                {#if cryptoMinimumLoading}
-                  <div class="flex justify-end text-slate-400">
-                    <Loader2 class="h-4 w-4 animate-spin" />
-                  </div>
-                {:else if cryptoMinimumError}
-                  <p class="text-xs text-rose-600">{cryptoMinimumError}</p>
-                {:else if cryptoMinimum && !cryptoMinimum.meets_minimum}
-                  <p class="text-xs text-amber-700">
-                    {selectedCryptoCoinLabel} on {selectedCryptoNetworkLabel} requires minimum {formatCurrency(cryptoMinimum.min_price_amount, orderCurrency)}.
+                {#if contactEmailAttentionMessage}
+                  <p class="mt-2 text-xs font-medium text-fuchsia-700">
+                    {contactEmailAttentionMessage}
                   </p>
                 {/if}
-
-                {#if invoiceError}
-                  <p class="text-xs text-rose-600">{invoiceError}</p>
-                {/if}
-
-                {#if invoice}
-                  <div class="rounded-lg border border-slate-200 bg-white px-3 py-3 text-xs text-slate-600 space-y-1">
-                    <p class="font-semibold text-slate-900">Invoice ready</p>
-                    <a
-                      href={invoice.invoice_url}
-                      class="mt-2 inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open invoice
-                    </a>
-                    <p class="pt-1 text-[11px] text-slate-500">
-                      To generate a different invoice, change coin or network.
-                    </p>
-                  </div>
-                {/if}
               </div>
             {/if}
 
-            {#if $auth.isAuthenticated && paymentMethod === 'credits'}
-              <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 space-y-2 text-xs text-slate-600">
-                {#if creditsQuoteLoading}
-                  <div class="flex items-center gap-2">
-                    <Loader2 class="h-4 w-4 animate-spin" />
-                    Loading credits estimate...
-                  </div>
-                {:else}
+            <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_14px_28px_rgba(15,23,42,0.08)] sm:p-6">
+              <h3 class="text-sm font-semibold text-slate-900">Order summary</h3>
+              <div class="mt-3 space-y-2 text-sm text-slate-600">
+                {#if termDiscount > 0}
                   <div class="flex items-center justify-between">
-                    <span>Available credits</span>
-                    <span class="font-semibold text-slate-900">{$credits.balance ?? '--'}</span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span>Credits required</span>
-                    <span class="font-semibold text-slate-900">
-                      {creditsRequired ?? '--'}
+                    <span>Term discount</span>
+                    <span class="text-emerald-600">
+                      -{draftLoading ? '--' : formatCurrency(termDiscount, orderCurrency)}
                     </span>
                   </div>
                 {/if}
-                {#if creditsQuoteMessage}
-                  <p class="text-xs text-amber-700">{creditsQuoteMessage}</p>
-                {/if}
-                {#if creditsInsufficient}
-                  <p class="text-xs text-amber-700">You do not have enough credits for this purchase.</p>
+                {#if couponDiscount > 0}
+                  <div class="flex items-center justify-between">
+                    <span>Coupon discount</span>
+                    <span class="text-emerald-600">
+                      -{draftLoading ? '--' : formatCurrency(couponDiscount, orderCurrency)}
+                    </span>
+                  </div>
                 {/if}
               </div>
-            {/if}
 
-            {#if actionError}
-              <div class="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
-                {actionError}
+              <div class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  TOTAL
+                </p>
+                <p class="mt-1 text-3xl font-black leading-none tracking-tight text-slate-900">
+                  {draftLoading ? '--' : formatCurrency(total, orderCurrency)}
+                </p>
+                {#if showSettlementNotice && settlementCurrency}
+                  <p class="mt-1 text-[11px] text-slate-500">
+                    Charged in {settlementCurrency}: {draftLoading
+                      ? '--'
+                      : formatCurrency(settlementTotal, settlementCurrency)}
+                  </p>
+                {/if}
               </div>
-            {/if}
 
-            {#if showPrimaryActionButton}
+              <div class="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                <ShieldCheck size={14} class="text-cyan-600" />
+                This order is backed by the Money Back Guarantee.
+              </div>
+            </div>
+
+            <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_14px_28px_rgba(15,23,42,0.08)] sm:p-6">
               <button
                 type="button"
-                class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl disabled:opacity-60"
-                disabled={
-                  !paymentMethod ||
-                  redirecting ||
-                  invoiceLoading ||
-                  creditsInsufficient
-                }
+                class="inline-flex items-center gap-1 text-sm font-semibold"
                 on:click={() => {
-                  if (paymentMethod === 'card') {
-                    void handleCardCheckout();
-                  } else if (paymentMethod === 'crypto') {
-                    void handleCryptoInvoice();
-                  }
+                  showDiscountCodeInput = !showDiscountCodeInput;
                 }}
               >
-                {#if redirecting || invoiceLoading}
-                  <Loader2 class="h-4 w-4 animate-spin" />
-                  {invoiceLoading ? 'Generating invoice...' : 'Processing...'}
-                {:else}
-                  {#if paymentMethod === 'card'}
-                    CONTINUE TO PAYMENT
-                  {:else if paymentMethod === 'crypto'}
-                    Generate invoice
-                  {:else}
-                    Choose payment method
-                  {/if}
-                {/if}
+                <span class="gradient-text">Got a discount code?</span>
               </button>
-            {/if}
-          </div>
+              {#if showDiscountCodeInput}
+                <div class="mt-3 space-y-3">
+                  <h3 class="text-sm font-semibold text-slate-900">Discount code</h3>
+                  <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      class="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 sm:flex-1"
+                      placeholder="Enter code"
+                      bind:value={couponCode}
+                    />
+                    <div class="flex w-full gap-2 sm:w-auto">
+                      <button
+                        type="button"
+                        class="gradient-outline-btn flex-1 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900 transition hover:brightness-[0.98] disabled:opacity-60 sm:flex-none sm:whitespace-nowrap"
+                        on:click={handleApplyCoupon}
+                        disabled={draftLoading}
+                      >
+                        <span class="gradient-text">APPLY</span>
+                      </button>
+                      {#if appliedCouponCode}
+                        <button
+                          type="button"
+                          class="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 sm:flex-none sm:whitespace-nowrap"
+                          on:click={handleClearCoupon}
+                        >
+                          CLEAR
+                        </button>
+                      {/if}
+                    </div>
+                  </div>
+                  {#if couponMessage}
+                    <p class="text-xs whitespace-pre-line text-slate-500">{couponMessage}</p>
+                  {/if}
+                </div>
+              {/if}
+            </div>
 
-        </aside>
+            <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_14px_28px_rgba(15,23,42,0.08)] sm:p-6">
+              <h3 class="text-sm font-semibold text-slate-900">Payment method</h3>
+              <div class="mt-3 space-y-3">
+                <label class="flex cursor-not-allowed items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 opacity-80">
+                  <input
+                    type="radio"
+                    name="payment-method"
+                    value="card"
+                    bind:group={paymentMethod}
+                    class="mt-1 h-4 w-4 text-slate-900"
+                    disabled
+                  />
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900">Pay with card</p>
+                    <p class="mt-1 text-xs font-medium text-rose-600">
+                      Card payments are temporarily disabled while we migrate to a new payment processor. Card
+                      checkout will be available again once this migration is complete.
+                    </p>
+                  </div>
+                </label>
+
+                <label class={`flex items-start gap-3 rounded-xl border px-3 py-3 transition ${
+                  paymentMethod === 'crypto'
+                    ? 'border-fuchsia-300 bg-fuchsia-50/40 shadow-sm'
+                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                }`}>
+                  <input
+                    type="radio"
+                    name="payment-method"
+                    value="crypto"
+                    bind:group={paymentMethod}
+                    class="mt-1 h-4 w-4 text-slate-900"
+                  />
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900">Pay with crypto</p>
+                  </div>
+                </label>
+              </div>
+
+              {#if paymentMethod === 'crypto'}
+                <div class="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                  <p class="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
+                    Select crypto
+                  </p>
+                  {#if currenciesLoading}
+                    <div class="flex items-center gap-2 text-xs text-slate-500">
+                      <Loader2 class="h-4 w-4 animate-spin" />
+                      Loading currencies...
+                    </div>
+                  {:else if currenciesError}
+                    <p class="text-xs text-rose-600">{currenciesError}</p>
+                  {:else}
+                    <div class="space-y-2">
+                      <div>
+                        <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Coin
+                        </p>
+                        <select
+                          class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+                          bind:value={payCoin}
+                          on:change={() => {
+                            invoice = null;
+                            invoiceError = '';
+                            cryptoMinimum = null;
+                            cryptoMinimumError = '';
+                            lastCryptoMinimumKey = '';
+                          }}
+                        >
+                          {#each cryptoCoinOptions as coinOption}
+                            <option value={coinOption.value}>{coinOption.label}</option>
+                          {/each}
+                        </select>
+                      </div>
+
+                      <div>
+                        <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Network
+                        </p>
+                        <select
+                          class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+                          bind:value={payCurrency}
+                          on:change={() => {
+                            invoice = null;
+                            invoiceError = '';
+                            cryptoMinimum = null;
+                            cryptoMinimumError = '';
+                            lastCryptoMinimumKey = '';
+                          }}
+                        >
+                          {#each cryptoNetworkOptions as networkOption}
+                            <option value={networkOption.code}>
+                              {networkOption.networkLabel}
+                            </option>
+                          {/each}
+                        </select>
+                      </div>
+                    </div>
+                  {/if}
+
+                  {#if cryptoMinimumLoading}
+                    <div class="flex justify-end text-slate-400">
+                      <Loader2 class="h-4 w-4 animate-spin" />
+                    </div>
+                  {:else if cryptoMinimumError}
+                    <p class="text-xs text-rose-600">{cryptoMinimumError}</p>
+                  {:else if cryptoMinimum && !cryptoMinimum.meets_minimum}
+                    <p class="text-xs text-amber-700">
+                      {selectedCryptoCoinLabel} on {selectedCryptoNetworkLabel} requires minimum {formatCurrency(cryptoMinimum.min_price_amount, orderCurrency)}.
+                    </p>
+                  {/if}
+
+                  {#if invoiceError}
+                    <p class="text-xs text-rose-600">{invoiceError}</p>
+                  {/if}
+
+                  {#if invoice}
+                    <div class="space-y-1 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-600">
+                      <p class="font-semibold text-slate-900">Invoice ready</p>
+                      <a
+                        href={invoice.invoice_url}
+                        class="mt-2 inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open invoice
+                      </a>
+                      <p class="pt-1 text-[11px] text-slate-500">
+                        To generate a different invoice, change coin or network.
+                      </p>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+
+              {#if $auth.isAuthenticated && paymentMethod === 'credits'}
+                <div class="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                  {#if creditsQuoteLoading}
+                    <div class="flex items-center gap-2">
+                      <Loader2 class="h-4 w-4 animate-spin" />
+                      Loading credits estimate...
+                    </div>
+                  {:else}
+                    <div class="flex items-center justify-between">
+                      <span>Available credits</span>
+                      <span class="font-semibold text-slate-900">{$credits.balance ?? '--'}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                      <span>Credits required</span>
+                      <span class="font-semibold text-slate-900">
+                        {creditsRequired ?? '--'}
+                      </span>
+                    </div>
+                  {/if}
+                  {#if creditsQuoteMessage}
+                    <p class="text-xs text-amber-700">{creditsQuoteMessage}</p>
+                  {/if}
+                  {#if creditsInsufficient}
+                    <p class="text-xs text-amber-700">You do not have enough credits for this purchase.</p>
+                  {/if}
+                </div>
+              {/if}
+
+              {#if actionError}
+                <div class="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+                  {actionError}
+                </div>
+              {/if}
+
+              {#if showPrimaryActionButton}
+                <button
+                  type="button"
+                  class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(126,34,206,0.28)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={
+                    !paymentMethod ||
+                    redirecting ||
+                    invoiceLoading ||
+                    creditsInsufficient
+                  }
+                  on:click={() => {
+                    if (paymentMethod === 'card') {
+                      void handleCardCheckout();
+                    } else if (paymentMethod === 'crypto') {
+                      void handleCryptoInvoice();
+                    }
+                  }}
+                >
+                  {#if redirecting || invoiceLoading}
+                    <Loader2 class="h-4 w-4 animate-spin" />
+                    {invoiceLoading ? 'Generating invoice...' : 'Processing...'}
+                  {:else}
+                    {#if paymentMethod === 'card'}
+                      CONTINUE TO PAYMENT
+                    {:else if paymentMethod === 'crypto'}
+                      Generate invoice
+                    {:else}
+                      Choose payment method
+                    {/if}
+                  {/if}
+                </button>
+              {/if}
+            </div>
+          </aside>
+        </div>
+      {/if}
+    </section>
+  </main>
+
+  {#if showItemRemoveConfirm}
+    <div
+      class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 px-4 py-5 sm:py-6"
+      role="presentation"
+      on:click={(event) => {
+        if (event.target === event.currentTarget) {
+          cancelItemRemovalConfirmation();
+        }
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="remove-item-confirm-title"
+        class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.26)]"
+      >
+        <h2 id="remove-item-confirm-title" class="text-base font-semibold text-slate-900">
+          Remove item?
+        </h2>
+        <p class="mt-2 text-sm text-slate-600">
+          Are you sure you want to remove
+          <span class="font-semibold text-slate-900">{pendingRemoveItemName || 'this item'}</span>
+          from your cart?
+        </p>
+        <div class="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            on:click={cancelItemRemovalConfirmation}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
+            on:click={confirmItemRemoval}
+          >
+            Remove
+          </button>
+        </div>
       </div>
-    {/if}
-  </div>
+    </div>
+  {/if}
 
   <Footer />
 </div>
+
+<style>
+  .checkout-top-glow {
+    background:
+      radial-gradient(70% 120% at 8% 0%, rgba(192, 132, 252, 0.22), transparent 68%),
+      radial-gradient(65% 100% at 92% 0%, rgba(244, 114, 182, 0.2), transparent 64%);
+  }
+
+  .gradient-outline-btn {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(#ffffff, #ffffff) padding-box,
+      linear-gradient(90deg, #7e22ce, #db2777) border-box;
+  }
+
+  .gradient-text {
+    background: linear-gradient(90deg, #7e22ce, #db2777);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  @keyframes emailAttentionPulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(217, 70, 239, 0.3);
+      transform: translateY(0);
+    }
+    50% {
+      box-shadow: 0 0 0 10px rgba(217, 70, 239, 0);
+      transform: translateY(-1px);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(217, 70, 239, 0);
+      transform: translateY(0);
+    }
+  }
+
+  .email-attention-pulse {
+    animation: emailAttentionPulse 820ms ease-in-out 2;
+  }
+
+  .account-attention-pulse {
+    animation: emailAttentionPulse 820ms ease-in-out 2;
+  }
+</style>

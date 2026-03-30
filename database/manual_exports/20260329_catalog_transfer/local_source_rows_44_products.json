@@ -1,0 +1,1850 @@
+{
+  "exported_from": "curated input",
+  "exported_at_utc": "2026-03-29T12:00:00Z",
+  "selected_product_slugs": [
+    "adobe-creative-cloud-1-month-subscription",
+    "adobe-creative-cloud-12-months-subscription-prepaid",
+    "adobe-creative-cloud-3-months-subscription",
+    "adobe-creative-cloud-6-months-subscription",
+    "amazon-prime-video-1-month-subscription",
+    "amazon-prime-video-12-months-subscription",
+    "amazon-prime-video-3-months-subscription",
+    "amazon-prime-video-6-months-subscription",
+    "apple-music-1-month-subscription",
+    "apple-tv-1-month-subscription",
+    "apple-tv-12-months-subscription",
+    "apple-tv-2-months-subscription",
+    "apple-tv-3-months-subscription",
+    "apple-tv-6-months-subscription",
+    "chatgpt-pro-1-month-subscription",
+    "chatgpt-pro-12-months-subscription",
+    "chatgpt-pro-3-months-subscription",
+    "chatgpt-pro-6-months-subscription",
+    "linked-premium-career-3-months",
+    "linkedin-premium-business-12-months",
+    "linkedin-sales-navigator-12-months",
+    "lovable-100-credits-1-month-subscription",
+    "myfitnesspal-premium-12-months",
+    "n8n-starter-12-months-subscription",
+    "netflix-basic-1-month",
+    "netflix-basic-12-months",
+    "netflix-basic-3-months",
+    "netflix-basic-6-months",
+    "netflix-premium-4k-1-month",
+    "netflix-premium-4k-12-months",
+    "netflix-premium-4k-3-months",
+    "netflix-premium-4k-6-months",
+    "netflix-standard-1-month",
+    "netflix-standard-12-months",
+    "netflix-standard-3-months",
+    "netflix-standard-6-months",
+    "notion-plus-12-months",
+    "perplexity-pro-12-months-subscription",
+    "spotify-premium-1-month",
+    "spotify-premium-12-months",
+    "spotify-premium-3-months",
+    "spotify-premium-6-months",
+    "youtube-premium-12-months-subscription",
+    "youtube-premium-3-months-subscription"
+  ],
+  "sub_categories": [
+    {
+      "id": "5ed2f6d0-c1a2-5f78-9696-bfa0491f6383",
+      "category": "Design, Productivity",
+      "name": "Adobe",
+      "slug": "adobe-creative-clound",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "1ee832aa-0336-5453-87de-6b4f12b4702b",
+      "category": "Streaming",
+      "name": "Amazon Prime Video",
+      "slug": "amazon-prime-video",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "a516af4e-53da-5f24-b978-0c45472bfc34",
+      "category": "Music",
+      "name": "Apple",
+      "slug": "apple",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "f9f19370-3f9b-58e3-bb5a-59e6f25f4147",
+      "category": "AI, Productivity",
+      "name": "ChatGPT",
+      "slug": "chatgpt",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "2a551f87-86db-5686-94d7-7fc7dc6f3f40",
+      "category": "Productivity",
+      "name": "Linkedin",
+      "slug": "linkedin",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "f08c325a-5724-5c81-8921-24947b4ab7c4",
+      "category": "AI",
+      "name": "Loveable",
+      "slug": "loveable",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "c264618b-cce6-5777-8e65-3dd6ad7edfa9",
+      "category": "Fitness",
+      "name": "Myfitnesspal",
+      "slug": "myfitnesspal",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "da216937-0a00-5cb6-b87b-d321e970422c",
+      "category": "AI",
+      "name": "n8n",
+      "slug": "n8n",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "8243710f-33c7-52c7-9946-61285ff6796b",
+      "category": "Streaming",
+      "name": "Netflix",
+      "slug": "netflix",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "a5457413-72ba-5f49-a1e5-36c7efac9480",
+      "category": "Productivity",
+      "name": "Notion",
+      "slug": "notion",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "c02df5a9-b67f-5088-91d0-57d5f16be37d",
+      "category": "AI",
+      "name": "Perplexity",
+      "slug": "perplexity",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "62846d8c-ff9a-5766-a2ea-66c2c01a68af",
+      "category": "Music",
+      "name": "Spotify",
+      "slug": "spotify",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    },
+    {
+      "id": "7b8d4b14-0800-5fe0-bec8-32737fe4792e",
+      "category": "Streaming, Music",
+      "name": "Youtube",
+      "slug": "youtube",
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000"
+    }
+  ],
+  "products": [
+    {
+      "id": "f85fa89c-8fce-5d04-9f51-ce7383d33a10",
+      "name": "Adobe Creative Cloud 1 Month Subscription",
+      "slug": "adobe-creative-cloud-1-month-subscription",
+      "description": "Adobe Creative Cloud 1 Month Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "adobe_creative_cloud",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Adobe Creative Cloud applications, 4000 AI credits, can be used on 2 devices.",
+          "Does not include access to Software 3D."
+        ],
+        "platform": "Adobe Creative Cloud",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with other users.\nYou will receive a new account with email and password.\nAfter delivery, you can change the account password.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order.\nYou will receive a new private Adobe account with email and password.\nSign in and confirm Creative Cloud access is active.\nChange the account password after delivery.",
+        "comparison_price_cents": 6999
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "adobecc-logo",
+      "category": "Design",
+      "categories": [
+        "Design",
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 1,
+      "fixed_price_cents": 2999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Adobe"
+    },
+    {
+      "id": "fe594c61-cd76-5b6c-be75-760cdd6e30f2",
+      "name": "Adobe Creative Cloud 12 Months Subscription (Prepaid)",
+      "slug": "adobe-creative-cloud-12-months-subscription-prepaid",
+      "description": "Adobe Creative Cloud 12 Months Subscription (Prepaid) with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "adobe_creative_cloud",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Adobe Creative Cloud applications, 1TB cloud storage, 4000 AI credits per month (48000 credits per year), Generative Fill Text to Image and other AI features, can be used on 3 devices."
+        ],
+        "platform": "Adobe Creative Cloud",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with other users.\nYou may change the account email and password, and enable your own 2FA authenticator.\nThe same account is used for the full 12-month prepaid term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your prepaid Adobe Creative Cloud 12-month order.\nYou will receive one private Adobe account for the full term.\nSign in and secure the account by changing email, changing password, and enabling your own 2FA authenticator.\nContinue using the same account for the full 12-month subscription period.",
+        "comparison_price_cents": 83988
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "adobecc-logo",
+      "category": "Design",
+      "categories": [
+        "Design",
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 10999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Adobe"
+    },
+    {
+      "id": "10d13d6e-a808-52fd-8523-a773bef8dddf",
+      "name": "Adobe Creative Cloud 3 Months Subscription",
+      "slug": "adobe-creative-cloud-3-months-subscription",
+      "description": "Adobe Creative Cloud 3 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "adobe_creative_cloud",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Adobe Creative Cloud applications, 4000 AI credits per month, can be used on 2 devices.",
+          "Does not include access to Software 3D."
+        ],
+        "platform": "Adobe Creative Cloud",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with other users.\nYou will receive a new account with email and password.\nA new account is delivered for each month in the term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order for the 3-month package.\nYou will receive a new private Adobe account with email and password for the current month.\nA new Adobe account is delivered again for each additional month in the term.\nUse the latest delivered credentials each month and update password after delivery if needed.",
+        "comparison_price_cents": 20997
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "adobecc-logo",
+      "category": "Design",
+      "categories": [
+        "Design",
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 3,
+      "fixed_price_cents": 4999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Adobe"
+    },
+    {
+      "id": "12391762-c792-5ac2-aa60-357f2338e02e",
+      "name": "Adobe Creative Cloud 6 Months Subscription",
+      "slug": "adobe-creative-cloud-6-months-subscription",
+      "description": "Adobe Creative Cloud 6 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "adobe_creative_cloud",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Adobe Creative Cloud applications, 4000 AI credits per month, can be used on 2 devices.",
+          "Does not include access to Software 3D."
+        ],
+        "platform": "Adobe Creative Cloud",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with other users.\nYou will receive a new account with email and password.\nA new account is delivered for each month in the term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order for the 6-month package.\nYou will receive a new private Adobe account with email and password for the current month.\nA new Adobe account is delivered again for each additional month in the term.\nUse the latest delivered credentials each month and update password after delivery if needed.",
+        "comparison_price_cents": 41994
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "adobecc-logo",
+      "category": "Design",
+      "categories": [
+        "Design",
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 6,
+      "fixed_price_cents": 7999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Adobe"
+    },
+    {
+      "id": "e77f6e59-c3e2-5178-a254-55993ff561c2",
+      "name": "Amazon Prime Video 1 Month Subscription",
+      "slug": "amazon-prime-video-1-month-subscription",
+      "description": "Amazon Prime Video 1 Month Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "amazon_prime_video",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes all access to Amazon Prime Video features.",
+          "Includes access to Luna Games.",
+          "Does not include access to Prime Video Ultra, or Amazon Prime for making purchases on the Amazon marketplace."
+        ],
+        "platform": "Amazon Prime Video",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nYou may change the email and password and manage the account.\nThis product is for standalone Amazon Prime Video only, and Prime Video Ultra is not included.\nDo not use this account for Amazon shopping orders, or the account may be suspended with no replacement or refund.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive private account credentials.\nSign in and update email/password if you want to manage the account yourself.\nUse the account only for standalone Amazon Prime Video (Prime Video Ultra is not included).\nDo not place Amazon shopping orders on this account, or it may be suspended with no replacement or refund.",
+        "comparison_price_cents": 899
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "amazonprimevideo-logo",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 1,
+      "fixed_price_cents": 499,
+      "fixed_price_currency": "USD",
+      "sub_category": "Amazon Prime Video"
+    },
+    {
+      "id": "88486451-f303-5d39-88e4-1b0d9289a0c4",
+      "name": "Amazon Prime Video 12 Months Subscription",
+      "slug": "amazon-prime-video-12-months-subscription",
+      "description": "Amazon Prime Video 12 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "amazon_prime_video",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes all access to Amazon Prime Video features.",
+          "Includes access to Luna Games.",
+          "Does not include access to Prime Video Ultra, or Amazon Prime for making purchases on the Amazon marketplace."
+        ],
+        "platform": "Amazon Prime Video",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nYou may change the email and password and manage the account.\nThis product is for standalone Amazon Prime Video only, and Prime Video Ultra is not included.\nDo not use this account for Amazon shopping orders, or the account may be suspended with no replacement or refund.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive private account credentials.\nSign in and update email/password if you want to manage the account yourself.\nUse the account only for standalone Amazon Prime Video (Prime Video Ultra is not included).\nDo not place Amazon shopping orders on this account, or it may be suspended with no replacement or refund.",
+        "comparison_price_cents": 10788
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "amazonprimevideo-logo",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 2999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Amazon Prime Video"
+    },
+    {
+      "id": "21c9c9c8-12e5-55c2-a346-609b668dc2be",
+      "name": "Amazon Prime Video 3 Months Subscription",
+      "slug": "amazon-prime-video-3-months-subscription",
+      "description": "Amazon Prime Video 3 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "amazon_prime_video",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes all access to Amazon Prime Video features.",
+          "Includes access to Luna Games.",
+          "Does not include access to Prime Video Ultra, or Amazon Prime for making purchases on the Amazon marketplace."
+        ],
+        "platform": "Amazon Prime Video",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nYou may change the email and password and manage the account.\nThis product is for standalone Amazon Prime Video only, and Prime Video Ultra is not included.\nDo not use this account for Amazon shopping orders, or the account may be suspended with no replacement or refund.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive private account credentials.\nSign in and update email/password if you want to manage the account yourself.\nUse the account only for standalone Amazon Prime Video (Prime Video Ultra is not included).\nDo not place Amazon shopping orders on this account, or it may be suspended with no replacement or refund.",
+        "comparison_price_cents": 2697
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "amazonprimevideo-logo",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 3,
+      "fixed_price_cents": 1499,
+      "fixed_price_currency": "USD",
+      "sub_category": "Amazon Prime Video"
+    },
+    {
+      "id": "f837225e-094b-5046-ab67-9ff96b6ddde8",
+      "name": "Amazon Prime Video 6 Months Subscription",
+      "slug": "amazon-prime-video-6-months-subscription",
+      "description": "Amazon Prime Video 6 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "amazon_prime_video",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes all access to Amazon Prime Video features.",
+          "Includes access to Luna Games.",
+          "Does not include access to Prime Video Ultra, or Amazon Prime for making purchases on the Amazon marketplace."
+        ],
+        "platform": "Amazon Prime Video",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nYou may change the email and password and manage the account.\nThis product is for standalone Amazon Prime Video only, and Prime Video Ultra is not included.\nDo not use this account for Amazon shopping orders, or the account may be suspended with no replacement or refund.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive private account credentials.\nSign in and update email/password if you want to manage the account yourself.\nUse the account only for standalone Amazon Prime Video (Prime Video Ultra is not included).\nDo not place Amazon shopping orders on this account, or it may be suspended with no replacement or refund.",
+        "comparison_price_cents": 5394
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "amazonprimevideo-logo",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 6,
+      "fixed_price_cents": 1799,
+      "fixed_price_currency": "USD",
+      "sub_category": "Amazon Prime Video"
+    },
+    {
+      "id": "f1e63a86-a529-5464-b83e-713d2b8a95d2",
+      "name": "Apple Music 1 Month Subscription",
+      "slug": "apple-music-1-month-subscription",
+      "description": "Apple Music 1 Month Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "apple_music",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Apple Music features."
+        ],
+        "platform": "Apple",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nYou can manage the account as needed.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order.\nYou will receive a private Apple Music account with login credentials.\nSign in and start using Apple Music.\nManage the account as needed.",
+        "comparison_price_cents": 1099
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "applemusic-logo",
+      "category": "Music",
+      "categories": [
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 1,
+      "fixed_price_cents": 499,
+      "fixed_price_currency": "USD",
+      "sub_category": "Apple"
+    },
+    {
+      "id": "92607436-5ddb-52d7-abfb-de92501222b9",
+      "name": "Apple TV 1 Month Subscription",
+      "slug": "apple-tv-1-month-subscription",
+      "description": "Apple TV 1 Month Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "apple_tv",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Apple TV features.",
+          "Can be accessed through the official Apple TV application on Smart TVs, or through web browser for computer & smartphones (PC, Mac, Android and iOS).",
+          "Mobile application login on phones or tablets are not supported."
+        ],
+        "platform": "Apple",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is created and managed by SubSlush, and it does not include email access, password changes, or security setting changes.\nFor Smart TVs, the product works through the official Apple TV application.\nFor PC, Mac, Android, and iOS, access is through the web browser only; mobile application login on phones or tablets is not supported.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive Apple TV account access.\nFor Smart TVs, use the official Apple TV app.\nFor PC, Mac, Android, and iOS, use a web browser only; mobile app login on phones/tablets is not supported.\nThis account is managed by SubSlush, so email access, password changes, and security setting changes are not included.",
+        "comparison_price_cents": 1099
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "appletv-logo",
+      "category": "Music",
+      "categories": [
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 1,
+      "fixed_price_cents": 499,
+      "fixed_price_currency": "USD",
+      "sub_category": "Apple"
+    },
+    {
+      "id": "8c8ccd11-e6f4-520a-9595-4d6b1d42a8b8",
+      "name": "Apple TV 12 Months Subscription",
+      "slug": "apple-tv-12-months-subscription",
+      "description": "Apple TV 12 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "apple_tv",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Apple TV features.",
+          "Can be accessed through the official Apple TV application on Smart TVs, or through web browser for computer & smartphones (PC, Mac, Android and iOS).",
+          "Mobile application login on phones or tablets are not supported."
+        ],
+        "platform": "Apple",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is created and managed by SubSlush, and it does not include email access, password changes, or security setting changes.\nFor Smart TVs, the product works through the official Apple TV application.\nFor PC, Mac, Android, and iOS, access is through the web browser only; mobile application login on phones or tablets is not supported.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive Apple TV account access.\nFor Smart TVs, use the official Apple TV app.\nFor PC, Mac, Android, and iOS, use a web browser only; mobile app login on phones/tablets is not supported.\nThis account is managed by SubSlush, so email access, password changes, and security setting changes are not included.",
+        "comparison_price_cents": 15588
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "appletv-logo",
+      "category": "Music",
+      "categories": [
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 5299,
+      "fixed_price_currency": "USD",
+      "sub_category": "Apple"
+    },
+    {
+      "id": "1c4473f9-0764-5441-b46a-d11f77bbede1",
+      "name": "Apple TV 2 Months Subscription",
+      "slug": "apple-tv-2-months-subscription",
+      "description": "Apple TV 2 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "apple_tv",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Apple TV features.",
+          "Can be accessed through the official Apple TV application on Smart TVs, or through web browser for computer & smartphones (PC, Mac, Android and iOS).",
+          "Mobile application login on phones or tablets are not supported."
+        ],
+        "platform": "Apple",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is created and managed by SubSlush, and it does not include email access, password changes, or security setting changes.\nFor Smart TVs, the product works through the official Apple TV application.\nFor PC, Mac, Android, and iOS, access is through the web browser only; mobile application login on phones or tablets is not supported.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive Apple TV account access.\nFor Smart TVs, use the official Apple TV app.\nFor PC, Mac, Android, and iOS, use a web browser only; mobile app login on phones/tablets is not supported.\nThis account is managed by SubSlush, so email access, password changes, and security setting changes are not included.",
+        "comparison_price_cents": 2598
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "appletv-logo",
+      "category": "Music",
+      "categories": [
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 2,
+      "fixed_price_cents": 1299,
+      "fixed_price_currency": "USD",
+      "sub_category": "Apple"
+    },
+    {
+      "id": "e4639257-6d9f-58a1-a318-d5c191b681e7",
+      "name": "Apple TV 3 Months Subscription",
+      "slug": "apple-tv-3-months-subscription",
+      "description": "Apple TV 3 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "apple_tv",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Apple TV features.",
+          "Can be accessed through the official Apple TV application on Smart TVs, or through web browser for computer & smartphones (PC, Mac, Android and iOS).",
+          "Mobile application login on phones or tablets are not supported."
+        ],
+        "platform": "Apple",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is created and managed by SubSlush, and it does not include email access, password changes, or security setting changes.\nFor Smart TVs, the product works through the official Apple TV application.\nFor PC, Mac, Android, and iOS, access is through the web browser only; mobile application login on phones or tablets is not supported.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive Apple TV account access.\nFor Smart TVs, use the official Apple TV app.\nFor PC, Mac, Android, and iOS, use a web browser only; mobile app login on phones/tablets is not supported.\nThis account is managed by SubSlush, so email access, password changes, and security setting changes are not included.",
+        "comparison_price_cents": 3897
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "appletv-logo",
+      "category": "Music",
+      "categories": [
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 3,
+      "fixed_price_cents": 1699,
+      "fixed_price_currency": "USD",
+      "sub_category": "Apple"
+    },
+    {
+      "id": "af63cd3b-bc63-5579-9461-78e3995fa3ab",
+      "name": "Apple TV 6 Months Subscription",
+      "slug": "apple-tv-6-months-subscription",
+      "description": "Apple TV 6 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "apple_tv",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Apple TV features.",
+          "Can be accessed through the official Apple TV application on Smart TVs, or through web browser for computer & smartphones (PC, Mac, Android and iOS).",
+          "Mobile application login on phones or tablets are not supported."
+        ],
+        "platform": "Apple",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is created and managed by SubSlush, and it does not include email access, password changes, or security setting changes.\nFor Smart TVs, the product works through the official Apple TV application.\nFor PC, Mac, Android, and iOS, access is through the web browser only; mobile application login on phones or tablets is not supported.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive Apple TV account access.\nFor Smart TVs, use the official Apple TV app.\nFor PC, Mac, Android, and iOS, use a web browser only; mobile app login on phones/tablets is not supported.\nThis account is managed by SubSlush, so email access, password changes, and security setting changes are not included.",
+        "comparison_price_cents": 7794
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "appletv-logo",
+      "category": "Music",
+      "categories": [
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 6,
+      "fixed_price_cents": 2999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Apple"
+    },
+    {
+      "id": "37343943-79db-5b1f-ae90-d157639651b0",
+      "name": "ChatGPT Pro 1 Month Subscription",
+      "slug": "chatgpt-pro-1-month-subscription",
+      "description": "ChatGPT Pro 1 Month Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "chatgpt",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes everything in Plus and:",
+          "Unlimited GPT‑5.4 messages, with generous access to GPT‑5.4 Thinking, and limited access to GPT‑5.4 Pro",
+          "60+ apps that bring your tools and data into ChatGPT—like Slack, Google Drive, SharePoint, GitHub, Atlassian, and more",
+          "Business features like apps, data analysis, record mode, canvas, shared projects, and custom workspace GPTs",
+          "Encryption at rest and in transit, and no training on your data by default.",
+          "Includes access to Codex and ChatGPT agent for reasoning and taking action across your documents, tools, and codebases"
+        ],
+        "platform": "ChatGPT",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nYou may change the email and password.\nThe account includes access to a ChatGPT Pro workspace with the listed features and limitations.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order.\nYou will receive a private account with login credentials.\nSign in and update email/password if preferred.\nUse the included ChatGPT Pro workspace features according to the listed feature set and limitations.",
+        "comparison_price_cents": 15000
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "chatgpt-logo",
+      "category": "AI",
+      "categories": [
+        "AI",
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 1,
+      "fixed_price_cents": 3999,
+      "fixed_price_currency": "USD",
+      "sub_category": "ChatGPT"
+    },
+    {
+      "id": "90f4acd2-df28-5b11-95d1-a2414299a4b5",
+      "name": "ChatGPT Pro 12 Months Subscription",
+      "slug": "chatgpt-pro-12-months-subscription",
+      "description": "ChatGPT Pro 12 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "chatgpt",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes everything in Plus and:",
+          "Unlimited GPT‑5.4 messages, with generous access to GPT‑5.4 Thinking, and access to GPT‑5.4 Pro",
+          "60+ apps that bring your tools and data into ChatGPT—like Slack, Google Drive, SharePoint, GitHub, Atlassian, and more",
+          "Business features like apps, data analysis, record mode, canvas, shared projects, and custom workspace GPTs",
+          "Encryption at rest and in transit, and no training on your data by default.",
+          "Includes access to Codex and ChatGPT agent for reasoning and taking action across your documents, tools, and codebases"
+        ],
+        "platform": "ChatGPT",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nYou may change the email and password.\nThe account includes access to a ChatGPT Pro workspace with the listed features and limitations.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order.\nYou will receive a private account with login credentials.\nSign in and update email/password if preferred.\nUse the included ChatGPT Pro workspace features according to the listed feature set and limitations.",
+        "comparison_price_cents": 180000
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "chatgpt-logo",
+      "category": "AI",
+      "categories": [
+        "AI",
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 17999,
+      "fixed_price_currency": "USD",
+      "sub_category": "ChatGPT"
+    },
+    {
+      "id": "28dce64d-500d-5a44-b15f-ef373a887196",
+      "name": "ChatGPT Pro 3 Months Subscription",
+      "slug": "chatgpt-pro-3-months-subscription",
+      "description": "ChatGPT Pro 3 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "chatgpt",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes everything in Plus and:",
+          "Unlimited GPT‑5.4 messages, with generous access to GPT‑5.4 Thinking, and access to GPT‑5.4 Pro",
+          "60+ apps that bring your tools and data into ChatGPT—like Slack, Google Drive, SharePoint, GitHub, Atlassian, and more",
+          "Business features like apps, data analysis, record mode, canvas, shared projects, and custom workspace GPTs",
+          "Encryption at rest and in transit, and no training on your data by default.",
+          "Includes access to Codex and ChatGPT agent for reasoning and taking action across your documents, tools, and codebases"
+        ],
+        "platform": "ChatGPT",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nYou may change the email and password.\nThe account includes access to a ChatGPT Pro workspace with the listed features and limitations.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order.\nYou will receive a private account with login credentials.\nSign in and update email/password if preferred.\nUse the included ChatGPT Pro workspace features according to the listed feature set and limitations.",
+        "comparison_price_cents": 45000
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "chatgpt-logo",
+      "category": "AI",
+      "categories": [
+        "AI",
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 3,
+      "fixed_price_cents": 8999,
+      "fixed_price_currency": "USD",
+      "sub_category": "ChatGPT"
+    },
+    {
+      "id": "6eb91ada-5fb4-5dd0-b756-082c7519877f",
+      "name": "ChatGPT Pro 6 Months Subscription",
+      "slug": "chatgpt-pro-6-months-subscription",
+      "description": "ChatGPT Pro 6 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "chatgpt",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes everything in Plus and:",
+          "Unlimited GPT‑5.4 messages, with generous access to GPT‑5.4 Thinking, and access to GPT‑5.4 Pro",
+          "60+ apps that bring your tools and data into ChatGPT—like Slack, Google Drive, SharePoint, GitHub, Atlassian, and more",
+          "Business features like apps, data analysis, record mode, canvas, shared projects, and custom workspace GPTs",
+          "Encryption at rest and in transit, and no training on your data by default.",
+          "Includes access to Codex and ChatGPT agent for reasoning and taking action across your documents, tools, and codebases"
+        ],
+        "platform": "ChatGPT",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nYou may change the email and password.\nThe account includes access to a ChatGPT Pro workspace with the listed features and limitations.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order.\nYou will receive a private account with login credentials.\nSign in and update email/password if preferred.\nUse the included ChatGPT Pro workspace features according to the listed feature set and limitations.",
+        "comparison_price_cents": 90000
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "chatgpt-logo",
+      "category": "AI",
+      "categories": [
+        "AI",
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 6,
+      "fixed_price_cents": 11999,
+      "fixed_price_currency": "USD",
+      "sub_category": "ChatGPT"
+    },
+    {
+      "id": "4175f0f2-c3e6-56ff-93ea-dd0a70e7f4e5",
+      "name": "Linked Premium Career 3 months",
+      "slug": "linked-premium-career-3-months",
+      "description": "Linked Premium Career 3 months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "linkedin",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes LinkedIn Premium Career features such as LinkedIn Premium access for 3 months, InMail credits, \"Who viewed your profile\" insights, Full LinkedIn learning library access,",
+          "Faster networking & smarter outreach tools."
+        ],
+        "platform": "Linkedin",
+        "info_box_text": "This product is delivered as an activation link that you redeem on your own LinkedIn account.\nIt can only be applied to an account that has never used a LinkedIn offer before.\nPlease verify eligibility before purchase, because delivered activation links cannot be reversed or refunded.",
+        "upgrade_options": {
+          "allow_new_account": false,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_only"
+        },
+        "activation_guide": "Before purchasing, confirm your LinkedIn account has never used a Premium offer before.\nPlace your order and receive the activation link.\nLog in to your LinkedIn account and open the activation link to apply the plan.\nIf the account has used a previous offer, activation may fail, and delivered links cannot be reversed or refunded.",
+        "comparison_price_cents": 5997
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "linkedin-logo",
+      "category": "Productivity",
+      "categories": [
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 3,
+      "fixed_price_cents": 1499,
+      "fixed_price_currency": "USD",
+      "sub_category": "Linkedin"
+    },
+    {
+      "id": "6db605af-77be-5e01-9904-ddfd0022a1b3",
+      "name": "LinkedIn Premium Business 12 months",
+      "slug": "linkedin-premium-business-12-months",
+      "description": "LinkedIn Premium Business 12 months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "linkedin",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes all LinkedIn Premium Business features."
+        ],
+        "platform": "Linkedin",
+        "info_box_text": "This product is delivered as an upgrade or renewal on your own LinkedIn account.\nDuring checkout, provide your LinkedIn email and password so SubSlush can complete manual fulfillment.\nFor security, we recommend using a temporary password first and changing it back after activation is completed.",
+        "upgrade_options": {
+          "allow_new_account": false,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_and_password"
+        },
+        "activation_guide": "Before checkout, change your LinkedIn password to a temporary one.\nDuring checkout, provide your LinkedIn email and temporary password for manual fulfillment.\nSubSlush applies the Premium Business upgrade or renewal directly to your account.\nAfter activation is completed, sign in, confirm access, and change your password again to a private one.",
+        "comparison_price_cents": 53999
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "linkedin-logo",
+      "category": "Productivity",
+      "categories": [
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 17499,
+      "fixed_price_currency": "USD",
+      "sub_category": "Linkedin"
+    },
+    {
+      "id": "2de9f4bb-e062-5fb7-b88c-cce039dacbf8",
+      "name": "LinkedIn Sales Navigator 12 months",
+      "slug": "linkedin-sales-navigator-12-months",
+      "description": "LinkedIn Sales Navigator 12 months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "linkedin",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes all LinkedIn Sales Navigator features."
+        ],
+        "platform": "Linkedin",
+        "info_box_text": "This product is delivered as an upgrade or renewal on your own LinkedIn account.\nDuring checkout, provide your LinkedIn email and password so SubSlush can complete manual fulfillment.\nFor security, we recommend using a temporary password first and changing it back after activation is completed.",
+        "upgrade_options": {
+          "allow_new_account": false,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_and_password"
+        },
+        "activation_guide": "Before checkout, we recommend to change your LinkedIn password to a temporary one.\nDuring checkout, provide your LinkedIn email and temporary password for manual fulfillment.\nSubSlush applies the Sales Navigator upgrade or renewal directly to your account.\nAfter activation is completed, sign in, confirm access, and change your password again to a private one.",
+        "comparison_price_cents": 107988
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "linkedin-logo",
+      "category": "Productivity",
+      "categories": [
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 29999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Linkedin"
+    },
+    {
+      "id": "a665aee8-00e1-5721-82d9-66797d5d10ec",
+      "name": "Lovable (100 credits) 1 Month Subscription",
+      "slug": "lovable-100-credits-1-month-subscription",
+      "description": "Lovable (100 credits) 1 Month Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "loveable",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Loveable features, including 100 credits."
+        ],
+        "platform": "Loveable",
+        "info_box_text": "This product is delivered as a new workspace to your Loveable account.\nThe workspace includes 100 credits that are available for 30 days.",
+        "upgrade_options": {
+          "allow_new_account": false,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_only"
+        },
+        "activation_guide": "During checkout, provide the email linked to your Lovable account.\nSubSlush delivers a new workspace to that account.\nOpen the workspace and confirm 100 credits are available.\nUse the credits within 30 days, since this subscription period is 1 month.",
+        "comparison_price_cents": 2500
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "lovable-logo",
+      "category": "AI",
+      "categories": [
+        "AI"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 1,
+      "fixed_price_cents": 1299,
+      "fixed_price_currency": "USD",
+      "sub_category": "Loveable"
+    },
+    {
+      "id": "0ed9983f-b101-566c-b2fc-58daadc5682b",
+      "name": "Myfitnesspal Premium 12 months",
+      "slug": "myfitnesspal-premium-12-months",
+      "description": "Myfitnesspal Premium 12 months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "myfitnesspal",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Myfitness Premium features."
+        ],
+        "platform": "Myfitnesspal",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nYou will receive a new account with email and password.\nAfter delivery, you can change both the email and password.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order for the product.\nYou will receive a new private MyFitnessPal account with email and password.\nSign in and confirm Premium access is active.\nChange the account email and password to your own details after delivery.",
+        "comparison_price_cents": 9999
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "myfitnesspal-logo",
+      "category": "Fitness",
+      "categories": [
+        "Fitness"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 4899,
+      "fixed_price_currency": "USD",
+      "sub_category": "Myfitnesspal"
+    },
+    {
+      "id": "e107925d-7b3e-5532-85d5-de0965a2fe4f",
+      "name": "n8n Starter 12 Months Subscription",
+      "slug": "n8n-starter-12-months-subscription",
+      "description": "n8n Starter 12 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "n8n",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all n8n Starter features."
+        ],
+        "platform": "n8n",
+        "info_box_text": "This product is delivered as an upgrade or renewal on your own n8n account, or to a newly provisioned account when you choose Upgrade New Account.\nFor Upgrade Own Account, provide your n8n email and password during checkout for manual fulfillment, and using a temporary password is recommended.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_and_password"
+        },
+        "activation_guide": "At checkout, choose Upgrade Own Account or Upgrade New Account.\nIf upgrading your own account, provide your n8n email and a temporary password for manual fulfillment.\nIf upgrading a new account, SubSlush provisions the account and applies the plan for you.\nAfter activation, confirm access is active and change your password back if you shared credentials.",
+        "comparison_price_cents": 27800
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "n8n-logo",
+      "category": "AI",
+      "categories": [
+        "AI"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 10999,
+      "fixed_price_currency": "USD",
+      "sub_category": "n8n"
+    },
+    {
+      "id": "ae550037-524d-51b6-9338-e577243e6aa1",
+      "name": "Netflix Basic 1 Month",
+      "slug": "netflix-basic-1-month",
+      "description": "Netflix Basic 1 Month with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 1 supported device at a time",
+          "Watch in 720p (HD)",
+          "Download on 1 supported device at a time"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks.\nFor 1-month terms, free VPN access is not included, so you must use your own VPN if needed.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use this same account for future renewals if you buy another Netflix product from SubSlush.\nA VPN may be required during the first month due to region locks; for this 1-month product, you must use your own VPN if needed.\nAfter the first month, region locks are typically removed.",
+        "comparison_price_cents": 1199
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 1,
+      "fixed_price_cents": 699,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "08442943-4745-58c8-85f2-f74fb4762603",
+      "name": "Netflix Basic 12 Months",
+      "slug": "netflix-basic-12-months",
+      "description": "Netflix Basic 12 Months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 1 supported device at a time",
+          "Watch in 720p (HD)",
+          "Download on 1 supported device at a time"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks; SubSlush provides free VPN access for the first subscription period on 3, 6, and 12 month terms.\nThe Netflix subscription is automatically renewed each month on the same account for the full 12-month term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use the same account for the full term; the subscription renews automatically each month for 12 months.\nIf region lock applies in the first month, SubSlush will provide access to a VPN free of charge.\nContinue using the same account for ongoing access and future renewals.",
+        "comparison_price_cents": 14388
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 5999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "c8fe726e-edd6-5283-a574-192a3c0bcc8e",
+      "name": "Netflix Basic 3 Months",
+      "slug": "netflix-basic-3-months",
+      "description": "Netflix Basic 3 Months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 1 supported device at a time",
+          "Watch in 720p (HD)",
+          "Download on 1 supported device at a time"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks; SubSlush provides free VPN access for the first subscription period on 3, 6, and 12 month terms.\nThe Netflix subscription is automatically renewed each month on the same account for the full 3-month term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use the same account for the full term; the subscription renews automatically each month for 3 months.\nIf region lock applies in the first month, SubSlush will provide access to a VPN free of charge.\nContinue using the same account for ongoing access and future renewals.",
+        "comparison_price_cents": 3597
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 3,
+      "fixed_price_cents": 1999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "c02f3d7b-e865-50fa-9b56-174195c509a3",
+      "name": "Netflix Basic 6 Months",
+      "slug": "netflix-basic-6-months",
+      "description": "Netflix Basic 6 Months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 1 supported device at a time",
+          "Watch in 720p (HD)",
+          "Download on 1 supported device at a time"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks; SubSlush provides free VPN access for the first subscription period on 3, 6, and 12 month terms.\nThe Netflix subscription is automatically renewed each month on the same account for the full 6-month term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use the same account for the full term; the subscription renews automatically each month for 6 months.\nIf region lock applies in the first month, SubSlush will provide access to a VPN free of charge.\nContinue using the same account for ongoing access and future renewals.",
+        "comparison_price_cents": 7195
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 6,
+      "fixed_price_cents": 3399,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "2e5e158a-e50e-5b2b-8e95-a4f5af8ac4de",
+      "name": "Netflix Premium 4K 1 Month",
+      "slug": "netflix-premium-4k-1-month",
+      "description": "Netflix Premium 4K 1 Month with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 4 supported devices at a time",
+          "Watch in 4K (Ultra HD) + HDR",
+          "Download on 6 supported devices at a time",
+          "Netflix spatial audio"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks.\nFor 1-month terms, free VPN access is not included, so you must use your own VPN if needed.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use this same account for future renewals if you buy another Netflix product from SubSlush.\nA VPN may be required during the first month due to region locks; for this 1-month product, you must use your own VPN if needed.\nAfter the first month, region locks are typically removed.",
+        "comparison_price_cents": 2499
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 1,
+      "fixed_price_cents": 1499,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "eac4a400-22fa-5ada-843e-7de13676a0e7",
+      "name": "Netflix Premium 4K 12 Months",
+      "slug": "netflix-premium-4k-12-months",
+      "description": "Netflix Premium 4K 12 Months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 4 supported devices at a time",
+          "Watch in 4K (Ultra HD) + HDR",
+          "Download on 6 supported devices at a time",
+          "Netflix spatial audio"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks; SubSlush provides free VPN access for the first subscription period on 3, 6, and 12 month terms.\nThe Netflix subscription is automatically renewed each month on the same account for the full 12-month term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use the same account for the full term; the subscription renews automatically each month for 12 months.\nIf region lock applies in the first month, SubSlush will provide access to a VPN free of charge.\nContinue using the same account for ongoing access and future renewals.",
+        "comparison_price_cents": 29988
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 11999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "e1223f9f-669d-5377-8f2a-9afc8cba200c",
+      "name": "Netflix Premium 4K 3 Months",
+      "slug": "netflix-premium-4k-3-months",
+      "description": "Netflix Premium 4K 3 Months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 4 supported devices at a time",
+          "Watch in 4K (Ultra HD) + HDR",
+          "Download on 6 supported devices at a time",
+          "Netflix spatial audio"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks; SubSlush provides free VPN access for the first subscription period on 3, 6, and 12 month terms.\nThe Netflix subscription is automatically renewed each month on the same account for the full 3-month term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use the same account for the full term; the subscription renews automatically each month for 3 months.\nIf region lock applies in the first month, SubSlush will provide access to a VPN free of charge.\nContinue using the same account for ongoing access and future renewals.",
+        "comparison_price_cents": 7497
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 3,
+      "fixed_price_cents": 4099,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "196adbbe-6f4e-59c6-b05b-f9e40d625aab",
+      "name": "Netflix Premium 4K 6 Months",
+      "slug": "netflix-premium-4k-6-months",
+      "description": "Netflix Premium 4K 6 Months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 4 supported devices at a time",
+          "Watch in 4K (Ultra HD) + HDR",
+          "Download on 6 supported devices at a time",
+          "Netflix spatial audio"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks; SubSlush provides free VPN access for the first subscription period on 3, 6, and 12 month terms.\nThe Netflix subscription is automatically renewed each month on the same account for the full 6-month term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use the same account for the full term; the subscription renews automatically each month for 6 months.\nIf region lock applies in the first month, SubSlush will provide access to a VPN free of charge.\nContinue using the same account for ongoing access and future renewals.",
+        "comparison_price_cents": 14994
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 6,
+      "fixed_price_cents": 6999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "0653853f-c3cb-5337-94a6-9db9e41c0033",
+      "name": "Netflix Standard 1 Month",
+      "slug": "netflix-standard-1-month",
+      "description": "Netflix Standard 1 Month with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 2 supported devices at a time",
+          "Watch in 1080p (Full HD)",
+          "Download on 2 supported devices at a time"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks.\nFor 1-month terms, free VPN access is not included, so you must use your own VPN if needed.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use this same account for future renewals if you buy another Netflix product from SubSlush.\nA VPN may be required during the first month due to region locks; for this 1-month product, you must use your own VPN if needed.\nAfter the first month, region locks are typically removed.",
+        "comparison_price_cents": 1799
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 1,
+      "fixed_price_cents": 999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "335b1e19-7db8-5e01-a323-b6bde4336ddf",
+      "name": "Netflix Standard 12 Months",
+      "slug": "netflix-standard-12-months",
+      "description": "Netflix Standard 12 Months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 2 supported devices at a time",
+          "Watch in 1080p (Full HD)",
+          "Download on 2 supported devices at a time"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks; SubSlush provides free VPN access for the first subscription period on 3, 6, and 12 month terms.\nThe Netflix subscription is automatically renewed each month on the same account for the full 12-month term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use the same account for the full term; the subscription renews automatically each month for 12 months.\nIf region lock applies in the first month, SubSlush will provide access to a VPN free of charge.\nContinue using the same account for ongoing access and future renewals.",
+        "comparison_price_cents": 21588
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 9999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "93218a36-da71-59ec-81fc-60df163e8e12",
+      "name": "Netflix Standard 3 Months",
+      "slug": "netflix-standard-3-months",
+      "description": "Netflix Standard 3 Months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 2 supported devices at a time",
+          "Watch in 1080p (Full HD)",
+          "Download on 2 supported devices at a time"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks; SubSlush provides free VPN access for the first subscription period on 3, 6, and 12 month terms.\nThe Netflix subscription is automatically renewed each month on the same account for the full 3-month term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use the same account for the full term; the subscription renews automatically each month for 3 months.\nIf region lock applies in the first month, SubSlush will provide access to a VPN free of charge.\nContinue using the same account for ongoing access and future renewals.",
+        "comparison_price_cents": 5397
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 3,
+      "fixed_price_cents": 2799,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "50b120b0-e3e3-5de4-8527-caf9c1395bb6",
+      "name": "Netflix Standard 6 Months",
+      "slug": "netflix-standard-6-months",
+      "description": "Netflix Standard 6 Months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "netflix",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Unlimited ad-free movies, TV shows, and games",
+          "Watch on 2 supported devices at a time",
+          "Watch in 1080p (Full HD)",
+          "Download on 2 supported devices at a time"
+        ],
+        "platform": "Netflix",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with anyone else.\nThe account is provisioned and managed by SubSlush, and the same account can be used for renewals by purchasing another Netflix product from SubSlush.\nA VPN may be required in the first month due to Netflix region locks; SubSlush provides free VPN access for the first subscription period on 3, 6, and 12 month terms.\nThe Netflix subscription is automatically renewed each month on the same account for the full 6-month term.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "Place your order and receive your managed Netflix account credentials.\nSign in and use the same account for the full term; the subscription renews automatically each month for 6 months.\nIf region lock applies in the first month, SubSlush will provide access to a VPN free of charge.\nContinue using the same account for ongoing access and future renewals.",
+        "comparison_price_cents": 10794
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "netflix",
+      "category": "Streaming",
+      "categories": [
+        "Streaming"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 6,
+      "fixed_price_cents": 5299,
+      "fixed_price_currency": "USD",
+      "sub_category": "Netflix"
+    },
+    {
+      "id": "fe48d040-0502-567c-af28-bf61891c0af5",
+      "name": "Notion Plus 12 months",
+      "slug": "notion-plus-12-months",
+      "description": "Notion Plus 12 months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "notion",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Access to all Notion plus features. AI credits are not included."
+        ],
+        "platform": "Notion",
+        "info_box_text": "This offer provides private account access only, and the account is not shared with other users.\nYou receive access to the email account connected to this Notion account.\nDelivery is under an existing Notion workspace, so creating a separate paid workspace on this account is not supported.\nYour projects remain private unless you explicitly share them, and you may update credentials and security settings after delivery.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": false,
+          "manual_monthly_upgrade": false
+        },
+        "activation_guide": "During checkout, place your order for Notion account access.\nYou will receive Notion login details plus access to the connected email account.\nSign in to the existing managed Notion workspace; creating a separate paid workspace on this account is not supported.\nAfter delivery, you may update credentials and security settings; your projects remain private unless you explicitly share them.",
+        "comparison_price_cents": 12000
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "notion-logo",
+      "category": "Productivity",
+      "categories": [
+        "Productivity"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 2999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Notion"
+    },
+    {
+      "id": "f41416f9-a4dc-5439-b979-7758c05be2af",
+      "name": "Perplexity Pro 12 Months Subscription",
+      "slug": "perplexity-pro-12-months-subscription",
+      "description": "Perplexity Pro 12 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "perplexity",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Perplexity Pro features."
+        ],
+        "platform": "Perplexity",
+        "info_box_text": "This product is delivered as an activation code that you redeem on your own Perplexity account.\nThe code can only be applied to a Perplexity account that has never had a Perplexity Pro subscription before.",
+        "upgrade_options": {
+          "allow_new_account": false,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_only"
+        },
+        "activation_guide": "Use a Perplexity account that has never had Perplexity Pro before.\nPlace your order and receive your activation code.\nLog in to your eligible Perplexity account and redeem the code.\nConfirm Pro access is active on that same account.",
+        "comparison_price_cents": 20400
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "perplexity-logo",
+      "category": "AI",
+      "categories": [
+        "AI"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 3999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Perplexity"
+    },
+    {
+      "id": "b099b007-9947-586b-b791-ba86066a5832",
+      "name": "Spotify Premium 1 month",
+      "slug": "spotify-premium-1-month",
+      "description": "Spotify Premium 1 month with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "spotify",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Access to all Spotify Premium features.",
+          "Does not include access to Spotify audiobooks."
+        ],
+        "platform": "Spotify",
+        "info_box_text": "This product is delivered as an upgrade or renewal on your own Spotify account, or to a newly provisioned account when you choose Upgrade New Account.\nFor Upgrade Own Account, provide your Spotify email and password during checkout for manual fulfillment, and using a temporary password is recommended.\nThe account must not have an active subscription at activation time.\nThe plan can be applied to Spotify accounts globally, and region may be adjusted during fulfillment while keeping full Premium feature access.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_and_password"
+        },
+        "activation_guide": "At checkout, choose Upgrade Own Account or Upgrade New Account.\nIf upgrading your own account, make sure there is no active Spotify subscription, then provide Spotify email and temporary password.\nSubSlush applies the upgrade or renewal (region may be adjusted if required for activation); new-account orders receive credentials after setup.\nAfter activation, sign in and confirm Premium access, then change your password back if you shared credentials.",
+        "comparison_price_cents": 1299
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "spotify",
+      "category": "Music",
+      "categories": [
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 1,
+      "fixed_price_cents": 499,
+      "fixed_price_currency": "USD",
+      "sub_category": "Spotify"
+    },
+    {
+      "id": "de9f7a14-79cb-590d-9134-58a61822fbce",
+      "name": "Spotify Premium 12 months",
+      "slug": "spotify-premium-12-months",
+      "description": "Spotify Premium 12 months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "spotify",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Spotify Premium features.",
+          "Does not include access to Spotify audiobooks."
+        ],
+        "platform": "Spotify",
+        "info_box_text": "This product is delivered as an upgrade or renewal on your own Spotify account, or to a newly provisioned account when you choose Upgrade New Account.\nFor Upgrade Own Account, provide your Spotify email and password during checkout for manual fulfillment, and using a temporary password is recommended.\nThe account must not have an active subscription at activation time.\nThe plan can be applied to Spotify accounts globally, and region may be adjusted during fulfillment while keeping full Premium feature access.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_and_password"
+        },
+        "activation_guide": "At checkout, choose Upgrade Own Account or Upgrade New Account.\nIf upgrading your own account, make sure there is no active Spotify subscription, then provide Spotify email and temporary password.\nSubSlush applies the upgrade or renewal (region may be adjusted if required for activation); new-account orders receive credentials after setup.\nAfter activation, sign in and confirm Premium access, then change your password back if you shared credentials.",
+        "comparison_price_cents": 15588
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "spotify",
+      "category": "Music",
+      "categories": [
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 5699,
+      "fixed_price_currency": "USD",
+      "sub_category": "Spotify"
+    },
+    {
+      "id": "67e64371-bfce-5952-b856-155802b6694e",
+      "name": "Spotify Premium 3 months",
+      "slug": "spotify-premium-3-months",
+      "description": "Spotify Premium 3 months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "spotify",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Access to all Spotify Premium features.",
+          "Does not include access to Spotify audiobooks."
+        ],
+        "platform": "Spotify",
+        "info_box_text": "This product is delivered as an upgrade or renewal on your own Spotify account, or to a newly provisioned account when you choose Upgrade New Account.\nFor Upgrade Own Account, provide your Spotify email and password during checkout for manual fulfillment, and using a temporary password is recommended.\nThe account must not have an active subscription at activation time.\nThe plan can be applied to Spotify accounts globally, and region may be adjusted during fulfillment while keeping full Premium feature access.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_and_password"
+        },
+        "activation_guide": "At checkout, choose Upgrade Own Account or Upgrade New Account.\nIf upgrading your own account, make sure there is no active Spotify subscription, then provide Spotify email and temporary password.\nSubSlush applies the upgrade or renewal (region may be adjusted if required for activation); new-account orders receive credentials after setup.\nAfter activation, sign in and confirm Premium access, then change your password back if you shared credentials.",
+        "comparison_price_cents": 3897
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "spotify",
+      "category": "Music",
+      "categories": [
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 3,
+      "fixed_price_cents": 1799,
+      "fixed_price_currency": "USD",
+      "sub_category": "Spotify"
+    },
+    {
+      "id": "b2e1848e-339c-582e-8233-04f99a391a1f",
+      "name": "Spotify Premium 6 months",
+      "slug": "spotify-premium-6-months",
+      "description": "Spotify Premium 6 months with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "spotify",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Access to all Spotify Premium features.",
+          "Does not include access to Spotify audiobooks."
+        ],
+        "platform": "Spotify",
+        "info_box_text": "This product is delivered as an upgrade or renewal on your own Spotify account, or to a newly provisioned account when you choose Upgrade New Account.\nFor Upgrade Own Account, provide your Spotify email and password during checkout for manual fulfillment, and using a temporary password is recommended.\nThe account must not have an active subscription at activation time.\nThe plan can be applied to Spotify accounts globally, and region may be adjusted during fulfillment while keeping full Premium feature access.",
+        "upgrade_options": {
+          "allow_new_account": true,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_and_password"
+        },
+        "activation_guide": "At checkout, choose Upgrade Own Account or Upgrade New Account.\nIf upgrading your own account, make sure there is no active Spotify subscription, then provide Spotify email and temporary password.\nSubSlush applies the upgrade or renewal (region may be adjusted if required for activation); new-account orders receive credentials after setup.\nAfter activation, sign in and confirm Premium access, then change your password back if you shared credentials.",
+        "comparison_price_cents": 7794
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "spotify",
+      "category": "Music",
+      "categories": [
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 6,
+      "fixed_price_cents": 3199,
+      "fixed_price_currency": "USD",
+      "sub_category": "Spotify"
+    },
+    {
+      "id": "9888edf4-9ea0-5f88-9fc7-ec809d4b5d58",
+      "name": "Youtube Premium 12 Months Subscription",
+      "slug": "youtube-premium-12-months-subscription",
+      "description": "Youtube Premium 12 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "youtube",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Youtube Premium features."
+        ],
+        "platform": "Youtube",
+        "info_box_text": "This product is delivered as an activation link that you redeem on your own YouTube account.",
+        "upgrade_options": {
+          "allow_new_account": false,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_only"
+        },
+        "activation_guide": "Place your order and receive the activation link.\nLog in to the YouTube/Google account you want to use.\nOpen the activation link while signed in to that account.\nComplete redemption and confirm YouTube Premium is active.",
+        "comparison_price_cents": 16788
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "youtube-logo",
+      "category": "Streaming",
+      "categories": [
+        "Streaming",
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 6499,
+      "fixed_price_currency": "USD",
+      "sub_category": "Youtube"
+    },
+    {
+      "id": "848078a4-5542-560d-b60c-4bb04b54d021",
+      "name": "Youtube Premium 3 Months Subscription",
+      "slug": "youtube-premium-3-months-subscription",
+      "description": "Youtube Premium 3 Months Subscription with fulfillment handled by SubSlush according to the listed delivery flow.",
+      "service_type": "youtube",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Includes access to all Youtube Premium features."
+        ],
+        "platform": "Youtube",
+        "info_box_text": "This product is delivered as an activation link that you redeem on your own YouTube account.",
+        "upgrade_options": {
+          "allow_new_account": false,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_only"
+        },
+        "activation_guide": "Place your order and receive the activation link.\nLog in to the YouTube/Google account you want to use.\nOpen the activation link while signed in to that account.\nComplete redemption and confirm YouTube Premium is active.",
+        "comparison_price_cents": 4197
+      },
+      "created_at": "2026-03-29 12:00:00.000000",
+      "updated_at": "2026-03-29 12:00:00.000000",
+      "logo_key": "youtube-logo",
+      "category": "Streaming",
+      "categories": [
+        "Streaming",
+        "Music"
+      ],
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 3,
+      "fixed_price_cents": 2499,
+      "fixed_price_currency": "USD",
+      "sub_category": "Youtube"
+    }
+  ]
+}

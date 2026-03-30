@@ -7,6 +7,8 @@ export type CartItem = {
   id: string;
   serviceType: string;
   serviceName: string;
+  logoKey?: string;
+  logoUrl?: string;
   plan: string;
   price: number;
   currency?: string;
@@ -28,14 +30,6 @@ export const cartAddPulse = {
   subscribe: subscribeCartAddPulse
 };
 
-const buildUniqueCartItemId = (baseId: string): string => {
-  const randomPart =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
-  return `${baseId}::${randomPart}`;
-};
-
 const sanitizeCartItem = (raw: unknown): CartItem | null => {
   if (!raw || typeof raw !== 'object') return null;
   const candidate = raw as Record<string, unknown>;
@@ -43,6 +37,18 @@ const sanitizeCartItem = (raw: unknown): CartItem | null => {
     id: typeof candidate.id === 'string' ? candidate.id : '',
     serviceType: typeof candidate.serviceType === 'string' ? candidate.serviceType : '',
     serviceName: typeof candidate.serviceName === 'string' ? candidate.serviceName : '',
+    logoKey:
+      typeof candidate.logoKey === 'string'
+        ? candidate.logoKey
+        : typeof candidate.logo_key === 'string'
+          ? candidate.logo_key
+          : undefined,
+    logoUrl:
+      typeof candidate.logoUrl === 'string'
+        ? candidate.logoUrl
+        : typeof candidate.logo_url === 'string'
+          ? candidate.logo_url
+          : undefined,
     plan: typeof candidate.plan === 'string' ? candidate.plan : '',
     price: Number.isFinite(candidate.price) ? Number(candidate.price) : 0,
     currency: typeof candidate.currency === 'string' ? candidate.currency : undefined,
@@ -97,7 +103,7 @@ function loadCart(): CartItem[] {
     const sanitized = parsed
       .map(sanitizeCartItem)
       .filter((item): item is CartItem => item !== null);
-    return expandQuantities(sanitized);
+    return sanitized;
   } catch (error) {
     console.error('Failed to load cart from storage:', error);
     return [];
@@ -117,20 +123,6 @@ function persistCart(items: CartItem[]) {
   }
 }
 
-const expandQuantities = (items: CartItem[]): CartItem[] =>
-  items.flatMap(item => {
-    const copies = Math.max(1, Math.floor(item.quantity));
-    if (copies === 1) {
-      return [{ ...item, quantity: 1 }];
-    }
-
-    return Array.from({ length: copies }).map((_, index) => ({
-      ...item,
-      id: index === 0 ? item.id : buildUniqueCartItemId(item.id),
-      quantity: 1
-    }));
-  });
-
 function createCartStore() {
   const { subscribe, update, set } = writable<CartItem[]>(loadCart());
 
@@ -139,12 +131,26 @@ function createCartStore() {
     addItem: (item: CartItem) => update(current => {
       const incoming = {
         ...item,
-        quantity: 1
+        quantity:
+          typeof item.quantity === 'number' && Number.isFinite(item.quantity)
+            ? Math.max(1, Math.floor(item.quantity))
+            : 1
       };
-      const safeItemId = current.some(cartItem => cartItem.id === incoming.id)
-        ? buildUniqueCartItemId(incoming.id)
-        : incoming.id;
-      const updated = [...current, { ...incoming, id: safeItemId }];
+      const existingIndex = current.findIndex(cartItem => cartItem.id === incoming.id);
+      const updated =
+        existingIndex >= 0
+          ? current.map((cartItem, index) =>
+              index === existingIndex
+                ? {
+                    ...cartItem,
+                    quantity: Math.max(
+                      1,
+                      Math.floor(cartItem.quantity) + incoming.quantity
+                    )
+                  }
+                : cartItem
+            )
+          : [...current, incoming];
       persistCart(updated);
       setCartAddPulse(Date.now());
       return updated;
@@ -165,9 +171,8 @@ function createCartStore() {
       const sanitized = items
         .map(sanitizeCartItem)
         .filter((item): item is CartItem => item !== null);
-      const expanded = expandQuantities(sanitized);
-      persistCart(expanded);
-      set(expanded);
+      persistCart(sanitized);
+      set(sanitized);
     },
     clear: () => {
       persistCart([]);

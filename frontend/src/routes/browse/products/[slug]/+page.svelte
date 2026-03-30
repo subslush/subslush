@@ -55,6 +55,7 @@
   let selectedTerm: ProductTermOption | null = null;
   let selectedFeatures: string[] = [];
   let upgradeOptions: UpgradeOptions | null = null;
+  let productLogoNeedsDarkTile = false;
   let upgradeSelectionType: UpgradeSelectionType | '' = '';
   let manualMonthlyAcknowledged = false;
   let showActivationGuide = false;
@@ -95,8 +96,27 @@
     variant.display_name || variant.plan_code || variant.name || 'Plan';
 
   $: productLogo =
-    resolveLogoKey(product?.logoKey ?? product?.logo_key ?? product?.slug) ||
-    resolveLogoKeyFromName(product?.name);
+    resolveLogoKey(
+      product?.logoKey ??
+        product?.logo_key ??
+        product?.service_type ??
+        product?.slug
+    ) ||
+    resolveLogoKeyFromName(
+      product?.service_type ?? product?.name ?? product?.slug
+    ) ||
+    resolveLogoKeyFromName(product?.name) ||
+    resolveLogoKeyFromName(product?.slug);
+  $: productLogoNeedsDarkTile = [
+    product?.slug,
+    product?.logoKey,
+    product?.logo_key,
+    product?.service_type,
+    product?.name
+  ].some(value =>
+    typeof value === 'string' &&
+    value.toLowerCase().replace(/[^a-z0-9]+/g, '').includes('appletv')
+  );
 
   $: upgradeOptions = product?.upgrade_options || null;
   $: hasUpgradeSelection = Boolean(
@@ -453,6 +473,7 @@
       }),
       serviceType: product.service_type || product.slug || product.name,
       serviceName: product.name,
+      logoKey: product.logoKey || product.logo_key || undefined,
       plan: resolveVariantLabel(variant),
       price: term.total_price,
       currency: variant.currency,
@@ -490,6 +511,7 @@
       }),
       serviceType: product.service_type || product.slug || product.name,
       serviceName: product.name,
+      logoKey: product.logoKey || product.logo_key || undefined,
       plan: resolveVariantLabel(variant),
       price: term.total_price,
       currency: variant.currency,
@@ -578,19 +600,23 @@
       <section class="space-y-6">
         <article>
           <div class="grid gap-5 lg:grid-cols-[255px_minmax(0,1fr)] lg:items-center">
-            <div class="relative mx-auto flex aspect-square w-full max-w-[250px] items-center justify-center overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_20px_34px_rgba(15,23,42,0.12)]">
+            <div class={`relative mx-auto flex aspect-square w-full max-w-[250px] items-center justify-center overflow-hidden rounded-3xl border border-slate-200 shadow-[0_20px_34px_rgba(15,23,42,0.12)] ${productLogoNeedsDarkTile ? 'bg-slate-950' : 'bg-white'}`}>
               {#if productLogo}
                 <ResponsiveImage
                   image={productLogo}
                   alt={`${product.name} logo`}
                   sizes="(min-width: 1024px) 250px, 46vw"
-                  pictureClass="relative z-10 block h-full w-full"
-                  imgClass="h-full w-full object-cover object-center"
+                  pictureClass={productLogoNeedsDarkTile
+                    ? 'relative z-10 flex h-full w-full items-center justify-center p-6'
+                    : 'relative z-10 block h-full w-full'}
+                  imgClass={productLogoNeedsDarkTile
+                    ? 'max-h-full max-w-full object-contain'
+                    : 'h-full w-full object-cover object-center'}
                   loading="eager"
                   decoding="async"
                 />
               {:else}
-                <span class="relative z-10 text-6xl font-black uppercase text-slate-900/90">
+                <span class={`relative z-10 text-6xl font-black uppercase ${productLogoNeedsDarkTile ? 'text-white/90' : 'text-slate-900/90'}`}>
                   {product.name.slice(0, 2)}
                 </span>
               {/if}
@@ -913,7 +939,8 @@
                 <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
               </summary>
               <p class="px-3 pb-3 text-xs text-slate-600">
-                Digital delivery starts automatically after your order is confirmed.
+                Every order is manually fulfilled through a fair queue. Most orders are delivered
+                within 24 hours, and in rare cases delivery can take up to 72 hours.
               </p>
             </details>
             <details class="group rounded-xl border border-slate-200 bg-white">
@@ -927,7 +954,9 @@
                 <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
               </summary>
               <p class="px-3 pb-3 text-xs text-slate-600">
-                Covered by our refund policy if delivery requirements are not met.
+                Shop with confidence. If an issue occurs with your purchase, our support team will
+                review it and provide a refund or replacement when eligible under our Terms &
+                Conditions.
               </p>
             </details>
             <details class="group rounded-xl border border-slate-200 bg-white">
@@ -941,7 +970,9 @@
                 <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
               </summary>
               <p class="px-3 pb-3 text-xs text-slate-600">
-                All checkout flows are protected with encrypted payment processing.
+                Fast, seamless checkout secured with advanced encryption and continuous monitoring.
+                Backed by TrustGuard and anti-fraud partners, with extra verification for
+                PCI-DSS-secure payment methods.
               </p>
             </details>
           </div>

@@ -1,0 +1,88 @@
+{
+  "exported_from": "curated input",
+  "exported_at_utc": "2026-03-27T13:50:00Z",
+  "selected_product_slugs": [
+    "duolingo-max-12-months",
+    "duolingo-super-12-months"
+  ],
+  "sub_categories": [
+    {
+      "id": "4b7a4fe1-1a3a-4736-ba60-185815753dff",
+      "category": "Education, Productivity",
+      "name": "Duolingo",
+      "slug": "duolingo",
+      "created_at": "2026-03-27T13:50:00.000000",
+      "updated_at": "2026-03-27T13:50:00.000000"
+    }
+  ],
+  "products": [
+    {
+      "id": "7c7b4416-2c0e-497f-8453-b8700d6776a8",
+      "name": "Duolingo Max 12 Months Subscription",
+      "slug": "duolingo-max-12-months",
+      "description": "Duolingo Max annual access delivered by invitation to your existing Duolingo account.",
+      "service_type": "duolingo",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Access to all Duolingo Max features."
+        ],
+        "platform": "Duolingo",
+        "info_box_text": "Your subscription is delivered directly to your Duolingo account.\nAt checkout, provide the email address linked to that account.\nYou will receive an invitation to join the Duolingo Max plan on the same account.",
+        "upgrade_options": {
+          "allow_new_account": false,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_only"
+        },
+        "activation_guide": "During checkout, provide the email address linked to your Duolingo account.\nMake sure the email is correct, since delivery is sent to that exact Duolingo account.\nYou will receive an invitation to join the Duolingo Max plan.\nOpen and accept the invite to activate access on your account.",
+        "comparison_price_cents": 19900
+      },
+      "created_at": "2026-03-27T13:50:00.000000",
+      "updated_at": "2026-03-27T13:50:00.000000",
+      "logo_key": "duolingo-logo",
+      "category": "Education, Productivity",
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 5499,
+      "fixed_price_currency": "USD",
+      "sub_category": "Duolingo"
+    },
+    {
+      "id": "0e326a80-7b87-4e89-9aef-4c33923a77f3",
+      "name": "Duolingo Super 12 Months Subscription",
+      "slug": "duolingo-super-12-months",
+      "description": "Duolingo Super annual access delivered by invitation to your existing Duolingo account.",
+      "service_type": "duolingo",
+      "status": "active",
+      "metadata": {
+        "region": "GLOBAL",
+        "features": [
+          "Access to all Duolingo Super features."
+        ],
+        "platform": "Duolingo",
+        "info_box_text": "Your subscription is delivered directly to your Duolingo account.\nAt checkout, provide the email address linked to that account.\nYou will receive an invitation to join the Duolingo Super plan on the same account.",
+        "upgrade_options": {
+          "allow_new_account": false,
+          "allow_own_account": true,
+          "manual_monthly_upgrade": false,
+          "own_account_credential_requirement": "email_only"
+        },
+        "activation_guide": "During checkout, provide the email address linked to your Duolingo account.\nMake sure the email is correct, since delivery is sent to that exact Duolingo account.\nYou will receive an invitation to join the Duolingo Super plan.\nOpen and accept the invite to activate access on your account.",
+        "comparison_price_cents": 9999
+      },
+      "created_at": "2026-03-27T13:50:00.000000",
+      "updated_at": "2026-03-27T13:50:00.000000",
+      "logo_key": "duolingo-logo",
+      "category": "Education, Productivity",
+      "default_currency": "USD",
+      "max_subscriptions": null,
+      "duration_months": 12,
+      "fixed_price_cents": 2999,
+      "fixed_price_currency": "USD",
+      "sub_category": "Duolingo"
+    }
+  ]
+}
