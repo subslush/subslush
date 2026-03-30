@@ -250,7 +250,7 @@
             <div class="space-y-4">
               {#if !$user?.id}
                 <p class="text-sm leading-6 text-slate-700">
-                  Orders are usually processed and delivered within 24 hours during business days. In rare cases, it can take up to 48-72 hours.
+                  Orders are usually processed and delivered within 24 hours. In rare cases, it can take up to 72 hours.
                 </p>
                 <p class="text-sm leading-6 text-slate-700">
                   We sent your order confirmation and activation link to your email. If you do not see it, check your junk/spam folder.
@@ -264,16 +264,16 @@
                 <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                   <div class="flex items-center gap-2">
                     <Loader2 class="h-4 w-4 animate-spin" />
-                    Finalizing your subscription. This can take a moment.
+                    Finalizing your order delivery. This can take a moment.
                   </div>
                 </div>
               {:else if subscriptions.length > 0}
                 <p class="text-sm leading-6 text-slate-700">
                   {#if subscriptions.length === 1}
-                    Your subscription is ready and available in your
+                    Your order item is ready and available in your
                     <a href="/dashboard" class="font-semibold text-slate-900 underline underline-offset-2 hover:text-slate-700">dashboard</a>.
                   {:else}
-                    Your {subscriptions.length} subscriptions are ready and available in your
+                    Your {subscriptions.length} order items are ready and available in your
                     <a href="/dashboard" class="font-semibold text-slate-900 underline underline-offset-2 hover:text-slate-700">dashboard</a>.
                   {/if}
                 </p>
@@ -304,7 +304,7 @@
                   </div>
                   <div>
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Delivery window</p>
-                    <p class="mt-1 text-sm text-slate-700">Most orders complete within 24 business hours. Rare cases can take up to 48-72 hours.</p>
+                    <p class="mt-1 text-sm text-slate-700">Most orders complete within 24 hours. Rare cases can take up to 72 hours.</p>
                   </div>
                 </div>
 

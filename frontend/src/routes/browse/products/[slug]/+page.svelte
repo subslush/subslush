@@ -87,6 +87,9 @@
     return [];
   };
 
+  const formatMonthsLabel = (months: number): string =>
+    `${months} month${months === 1 ? '' : 's'}`;
+
   const collectVariantFeatures = (source: ProductVariantOption[]): string[] => {
     const unique = new Set<string>();
     for (const variant of source) {
@@ -268,6 +271,54 @@
         .map(step => step.trim())
         .filter(step => step.length > 0)
     : [];
+  $: productTerms = normalizeStringList(
+    product?.terms_conditions ?? product?.termsConditions
+  );
+  $: deliveryDisclosureText = `${infoBoxText}\n${activationGuideText}`.toLowerCase();
+  $: hasVpnNotice = /\bvpn\b/.test(deliveryDisclosureText);
+  $: hasActivationLinkMention = deliveryDisclosureText.includes('activation link');
+  $: hasActivationCodeMention =
+    deliveryDisclosureText.includes('activation code') ||
+    deliveryDisclosureText.includes('redeem code');
+  $: deliveryFormatLabel = (() => {
+    if (upgradeOptions?.allow_new_account && upgradeOptions?.allow_own_account) {
+      return 'Account-based (choose at checkout)';
+    }
+    if (upgradeOptions?.allow_new_account && !upgradeOptions?.allow_own_account) {
+      return 'New account delivery';
+    }
+    if (!upgradeOptions?.allow_new_account && upgradeOptions?.allow_own_account) {
+      if (hasActivationLinkMention) {
+        return 'Activation link on your account';
+      }
+      if (hasActivationCodeMention) {
+        return 'Activation code on your account';
+      }
+      return 'Applied on your account';
+    }
+    if (hasActivationLinkMention) {
+      return 'Activation link delivery';
+    }
+    if (hasActivationCodeMention) {
+      return 'Activation code delivery';
+    }
+    return 'Digital account delivery';
+  })();
+  $: deliveryFormatDescription = (() => {
+    if (upgradeOptions?.allow_new_account && upgradeOptions?.allow_own_account) {
+      return 'Choose New account or Your account in checkout before payment.';
+    }
+    if (upgradeOptions?.allow_new_account && !upgradeOptions?.allow_own_account) {
+      return 'You receive account credentials after fulfillment.';
+    }
+    if (!upgradeOptions?.allow_new_account && upgradeOptions?.allow_own_account) {
+      return 'Fulfillment is completed on your existing account.';
+    }
+    return 'See activation guide for exact fulfillment steps.';
+  })();
+  $: selectedTermLabel = selectedTerm
+    ? `${formatMonthsLabel(selectedTerm.months)} fixed period`
+    : 'Fixed period';
   $: productDescription = (product?.description || '').trim();
   $: descriptionPreview = buildDescriptionPreview(
     productDescription,
@@ -656,6 +707,29 @@
                 </section>
               </div>
 
+              <div class="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-4">
+                <section class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                    Delivery format
+                  </p>
+                  <p class="mt-1 text-sm font-semibold text-slate-900">{deliveryFormatLabel}</p>
+                  <p class="mt-1 text-xs text-slate-600">{deliveryFormatDescription}</p>
+                </section>
+
+                <section class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                    Duration
+                  </p>
+                  <p class="mt-1 text-sm font-semibold text-slate-900">{selectedTermLabel}</p>
+                  <p class="mt-1 text-xs text-slate-600">Starts on delivery, not first login.</p>
+                  {#if hasVpnNotice}
+                    <p class="mt-1 text-xs font-medium text-amber-700">
+                      VPN may be required for certain regions or first-month activation.
+                    </p>
+                  {/if}
+                </section>
+              </div>
+
               <div class="mt-4 flex flex-wrap gap-2">
                 <span class="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-semibold">
                   <Shield size={13} class="text-purple-600" />
@@ -739,6 +813,20 @@
             <p class="mt-3 text-sm text-slate-500">No description available.</p>
           {/if}
         </section>
+
+        {#if productTerms.length > 0}
+          <section class="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+            <h2 class="text-base font-semibold uppercase tracking-wide text-slate-900">Product terms</h2>
+            <ul class="mt-3 space-y-2">
+              {#each productTerms as term}
+                <li class="flex items-start gap-2 text-sm text-slate-700">
+                  <Check size={14} class="mt-0.5 shrink-0 text-fuchsia-600" />
+                  <span>{term}</span>
+                </li>
+              {/each}
+            </ul>
+          </section>
+        {/if}
 
       </section>
 
@@ -926,7 +1014,8 @@
               </summary>
               <p class="px-3 pb-3 text-xs text-slate-600">
                 Every order is manually fulfilled through a fair queue. Most orders are delivered
-                within 24 hours, and in rare cases delivery can take up to 72 hours.
+                within 24 hours, and in rare cases delivery can take up to 72 hours. You can
+                request cancellation before delivery.
               </p>
             </details>
             <details class="group rounded-xl border border-slate-200 bg-white">
@@ -941,8 +1030,10 @@
               </summary>
               <p class="px-3 pb-3 text-xs text-slate-600">
                 Shop with confidence. If an issue occurs with your purchase, our support team will
-                review it and provide a refund or replacement when eligible under our Terms &
-                Conditions.
+                resolve it first, or provide a refund or replacement when eligible under our
+                <a href="/returns" class="underline underline-offset-2 text-slate-700 hover:text-slate-900">Refund Policy and Money Back Guarantee</a>
+                and
+                <a href="/terms" class="underline underline-offset-2 text-slate-700 hover:text-slate-900">Terms and Conditions</a>.
               </p>
             </details>
             <details class="group rounded-xl border border-slate-200 bg-white">

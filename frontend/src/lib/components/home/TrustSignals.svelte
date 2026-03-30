@@ -30,13 +30,13 @@
     {
       icon: CheckCircle,
       title: 'Simple management',
-      description: 'Manage subscriptions and renewals from one dashboard.',
+      description: 'Manage your orders and access details from one dashboard.',
       bgColor: 'bg-white/10'
     },
     {
       icon: Globe,
-      title: 'Full warranty',
-      description: 'Coverage for your entire subscription period.',
+      title: 'Money Back Guarantee',
+      description: 'If delivery fails or is not as described, we resolve or refund.',
       bgColor: 'bg-white/10'
     }
   ];

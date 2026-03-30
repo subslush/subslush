@@ -24,8 +24,11 @@
         </div>
 
         <p class="text-sm text-gray-400 leading-relaxed mb-4">
-          Discover a world of subscriptions with SubSlush.
-          Effortlessly manage and enjoy a variety of premium content and tools in one place.
+          3NITY DIGITAL LIMITED<br />
+          BRN: 79886556<br />
+          UNIT B, 12/F, HANG SENG CAUSEWAY BAY BUILDING,<br />
+          28 YEE WO STREET, CAUSEWAY BAY,<br />
+          HONG KONG
         </p>
 
         <div class="text-sm">
@@ -85,6 +88,7 @@
         Copyright © SubSlush, 2026. All rights reserved.
       </p>
       <p class="text-sm text-gray-300 mt-2">Premium For Less.</p>
+      <p class="text-xs text-gray-500 mt-2">SubSlush is a trading name of 3NITY DIGITAL LIMITED.</p>
       <p class="text-xs text-gray-500 mt-4">
         Using the SUBSLUSH.COM platform constitutes acceptance of the SubSlush
         <a href="/terms" class="underline underline-offset-2 hover:text-gray-300">Terms and Conditions</a>.
