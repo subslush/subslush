@@ -35,7 +35,7 @@
 		void identifyTikTokUser($auth.user);
 	}
 
-	const promoBannerExclusions = ['/auth', '/admin', '/terms', '/privacy', '/returns'];
+	const promoBannerExclusions = ['/auth', '/admin', '/terms', '/privacy', '/returns', '/payment-security'];
 	$: showPromoBanner = !promoBannerExclusions.some(prefix =>
 		$page.url.pathname === prefix || $page.url.pathname.startsWith(`${prefix}/`)
 	);

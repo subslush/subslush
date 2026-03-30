@@ -1198,7 +1198,7 @@
     actionError = '';
     if (!immediatePerformanceConsent) {
       actionError =
-        'Please confirm immediate digital performance and withdrawal acknowledgement before continuing.';
+        'Please confirm that you agree to the Terms and Refund Policy before continuing.';
       return;
     }
     if (!ensureContactEmailBeforeCheckout()) {
@@ -1269,7 +1269,7 @@
     invoiceError = '';
     if (!immediatePerformanceConsent) {
       actionError =
-        'Please confirm immediate digital performance and withdrawal acknowledgement before continuing.';
+        'Please confirm that you agree to the Terms and Refund Policy before continuing.';
       return;
     }
     if (!ensureContactEmailBeforeCheckout()) {
@@ -1348,7 +1348,7 @@
     actionError = '';
     if (!immediatePerformanceConsent) {
       actionError =
-        'Please confirm immediate digital performance and withdrawal acknowledgement before continuing.';
+        'Please confirm that you agree to the Terms and Refund Policy before continuing.';
       return;
     }
     if (!ensureContactEmailBeforeCheckout()) {
@@ -2058,23 +2058,6 @@
                 This order is backed by the Money Back Guarantee.
               </div>
 
-              <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                <p>
-                  By continuing, you request immediate digital fulfillment. Cancellation is available before delivery.
-                  After delivery/activation/account-applied fulfillment, standard refunds are not available except where
-                  mandatory law or the Money Back Guarantee applies.
-                </p>
-                <p class="mt-2">
-                  If delivery is delayed beyond 72 hours, you can request cancellation with a full refund, including processing fees.
-                </p>
-                <p class="mt-2">
-                  <a href="/terms" class="underline underline-offset-2 hover:text-slate-800">Terms</a>
-                  {' | '}
-                  <a href="/returns" class="underline underline-offset-2 hover:text-slate-800">Refund Policy</a>
-                  {' | '}
-                  <a href="/privacy" class="underline underline-offset-2 hover:text-slate-800">Privacy Policy</a>
-                </p>
-              </div>
             </div>
 
             <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_14px_28px_rgba(15,23,42,0.08)] sm:p-6">
@@ -2134,13 +2117,12 @@
                     bind:checked={immediatePerformanceConsent}
                   />
                   <span>
-                    I request immediate digital performance and acknowledge that for delivered digital content,
-                    withdrawal/cancellation rights end once delivery/activation/performance begins (subject to mandatory law and the Money Back Guarantee).
+                    I have read and agree to the
+                    <a href="/terms" class="underline underline-offset-2 hover:text-slate-900">Terms &amp; Conditions</a>
+                    and
+                    <a href="/returns" class="underline underline-offset-2 hover:text-slate-900">Refund Policy</a>.
                   </span>
                 </label>
-                <p class="mt-2 text-[11px] text-slate-500">
-                  This acknowledgement is required to continue checkout.
-                </p>
               </div>
 
               <div class="mt-3 space-y-3">

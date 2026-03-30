@@ -54,6 +54,7 @@
           <li><a href="/terms" class="hover:text-white transition-colors">Terms and conditions</a></li>
           <li><a href="/privacy" class="hover:text-white transition-colors">Privacy and cookie policy</a></li>
           <li><a href="/returns" class="hover:text-white transition-colors">Refund policy</a></li>
+          <li><a href="/payment-security" class="hover:text-white transition-colors">Payment security &amp; fraud prevention</a></li>
         </ul>
       </div>
 
