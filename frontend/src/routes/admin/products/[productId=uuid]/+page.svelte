@@ -310,6 +310,7 @@
       platform: string;
       region: string;
       comparisonPriceCents: string;
+      features: string;
       activationGuide: string;
       upgradeOptions: {
         allowNewAccount: boolean;
@@ -356,6 +357,15 @@
       delete next.comparisonPriceCents;
       delete next.compare_at_price_cents;
       delete next.compareAtPriceCents;
+    }
+
+    const features = parseListInput(input.features);
+    if (features.length > 0) {
+      next.features = features;
+    } else {
+      delete next.features;
+      delete next.feature_list;
+      delete next.featureList;
     }
 
     const activationGuide = input.activationGuide.trim();
@@ -406,6 +416,7 @@
     fixedPriceCents: string;
     fixedPriceCurrency: string;
     comparisonPriceCents: string;
+    features: string;
     infoBoxText: string;
     platform: string;
     region: string;
@@ -603,6 +614,9 @@
         typeof fixedPriceCurrency === 'string' ? fixedPriceCurrency : '',
       comparisonPriceCents:
         comparisonPriceCents !== null ? String(comparisonPriceCents) : '',
+      features: formatListInput(
+        readMetadataList(metadata, ['features', 'feature_list', 'featureList'])
+      ),
       infoBoxText: readMetadataString(metadata, [
         'info_box_text',
         'infoBoxText',
@@ -882,6 +896,7 @@
         platform: productForm.platform,
         region: productForm.region,
         comparisonPriceCents: comparisonPriceCentsRaw,
+        features: productForm.features,
         activationGuide: productForm.activationGuide,
         upgradeOptions: {
           allowNewAccount: productForm.allowNewAccount,
@@ -1615,6 +1630,21 @@
           placeholder="Step 1...&#10;Step 2..."
           bind:value={productForm.activationGuide}
         ></textarea>
+      </div>
+      <div>
+        <label for="product-features" class="text-xs font-semibold text-gray-500">
+          Features list
+        </label>
+        <textarea
+          id="product-features"
+          class="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          rows={5}
+          placeholder="One feature per line&#10;or separate by comma"
+          bind:value={productForm.features}
+        ></textarea>
+        <p class="mt-1 text-[11px] text-gray-500">
+          Saved to product metadata and used as the default feature list when variants do not define features.
+        </p>
       </div>
       <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-2">
         <p class="text-sm font-semibold text-gray-900">Upgrade options</p>

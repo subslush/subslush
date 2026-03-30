@@ -21,6 +21,7 @@
     slug: '',
     serviceType: '',
     description: '',
+    features: '',
     fixedPriceCents: '',
     fixedPriceCurrency: '',
     comparisonPriceCents: ''
@@ -37,6 +38,12 @@
 
   const getErrorMessage = (error: unknown, fallback: string) =>
     error instanceof Error ? error.message : fallback;
+
+  const parseListInput = (value: string): string[] =>
+    value
+      .split(/[\n,]+/)
+      .map(item => item.trim())
+      .filter(item => item.length > 0);
 
   const resetMessages = () => {
     productMessage = '';
@@ -94,6 +101,10 @@
       if (parsedComparisonPriceCents !== undefined) {
         metadata.comparison_price_cents = parsedComparisonPriceCents;
       }
+      const features = parseListInput(newProduct.features || '');
+      if (features.length > 0) {
+        metadata.features = features;
+      }
       const categoryValues = Array.from(
         new Map(
           String(subCategory.category || '')
@@ -129,6 +140,7 @@
         slug: '',
         serviceType: '',
         description: '',
+        features: '',
         fixedPriceCents: '',
         fixedPriceCurrency: '',
         comparisonPriceCents: ''
@@ -207,6 +219,18 @@
           </div>
         </div>
       {/if}
+      <div>
+        <label for="new-product-features" class="text-xs font-semibold text-gray-500">
+          Features list (optional)
+        </label>
+        <textarea
+          id="new-product-features"
+          class="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          rows={4}
+          placeholder="One feature per line&#10;or separate by comma"
+          bind:value={newProduct.features}
+        ></textarea>
+      </div>
 
       <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
         <p class="text-xs font-semibold text-gray-700">Fixed Catalog Fields (optional)</p>
