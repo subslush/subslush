@@ -192,6 +192,10 @@ export interface ProductDetail {
     infoBoxText?: string | null;
     activation_guide?: string | null;
     activationGuide?: string | null;
+    extra_features_enabled?: boolean | null;
+    extraFeaturesEnabled?: boolean | null;
+    extra_features?: string[] | null;
+    extraFeatures?: string[] | null;
   };
   variants: ProductVariantOption[];
   country_code?: string | null;

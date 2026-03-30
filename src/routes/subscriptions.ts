@@ -538,6 +538,37 @@ function readMetadataList(
   return [];
 }
 
+function readMetadataBoolean(
+  metadata: Record<string, unknown> | null | undefined,
+  keys: string[]
+): boolean {
+  if (!metadata || typeof metadata !== 'object') {
+    return false;
+  }
+  for (const key of keys) {
+    const value = metadata[key];
+    if (value === undefined || value === null) {
+      continue;
+    }
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    if (typeof value === 'number') {
+      return value > 0;
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') return true;
+      if (normalized === 'false') return false;
+      const numeric = Number(normalized);
+      if (Number.isFinite(numeric)) {
+        return numeric > 0;
+      }
+    }
+  }
+  return false;
+}
+
 function hashString(value: string): number {
   let hash = 2166136261;
   for (let i = 0; i < value.length; i += 1) {
@@ -2042,6 +2073,18 @@ export async function subscriptionRoutes(
           'activation_guide_text',
           'activationGuideText',
         ]);
+        const extraFeaturesEnabled = readMetadataBoolean(product.metadata, [
+          'extra_features_enabled',
+          'extraFeaturesEnabled',
+          'show_extra_features',
+          'showExtraFeatures',
+        ]);
+        const extraFeatures = readMetadataList(product.metadata, [
+          'extra_features',
+          'extraFeatures',
+          'detailed_features',
+          'detailedFeatures',
+        ]);
         if (!upgradeValidation.valid) {
           Logger.warn('Invalid upgrade options configuration', {
             productId: product.id,
@@ -2128,6 +2171,8 @@ export async function subscriptionRoutes(
               region: region || null,
               info_box_text: infoBoxText || null,
               activation_guide: activationGuide || null,
+              extra_features_enabled: extraFeaturesEnabled,
+              extra_features: extraFeatures,
             },
             variants: [
               {
@@ -2265,6 +2310,8 @@ export async function subscriptionRoutes(
             region: region || null,
             info_box_text: infoBoxText || null,
             activation_guide: activationGuide || null,
+            extra_features_enabled: extraFeaturesEnabled,
+            extra_features: extraFeatures,
           },
           variants: variantResponses,
           country_code: requestCountryCode || null,

@@ -62,8 +62,11 @@
   let manualMonthlyAcknowledged = false;
   let showActivationGuide = false;
   let showFeaturesGuide = false;
+  let showExtraFeaturesDetails = false;
   let descriptionExpanded = false;
   let selectionError = '';
+  let extraFeaturesEnabled = false;
+  let extraFeatures: string[] = [];
 
   const DESCRIPTION_MAX_WORDS = 600;
   const DESCRIPTION_MAX_CHARS = 3900;
@@ -316,6 +319,12 @@
     selectedVariant && normalizeStringList(selectedVariant.features).length > 0
       ? normalizeStringList(selectedVariant.features)
       : collectVariantFeatures(variants);
+  $: extraFeaturesEnabled = Boolean(
+    product?.extra_features_enabled ?? product?.extraFeaturesEnabled
+  );
+  $: extraFeatures = normalizeStringList(
+    product?.extra_features ?? product?.extraFeatures
+  );
   $: selectedVariantCurrency =
     normalizeCurrencyCode(selectedVariant?.currency) || 'USD';
 
@@ -694,7 +703,10 @@
             <button
               type="button"
               class="gradient-outline-darkbtn inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold"
-              on:click={() => (showFeaturesGuide = true)}
+              on:click={() => {
+                showFeaturesGuide = true;
+                showExtraFeaturesDetails = false;
+              }}
             >
               <ListChecks size={14} class="text-fuchsia-600" />
               View features
@@ -962,6 +974,7 @@
       on:click={(event) => {
         if (event.target === event.currentTarget) {
           showFeaturesGuide = false;
+          showExtraFeaturesDetails = false;
         }
       }}
     >
@@ -985,7 +998,10 @@
               type="button"
               class="rounded-full border border-slate-200 bg-white p-1.5 text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
               aria-label="Close features"
-              on:click={() => (showFeaturesGuide = false)}
+              on:click={() => {
+                showFeaturesGuide = false;
+                showExtraFeaturesDetails = false;
+              }}
             >
               <X size={18} />
             </button>
@@ -1005,13 +1021,51 @@
           {:else}
             <p class="text-sm text-slate-600">Feature details are not available for this product yet.</p>
           {/if}
+
+          {#if extraFeaturesEnabled && showExtraFeaturesDetails}
+            <section class="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
+              <h3 class="text-sm font-semibold text-slate-900">Detailed feature breakdown</h3>
+              {#if extraFeatures.length > 0}
+                <div class="mt-2 max-h-52 overflow-y-auto pr-1">
+                  <ul class="space-y-2">
+                    {#each extraFeatures as feature}
+                      <li class="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-sm text-slate-700">
+                        <Check size={14} class="mt-0.5 shrink-0 text-fuchsia-600" />
+                        <span>{feature}</span>
+                      </li>
+                    {/each}
+                  </ul>
+                </div>
+              {:else}
+                <p class="mt-2 text-sm text-slate-600">
+                  Detailed features are enabled for this product but no extra items are currently configured.
+                </p>
+              {/if}
+            </section>
+          {/if}
         </div>
 
-        <footer class="flex justify-end border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <footer class="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+          {#if extraFeaturesEnabled}
+            <button
+              type="button"
+              class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+              on:click={() => (showExtraFeaturesDetails = !showExtraFeaturesDetails)}
+            >
+              {showExtraFeaturesDetails
+                ? 'Hide detailed feature breakdown'
+                : 'View detailed feature breakdown'}
+            </button>
+          {:else}
+            <span></span>
+          {/if}
           <button
             type="button"
             class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-            on:click={() => (showFeaturesGuide = false)}
+            on:click={() => {
+              showFeaturesGuide = false;
+              showExtraFeaturesDetails = false;
+            }}
           >
             Close
           </button>
