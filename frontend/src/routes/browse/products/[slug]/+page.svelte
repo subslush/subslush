@@ -16,7 +16,10 @@
   import ltcIcon from '$lib/assets/litecoin-icon.svg';
   import solIcon from '$lib/assets/solana-icon.svg';
   import xrpIcon from '$lib/assets/xrp-icon.svg';
-  import { SHOW_PAYPAL_LOGO } from '$lib/config/paymentBrandVisibility.js';
+  import {
+    SHOW_PAYPAL_LOGO,
+    SHOW_CRYPTO_PAYMENT_LOGOS
+  } from '$lib/config/paymentBrandVisibility.js';
   import { cart } from '$lib/stores/cart.js';
   import { cartSidebar } from '$lib/stores/cartSidebar.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
@@ -954,7 +957,15 @@
           </div>
 
           <div
-            class={`mt-3 grid gap-2 ${SHOW_PAYPAL_LOGO ? 'grid-cols-5' : 'grid-cols-4'}`}
+            class={`mt-3 grid gap-2 ${
+              SHOW_CRYPTO_PAYMENT_LOGOS
+                ? SHOW_PAYPAL_LOGO
+                  ? 'grid-cols-5'
+                  : 'grid-cols-4'
+                : SHOW_PAYPAL_LOGO
+                  ? 'grid-cols-3'
+                  : 'grid-cols-2'
+            }`}
           >
             <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
               <img src={visaLogo} alt="Visa" class="h-4 w-auto object-contain" loading="lazy" />
@@ -977,30 +988,34 @@
                 />
               </span>
             {/if}
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={btcIcon} alt="Bitcoin" class="h-5 w-auto object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={ethIcon} alt="Ethereum" class="h-6 w-auto object-contain" loading="lazy" />
-            </span>
+            {#if SHOW_CRYPTO_PAYMENT_LOGOS}
+              <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+                <img src={btcIcon} alt="Bitcoin" class="h-5 w-auto object-contain" loading="lazy" />
+              </span>
+              <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+                <img src={ethIcon} alt="Ethereum" class="h-6 w-auto object-contain" loading="lazy" />
+              </span>
+            {/if}
           </div>
-          <div class="mt-2 grid grid-cols-5 gap-2">
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={usdtLogo} alt="USDT" class="h-5 w-5 object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={usdcLogo} alt="USDC" class="h-5 w-5 object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={ltcIcon} alt="Litecoin" class="h-5 w-5 object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={solIcon} alt="Solana" class="h-5 w-5 object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={xrpIcon} alt="XRP" class="h-5 w-5 object-contain" loading="lazy" />
-            </span>
-          </div>
+          {#if SHOW_CRYPTO_PAYMENT_LOGOS}
+            <div class="mt-2 grid grid-cols-5 gap-2">
+              <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+                <img src={usdtLogo} alt="USDT" class="h-5 w-5 object-contain" loading="lazy" />
+              </span>
+              <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+                <img src={usdcLogo} alt="USDC" class="h-5 w-5 object-contain" loading="lazy" />
+              </span>
+              <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+                <img src={ltcIcon} alt="Litecoin" class="h-5 w-5 object-contain" loading="lazy" />
+              </span>
+              <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+                <img src={solIcon} alt="Solana" class="h-5 w-5 object-contain" loading="lazy" />
+              </span>
+              <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
+                <img src={xrpIcon} alt="XRP" class="h-5 w-5 object-contain" loading="lazy" />
+              </span>
+            </div>
+          {/if}
           <div class="mt-4 space-y-2 border-t border-slate-200 pt-3">
             <details class="group rounded-xl border border-slate-200 bg-white">
               <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5">

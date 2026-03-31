@@ -31,6 +31,7 @@
   } from '$lib/types/checkout.js';
   import type { Currency } from '$lib/types/payment.js';
   import type { OwnAccountCredentialRequirement } from '$lib/types/subscription.js';
+  import { SHOW_CRYPTO_CHECKOUT_OPTION } from '$lib/config/paymentBrandVisibility.js';
   import { Eye, EyeOff, Loader2, ShieldCheck, Trash2 } from 'lucide-svelte';
 
   const DRAFT_STORAGE_KEY = 'checkout_draft_state';
@@ -1596,7 +1597,11 @@
     }
   }
 
-  $: if (paymentMethod === 'crypto') {
+  $: if (!SHOW_CRYPTO_CHECKOUT_OPTION && paymentMethod === 'crypto') {
+    paymentMethod = null;
+  }
+
+  $: if (SHOW_CRYPTO_CHECKOUT_OPTION && paymentMethod === 'crypto') {
     void loadCurrencies();
   }
 
@@ -2160,25 +2165,27 @@
                   </div>
                 </label>
 
-                <label class={`flex items-start gap-3 rounded-xl border px-3 py-3 transition ${
-                  paymentMethod === 'crypto'
-                    ? 'border-fuchsia-300 bg-fuchsia-50/40 shadow-sm'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                }`}>
-                  <input
-                    type="radio"
-                    name="payment-method"
-                    value="crypto"
-                    bind:group={paymentMethod}
-                    class="mt-1 h-4 w-4 text-slate-900"
-                  />
-                  <div>
-                    <p class="text-sm font-semibold text-slate-900">Pay with crypto</p>
-                  </div>
-                </label>
+                {#if SHOW_CRYPTO_CHECKOUT_OPTION}
+                  <label class={`flex items-start gap-3 rounded-xl border px-3 py-3 transition ${
+                    paymentMethod === 'crypto'
+                      ? 'border-fuchsia-300 bg-fuchsia-50/40 shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="payment-method"
+                      value="crypto"
+                      bind:group={paymentMethod}
+                      class="mt-1 h-4 w-4 text-slate-900"
+                    />
+                    <div>
+                      <p class="text-sm font-semibold text-slate-900">Pay with crypto</p>
+                    </div>
+                  </label>
+                {/if}
               </div>
 
-              {#if paymentMethod === 'crypto'}
+              {#if SHOW_CRYPTO_CHECKOUT_OPTION && paymentMethod === 'crypto'}
                 <div class="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                   <p class="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
                     Select crypto

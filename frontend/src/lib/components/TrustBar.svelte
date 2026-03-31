@@ -6,7 +6,10 @@
   import btcLogo from '$lib/assets/btc.svg';
   import ethLogo from '$lib/assets/eth.svg';
   import usdtLogo from '$lib/assets/usdt.svg';
-  import { SHOW_PAYPAL_LOGO } from '$lib/config/paymentBrandVisibility.js';
+  import {
+    SHOW_PAYPAL_LOGO,
+    SHOW_CRYPTO_PAYMENT_LOGOS
+  } from '$lib/config/paymentBrandVisibility.js';
 </script>
 
 <div class="bg-gray-50 border-t border-gray-200 py-4">
@@ -51,10 +54,14 @@
           loading="lazy"
         />
       {/if}
-      <img src={btcLogo} alt="Bitcoin" width="77" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
-      <img src={ethLogo} alt="Ethereum" width="64" height="16" class="h-[18px] w-auto shrink-0" loading="lazy" />
-      <img src={usdtLogo} alt="USDT" width="18" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
-      <span class="text-gray-600 text-xs sm:text-sm font-medium whitespace-nowrap">and 300+ more</span>
+      {#if SHOW_CRYPTO_PAYMENT_LOGOS}
+        <img src={btcLogo} alt="Bitcoin" width="77" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
+        <img src={ethLogo} alt="Ethereum" width="64" height="16" class="h-[18px] w-auto shrink-0" loading="lazy" />
+        <img src={usdtLogo} alt="USDT" width="18" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
+      {/if}
+      {#if SHOW_CRYPTO_PAYMENT_LOGOS}
+        <span class="text-gray-600 text-xs sm:text-sm font-medium whitespace-nowrap">and 300+ more</span>
+      {/if}
     </div>
   </div>
 </div>
