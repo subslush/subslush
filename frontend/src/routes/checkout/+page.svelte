@@ -1838,10 +1838,28 @@
                     resolveLogoKeyFromName(item.serviceName) ||
                     resolveLogoKeyFromName(item.plan) ||
                     resolveLogoKeyFromName(item.variantId)}
+                  {@const itemLogoNeedsDarkTile = [
+                    item.logoKey,
+                    item.serviceType,
+                    item.serviceName,
+                    item.plan,
+                    item.variantId,
+                  ]
+                    .filter((value): value is string => typeof value === 'string')
+                    .some(value =>
+                      value
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, '')
+                        .includes('appletv')
+                    )}
                   <div class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                     <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-start">
                       <div class="flex min-w-0 items-start gap-2.5">
-                        <div class="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+                        <div class={`relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border ${
+                          itemLogoNeedsDarkTile
+                            ? 'border-slate-700 bg-slate-950'
+                            : 'border-slate-200 bg-white'
+                        }`}>
                           {#if itemLogo}
                             <ResponsiveImage
                               image={itemLogo}
