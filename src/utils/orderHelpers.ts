@@ -1,6 +1,11 @@
 import { Order } from '../types/order';
 
-export type PaymentMethodBadgeType = 'credits' | 'stripe' | 'other' | 'unknown';
+export type PaymentMethodBadgeType =
+  | 'credits'
+  | 'paypal'
+  | 'stripe'
+  | 'other'
+  | 'unknown';
 
 export interface PaymentMethodBadge {
   type: PaymentMethodBadgeType;
@@ -12,8 +17,20 @@ export const getPaymentMethodBadge = (order: Order): PaymentMethodBadge => {
     return { type: 'credits', label: 'Credits' };
   }
 
+  if (order.payment_provider === 'paypal') {
+    return { type: 'paypal', label: 'PayPal' };
+  }
+
+  if (order.payment_provider === 'nowpayments') {
+    return { type: 'other', label: 'NOWPayments' };
+  }
+
   if (order.payment_provider === 'stripe') {
     return { type: 'stripe', label: 'Stripe' };
+  }
+
+  if (order.payment_provider === 'pay4bit') {
+    return { type: 'other', label: 'Pay4bit (Legacy)' };
   }
 
   if (order.payment_provider) {

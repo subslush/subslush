@@ -5,7 +5,6 @@ import { serviceHandlerRegistry } from '../services/handlers';
 import { creditService } from '../services/creditService';
 import { orderService } from '../services/orderService';
 import { catalogService } from '../services/catalogService';
-import { paymentService } from '../services/paymentService';
 import { couponService, normalizeCouponCode } from '../services/couponService';
 import {
   buildTikTokProductProperties,
@@ -4338,17 +4337,6 @@ export async function subscriptionRoutes(
             reply,
             result.error || 'Failed to cancel subscription'
           );
-        }
-
-        try {
-          await paymentService.cancelPendingStripeRenewalPayments([
-            subscriptionId,
-          ]);
-        } catch (error) {
-          Logger.warn('Failed to cancel pending renewal payments on cancel', {
-            subscriptionId,
-            error,
-          });
         }
 
         return SuccessResponses.ok(reply, {

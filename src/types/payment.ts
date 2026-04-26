@@ -14,6 +14,7 @@ export type PaymentProvider =
   | 'nowpayments'
   | 'stripe'
   | 'pay4bit'
+  | 'paypal'
   | 'manual'
   | 'admin';
 

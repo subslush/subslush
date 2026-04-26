@@ -38,13 +38,17 @@ const fastify = Fastify({
 });
 
 async function buildServer(): Promise<typeof fastify> {
-  // Raw body for Stripe webhook verification
+  // Raw body for payment webhook verification
   await fastify.register(fastifyRawBody, {
     global: false,
     field: 'rawBody',
     encoding: false,
     runFirst: true,
-    routes: ['/api/v1/payments/stripe/webhook', '/api/v1/payments/webhook'],
+    routes: [
+      '/api/v1/payments/stripe/webhook',
+      '/api/v1/payments/paypal/webhook',
+      '/api/v1/payments/webhook',
+    ],
   });
 
   await fastify.register(helmet, {

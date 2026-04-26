@@ -114,7 +114,9 @@
   const unsubscribe = page.subscribe($page => {
     status = $page.url.searchParams.get('status') ?? '';
     orderId = $page.url.searchParams.get('order_id');
-    sessionId = $page.url.searchParams.get('session_id');
+    sessionId =
+      $page.url.searchParams.get('session_id') ??
+      $page.url.searchParams.get('token');
   });
 
   $: if (

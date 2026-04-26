@@ -92,6 +92,38 @@ const environmentSchema = z.object({
       z.string().optional()
     )
     .default(''),
+  PAYPAL_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(true)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return true;
+    }),
+  PAYPAL_MODE: z.enum(['sandbox', 'live']).optional().default('sandbox'),
+  PAYPAL_CLIENT_ID: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  PAYPAL_CLIENT_SECRET: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  PAYPAL_WEBHOOK_ID: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  PAYPAL_HTTP_TIMEOUT_MS: z.coerce.number().default(15000),
   MAXMIND_MINFRAUD_ENABLED: z
     .union([z.string(), z.boolean()])
     .optional()
@@ -534,6 +566,32 @@ function validateEnvironment(): EnvironmentConfig {
       }
       if (!isValidAbsoluteUrl(withTestOverrides.PAY4BIT_BASE_URL)) {
         throw new Error('PAY4BIT_BASE_URL must be a valid URL');
+      }
+    }
+
+    if (withTestOverrides.PAYPAL_ENABLED) {
+      const missing: string[] = [];
+      if (!withTestOverrides.PAYPAL_CLIENT_ID) {
+        missing.push('PAYPAL_CLIENT_ID');
+      }
+      if (!withTestOverrides.PAYPAL_CLIENT_SECRET) {
+        missing.push('PAYPAL_CLIENT_SECRET');
+      }
+      if (missing.length > 0) {
+        throw new Error(
+          `PayPal configuration missing required fields: ${missing.join(', ')}`
+        );
+      }
+      if (withTestOverrides.PAYPAL_HTTP_TIMEOUT_MS <= 0) {
+        throw new Error('PAYPAL_HTTP_TIMEOUT_MS must be greater than 0');
+      }
+      if (
+        withTestOverrides.NODE_ENV === 'production' &&
+        withTestOverrides.PAYPAL_MODE !== 'live'
+      ) {
+        process.stderr.write(
+          'Warning: Production environment detected but PayPal is configured in sandbox mode.\n'
+        );
       }
     }
 

@@ -84,11 +84,11 @@ class EmailService {
               <td align="center">
                 <table role="presentation" cellpadding="0" cellspacing="0" width="640" style="max-width:640px;background-color:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 18px 35px rgba(15,23,42,0.12);">
                   <tr>
-                    <td style="padding:24px 28px;background:linear-gradient(90deg,#7e22ce 0%,#db2777 100%);color:#ffffff;text-align:left;">
-                      <div style="font-size:26px;font-weight:800;letter-spacing:0.3px;line-height:1.1;">
+                    <td style="padding:24px 28px;background:linear-gradient(90deg,#7e22ce 0%,#db2777 100%);color:#ffffff;text-align:center;">
+                      <div style="font-size:26px;font-weight:800;letter-spacing:0.3px;line-height:1.1;text-align:center;">
                         SubSlush
                       </div>
-                      <div style="font-size:12px;line-height:1.4;opacity:0.92;margin-top:5px;">
+                      <div style="font-size:12px;line-height:1.4;opacity:0.92;margin-top:5px;text-align:center;">
                         Premium subscriptions for less
                       </div>
                     </td>

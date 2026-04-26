@@ -30,6 +30,12 @@ export interface EnvironmentConfig {
   PAY4BIT_SECRET_KEY: string;
   PAY4BIT_CALLBACK_URL: string;
   PAY4BIT_BASE_URL: string;
+  PAYPAL_ENABLED: boolean;
+  PAYPAL_MODE: 'sandbox' | 'live';
+  PAYPAL_CLIENT_ID: string;
+  PAYPAL_CLIENT_SECRET: string;
+  PAYPAL_WEBHOOK_ID: string;
+  PAYPAL_HTTP_TIMEOUT_MS: number;
   MAXMIND_MINFRAUD_ENABLED: boolean;
   MAXMIND_ACCOUNT_ID: string;
   MAXMIND_LICENSE_KEY: string;

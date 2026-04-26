@@ -20,7 +20,7 @@ export async function runCheckoutAbandonSweep(): Promise<void> {
     batchSize: env.CHECKOUT_ABANDON_SWEEP_BATCH_SIZE,
   });
   try {
-    const result = await paymentService.sweepStaleStripeCheckouts();
+    const result = await paymentService.sweepStaleCheckoutSessions();
     Logger.info('Checkout abandonment sweep completed', result);
   } catch (error) {
     Logger.error('Checkout abandonment sweep failed:', error);

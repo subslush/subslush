@@ -910,17 +910,27 @@
 		const selectedHref = activeOfferHref;
 		const selectedCurrency =
 			normalizeCurrencyCode(activeOfferProduct.currency) || ($currency as SupportedCurrency);
+		const variantId = (activeOfferProduct.variant_id || activeOfferProduct.product_id || '').trim();
+		if (!variantId) {
+			return;
+		}
+		const termMonthsRaw = Number(activeOfferProduct.from_term_months);
+		const termMonths =
+			Number.isInteger(termMonthsRaw) && termMonthsRaw > 0 ? termMonthsRaw : 1;
 
 		cart.addItem({
-			id: `mega-offer-${activeMegaCategory.key}-${slugify(selectedLabel)}`,
+			id: `${variantId}|${termMonths}|no-renew`,
 			serviceType: activeMegaCategory.key,
 			serviceName: selectedLabel,
-			plan: 'Monthly',
+			plan: `${termMonths} month${termMonths === 1 ? '' : 's'}`,
 			price: activeOfferProduct.from_price,
 			currency: selectedCurrency,
 			quantity: 1,
 			description: `Quick add from ${activeMegaCategory.label} mega menu`,
-			features: [`Source: ${selectedHref}`]
+			features: [`Source: ${selectedHref}`],
+			variantId,
+			termMonths,
+			autoRenew: false
 		});
 		cartSidebar.open();
 	};

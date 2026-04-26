@@ -24,6 +24,7 @@
     type SupportedCurrency
   } from '$lib/utils/currency.js';
   import type {
+    CheckoutDraftItemInput,
     CheckoutPricingSummary,
     CheckoutPricingSummaryItem,
     CheckoutNowPaymentsInvoiceResponse,
@@ -565,12 +566,16 @@
     };
   };
 
-  const buildDraftItems = (items: CartItem[]) =>
+  const buildDraftItems = (items: CartItem[]): CheckoutDraftItemInput[] =>
     items.flatMap(item => {
       const quantity = resolveItemQuantity(item);
-      const payload = {
-        variant_id: item.variantId || '',
-        term_months: item.termMonths ?? null,
+      const variantId = (item.variantId || '').trim();
+      if (!variantId) {
+        return [];
+      }
+
+      const payload: CheckoutDraftItemInput = {
+        variant_id: variantId,
         auto_renew: false,
         selection_type: item.upgradeSelectionType ?? null,
         account_identifier:
@@ -584,6 +589,14 @@
             : null,
         manual_monthly_acknowledged: item.manualMonthlyAcknowledged ?? null
       };
+
+      if (
+        typeof item.termMonths === 'number' &&
+        Number.isFinite(item.termMonths) &&
+        item.termMonths > 0
+      ) {
+        payload.term_months = Math.floor(item.termMonths);
+      }
 
       return Array.from({ length: quantity }, () => payload);
     });
@@ -838,6 +851,13 @@
 
     const items = $cart;
     if (items.length === 0) return false;
+    const invalidDraftItem = items.find(
+      item => !(typeof item.variantId === 'string' && item.variantId.trim())
+    );
+    if (invalidDraftItem) {
+      draftError = `Cart item "${invalidDraftItem.serviceName}" is missing product details. Remove it and add it again from the product page.`;
+      return false;
+    }
     const currencyCode = resolveOrderCurrency(items, $currency);
     const signature = buildDraftSignature(
       normalizeEmail(contactEmail),
@@ -1256,7 +1276,7 @@
 
     const draftReady = await refreshDraft(true);
     if (!draftReady || !getDraftCheckoutSessionKey()) {
-      actionError = 'Please review your checkout details.';
+      actionError = draftError || 'Please review your checkout details.';
       return;
     }
 
@@ -1329,7 +1349,7 @@
 
     const draftReady = await refreshDraft(true);
     if (!draftReady || !getDraftCheckoutSessionKey()) {
-      invoiceError = 'Please review your checkout details.';
+      invoiceError = draftError || 'Please review your checkout details.';
       return;
     }
     await refreshCryptoMinimum(true);
@@ -1414,7 +1434,7 @@
 
     const draftReady = await refreshDraft(true);
     if (!draftReady || !getDraftCheckoutSessionKey()) {
-      actionError = 'Please review your checkout details.';
+      actionError = draftError || 'Please review your checkout details.';
       return;
     }
 
@@ -2050,12 +2070,6 @@
                     {contactEmailAttentionMessage}
                   </p>
                 {/if}
-                <p class="mt-2 text-[11px] text-slate-500">
-                  Personal Information Collection Statement: We collect your delivery email to send order updates and
-                  delivery details, monitor fraud/risk signals, and provide support. Relevant data may be shared with
-                  payment, fraud-screening, and communication providers.
-                  <a href="/privacy" class="underline underline-offset-2 hover:text-slate-700">Privacy Policy</a>
-                </p>
               </div>
             {/if}
 
@@ -2147,20 +2161,22 @@
               <h3 class="text-sm font-semibold text-slate-900">Choose payment method</h3>
 
               <div class="mt-3 space-y-3">
-                <label class="flex cursor-not-allowed items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 opacity-80">
+                <label class={`flex items-start gap-3 rounded-xl border px-3 py-3 transition ${
+                  paymentMethod === 'card'
+                    ? 'border-fuchsia-300 bg-fuchsia-50/40 shadow-sm'
+                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                }`}>
                   <input
                     type="radio"
                     name="payment-method"
                     value="card"
                     bind:group={paymentMethod}
                     class="mt-1 h-4 w-4 text-slate-900"
-                    disabled
                   />
                   <div>
-                    <p class="text-sm font-semibold text-slate-900">Pay with card</p>
-                    <p class="mt-1 text-xs font-medium text-rose-600">
-                      Card payments are temporarily disabled while we migrate to a new payment processor. Card
-                      checkout will be available again once this migration is complete.
+                    <p class="text-sm font-semibold text-slate-900">PayPal / Card</p>
+                    <p class="mt-1 text-xs text-slate-500">
+                      You will be redirected to secure PayPal hosted checkout. PayPal account and card options are supported.
                     </p>
                   </div>
                 </label>

@@ -21,7 +21,16 @@ Protect these frontend routes on the proxied `subslush.com` zone:
 ## 3) Recommended baseline configuration
 
 1. Disable basic `Bot Fight Mode`, then enable/configure `Super Bot Fight Mode` (Pro).
-2. Add one WAF custom rule with action `Managed Challenge` and this expression:
+2. Add a WAF custom skip rule for API traffic to bypass `http_request_sbfm`:
+
+```text
+(http.host in {"api.subslush.com" "api-staging.subslush.com"} or (
+  http.host in {"subslush.com" "www.subslush.com"} and
+  starts_with(http.request.uri.path, "/api/v1/")
+))
+```
+
+3. Add one WAF custom rule with action `Managed Challenge` and this expression:
 
 ```text
 (http.host in {"subslush.com" "www.subslush.com"} and (
@@ -32,7 +41,7 @@ Protect these frontend routes on the proxied `subslush.com` zone:
 ))
 ```
 
-3. Keep challenge passage enabled in Cloudflare defaults to reduce repeat friction.
+4. Keep challenge passage enabled in Cloudflare defaults to reduce repeat friction.
 
 ## 4) API helper script
 
@@ -56,9 +65,12 @@ Optional:
 - `CF_SBFM_STATIC_RESOURCE_PROTECTION=true|false` (default: `false`)
 - `CF_ENABLE_JS_DETECTIONS=true|false` (default: `true`)
 - `CF_RULE_REF=<custom rule ref>` (default: `subslush_sensitive_routes_managed_challenge_v1`)
+- `CF_ENABLE_API_SBFM_SKIP_RULE=true|false` (default: `true`)
+- `CF_API_SBFM_SKIP_RULE_REF=<custom rule ref>` (default: `subslush_api_skip_sbfm_v1`)
 
 The script uses Cloudflare Rulesets API for WAF custom rules (`http_request_firewall_custom` phase entrypoint).
 On Pro zones, Cloudflare does not allow enforcing likely automated traffic via SBFM (challenge/block), so this value should remain `allow`.
+Keep the API SBFM skip rule enabled or Cloudflare can challenge API/SSR/XHR traffic (including `subslush.com/api/v1/*` requests before Vercel rewrites).
 
 ## 5) Validation checklist
 

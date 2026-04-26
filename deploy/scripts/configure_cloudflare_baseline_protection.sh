@@ -27,11 +27,15 @@ CF_SBFM_LIKELY_AUTOMATED="${CF_SBFM_LIKELY_AUTOMATED:-allow}"
 CF_SBFM_VERIFIED_BOTS="${CF_SBFM_VERIFIED_BOTS:-allow}"
 CF_SBFM_STATIC_RESOURCE_PROTECTION="${CF_SBFM_STATIC_RESOURCE_PROTECTION:-false}"
 CF_ENABLE_JS_DETECTIONS="${CF_ENABLE_JS_DETECTIONS:-true}"
+CF_ENABLE_API_SBFM_SKIP_RULE="${CF_ENABLE_API_SBFM_SKIP_RULE:-true}"
 
 RULE_REF="${CF_RULE_REF:-subslush_sensitive_routes_managed_challenge_v1}"
 RULE_DESCRIPTION="SubSlush baseline managed challenge for login/forgot-password/checkout/order-history"
+API_SBFM_SKIP_RULE_REF="${CF_API_SBFM_SKIP_RULE_REF:-subslush_api_skip_sbfm_v1}"
+API_SBFM_SKIP_RULE_DESCRIPTION="SubSlush API host bypass for Super Bot Fight Mode"
 
 EXPRESSION='(http.host in {"subslush.com" "www.subslush.com"} and (http.request.uri.path eq "/auth/login" or http.request.uri.path eq "/auth/forgot-password" or starts_with(http.request.uri.path, "/checkout") or starts_with(http.request.uri.path, "/dashboard/orders")))'
+API_SBFM_SKIP_EXPRESSION='(http.host in {"api.subslush.com" "api-staging.subslush.com"} or (http.host in {"subslush.com" "www.subslush.com"} and starts_with(http.request.uri.path, "/api/v1/")))'
 
 API_BODY=""
 API_STATUS=""
@@ -111,6 +115,7 @@ validate_enum() {
 validate_bool "CF_ENABLE_SUPER_BOT_FIGHT_MODE" "$CF_ENABLE_SUPER_BOT_FIGHT_MODE"
 validate_bool "CF_SBFM_STATIC_RESOURCE_PROTECTION" "$CF_SBFM_STATIC_RESOURCE_PROTECTION"
 validate_bool "CF_ENABLE_JS_DETECTIONS" "$CF_ENABLE_JS_DETECTIONS"
+validate_bool "CF_ENABLE_API_SBFM_SKIP_RULE" "$CF_ENABLE_API_SBFM_SKIP_RULE"
 validate_enum "CF_SBFM_DEFINITELY_AUTOMATED" "$CF_SBFM_DEFINITELY_AUTOMATED" allow block managed_challenge
 validate_enum "CF_SBFM_LIKELY_AUTOMATED" "$CF_SBFM_LIKELY_AUTOMATED" allow block managed_challenge
 validate_enum "CF_SBFM_VERIFIED_BOTS" "$CF_SBFM_VERIFIED_BOTS" allow block
@@ -175,30 +180,70 @@ fi
 api GET "/zones/${CF_ZONE_ID}/rulesets/phases/http_request_firewall_custom/entrypoint"
 
 if [[ "$API_STATUS" == "404" ]]; then
-  create_entrypoint_payload="$(jq -cn \
-    --arg ref "$RULE_REF" \
-    --arg description "$RULE_DESCRIPTION" \
-    --arg expression "$EXPRESSION" \
-    '{
-      name: "default",
-      kind: "zone",
-      phase: "http_request_firewall_custom",
-      rules: [{
-        ref: $ref,
-        description: $description,
-        expression: $expression,
-        action: "managed_challenge",
-        enabled: true
-      }]
-    }')"
+  if [[ "$CF_ENABLE_API_SBFM_SKIP_RULE" == "true" ]]; then
+    create_entrypoint_payload="$(jq -cn \
+      --arg skip_ref "$API_SBFM_SKIP_RULE_REF" \
+      --arg skip_description "$API_SBFM_SKIP_RULE_DESCRIPTION" \
+      --arg skip_expression "$API_SBFM_SKIP_EXPRESSION" \
+      --arg ref "$RULE_REF" \
+      --arg description "$RULE_DESCRIPTION" \
+      --arg expression "$EXPRESSION" \
+      '{
+        name: "default",
+        kind: "zone",
+        phase: "http_request_firewall_custom",
+        rules: [
+          {
+            ref: $skip_ref,
+            description: $skip_description,
+            expression: $skip_expression,
+            action: "skip",
+            action_parameters: {
+              phases: ["http_request_sbfm"]
+            },
+            enabled: true
+          },
+          {
+            ref: $ref,
+            description: $description,
+            expression: $expression,
+            action: "managed_challenge",
+            enabled: true
+          }
+        ]
+      }')"
+  else
+    create_entrypoint_payload="$(jq -cn \
+      --arg ref "$RULE_REF" \
+      --arg description "$RULE_DESCRIPTION" \
+      --arg expression "$EXPRESSION" \
+      '{
+        name: "default",
+        kind: "zone",
+        phase: "http_request_firewall_custom",
+        rules: [{
+          ref: $ref,
+          description: $description,
+          expression: $expression,
+          action: "managed_challenge",
+          enabled: true
+        }]
+      }')"
+  fi
 
   api POST "/zones/${CF_ZONE_ID}/rulesets" "$create_entrypoint_payload"
   ensure_success "Failed to create the custom firewall phase entrypoint ruleset and managed challenge rule."
 
   created_ruleset_id="$(echo "$API_BODY" | jq -r '.result.id // empty')"
-  created_rule_id="$(echo "$API_BODY" | jq -r '.result.rules[0].id // empty')"
+  created_rule_id="$(echo "$API_BODY" | jq -r --arg ref "$RULE_REF" '.result.rules[]? | select((.ref // "") == $ref) | .id' | head -n1)"
 
-  echo "Created custom firewall entrypoint ruleset (id=${created_ruleset_id}) and managed challenge rule (id=${created_rule_id})."
+  if [[ "$CF_ENABLE_API_SBFM_SKIP_RULE" == "true" ]]; then
+    created_skip_rule_id="$(echo "$API_BODY" | jq -r --arg ref "$API_SBFM_SKIP_RULE_REF" '.result.rules[]? | select((.ref // "") == $ref) | .id' | head -n1)"
+    echo "Created custom firewall entrypoint ruleset (id=${created_ruleset_id}), API SBFM skip rule (id=${created_skip_rule_id}), and managed challenge rule (id=${created_rule_id})."
+    echo "API traffic bypassing Super Bot Fight Mode: api.subslush.com, api-staging.subslush.com, subslush.com/api/v1/*, www.subslush.com/api/v1/*"
+  else
+    echo "Created custom firewall entrypoint ruleset (id=${created_ruleset_id}) and managed challenge rule (id=${created_rule_id})."
+  fi
   echo "Protected paths: /auth/login, /auth/forgot-password, /checkout*, /dashboard/orders*"
   exit 0
 fi
@@ -212,6 +257,7 @@ if [[ -z "$ruleset_id" ]]; then
 fi
 
 existing_rule_id="$(echo "$API_BODY" | jq -r --arg ref "$RULE_REF" --arg desc "$RULE_DESCRIPTION" '.result.rules[]? | select((.ref // "") == $ref or (.description // "") == $desc) | .id' | head -n1)"
+existing_skip_rule_id="$(echo "$API_BODY" | jq -r --arg ref "$API_SBFM_SKIP_RULE_REF" --arg desc "$API_SBFM_SKIP_RULE_DESCRIPTION" '.result.rules[]? | select((.ref // "") == $ref or (.description // "") == $desc) | .id' | head -n1)"
 
 rule_payload="$(jq -cn \
   --arg ref "$RULE_REF" \
@@ -224,6 +270,37 @@ rule_payload="$(jq -cn \
     action: "managed_challenge",
     enabled: true
   }')"
+
+skip_rule_payload="$(jq -cn \
+  --arg ref "$API_SBFM_SKIP_RULE_REF" \
+  --arg description "$API_SBFM_SKIP_RULE_DESCRIPTION" \
+  --arg expression "$API_SBFM_SKIP_EXPRESSION" \
+  '{
+    ref: $ref,
+    description: $description,
+    expression: $expression,
+    action: "skip",
+    action_parameters: {
+      phases: ["http_request_sbfm"]
+    },
+    enabled: true
+  }')"
+
+if [[ "$CF_ENABLE_API_SBFM_SKIP_RULE" == "true" ]]; then
+  if [[ -n "$existing_skip_rule_id" ]]; then
+    api PATCH "/zones/${CF_ZONE_ID}/rulesets/${ruleset_id}/rules/${existing_skip_rule_id}" "$skip_rule_payload"
+    ensure_success "Failed to update API Super Bot Fight Mode skip custom rule."
+    echo "Updated API Super Bot Fight Mode skip rule (id=${existing_skip_rule_id}) in ruleset ${ruleset_id}."
+  else
+    api POST "/zones/${CF_ZONE_ID}/rulesets/${ruleset_id}/rules" "$skip_rule_payload"
+    ensure_success "Failed to create API Super Bot Fight Mode skip custom rule."
+    created_skip_rule_id="$(echo "$API_BODY" | jq -r '.result.id // empty')"
+    echo "Created API Super Bot Fight Mode skip rule (id=${created_skip_rule_id}) in ruleset ${ruleset_id}."
+  fi
+  echo "API traffic bypassing Super Bot Fight Mode: api.subslush.com, api-staging.subslush.com, subslush.com/api/v1/*, www.subslush.com/api/v1/*"
+else
+  echo "Skipping API Super Bot Fight Mode bypass rule update (CF_ENABLE_API_SBFM_SKIP_RULE=false)."
+fi
 
 if [[ -n "$existing_rule_id" ]]; then
   api PATCH "/zones/${CF_ZONE_ID}/rulesets/${ruleset_id}/rules/${existing_rule_id}" "$rule_payload"

@@ -76,7 +76,7 @@ export interface CheckoutPricingSummary {
   normalized_coupon_code?: string | null;
 }
 
-export interface CheckoutStripeSessionInput {
+export interface CheckoutPayPalSessionInput {
   checkout_session_key?: string | null | undefined;
   order_id?: string | null | undefined;
   success_url?: string | null | undefined;
@@ -85,24 +85,29 @@ export interface CheckoutStripeSessionInput {
   add_payment_info_event_id?: string | null | undefined;
 }
 
-export interface CheckoutStripeSessionResult {
+export interface CheckoutPayPalSessionResult {
   orderId: string;
   sessionId: string;
   sessionUrl: string;
   paymentId?: string | null;
 }
 
-export interface CheckoutStripeConfirmInput {
+export interface CheckoutPayPalConfirmInput {
   order_id: string;
   session_id: string;
 }
 
-export interface CheckoutStripeConfirmResult {
+export interface CheckoutPayPalConfirmResult {
   orderId: string;
   sessionId: string;
   orderStatus: string | null;
   fulfilled: boolean;
 }
+
+export type CheckoutStripeSessionInput = CheckoutPayPalSessionInput;
+export type CheckoutStripeSessionResult = CheckoutPayPalSessionResult;
+export type CheckoutStripeConfirmInput = CheckoutPayPalConfirmInput;
+export type CheckoutStripeConfirmResult = CheckoutPayPalConfirmResult;
 
 export interface CheckoutCreditsCompleteInput {
   checkout_session_key?: string | null | undefined;

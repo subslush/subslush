@@ -13,9 +13,6 @@ import type {
   SubscriptionsResponse,
   Subscription,
   SubscriptionResponse,
-  AutoRenewEnableResponse,
-  AutoRenewConfirmResponse,
-  AutoRenewDisableResponse,
   RenewalCheckoutResponse,
   CreditsAutoRenewResponse,
   CreditsRenewalResponse,
@@ -149,31 +146,6 @@ export class SubscriptionService {
       { data: { reason } }
     );
     return unwrapApiData<{ subscription_id: string; message?: string; subscription?: Subscription }>(response);
-  }
-
-  async enableStripeAutoRenew(subscriptionId: string): Promise<AutoRenewEnableResponse> {
-    const response = await apiClient.post(
-      `${API_ENDPOINTS.SUBSCRIPTIONS.AUTO_RENEW_ENABLE}/${subscriptionId}/auto-renew/enable`
-    );
-    return unwrapApiData<AutoRenewEnableResponse>(response);
-  }
-
-  async confirmStripeAutoRenew(
-    subscriptionId: string,
-    setupIntentId: string
-  ): Promise<AutoRenewConfirmResponse> {
-    const response = await apiClient.post(
-      `${API_ENDPOINTS.SUBSCRIPTIONS.AUTO_RENEW_CONFIRM}/${subscriptionId}/auto-renew/confirm`,
-      { setup_intent_id: setupIntentId }
-    );
-    return unwrapApiData<AutoRenewConfirmResponse>(response);
-  }
-
-  async disableStripeAutoRenew(subscriptionId: string): Promise<AutoRenewDisableResponse> {
-    const response = await apiClient.post(
-      `${API_ENDPOINTS.SUBSCRIPTIONS.AUTO_RENEW_DISABLE}/${subscriptionId}/auto-renew/disable`
-    );
-    return unwrapApiData<AutoRenewDisableResponse>(response);
   }
 
   async enableCreditsAutoRenew(subscriptionId: string): Promise<CreditsAutoRenewResponse> {

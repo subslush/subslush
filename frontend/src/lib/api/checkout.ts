@@ -35,7 +35,7 @@ export class CheckoutService {
     input: CheckoutCardSessionRequest
   ): Promise<CheckoutCardSessionResponse> {
     const response = await apiClient.post(
-      API_ENDPOINTS.CHECKOUT.CARD_SESSION,
+      API_ENDPOINTS.CHECKOUT.PAYPAL_SESSION,
       input
     );
     return unwrapApiData<CheckoutCardSessionResponse>(response);
@@ -45,7 +45,7 @@ export class CheckoutService {
     input: CheckoutCardConfirmRequest
   ): Promise<CheckoutCardConfirmResponse> {
     const response = await apiClient.post(
-      API_ENDPOINTS.CHECKOUT.CARD_CONFIRM,
+      API_ENDPOINTS.CHECKOUT.PAYPAL_CONFIRM,
       input
     );
     return unwrapApiData<CheckoutCardConfirmResponse>(response);

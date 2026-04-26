@@ -22,6 +22,8 @@ const mockPaymentService = {
 
   processWebhook: jest.fn().mockResolvedValue(true),
 
+  handlePayPalWebhook: jest.fn().mockResolvedValue(true),
+
   getPaymentStatus: jest.fn().mockResolvedValue({
     paymentId: 'payment-123',
     status: 'finished',
@@ -56,6 +58,14 @@ const mockPaymentService = {
   }),
 
   sweepStaleStripeCheckouts: jest.fn().mockResolvedValue({
+    scanned: 0,
+    cancelled: 0,
+    reconciled: 0,
+    skipped: 0,
+    errors: 0,
+  }),
+
+  sweepStaleCheckoutSessions: jest.fn().mockResolvedValue({
     scanned: 0,
     cancelled: 0,
     reconciled: 0,

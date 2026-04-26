@@ -70,6 +70,8 @@ export const API_ENDPOINTS = {
   CHECKOUT: {
     IDENTITY: '/checkout/identity',
     DRAFT: '/checkout/draft',
+    PAYPAL_SESSION: '/checkout/paypal/session',
+    PAYPAL_CONFIRM: '/checkout/paypal/confirm',
     CARD_SESSION: '/checkout/card/session',
     CARD_CONFIRM: '/checkout/card/confirm',
     STRIPE_SESSION: '/checkout/stripe/session',

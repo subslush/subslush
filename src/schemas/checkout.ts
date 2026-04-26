@@ -84,7 +84,7 @@ export const guestClaimSchema = z.object({
 export type GuestClaimInput = z.infer<typeof guestClaimSchema>;
 
 const checkoutSessionKeySchema = optionalCheckoutSessionKeySchema;
-export const checkoutStripeSessionSchema = z.object({
+export const checkoutPayPalSessionSchema = z.object({
   checkout_session_key: checkoutSessionKeySchema,
   order_id: uuidSchema.optional().nullable(),
   success_url: z
@@ -97,9 +97,12 @@ export const checkoutStripeSessionSchema = z.object({
   add_payment_info_event_id: optionalEventIdSchema,
 });
 
-export type CheckoutStripeSessionInput = z.infer<
-  typeof checkoutStripeSessionSchema
+export const checkoutStripeSessionSchema = checkoutPayPalSessionSchema;
+
+export type CheckoutPayPalSessionInput = z.infer<
+  typeof checkoutPayPalSessionSchema
 >;
+export type CheckoutStripeSessionInput = CheckoutPayPalSessionInput;
 
 export const checkoutCreditsCompleteSchema = z.object({
   checkout_session_key: checkoutSessionKeySchema,
@@ -154,7 +157,7 @@ export type CheckoutNowPaymentsMinimumInput = z.infer<
   typeof checkoutNowPaymentsMinimumSchema
 >;
 
-export const checkoutStripeConfirmSchema = z.object({
+export const checkoutPayPalConfirmSchema = z.object({
   order_id: uuidSchema,
   session_id: z
     .string()
@@ -162,9 +165,12 @@ export const checkoutStripeConfirmSchema = z.object({
     .max(255, 'Session ID is too long'),
 });
 
-export type CheckoutStripeConfirmInput = z.infer<
-  typeof checkoutStripeConfirmSchema
+export const checkoutStripeConfirmSchema = checkoutPayPalConfirmSchema;
+
+export type CheckoutPayPalConfirmInput = z.infer<
+  typeof checkoutPayPalConfirmSchema
 >;
+export type CheckoutStripeConfirmInput = CheckoutPayPalConfirmInput;
 
 export function validateGuestIdentityInput(
   data: unknown
@@ -235,13 +241,13 @@ export function validateGuestClaimInput(
   }
 }
 
-export function validateCheckoutStripeSessionInput(
+export function validateCheckoutPayPalSessionInput(
   data: unknown
 ):
-  | { success: true; data: CheckoutStripeSessionInput }
+  | { success: true; data: CheckoutPayPalSessionInput }
   | { success: false; error: string; details?: string } {
   try {
-    const validatedData = checkoutStripeSessionSchema.parse(data);
+    const validatedData = checkoutPayPalSessionSchema.parse(data);
     return { success: true, data: validatedData };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -256,6 +262,14 @@ export function validateCheckoutStripeSessionInput(
     }
     return { success: false, error: 'Invalid input data' };
   }
+}
+
+export function validateCheckoutStripeSessionInput(
+  data: unknown
+):
+  | { success: true; data: CheckoutStripeSessionInput }
+  | { success: false; error: string; details?: string } {
+  return validateCheckoutPayPalSessionInput(data);
 }
 
 export function validateCheckoutNowPaymentsInvoiceInput(
@@ -327,13 +341,13 @@ export function validateCheckoutNowPaymentsMinimumInput(
   }
 }
 
-export function validateCheckoutStripeConfirmInput(
+export function validateCheckoutPayPalConfirmInput(
   data: unknown
 ):
-  | { success: true; data: CheckoutStripeConfirmInput }
+  | { success: true; data: CheckoutPayPalConfirmInput }
   | { success: false; error: string; details?: string } {
   try {
-    const validatedData = checkoutStripeConfirmSchema.parse(data);
+    const validatedData = checkoutPayPalConfirmSchema.parse(data);
     return { success: true, data: validatedData };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -348,4 +362,12 @@ export function validateCheckoutStripeConfirmInput(
     }
     return { success: false, error: 'Invalid input data' };
   }
+}
+
+export function validateCheckoutStripeConfirmInput(
+  data: unknown
+):
+  | { success: true; data: CheckoutStripeConfirmInput }
+  | { success: false; error: string; details?: string } {
+  return validateCheckoutPayPalConfirmInput(data);
 }

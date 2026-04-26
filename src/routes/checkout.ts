@@ -3,16 +3,15 @@ import {
   validateGuestIdentityInput,
   validateGuestDraftInput,
   validateGuestClaimInput,
-  validateCheckoutStripeSessionInput,
+  validateCheckoutPayPalSessionInput,
   validateCheckoutNowPaymentsInvoiceInput,
   validateCheckoutNowPaymentsMinimumInput,
-  validateCheckoutStripeConfirmInput,
+  validateCheckoutPayPalConfirmInput,
   validateCheckoutCreditsCompleteInput,
 } from '../schemas/checkout';
 import { guestCheckoutService } from '../services/guestCheckoutService';
 import { paymentService } from '../services/paymentService';
 import { orderService } from '../services/orderService';
-import { env } from '../config/environment';
 import {
   buildTikTokRequestContext,
   tiktokEventsService,
@@ -322,7 +321,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
     reply: FastifyReply
   ) => {
     try {
-      const validation = validateCheckoutStripeSessionInput(request.body);
+      const validation = validateCheckoutPayPalSessionInput(request.body);
       if (!validation.success) {
         return sendError(
           reply,
@@ -351,9 +350,8 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
 
       let orderId: string | null = order_id ?? null;
       if (checkout_session_key) {
-        const order = await orderService.getOrderByCheckoutSessionKey(
-          checkout_session_key
-        );
+        const order =
+          await orderService.getOrderByCheckoutSessionKey(checkout_session_key);
         if (!order) {
           return ErrorResponses.notFound(reply, 'Checkout session not found');
         }
@@ -376,32 +374,19 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         return ErrorResponses.badRequest(reply, 'Order not found');
       }
 
-      const cardProvider = env.PAY4BIT_ENABLED ? 'pay4bit' : 'stripe';
-
-      if (cardProvider === 'stripe' && !env.STRIPE_ENABLED) {
-        return ErrorResponses.serviceUnavailable(
-          reply,
-          'Card checkout is temporarily unavailable. Please try again later.'
-        );
-      }
-
-      const sessionResult =
-        cardProvider === 'pay4bit'
-          ? await paymentService.createPay4bitCheckoutSession({
-              orderId,
-            })
-          : await paymentService.createStripeCheckoutSession({
-              orderId,
-              successUrl: success_url ?? null,
-              cancelUrl: cancel_url ?? null,
-            });
+      const sessionResult = await paymentService.createPayPalCheckoutSession({
+        orderId,
+        successUrl: success_url ?? null,
+        cancelUrl: cancel_url ?? null,
+      });
 
       if (!sessionResult.success) {
         const error = sessionResult.error || 'card_session_failed';
         if (
-          ['payment_provider_unavailable', 'payment_provider_rate_limited'].includes(
-            error
-          )
+          [
+            'payment_provider_unavailable',
+            'payment_provider_rate_limited',
+          ].includes(error)
         ) {
           return ErrorResponses.serviceUnavailable(
             reply,
@@ -409,7 +394,9 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
         if (error === 'payment_provider_misconfigured') {
-          Logger.error('Card provider misconfigured while creating checkout session');
+          Logger.error(
+            'Card provider misconfigured while creating checkout session'
+          );
           return ErrorResponses.serviceUnavailable(
             reply,
             'Card checkout is temporarily unavailable. Please try again later.'
@@ -429,14 +416,18 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         ) {
           return ErrorResponses.badRequest(reply, error.replace(/_/g, ' '));
         }
-        return ErrorResponses.internalError(reply, 'Failed to create card session');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to create card session'
+        );
       }
 
       const orderForTracking = await orderService.getOrderWithItems(
         sessionResult.orderId
       );
       const orderMetadata =
-        orderForTracking?.metadata && typeof orderForTracking.metadata === 'object'
+        orderForTracking?.metadata &&
+        typeof orderForTracking.metadata === 'object'
           ? orderForTracking.metadata
           : null;
       const displayCurrency =
@@ -449,20 +440,22 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         null;
       if (orderForTracking) {
         const properties = buildOrderTikTokProperties(orderForTracking);
-        const trackingUserId = orderForTracking.user_id || request.user?.userId || null;
+        const trackingUserId =
+          orderForTracking.user_id || request.user?.userId || null;
         if (trackingUserId) {
           const context = buildTikTokRequestContext(request);
           void tiktokEventsService.trackAddPaymentInfo({
             userId: trackingUserId,
-            email: request.user?.email ?? orderForTracking.contact_email ?? null,
+            email:
+              request.user?.email ?? orderForTracking.contact_email ?? null,
             eventId: resolveEventId(
               add_payment_info_event_id,
-              `order_${sessionResult.orderId}_add_payment_info_${cardProvider}`
+              `order_${sessionResult.orderId}_add_payment_info_paypal`
             ),
             properties: {
               ...properties,
               payment_type: 'card',
-              payment_provider: cardProvider,
+              payment_provider: 'paypal',
             },
             context,
           });
@@ -474,20 +467,28 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         session_id: sessionResult.sessionId,
         session_url: sessionResult.sessionUrl,
         payment_id: sessionResult.paymentId,
-        payment_provider: cardProvider,
+        payment_provider: 'paypal',
         pricing_snapshot_id: orderForTracking?.pricing_snapshot_id ?? null,
         display_currency: displayCurrency,
         display_total_cents: displayTotalCents,
         settlement_currency: orderForTracking?.settlement_currency ?? null,
-        settlement_total_cents: orderForTracking?.settlement_total_cents ?? null,
+        settlement_total_cents:
+          orderForTracking?.settlement_total_cents ?? null,
       });
     } catch (error) {
       Logger.error('Card session creation failed:', error);
-      return ErrorResponses.internalError(reply, 'Failed to create card session');
+      return ErrorResponses.internalError(
+        reply,
+        'Failed to create card session'
+      );
     }
   };
 
-  for (const cardSessionPath of ['/card/session', '/stripe/session']) {
+  for (const cardSessionPath of [
+    '/paypal/session',
+    '/card/session',
+    '/stripe/session',
+  ]) {
     fastify.post(
       cardSessionPath,
       {
@@ -515,7 +516,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
     reply: FastifyReply
   ) => {
     try {
-      const validation = validateCheckoutStripeConfirmInput(request.body);
+      const validation = validateCheckoutPayPalConfirmInput(request.body);
       if (!validation.success) {
         return sendError(
           reply,
@@ -532,41 +533,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         return ErrorResponses.notFound(reply, 'Order not found');
       }
 
-      const cardProvider = env.PAY4BIT_ENABLED ? 'pay4bit' : 'stripe';
-      if (cardProvider === 'stripe' && !env.STRIPE_ENABLED) {
-        return ErrorResponses.notFound(reply, 'Stripe checkout is disabled');
-      }
-
-      if (cardProvider === 'pay4bit') {
-        const confirmResult = await paymentService.confirmPay4bitCheckoutSession({
-          orderId: validation.data.order_id,
-          localpayId: validation.data.session_id,
-        });
-
-        if (!confirmResult.success) {
-          const error = confirmResult.error || 'card_session_confirm_failed';
-          if (
-            [
-              'checkout_session_mismatch',
-              'payment_not_completed',
-              'fulfillment_failed',
-            ].includes(error)
-          ) {
-            return ErrorResponses.badRequest(reply, error.replace(/_/g, ' '));
-          }
-          return ErrorResponses.internalError(reply, 'Failed to confirm card session');
-        }
-
-        return SuccessResponses.ok(reply, {
-          order_id: confirmResult.orderId,
-          session_id: confirmResult.localpayId,
-          order_status: confirmResult.orderStatus,
-          fulfilled: confirmResult.fulfilled,
-          payment_provider: cardProvider,
-        });
-      }
-
-      const confirmResult = await paymentService.confirmStripeCheckoutSession({
+      const confirmResult = await paymentService.confirmPayPalCheckoutSession({
         orderId: validation.data.order_id,
         sessionId: validation.data.session_id,
       });
@@ -574,13 +541,20 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
       if (!confirmResult.success) {
         const error = confirmResult.error || 'card_session_confirm_failed';
         if (
-          ['checkout_session_mismatch', 'payment_not_completed', 'fulfillment_failed'].includes(
-            error
-          )
+          [
+            'checkout_session_mismatch',
+            'payment_not_completed',
+            'fulfillment_failed',
+            'payment_amount_mismatch',
+            'payment_currency_mismatch',
+          ].includes(error)
         ) {
           return ErrorResponses.badRequest(reply, error.replace(/_/g, ' '));
         }
-        return ErrorResponses.internalError(reply, 'Failed to confirm card session');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to confirm card session'
+        );
       }
 
       return SuccessResponses.ok(reply, {
@@ -588,15 +562,22 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         session_id: confirmResult.sessionId,
         order_status: confirmResult.orderStatus,
         fulfilled: confirmResult.fulfilled,
-        payment_provider: cardProvider,
+        payment_provider: 'paypal',
       });
     } catch (error) {
       Logger.error('Card session confirmation failed:', error);
-      return ErrorResponses.internalError(reply, 'Failed to confirm card session');
+      return ErrorResponses.internalError(
+        reply,
+        'Failed to confirm card session'
+      );
     }
   };
 
-  for (const cardConfirmPath of ['/card/confirm', '/stripe/confirm']) {
+  for (const cardConfirmPath of [
+    '/paypal/confirm',
+    '/card/confirm',
+    '/stripe/confirm',
+  ]) {
     fastify.post(
       cardConfirmPath,
       {

@@ -14,13 +14,12 @@ import { paymentEventRepository } from './paymentEventRepository';
 import { nowPaymentsProvider } from './payments/nowPaymentsProvider';
 import { stripeProvider } from './payments/stripeProvider';
 import { pay4bitProvider } from './payments/pay4bitProvider';
+import { PayPalProviderError, paypalProvider } from './payments/paypalProvider';
 import { Logger } from '../utils/logger';
 import { paymentMonitoringService } from './paymentMonitoringService';
 import { paymentFailureService } from './paymentFailureService';
 import { shouldIgnoreNowPaymentsStatusRegression } from '../utils/nowpaymentsStatus';
-import { paymentMethodService } from './paymentMethodService';
 import { creditService } from './creditService';
-import { UserPaymentMethod } from '../types/paymentMethod';
 import {
   Payment,
   PaymentStatus,
@@ -61,11 +60,7 @@ import {
   ownAccountCredentialRequirementRequiresPassword,
   validateUpgradeOptions,
 } from '../utils/upgradeOptions';
-import {
-  ensureRenewalTask,
-  notifyStripeRenewalFailure,
-  notifyStripeRenewalSuccess,
-} from './renewalNotificationService';
+import { ensureRenewalTask } from './renewalNotificationService';
 import type { OrderItem, Order, OrderWithItems } from '../types/order';
 
 interface StripeOrderContext {
@@ -107,6 +102,16 @@ type Pay4bitCallbackResponse = {
       message: string;
     };
   };
+};
+
+type PayPalWebhookInput = {
+  transmissionId: string;
+  transmissionTime: string;
+  transmissionSig: string;
+  certUrl: string;
+  authAlgo: string;
+  event: Record<string, unknown>;
+  rawBody?: Buffer | string;
 };
 
 const NETWORK_SUFFIXES: Array<{ suffix: string; label: string }> = [
@@ -944,303 +949,6 @@ export class PaymentService {
     };
   }
 
-  async createStripeSetupIntent(params: {
-    userId: string;
-    subscriptionId?: string | null;
-  }): Promise<{ setupIntentId: string; clientSecret: string }> {
-    const { customerId } = await this.ensureStripeCustomer(params.userId);
-    const intent = await stripeProvider.createSetupIntent({
-      customerId,
-      metadata: {
-        user_id: params.userId,
-        ...(params.subscriptionId
-          ? { subscription_id: params.subscriptionId }
-          : {}),
-      },
-    });
-
-    if (!intent.client_secret) {
-      throw new Error('Stripe SetupIntent missing client_secret');
-    }
-
-    return {
-      setupIntentId: intent.id,
-      clientSecret: intent.client_secret,
-    };
-  }
-
-  async confirmStripeSetupIntent(params: {
-    userId: string;
-    setupIntentId: string;
-  }): Promise<{ paymentMethodId: string; customerId: string }> {
-    const { customerId } = await this.ensureStripeCustomer(params.userId);
-    const intent = await stripeProvider.retrieveSetupIntent(
-      params.setupIntentId
-    );
-
-    if (intent.status !== 'succeeded') {
-      throw new Error('SetupIntent not succeeded');
-    }
-
-    if (!intent.payment_method) {
-      throw new Error('SetupIntent missing payment method');
-    }
-
-    const intentCustomer =
-      typeof intent.customer === 'string'
-        ? intent.customer
-        : intent.customer?.id;
-    if (intentCustomer && intentCustomer !== customerId) {
-      throw new Error('SetupIntent customer mismatch');
-    }
-
-    return {
-      paymentMethodId:
-        typeof intent.payment_method === 'string'
-          ? intent.payment_method
-          : intent.payment_method.id,
-      customerId,
-    };
-  }
-
-  async saveStripePaymentMethod(params: {
-    userId: string;
-    paymentMethodId: string;
-    customerId: string;
-    setupIntentId?: string | null;
-  }): Promise<UserPaymentMethod> {
-    const paymentMethod = await stripeProvider.retrievePaymentMethod(
-      params.paymentMethodId
-    );
-
-    const card = paymentMethod.card;
-    const saved = await paymentMethodService.upsertPaymentMethod({
-      user_id: params.userId,
-      provider: 'stripe',
-      provider_customer_id: params.customerId,
-      provider_payment_method_id: paymentMethod.id,
-      brand: card?.brand ?? null,
-      last4: card?.last4 ?? null,
-      exp_month: card?.exp_month ?? null,
-      exp_year: card?.exp_year ?? null,
-      status: 'active',
-      is_default: true,
-      setup_intent_id: params.setupIntentId ?? null,
-    });
-
-    if (!saved) {
-      throw new Error('Failed to save payment method');
-    }
-
-    await paymentMethodService.setDefaultPaymentMethod(
-      params.userId,
-      'stripe',
-      saved.id
-    );
-
-    return saved;
-  }
-
-  async createStripeOffSessionRenewalPayment(params: {
-    userId: string;
-    amount: number;
-    currency: string;
-    description: string;
-    paymentMethodId: string;
-    customerId: string;
-    subscriptionId: string;
-    metadata: Record<string, any>;
-    orderContext?: StripeOrderContext;
-  }): Promise<{
-    success: boolean;
-    paymentId?: string;
-    paymentRecordId?: string;
-    status?: UnifiedPaymentStatus;
-    providerStatus?: string;
-    error?: string;
-  }> {
-    try {
-      if (!params.customerId) {
-        return {
-          success: false,
-          error: 'Stripe customer is missing for off-session payment',
-        };
-      }
-
-      const resolvedCurrency = normalizeCurrencyCode(params.currency) || 'USD';
-      const supportsCurrency =
-        await stripeProvider.supportsCurrency(resolvedCurrency);
-      if (!supportsCurrency) {
-        return {
-          success: false,
-          error: `Currency ${resolvedCurrency} is not supported by Stripe`,
-        };
-      }
-
-      const intent = await stripeProvider.createOffSessionPaymentIntent({
-        customerId: params.customerId,
-        paymentMethodId: params.paymentMethodId,
-        amount: params.amount,
-        currency: resolvedCurrency,
-        description: params.description,
-        metadata: params.metadata,
-      });
-
-      const normalizedStatus = this.mapStripePaymentIntentStatus(intent.status);
-      const paymentRecord = await paymentRepository.create({
-        userId: params.userId,
-        provider: 'stripe',
-        providerPaymentId: intent.id,
-        status: normalizedStatus,
-        providerStatus: intent.status,
-        purpose: 'one_time',
-        amount: params.amount,
-        currency: resolvedCurrency.toLowerCase(),
-        ...(resolvedCurrency === 'USD' ? { amountUsd: params.amount } : {}),
-        paymentMethodType: 'card',
-        subscriptionId: params.subscriptionId,
-        metadata: params.metadata,
-        ...(params.orderContext?.orderId
-          ? { orderId: params.orderContext.orderId }
-          : {}),
-        ...(params.orderContext?.productVariantId !== undefined &&
-        params.orderContext?.productVariantId !== null
-          ? { productVariantId: params.orderContext.productVariantId }
-          : {}),
-        ...(params.orderContext?.priceCents !== undefined &&
-        params.orderContext?.priceCents !== null
-          ? { priceCents: params.orderContext.priceCents }
-          : {}),
-        ...(params.orderContext?.basePriceCents !== undefined &&
-        params.orderContext?.basePriceCents !== null
-          ? { basePriceCents: params.orderContext.basePriceCents }
-          : {}),
-        ...(params.orderContext?.discountPercent !== undefined &&
-        params.orderContext?.discountPercent !== null
-          ? { discountPercent: params.orderContext.discountPercent }
-          : {}),
-        ...(params.orderContext?.termMonths !== undefined &&
-        params.orderContext?.termMonths !== null
-          ? { termMonths: params.orderContext.termMonths }
-          : {}),
-        ...(params.orderContext?.autoRenew !== undefined
-          ? { autoRenew: params.orderContext.autoRenew }
-          : {}),
-        ...(params.orderContext?.nextBillingAt !== undefined &&
-        params.orderContext?.nextBillingAt !== null
-          ? { nextBillingAt: params.orderContext.nextBillingAt }
-          : {}),
-        ...(params.orderContext?.renewalMethod
-          ? { renewalMethod: params.orderContext.renewalMethod }
-          : {}),
-        ...(params.orderContext?.statusReason
-          ? { statusReason: params.orderContext.statusReason }
-          : {}),
-      });
-
-      return {
-        success:
-          normalizedStatus === 'succeeded' || normalizedStatus === 'processing',
-        paymentId: intent.id,
-        paymentRecordId: paymentRecord.id,
-        status: normalizedStatus,
-        providerStatus: intent.status,
-      };
-    } catch (error: any) {
-      const stripeIntent =
-        error && typeof error === 'object' && error.payment_intent
-          ? (error.payment_intent as any)
-          : null;
-
-      if (stripeIntent?.id) {
-        const normalizedStatus = this.mapStripePaymentIntentStatus(
-          stripeIntent.status
-        );
-        const fallbackCurrency =
-          normalizeCurrencyCode(params.currency) || 'USD';
-        try {
-          const paymentRecord = await paymentRepository.create({
-            userId: params.userId,
-            provider: 'stripe',
-            providerPaymentId: stripeIntent.id,
-            status: normalizedStatus,
-            providerStatus: stripeIntent.status,
-            purpose: 'one_time',
-            amount: params.amount,
-            currency: fallbackCurrency.toLowerCase(),
-            ...(fallbackCurrency === 'USD' ? { amountUsd: params.amount } : {}),
-            ...(params.orderContext?.orderId
-              ? { orderId: params.orderContext.orderId }
-              : {}),
-            ...(params.orderContext?.productVariantId !== undefined &&
-            params.orderContext?.productVariantId !== null
-              ? { productVariantId: params.orderContext.productVariantId }
-              : {}),
-            ...(params.orderContext?.priceCents !== undefined &&
-            params.orderContext?.priceCents !== null
-              ? { priceCents: params.orderContext.priceCents }
-              : {}),
-            ...(params.orderContext?.basePriceCents !== undefined &&
-            params.orderContext?.basePriceCents !== null
-              ? { basePriceCents: params.orderContext.basePriceCents }
-              : {}),
-            ...(params.orderContext?.discountPercent !== undefined &&
-            params.orderContext?.discountPercent !== null
-              ? { discountPercent: params.orderContext.discountPercent }
-              : {}),
-            ...(params.orderContext?.termMonths !== undefined &&
-            params.orderContext?.termMonths !== null
-              ? { termMonths: params.orderContext.termMonths }
-              : {}),
-            ...(params.orderContext?.autoRenew !== undefined
-              ? { autoRenew: params.orderContext.autoRenew }
-              : {}),
-            ...(params.orderContext?.nextBillingAt !== undefined &&
-            params.orderContext?.nextBillingAt !== null
-              ? { nextBillingAt: params.orderContext.nextBillingAt }
-              : {}),
-            ...(params.orderContext?.renewalMethod
-              ? { renewalMethod: params.orderContext.renewalMethod }
-              : {}),
-            ...(params.orderContext?.statusReason
-              ? { statusReason: params.orderContext.statusReason }
-              : {}),
-            subscriptionId: params.subscriptionId,
-            metadata: params.metadata,
-          });
-          return {
-            success: false,
-            paymentId: stripeIntent.id,
-            paymentRecordId: paymentRecord.id,
-            status: normalizedStatus,
-            providerStatus: stripeIntent.status,
-            error:
-              error instanceof Error ? error.message : 'Stripe payment failed',
-          };
-        } catch (repoError) {
-          Logger.error(
-            'Failed to record off-session Stripe payment:',
-            repoError
-          );
-        }
-        return {
-          success: false,
-          paymentId: stripeIntent.id,
-          status: normalizedStatus,
-          providerStatus: stripeIntent.status,
-          error:
-            error instanceof Error ? error.message : 'Stripe payment failed',
-        };
-      }
-
-      Logger.error('Error creating Stripe off-session payment:', error);
-      return {
-        success: false,
-        error: 'Failed to create Stripe off-session payment',
-      };
-    }
-  }
-
   private async enforceStripeOrderGuard(params: {
     orderId: string;
     intent: any;
@@ -1650,23 +1358,6 @@ export class PaymentService {
             priority: 'high',
           });
 
-          try {
-            await notifyStripeRenewalSuccess({
-              userId: updatedSubscription.user_id,
-              subscriptionId,
-              serviceType: updatedSubscription.service_type,
-              servicePlan: updatedSubscription.service_plan,
-              productName: updatedSubscription.product_name ?? null,
-              variantName: updatedSubscription.variant_name ?? null,
-              termMonths: updatedSubscription.term_months ?? null,
-            });
-          } catch (error) {
-            Logger.warn('Stripe renewal success notification failed', {
-              subscriptionId,
-              error,
-            });
-          }
-
           await subscriptionRenewalService.markRenewalSucceeded({
             subscriptionId,
             cycleEndDate,
@@ -1787,41 +1478,16 @@ export class PaymentService {
       const hasSubscription = subscriptionCreated || !!payment.subscriptionId;
 
       if (autoRenew && resolvedSubscriptionId) {
-        const stripeCustomerId =
-          typeof intent.customer === 'string'
-            ? intent.customer
-            : intent.customer?.id;
-        const stripePaymentMethodId =
-          typeof intent.payment_method === 'string'
-            ? intent.payment_method
-            : intent.payment_method?.id;
-
-        if (stripeCustomerId && stripePaymentMethodId) {
-          try {
-            const savedMethod = await this.saveStripePaymentMethod({
-              userId: payment.userId,
-              paymentMethodId: stripePaymentMethodId,
-              customerId: stripeCustomerId,
-            });
-
-            await subscriptionService.updateSubscriptionForAdmin(
-              resolvedSubscriptionId,
-              {
-                billing_payment_method_id: savedMethod.id,
-                auto_renew: true,
-                renewal_method: 'stripe',
-                auto_renew_enabled_at: new Date(),
-                auto_renew_disabled_at: null,
-              }
-            );
-          } catch (error) {
-            Logger.warn('Failed to save Stripe auto-renew payment method', {
-              paymentId,
-              subscriptionId: resolvedSubscriptionId,
-              error,
-            });
+        await subscriptionService.updateSubscriptionForAdmin(
+          resolvedSubscriptionId,
+          {
+            auto_renew: false,
+            renewal_method: null,
+            auto_renew_disabled_at: new Date(),
+            next_billing_at: null,
+            status_reason: 'auto_renew_deprecated',
           }
-        }
+        );
       }
 
       if (orderId) {
@@ -1911,43 +1577,6 @@ export class PaymentService {
               }
             : {}),
         });
-
-        const paymentMethodId =
-          mergedMetadata.user_payment_method_id ||
-          subscription.billing_payment_method_id ||
-          null;
-        if (paymentMethodId && isHardFailure) {
-          await paymentMethodService.updatePaymentMethodStatus(
-            paymentMethodId,
-            'requires_action'
-          );
-        }
-
-        try {
-          await notifyStripeRenewalFailure({
-            userId: subscription.user_id,
-            subscriptionId,
-            serviceType: subscription.service_type,
-            servicePlan: subscription.service_plan,
-            productName: subscription.product_name ?? null,
-            variantName: subscription.variant_name ?? null,
-            termMonths: subscription.term_months ?? null,
-            endDate: new Date(subscription.end_date),
-            renewalDate: subscription.renewal_date ?? null,
-            priceCents: subscription.price_cents ?? null,
-            currency: subscription.currency ?? null,
-            reason:
-              decline.declineCode ||
-              intent.last_payment_error?.message ||
-              'stripe_payment_failed',
-            nextRetryAt,
-          });
-        } catch (error) {
-          Logger.warn('Stripe renewal failure notification failed', {
-            subscriptionId,
-            error,
-          });
-        }
 
         const expectedEndDate = this.extractExpectedEndDate(mergedMetadata);
         const cycleEndDate = resolveCycleEndDate({
@@ -2041,43 +1670,6 @@ export class PaymentService {
               }
             : {}),
         });
-
-        const paymentMethodId =
-          mergedMetadata.user_payment_method_id ||
-          subscription.billing_payment_method_id ||
-          null;
-        if (paymentMethodId && isHardFailure) {
-          await paymentMethodService.updatePaymentMethodStatus(
-            paymentMethodId,
-            'requires_action'
-          );
-        }
-
-        try {
-          await notifyStripeRenewalFailure({
-            userId: subscription.user_id,
-            subscriptionId,
-            serviceType: subscription.service_type,
-            servicePlan: subscription.service_plan,
-            productName: subscription.product_name ?? null,
-            variantName: subscription.variant_name ?? null,
-            termMonths: subscription.term_months ?? null,
-            endDate: new Date(subscription.end_date),
-            renewalDate: subscription.renewal_date ?? null,
-            priceCents: subscription.price_cents ?? null,
-            currency: subscription.currency ?? null,
-            reason:
-              decline.declineCode ||
-              intent.last_payment_error?.message ||
-              'requires_action',
-            nextRetryAt,
-          });
-        } catch (error) {
-          Logger.warn('Stripe renewal requires-action notification failed', {
-            subscriptionId,
-            error,
-          });
-        }
 
         const expectedEndDate = this.extractExpectedEndDate(mergedMetadata);
         const cycleEndDate = resolveCycleEndDate({
@@ -2316,46 +1908,18 @@ export class PaymentService {
         subscription => subscription.autoRenew
       );
 
-      if (autoRenewSubscriptions.length > 0 && paymentIntentId) {
-        try {
-          const details =
-            await stripeProvider.getPaymentStatus(paymentIntentId);
-          const intent = details.raw as any;
-          const stripeCustomerId =
-            typeof intent.customer === 'string'
-              ? intent.customer
-              : intent.customer?.id;
-          const stripePaymentMethodId =
-            typeof intent.payment_method === 'string'
-              ? intent.payment_method
-              : intent.payment_method?.id;
-
-          if (stripeCustomerId && stripePaymentMethodId) {
-            const savedMethod = await this.saveStripePaymentMethod({
-              userId: order.user_id,
-              paymentMethodId: stripePaymentMethodId,
-              customerId: stripeCustomerId,
-            });
-
-            for (const subscription of autoRenewSubscriptions) {
-              await subscriptionService.updateSubscriptionForAdmin(
-                subscription.id,
-                {
-                  billing_payment_method_id: savedMethod.id,
-                  auto_renew: true,
-                  renewal_method: 'stripe',
-                  auto_renew_enabled_at: new Date(),
-                  auto_renew_disabled_at: null,
-                }
-              );
+      if (autoRenewSubscriptions.length > 0) {
+        for (const subscription of autoRenewSubscriptions) {
+          await subscriptionService.updateSubscriptionForAdmin(
+            subscription.id,
+            {
+              auto_renew: false,
+              renewal_method: null,
+              auto_renew_disabled_at: new Date(),
+              next_billing_at: null,
+              status_reason: 'auto_renew_deprecated',
             }
-          }
-        } catch (error) {
-          Logger.warn('Failed to save Stripe payment method for session', {
-            orderId,
-            paymentIntentId,
-            error,
-          });
+          );
         }
       }
 
@@ -2612,6 +2176,168 @@ export class PaymentService {
         ]);
       }
       lockClient.release();
+    }
+  }
+
+  async handlePayPalWebhook(params: PayPalWebhookInput): Promise<boolean> {
+    try {
+      const verified = await paypalProvider.verifyWebhookSignature({
+        transmissionId: params.transmissionId,
+        transmissionTime: params.transmissionTime,
+        certUrl: params.certUrl,
+        authAlgo: params.authAlgo,
+        transmissionSig: params.transmissionSig,
+        webhookEvent: params.event,
+      });
+      if (!verified) {
+        Logger.warn('Rejected PayPal webhook due to invalid signature', {
+          transmissionId: params.transmissionId,
+        });
+        return false;
+      }
+
+      const eventTypeRaw = params.event['event_type'];
+      const eventType =
+        typeof eventTypeRaw === 'string' && eventTypeRaw.trim().length > 0
+          ? eventTypeRaw.trim().toUpperCase()
+          : 'UNKNOWN';
+      const eventIdRaw = params.event['id'];
+      const rawBodyText =
+        params.rawBody === undefined || params.rawBody === null
+          ? JSON.stringify(params.event)
+          : typeof params.rawBody === 'string'
+            ? params.rawBody
+            : params.rawBody.toString('utf8');
+      const eventId =
+        typeof eventIdRaw === 'string' && eventIdRaw.trim().length > 0
+          ? eventIdRaw.trim()
+          : `ppw_${createHash('sha256').update(rawBodyText).digest('hex')}`;
+
+      const resource =
+        params.event['resource'] && typeof params.event['resource'] === 'object'
+          ? (params.event['resource'] as Record<string, unknown>)
+          : null;
+      const paypalOrderId = this.extractPayPalWebhookOrderId(
+        eventType,
+        resource
+      );
+      const payment = paypalOrderId
+        ? await paymentRepository.findByProviderPaymentId(
+            'paypal',
+            paypalOrderId
+          )
+        : null;
+      let orderId =
+        this.extractPayPalWebhookReferenceId(resource) ||
+        payment?.orderId ||
+        (paypalOrderId
+          ? await this.resolvePayPalOrderIdFromPaymentReference(paypalOrderId)
+          : null);
+      if (!orderId && paypalOrderId) {
+        try {
+          const paypalOrder = await paypalProvider.getOrder(paypalOrderId);
+          const unit = this.getPayPalPrimaryPurchaseUnit(paypalOrder);
+          orderId = unit.referenceId || null;
+        } catch (error) {
+          Logger.warn('Failed to fetch PayPal order while processing webhook', {
+            paypalOrderId,
+            eventType,
+            error,
+          });
+        }
+      }
+
+      const recorded = await this.recordPaymentEvent({
+        provider: 'paypal',
+        eventId,
+        eventType,
+        orderId: orderId ?? null,
+        paymentId: payment?.id ?? null,
+      });
+      if (!recorded) {
+        Logger.info('Duplicate PayPal webhook ignored', {
+          eventId,
+          eventType,
+          paypalOrderId,
+          orderId,
+        });
+        return true;
+      }
+
+      if (
+        ['PAYMENT.CAPTURE.COMPLETED', 'CHECKOUT.ORDER.COMPLETED'].includes(
+          eventType
+        )
+      ) {
+        if (!paypalOrderId || !orderId) {
+          Logger.error('PayPal completion webhook missing order context', {
+            eventId,
+            eventType,
+            paypalOrderId,
+            orderId,
+          });
+          return false;
+        }
+        const confirmResult = await this.confirmPayPalCheckoutSession({
+          orderId,
+          sessionId: paypalOrderId,
+        });
+        if (!confirmResult.success) {
+          Logger.error('PayPal webhook checkout confirmation failed', {
+            eventId,
+            eventType,
+            orderId,
+            paypalOrderId,
+            error: confirmResult.error,
+          });
+          return false;
+        }
+        return true;
+      }
+
+      if (
+        [
+          'CHECKOUT.ORDER.VOIDED',
+          'PAYMENT.CAPTURE.DENIED',
+          'PAYMENT.CAPTURE.DECLINED',
+        ].includes(eventType)
+      ) {
+        if (!paypalOrderId || !orderId) {
+          Logger.info('PayPal cancellation webhook missing order context', {
+            eventId,
+            eventType,
+            paypalOrderId,
+            orderId,
+          });
+          return true;
+        }
+        const cancelResult = await this.cancelPayPalCheckout({
+          orderId,
+          paymentId: paypalOrderId,
+          reason: `paypal_webhook_${eventType.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+        });
+        if (cancelResult.status === 'status_unavailable') {
+          Logger.error('PayPal webhook cancellation reconciliation failed', {
+            eventId,
+            eventType,
+            orderId,
+            paypalOrderId,
+          });
+          return false;
+        }
+        return true;
+      }
+
+      Logger.info('Ignoring unsupported PayPal webhook event', {
+        eventId,
+        eventType,
+        paypalOrderId,
+        orderId,
+      });
+      return true;
+    } catch (error) {
+      Logger.error('PayPal webhook handling failed:', error);
+      return false;
     }
   }
 
@@ -3209,7 +2935,170 @@ export class PaymentService {
     return { cancelled: true, status: 'cancelled', paymentStatus: 'expired' };
   }
 
-  async sweepStaleStripeCheckouts(params?: {
+  async cancelPayPalCheckout(params: {
+    orderId: string;
+    paymentId?: string | null;
+    userId?: string;
+    reason?: string;
+  }): Promise<{
+    cancelled: boolean;
+    status: string;
+    paymentStatus?: UnifiedPaymentStatus;
+  }> {
+    const { orderId, userId } = params;
+    const reason = params.reason || 'checkout_cancelled';
+
+    const order = await orderService.getOrderById(orderId);
+    if (!order) {
+      return { cancelled: false, status: 'order_not_found' };
+    }
+
+    if (userId && order.user_id !== userId) {
+      return { cancelled: false, status: 'forbidden' };
+    }
+
+    if (order.status !== 'pending_payment') {
+      return { cancelled: false, status: 'already_processed' };
+    }
+
+    if (order.payment_provider !== 'paypal') {
+      return { cancelled: false, status: 'not_paypal' };
+    }
+
+    if (
+      params.paymentId &&
+      order.payment_reference &&
+      params.paymentId !== order.payment_reference
+    ) {
+      return { cancelled: false, status: 'payment_mismatch' };
+    }
+
+    const paypalOrderId = order.payment_reference || params.paymentId || null;
+    if (!paypalOrderId) {
+      await orderService.updateOrderStatus(orderId, 'cancelled', reason);
+      await couponService.voidRedemptionForOrder(orderId);
+      return {
+        cancelled: true,
+        status: 'cancelled',
+        paymentStatus: 'canceled',
+      };
+    }
+
+    const payment = await paymentRepository.findByProviderPaymentId(
+      'paypal',
+      paypalOrderId
+    );
+
+    try {
+      const paypalOrder = await paypalProvider.getOrder(paypalOrderId);
+      const paypalStatus = (paypalOrder.status || '').toUpperCase();
+      const statusMapping = this.mapPayPalOrderStatus(paypalStatus);
+
+      if (paypalStatus === 'COMPLETED') {
+        let effectivePayment = payment;
+        const metadata: Record<string, any> = {
+          ...(payment?.metadata || {}),
+          paypal_order_id: paypalOrderId,
+          paypal_order_status: paypalStatus,
+          paypal_debug_id: paypalOrder.debugId,
+          reconciled_at: new Date().toISOString(),
+        };
+
+        if (effectivePayment) {
+          await paymentRepository.updateStatusByProviderPaymentId(
+            'paypal',
+            paypalOrderId,
+            'succeeded',
+            'COMPLETED',
+            metadata
+          );
+        } else {
+          const settlementTotalCents =
+            parseNonNegativeInt(order.settlement_total_cents) ??
+            parseNonNegativeInt(order.total_cents) ??
+            0;
+          const settlementCurrency =
+            normalizeCurrencyCode(
+              order.settlement_currency || order.currency
+            ) ||
+            (
+              order.settlement_currency ||
+              order.currency ||
+              'USD'
+            ).toUpperCase();
+          effectivePayment = await paymentRepository.create({
+            userId: order.user_id,
+            provider: 'paypal',
+            providerPaymentId: paypalOrderId,
+            status: 'succeeded',
+            providerStatus: 'COMPLETED',
+            purpose: 'subscription',
+            amount: settlementTotalCents / 100,
+            currency: settlementCurrency.toLowerCase(),
+            paymentMethodType: 'paypal',
+            orderId: order.id,
+            checkoutMode: 'session',
+            metadata,
+          });
+        }
+
+        if (effectivePayment) {
+          const processed = await this.processPayPalOrderPayment({
+            orderId,
+            paypalOrderId,
+            payment: effectivePayment,
+          });
+          if (!processed) {
+            return {
+              cancelled: false,
+              status: 'reconcile_failed',
+              paymentStatus: 'succeeded',
+            };
+          }
+        }
+
+        return {
+          cancelled: false,
+          status: 'reconciled',
+          paymentStatus: 'succeeded',
+        };
+      }
+
+      const timeoutStatus: UnifiedPaymentStatus =
+        statusMapping.status === 'canceled' ? 'canceled' : 'expired';
+      if (payment) {
+        await paymentRepository.updateStatusByProviderPaymentId(
+          'paypal',
+          paypalOrderId,
+          timeoutStatus,
+          paypalStatus || 'CANCELLED',
+          {
+            ...(payment.metadata || {}),
+            timeout_reason: reason,
+            timeout_cancelled_at: new Date().toISOString(),
+            paypal_debug_id: paypalOrder.debugId,
+          }
+        );
+      }
+
+      await orderService.updateOrderStatus(orderId, 'cancelled', reason);
+      await couponService.voidRedemptionForOrder(orderId);
+      return {
+        cancelled: true,
+        status: 'cancelled',
+        paymentStatus: timeoutStatus,
+      };
+    } catch (error) {
+      Logger.warn('Failed to reconcile PayPal order during checkout cancel', {
+        orderId,
+        paypalOrderId,
+        error,
+      });
+      return { cancelled: false, status: 'status_unavailable' };
+    }
+  }
+
+  async sweepStaleCheckoutSessions(params?: {
     ttlMinutes?: number;
     batchSize?: number;
   }): Promise<{
@@ -3247,7 +3136,7 @@ export class PaymentService {
       ORDER BY COALESCE(p.created_at, o.updated_at, o.created_at) ASC
       LIMIT $3
       `,
-      [cutoff, ['stripe', 'nowpayments'], batchSize]
+      [cutoff, ['stripe', 'nowpayments', 'paypal'], batchSize]
     );
 
     let cancelled = 0;
@@ -3272,7 +3161,13 @@ export class PaymentService {
                   orderId,
                   reason: 'checkout_timeout',
                 })
-              : { cancelled: false, status: 'unsupported_provider' };
+              : paymentProvider === 'paypal'
+                ? await this.cancelPayPalCheckout({
+                    orderId,
+                    paymentId,
+                    reason: 'checkout_timeout',
+                  })
+                : { cancelled: false, status: 'unsupported_provider' };
         if (outcome.status === 'cancelled') {
           cancelled += 1;
         } else if (outcome.status === 'reconciled') {
@@ -3281,6 +3176,7 @@ export class PaymentService {
           outcome.status === 'already_processed' ||
           outcome.status === 'not_stripe' ||
           outcome.status === 'not_nowpayments' ||
+          outcome.status === 'not_paypal' ||
           outcome.status === 'unsupported_provider'
         ) {
           skipped += 1;
@@ -3307,6 +3203,19 @@ export class PaymentService {
       skipped,
       errors,
     };
+  }
+
+  async sweepStaleStripeCheckouts(params?: {
+    ttlMinutes?: number;
+    batchSize?: number;
+  }): Promise<{
+    scanned: number;
+    cancelled: number;
+    reconciled: number;
+    skipped: number;
+    errors: number;
+  }> {
+    return this.sweepStaleCheckoutSessions(params);
   }
 
   private parseAmountToCents(raw: string): number | null {
@@ -3348,6 +3257,262 @@ export class PaymentService {
       currency: settlementCurrency,
       totalCents: settlementTotalCents,
     };
+  }
+
+  private mapPayPalOrderStatus(status: string | null | undefined): {
+    status: UnifiedPaymentStatus;
+    providerStatus: string;
+  } {
+    const normalized = (status || '').toUpperCase();
+    switch (normalized) {
+      case 'COMPLETED':
+        return { status: 'succeeded', providerStatus: normalized };
+      case 'APPROVED':
+      case 'PAYER_ACTION_REQUIRED':
+      case 'CREATED':
+      case 'SAVED':
+        return { status: 'pending', providerStatus: normalized || 'CREATED' };
+      case 'VOIDED':
+        return { status: 'canceled', providerStatus: normalized };
+      default:
+        return {
+          status: 'processing',
+          providerStatus: normalized || 'UNKNOWN',
+        };
+    }
+  }
+
+  private isPayPalRateLimitError(error: unknown): boolean {
+    return error instanceof PayPalProviderError && error.statusCode === 429;
+  }
+
+  private isPayPalMisconfiguredError(error: unknown): boolean {
+    return (
+      error instanceof PayPalProviderError &&
+      (error.statusCode === 401 || error.statusCode === 403)
+    );
+  }
+
+  private isPayPalUnavailableError(error: unknown): boolean {
+    return (
+      error instanceof PayPalProviderError &&
+      typeof error.statusCode === 'number' &&
+      error.statusCode >= 500
+    );
+  }
+
+  private parsePayPalAmountToCents(
+    value: string | null | undefined
+  ): number | null {
+    if (!value) return null;
+    const normalized = value.trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+      return null;
+    }
+    const parsed = Number.parseFloat(normalized);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return null;
+    }
+    return Math.round(parsed * 100);
+  }
+
+  private buildPayPalIdempotencyKey(params: {
+    action: 'create' | 'capture';
+    orderId: string;
+    providerOrderId?: string;
+  }): string {
+    const source = [
+      'paypal',
+      params.action,
+      params.orderId,
+      params.providerOrderId || '',
+    ].join(':');
+    const digest = createHash('sha256').update(source).digest('hex');
+    return `${params.action}_${digest.slice(0, 32)}`;
+  }
+
+  private async recoverPayPalOrderAfterCaptureFailure(params: {
+    orderId: string;
+    paypalOrderId: string;
+    error: PayPalProviderError;
+  }): Promise<Awaited<ReturnType<typeof paypalProvider.getOrder>> | null> {
+    if (![409, 422].includes(params.error.statusCode ?? -1)) {
+      return null;
+    }
+
+    try {
+      const providerOrder = await paypalProvider.getOrder(params.paypalOrderId);
+      const primaryUnit = this.getPayPalPrimaryPurchaseUnit(providerOrder);
+      Logger.warn(
+        'PayPal capture failed; continuing with provider order reconciliation',
+        {
+          orderId: params.orderId,
+          paypalOrderId: params.paypalOrderId,
+          captureStatusCode: params.error.statusCode,
+          captureDebugId: params.error.debugId ?? null,
+          providerOrderStatus:
+            typeof providerOrder.status === 'string'
+              ? providerOrder.status.toUpperCase()
+              : null,
+          providerCaptureStatus: primaryUnit.captureStatus,
+        }
+      );
+      return providerOrder;
+    } catch (lookupError) {
+      Logger.error(
+        'PayPal capture failed and provider order reconciliation failed',
+        {
+          orderId: params.orderId,
+          paypalOrderId: params.paypalOrderId,
+          captureStatusCode: params.error.statusCode,
+          captureDebugId: params.error.debugId ?? null,
+          captureMessage: params.error.message,
+          lookupError,
+        }
+      );
+      return null;
+    }
+  }
+
+  private getPayPalPrimaryPurchaseUnit(record: {
+    purchase_units?: Array<{
+      reference_id?: string;
+      amount?: { currency_code?: string; value?: string };
+      payments?: {
+        captures?: Array<{
+          id?: string;
+          status?: string;
+          amount?: { currency_code?: string; value?: string };
+        }>;
+      };
+    }>;
+  }): {
+    referenceId: string | null;
+    currency: string | null;
+    amountCents: number | null;
+    captureId: string | null;
+    captureStatus: string | null;
+  } {
+    const unit = Array.isArray(record.purchase_units)
+      ? (record.purchase_units[0] ?? null)
+      : null;
+    const capture = Array.isArray(unit?.payments?.captures)
+      ? (unit?.payments?.captures?.[0] ?? null)
+      : null;
+
+    const amountSource = capture?.amount || unit?.amount || null;
+    const currency =
+      typeof amountSource?.currency_code === 'string'
+        ? amountSource.currency_code.trim().toUpperCase()
+        : null;
+    const amountCents = this.parsePayPalAmountToCents(
+      amountSource?.value || null
+    );
+
+    return {
+      referenceId:
+        typeof unit?.reference_id === 'string'
+          ? unit.reference_id.trim()
+          : null,
+      currency: currency && currency.length > 0 ? currency : null,
+      amountCents,
+      captureId:
+        typeof capture?.id === 'string' && capture.id.trim().length > 0
+          ? capture.id.trim()
+          : null,
+      captureStatus:
+        typeof capture?.status === 'string' && capture.status.trim().length > 0
+          ? capture.status.trim().toUpperCase()
+          : null,
+    };
+  }
+
+  private extractPayPalWebhookOrderId(
+    eventType: string,
+    resource: Record<string, unknown> | null
+  ): string | null {
+    if (!resource) {
+      return null;
+    }
+
+    const resourceId =
+      typeof resource['id'] === 'string' && resource['id'].trim().length > 0
+        ? resource['id'].trim()
+        : null;
+
+    const supplementaryData =
+      resource['supplementary_data'] &&
+      typeof resource['supplementary_data'] === 'object'
+        ? (resource['supplementary_data'] as Record<string, unknown>)
+        : null;
+    const relatedIds =
+      supplementaryData?.['related_ids'] &&
+      typeof supplementaryData['related_ids'] === 'object'
+        ? (supplementaryData['related_ids'] as Record<string, unknown>)
+        : null;
+    const relatedOrderId =
+      typeof relatedIds?.['order_id'] === 'string' &&
+      relatedIds['order_id'].trim().length > 0
+        ? relatedIds['order_id'].trim()
+        : null;
+
+    if (eventType.startsWith('PAYMENT.CAPTURE.')) {
+      return relatedOrderId || null;
+    }
+
+    if (eventType.startsWith('CHECKOUT.ORDER.')) {
+      return resourceId || relatedOrderId || null;
+    }
+
+    return relatedOrderId || resourceId || null;
+  }
+
+  private extractPayPalWebhookReferenceId(
+    resource: Record<string, unknown> | null
+  ): string | null {
+    if (!resource) {
+      return null;
+    }
+
+    const purchaseUnits = Array.isArray(resource['purchase_units'])
+      ? (resource['purchase_units'] as Array<Record<string, unknown>>)
+      : null;
+    const firstUnit =
+      purchaseUnits && purchaseUnits.length > 0 ? purchaseUnits[0] : null;
+    const referenceId =
+      firstUnit && typeof firstUnit['reference_id'] === 'string'
+        ? firstUnit['reference_id'].trim()
+        : '';
+    return referenceId.length > 0 ? referenceId : null;
+  }
+
+  private async resolvePayPalOrderIdFromPaymentReference(
+    paypalOrderId: string
+  ): Promise<string | null> {
+    try {
+      const result = await getDatabasePool().query(
+        `SELECT id
+         FROM orders
+         WHERE payment_provider = 'paypal'
+           AND payment_reference = $1
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+        [paypalOrderId]
+      );
+      if (result.rows.length === 0) {
+        return null;
+      }
+      const orderId = result.rows[0]?.['id'];
+      return typeof orderId === 'string' && orderId.trim().length > 0
+        ? orderId.trim()
+        : null;
+    } catch (error) {
+      Logger.warn('Failed to resolve order id from PayPal payment reference', {
+        paypalOrderId,
+        error,
+      });
+      return null;
+    }
   }
 
   private buildPay4bitOrderDescription(order: OrderWithItems): string {
@@ -4006,6 +4171,635 @@ export class PaymentService {
     }
   }
 
+  private async processPayPalOrderPayment(params: {
+    orderId: string;
+    paypalOrderId: string;
+    payment: UnifiedPayment;
+  }): Promise<boolean> {
+    await paymentRepository.updateStatusByProviderPaymentId(
+      'paypal',
+      params.paypalOrderId,
+      'succeeded',
+      'COMPLETED',
+      {
+        ...(params.payment.metadata || {}),
+        paypal_order_id: params.paypalOrderId,
+        last_capture_at: new Date().toISOString(),
+      }
+    );
+
+    const lockClient = await getDatabasePool().connect();
+    let lockAcquired = false;
+    try {
+      await lockClient.query('SELECT pg_advisory_lock(hashtext($1))', [
+        params.orderId,
+      ]);
+      lockAcquired = true;
+    } catch (error) {
+      Logger.error('PayPal capture lock acquisition failed', {
+        orderId: params.orderId,
+        paypalOrderId: params.paypalOrderId,
+        error,
+      });
+      lockClient.release();
+      return false;
+    }
+
+    try {
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        Logger.error('PayPal capture order not found', {
+          orderId: params.orderId,
+          paypalOrderId: params.paypalOrderId,
+        });
+        return false;
+      }
+
+      if (['in_process', 'paid', 'delivered'].includes(order.status)) {
+        return true;
+      }
+
+      if (!['pending_payment', 'cart'].includes(order.status)) {
+        Logger.warn('PayPal capture ignored for non-payable order', {
+          orderId: params.orderId,
+          paypalOrderId: params.paypalOrderId,
+          status: order.status,
+        });
+        return false;
+      }
+
+      const updateResult = await getDatabasePool().query(
+        `UPDATE orders
+         SET status = 'in_process',
+             status_reason = 'payment_succeeded',
+             payment_provider = 'paypal',
+             payment_reference = $1,
+             checkout_mode = 'session',
+             stripe_session_id = NULL,
+             updated_at = NOW()
+         WHERE id = $2
+           AND status IN ('pending_payment', 'cart')
+         RETURNING id`,
+        [params.paypalOrderId, params.orderId]
+      );
+
+      if (updateResult.rows.length === 0) {
+        return true;
+      }
+
+      if (order.items.length === 1) {
+        const singleItem = order.items[0]?.id ?? null;
+        if (singleItem) {
+          await getDatabasePool().query(
+            `UPDATE payments
+             SET order_item_id = COALESCE(order_item_id, $2),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [params.payment.id, singleItem]
+          );
+        }
+      }
+
+      await this.createPaymentItemAllocations({
+        paymentRecordId: params.payment.id,
+        orderItems: order.items,
+      });
+
+      await this.createSubscriptionsForOrder({
+        order,
+        orderItems: order.items,
+        renewalMethod: null,
+      });
+
+      await couponService.finalizeRedemptionForOrder(params.orderId);
+
+      try {
+        const confirmationResult =
+          await orderService.sendOrderPaymentConfirmationEmail(params.orderId);
+        if (
+          !confirmationResult.success &&
+          !['already_sent', 'renewal_order'].includes(
+            confirmationResult.reason ?? ''
+          )
+        ) {
+          Logger.warn('Failed to send order payment confirmation email', {
+            orderId: params.orderId,
+            reason: confirmationResult.reason,
+          });
+        }
+      } catch (error) {
+        Logger.warn('Order payment confirmation email call failed', {
+          orderId: params.orderId,
+          error,
+        });
+      }
+
+      return true;
+    } finally {
+      if (lockAcquired) {
+        await lockClient.query('SELECT pg_advisory_unlock(hashtext($1))', [
+          params.orderId,
+        ]);
+      }
+      lockClient.release();
+    }
+  }
+
+  async createPayPalCheckoutSession(params: {
+    orderId: string;
+    successUrl?: string | null;
+    cancelUrl?: string | null;
+  }): Promise<
+    | {
+        success: true;
+        sessionId: string;
+        sessionUrl: string;
+        paymentId: string;
+        orderId: string;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      if (!env.PAYPAL_ENABLED) {
+        return { success: false, error: 'payment_provider_unavailable' };
+      }
+
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      if (!['cart', 'pending_payment'].includes(order.status)) {
+        return { success: false, error: 'order_not_pending' };
+      }
+
+      if (order.payment_provider && order.payment_provider !== 'paypal') {
+        return { success: false, error: 'payment_provider_mismatch' };
+      }
+
+      if (!order.items || order.items.length === 0) {
+        return { success: false, error: 'order_missing_items' };
+      }
+
+      const ownAccountValidation = await this.validateOwnAccountSelectionData(
+        order as OrderWithItems
+      );
+      if (!ownAccountValidation.valid) {
+        Logger.warn(
+          'Missing own-account credentials while creating PayPal checkout session',
+          {
+            orderId: order.id,
+            item: ownAccountValidation.missingItemLabel,
+          }
+        );
+        return { success: false, error: 'own_account_credentials_required' };
+      }
+
+      const settlement = this.resolveLockedSettlement(order as OrderWithItems);
+      if (!settlement) {
+        return { success: false, error: 'invalid_settlement' };
+      }
+
+      const baseUrl = this.resolveAppBaseUrl();
+      if (!baseUrl) {
+        return { success: false, error: 'missing_app_base_url' };
+      }
+      const defaultSuccessUrl = `${baseUrl}/checkout/card?status=success&order_id=${order.id}`;
+      const defaultCancelUrl = `${baseUrl}/checkout/card?status=cancel&order_id=${order.id}`;
+      const successUrl = params.successUrl || defaultSuccessUrl;
+      const cancelUrl = params.cancelUrl || defaultCancelUrl;
+
+      if (order.checkout_mode === 'session' && order.payment_reference) {
+        const existingPayment = await paymentRepository.findByProviderPaymentId(
+          'paypal',
+          order.payment_reference
+        );
+        if (
+          existingPayment &&
+          !['failed', 'canceled', 'expired'].includes(existingPayment.status)
+        ) {
+          try {
+            const existingOrder = await paypalProvider.getOrder(
+              existingPayment.providerPaymentId
+            );
+            const approvalUrl =
+              (Array.isArray(existingOrder.links)
+                ? existingOrder.links.find(
+                    link =>
+                      typeof link.rel === 'string' &&
+                      ['approve', 'payer-action'].includes(
+                        link.rel.toLowerCase()
+                      ) &&
+                      typeof link.href === 'string'
+                  )?.href
+                : null) ||
+              (typeof existingPayment.metadata?.['approval_url'] === 'string'
+                ? (existingPayment.metadata?.['approval_url'] as string)
+                : null);
+
+            if (
+              approvalUrl &&
+              ['CREATED', 'APPROVED', 'PAYER_ACTION_REQUIRED'].includes(
+                (existingOrder.status || '').toUpperCase()
+              )
+            ) {
+              return {
+                success: true,
+                sessionId: existingOrder.id,
+                sessionUrl: approvalUrl,
+                paymentId: existingPayment.providerPaymentId,
+                orderId: order.id,
+              };
+            }
+          } catch (error) {
+            Logger.warn('Failed to reuse existing PayPal order', {
+              orderId: order.id,
+              paypalOrderId: existingPayment.providerPaymentId,
+              error,
+            });
+          }
+        }
+      }
+
+      const requestId = `${this.buildPayPalIdempotencyKey({
+        action: 'create',
+        orderId: order.id,
+      })}_${uuidv4().slice(0, 8)}`;
+      const createOrderResult = await paypalProvider.createOrder({
+        orderId: order.id,
+        amountCents: settlement.totalCents,
+        currency: settlement.currency,
+        successUrl,
+        cancelUrl,
+        requestId,
+        description: this.buildPay4bitOrderDescription(order as OrderWithItems),
+      });
+
+      const statusMapping = this.mapPayPalOrderStatus(createOrderResult.status);
+      const existingPayment = await paymentRepository.findByProviderPaymentId(
+        'paypal',
+        createOrderResult.id
+      );
+
+      const paymentMetadata: Record<string, any> = {
+        order_id: order.id,
+        checkout_mode: 'session',
+        paypal_order_id: createOrderResult.id,
+        paypal_order_status: createOrderResult.status || 'CREATED',
+        approval_url: createOrderResult.approvalUrl,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        paypal_debug_id: createOrderResult.debugId,
+      };
+
+      let createdPayment: UnifiedPayment;
+      if (existingPayment) {
+        await paymentRepository.updateStatusByProviderPaymentId(
+          'paypal',
+          createOrderResult.id,
+          statusMapping.status,
+          statusMapping.providerStatus,
+          {
+            ...(existingPayment.metadata || {}),
+            ...paymentMetadata,
+          }
+        );
+        createdPayment = existingPayment;
+      } else {
+        const createdPaymentInput: CreateUnifiedPaymentInput = {
+          userId: order.user_id,
+          provider: 'paypal',
+          providerPaymentId: createOrderResult.id,
+          status: statusMapping.status,
+          providerStatus: statusMapping.providerStatus,
+          purpose: 'subscription',
+          amount: settlement.totalCents / 100,
+          currency: settlement.currency.toLowerCase(),
+          paymentMethodType: 'paypal',
+          orderId: order.id,
+          checkoutMode: 'session',
+          metadata: paymentMetadata,
+        };
+        const singleItemId =
+          order.items.length === 1 ? (order.items[0]?.id ?? null) : null;
+        if (singleItemId) {
+          createdPaymentInput.orderItemId = singleItemId;
+        }
+        createdPayment = await paymentRepository.create(createdPaymentInput);
+      }
+
+      await orderService.updateOrderPayment(order.id, {
+        payment_provider: 'paypal',
+        payment_reference: createOrderResult.id,
+        checkout_mode: 'session',
+        stripe_session_id: null,
+        settlement_currency: settlement.currency,
+        settlement_total_cents: settlement.totalCents,
+        status: order.status === 'cart' ? 'pending_payment' : order.status,
+        status_reason:
+          order.status === 'cart'
+            ? 'awaiting_payment'
+            : (order.status_reason ?? null),
+      });
+
+      Logger.info('PayPal checkout session created', {
+        orderId: order.id,
+        paypalOrderId: createOrderResult.id,
+        paymentStatus: createOrderResult.status || 'CREATED',
+        paymentId: createdPayment.providerPaymentId,
+      });
+
+      return {
+        success: true,
+        sessionId: createOrderResult.id,
+        sessionUrl: createOrderResult.approvalUrl,
+        paymentId: createdPayment.providerPaymentId,
+        orderId: order.id,
+      };
+    } catch (error) {
+      if (error instanceof PayPalProviderError && error.debugId) {
+        Logger.error('PayPal checkout session creation failed', {
+          orderId: params.orderId,
+          statusCode: error.statusCode,
+          debugId: error.debugId,
+          message: error.message,
+        });
+      } else {
+        Logger.error('PayPal checkout session creation failed', {
+          orderId: params.orderId,
+          error,
+        });
+      }
+
+      if (this.isPayPalUnavailableError(error)) {
+        return { success: false, error: 'payment_provider_unavailable' };
+      }
+      if (this.isPayPalRateLimitError(error)) {
+        return { success: false, error: 'payment_provider_rate_limited' };
+      }
+      if (this.isPayPalMisconfiguredError(error)) {
+        return { success: false, error: 'payment_provider_misconfigured' };
+      }
+      return { success: false, error: 'paypal_session_failed' };
+    }
+  }
+
+  async confirmPayPalCheckoutSession(params: {
+    orderId: string;
+    sessionId: string;
+  }): Promise<
+    | {
+        success: true;
+        orderId: string;
+        sessionId: string;
+        orderStatus: string | null;
+        fulfilled: boolean;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      if (!env.PAYPAL_ENABLED) {
+        return { success: false, error: 'payment_provider_unavailable' };
+      }
+
+      const normalizedSessionId = params.sessionId.trim();
+      if (!normalizedSessionId) {
+        return { success: false, error: 'payment_not_completed' };
+      }
+
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      if (
+        order.payment_provider === 'paypal' &&
+        order.payment_reference &&
+        order.payment_reference !== normalizedSessionId &&
+        ['cart', 'pending_payment'].includes(order.status)
+      ) {
+        return { success: false, error: 'checkout_session_mismatch' };
+      }
+
+      const settlement = this.resolveLockedSettlement(order as OrderWithItems);
+      if (!settlement) {
+        return { success: false, error: 'invalid_settlement' };
+      }
+
+      const captureRequestId = this.buildPayPalIdempotencyKey({
+        action: 'capture',
+        orderId: params.orderId,
+        providerOrderId: normalizedSessionId,
+      });
+
+      let capture:
+        | Awaited<ReturnType<typeof paypalProvider.captureOrder>>
+        | Awaited<ReturnType<typeof paypalProvider.getOrder>>;
+      let captureStatus: string | null = null;
+
+      try {
+        capture = await paypalProvider.captureOrder({
+          paypalOrderId: normalizedSessionId,
+          requestId: captureRequestId,
+        });
+        captureStatus = capture.status ? capture.status.toUpperCase() : null;
+      } catch (error) {
+        const recoveredOrder =
+          error instanceof PayPalProviderError
+            ? await this.recoverPayPalOrderAfterCaptureFailure({
+                orderId: params.orderId,
+                paypalOrderId: normalizedSessionId,
+                error,
+              })
+            : null;
+
+        if (!recoveredOrder) {
+          throw error;
+        }
+
+        capture = recoveredOrder;
+        captureStatus = capture.status ? capture.status.toUpperCase() : null;
+      }
+
+      const unit = this.getPayPalPrimaryPurchaseUnit(capture);
+      if (!unit.referenceId || unit.referenceId !== params.orderId) {
+        return { success: false, error: 'checkout_session_mismatch' };
+      }
+
+      if (unit.amountCents !== settlement.totalCents) {
+        Logger.error('PayPal capture amount mismatch', {
+          orderId: params.orderId,
+          paypalOrderId: normalizedSessionId,
+          expectedAmountCents: settlement.totalCents,
+          capturedAmountCents: unit.amountCents,
+          debugId:
+            capture && typeof capture === 'object'
+              ? ((capture as { debugId?: unknown }).debugId ?? null)
+              : null,
+        });
+        await orderService.updateOrderStatus(
+          params.orderId,
+          'cancelled',
+          'payment_amount_mismatch'
+        );
+        await couponService.voidRedemptionForOrder(params.orderId);
+        return { success: false, error: 'payment_amount_mismatch' };
+      }
+
+      if ((unit.currency || '').toUpperCase() !== settlement.currency) {
+        Logger.error('PayPal capture currency mismatch', {
+          orderId: params.orderId,
+          paypalOrderId: normalizedSessionId,
+          expectedCurrency: settlement.currency,
+          capturedCurrency: unit.currency,
+          debugId:
+            capture && typeof capture === 'object'
+              ? ((capture as { debugId?: unknown }).debugId ?? null)
+              : null,
+        });
+        await orderService.updateOrderStatus(
+          params.orderId,
+          'cancelled',
+          'payment_currency_mismatch'
+        );
+        await couponService.voidRedemptionForOrder(params.orderId);
+        return { success: false, error: 'payment_currency_mismatch' };
+      }
+
+      const captureCompleted =
+        captureStatus === 'COMPLETED' || unit.captureStatus === 'COMPLETED';
+      if (!captureCompleted) {
+        Logger.warn(
+          'PayPal capture not completed during checkout confirmation',
+          {
+            orderId: params.orderId,
+            paypalOrderId: normalizedSessionId,
+            orderStatus: captureStatus,
+            captureStatus: unit.captureStatus,
+            debugId:
+              capture && typeof capture === 'object'
+                ? ((capture as { debugId?: unknown }).debugId ?? null)
+                : null,
+          }
+        );
+        return { success: false, error: 'payment_not_completed' };
+      }
+
+      const statusMapping = this.mapPayPalOrderStatus(
+        captureStatus || unit.captureStatus || capture.status || 'COMPLETED'
+      );
+      const paymentMetadata: Record<string, any> = {
+        order_id: params.orderId,
+        checkout_mode: 'session',
+        paypal_order_id: normalizedSessionId,
+        paypal_capture_id: unit.captureId,
+        paypal_order_status: captureStatus || 'COMPLETED',
+        paypal_debug_id:
+          capture && typeof capture === 'object'
+            ? ((capture as { debugId?: unknown }).debugId ?? null)
+            : null,
+      };
+
+      let payment = await paymentRepository.findByProviderPaymentId(
+        'paypal',
+        normalizedSessionId
+      );
+      if (!payment) {
+        const createdPaymentInput: CreateUnifiedPaymentInput = {
+          userId: order.user_id,
+          provider: 'paypal',
+          providerPaymentId: normalizedSessionId,
+          status:
+            statusMapping.status === 'succeeded' ? 'succeeded' : 'processing',
+          providerStatus: statusMapping.providerStatus,
+          purpose: 'subscription',
+          amount: settlement.totalCents / 100,
+          currency: settlement.currency.toLowerCase(),
+          paymentMethodType: 'paypal',
+          orderId: params.orderId,
+          checkoutMode: 'session',
+          metadata: paymentMetadata,
+        };
+        const singleItemId =
+          order.items.length === 1 ? (order.items[0]?.id ?? null) : null;
+        if (singleItemId) {
+          createdPaymentInput.orderItemId = singleItemId;
+        }
+        payment = await paymentRepository.create(createdPaymentInput);
+      } else {
+        await paymentRepository.updateStatusByProviderPaymentId(
+          'paypal',
+          normalizedSessionId,
+          statusMapping.status === 'succeeded' ? 'succeeded' : 'processing',
+          statusMapping.providerStatus,
+          {
+            ...(payment.metadata || {}),
+            ...paymentMetadata,
+          }
+        );
+      }
+
+      if (!payment) {
+        return { success: false, error: 'payment_not_completed' };
+      }
+
+      const processed = await this.processPayPalOrderPayment({
+        orderId: params.orderId,
+        paypalOrderId: normalizedSessionId,
+        payment,
+      });
+      if (!processed) {
+        return { success: false, error: 'fulfillment_failed' };
+      }
+
+      const updatedOrder = await orderService.getOrderById(params.orderId);
+      Logger.info('PayPal checkout confirmed', {
+        orderId: params.orderId,
+        paypalOrderId: normalizedSessionId,
+        captureId: unit.captureId,
+        captureStatus: unit.captureStatus || captureStatus || null,
+        orderStatus: updatedOrder?.status ?? null,
+      });
+      return {
+        success: true,
+        orderId: params.orderId,
+        sessionId: normalizedSessionId,
+        orderStatus: updatedOrder?.status ?? null,
+        fulfilled:
+          updatedOrder !== null &&
+          ['in_process', 'delivered', 'paid'].includes(updatedOrder.status),
+      };
+    } catch (error) {
+      if (error instanceof PayPalProviderError && error.debugId) {
+        Logger.error('Failed to confirm PayPal checkout session', {
+          orderId: params.orderId,
+          sessionId: params.sessionId,
+          statusCode: error.statusCode,
+          debugId: error.debugId,
+          message: error.message,
+        });
+      } else {
+        Logger.error('Failed to confirm PayPal checkout session', {
+          orderId: params.orderId,
+          sessionId: params.sessionId,
+          error,
+        });
+      }
+
+      if (this.isPayPalUnavailableError(error)) {
+        return { success: false, error: 'payment_provider_unavailable' };
+      }
+      if (this.isPayPalRateLimitError(error)) {
+        return { success: false, error: 'payment_provider_rate_limited' };
+      }
+      if (this.isPayPalMisconfiguredError(error)) {
+        return { success: false, error: 'payment_provider_misconfigured' };
+      }
+
+      return { success: false, error: 'paypal_session_confirm_failed' };
+    }
+  }
+
   async createPay4bitCheckoutSession(params: { orderId: string }): Promise<
     | {
         success: true;
@@ -4525,7 +5319,7 @@ export class PaymentService {
         return { success: false, error: 'own_account_credentials_required' };
       }
 
-      const autoRenewAny = items.some(item => item.auto_renew === true);
+      const autoRenewAny = false;
       const baseUrl = this.resolveAppBaseUrl();
       if (!baseUrl) {
         return { success: false, error: 'missing_app_base_url' };
@@ -4560,12 +5354,7 @@ export class PaymentService {
         };
       });
 
-      const customerInfo = autoRenewAny
-        ? await this.ensureStripeCustomer(order.user_id, {
-            preferredEmail: order.contact_email ?? null,
-          })
-        : null;
-      const customerEmail = order.contact_email ?? customerInfo?.email ?? null;
+      const customerEmail = order.contact_email ?? null;
 
       if (order.checkout_mode === 'session' && order.stripe_session_id) {
         try {
@@ -4598,9 +5387,6 @@ export class PaymentService {
           lineItems,
           successUrl,
           cancelUrl,
-          ...(customerInfo?.customerId
-            ? { customerId: customerInfo.customerId }
-            : {}),
           ...(customerEmail ? { customerEmail } : {}),
           metadata: {
             order_id: order.id,
@@ -4611,7 +5397,6 @@ export class PaymentService {
             checkout_mode: 'session',
             auto_renew_any: autoRenewAny,
           },
-          ...(autoRenewAny ? { setupFutureUsage: 'off_session' } : {}),
           clientReferenceId: order.id,
           expand: ['payment_intent'],
         },
@@ -5363,16 +6148,14 @@ export class PaymentService {
       const paymentMetadata: Record<string, any> = {
         ...(metadata || {}),
       };
-      const wantsAutoRenew =
+      if (
         paymentMetadata['auto_renew'] === true ||
         paymentMetadata['auto_renew'] === 'true' ||
         paymentMetadata['auto_renew'] === 1 ||
-        paymentMetadata['auto_renew'] === '1';
-
-      let stripeCustomerId: string | undefined;
-      if (wantsAutoRenew) {
-        const customer = await this.ensureStripeCustomer(userId);
-        stripeCustomerId = customer.customerId;
+        paymentMetadata['auto_renew'] === '1'
+      ) {
+        paymentMetadata['auto_renew'] = false;
+        paymentMetadata['auto_renew_deprecated'] = true;
       }
 
       if (orderContext?.productVariantId) {
@@ -5419,7 +6202,6 @@ export class PaymentService {
         payCurrency: resolvedCurrency,
         description,
         ...(orderContext?.orderId ? { orderId: orderContext.orderId } : {}),
-        ...(stripeCustomerId ? { customerId: stripeCustomerId } : {}),
         metadata: paymentMetadata,
       });
 

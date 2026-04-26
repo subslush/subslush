@@ -8,7 +8,12 @@ export type OrderStatus =
   | 'delivered'
   | 'cancelled';
 
-export type PaymentMethodBadgeType = 'credits' | 'stripe' | 'other' | 'unknown';
+export type PaymentMethodBadgeType =
+  | 'credits'
+  | 'paypal'
+  | 'stripe'
+  | 'other'
+  | 'unknown';
 
 export interface PaymentMethodBadge {
   type: PaymentMethodBadgeType;

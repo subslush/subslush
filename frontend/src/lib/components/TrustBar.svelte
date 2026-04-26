@@ -3,13 +3,12 @@
   import visaLogo from '$lib/assets/visa.svg';
   import mastercardLogo from '$lib/assets/mastercard.svg';
   import paypalLogo from '$lib/assets/paypal-logo.svg';
+  import amexLogo from '$lib/assets/amex.webp';
+  import discoverLogo from '$lib/assets/discover.webp';
   import btcLogo from '$lib/assets/btc.svg';
   import ethLogo from '$lib/assets/eth.svg';
   import usdtLogo from '$lib/assets/usdt.svg';
-  import {
-    SHOW_PAYPAL_LOGO,
-    SHOW_CRYPTO_PAYMENT_LOGOS
-  } from '$lib/config/paymentBrandVisibility.js';
+  import usdcLogo from '$lib/assets/usdc.svg';
 </script>
 
 <div class="bg-gray-50 border-t border-gray-200 py-4">
@@ -44,24 +43,21 @@
         class="h-[18px] w-auto shrink-0"
         loading="lazy"
       />
-      {#if SHOW_PAYPAL_LOGO}
-        <img
-          src={paypalLogo}
-          alt="PayPal"
-          width="124"
-          height="33"
-          class="h-5 w-auto shrink-0"
-          loading="lazy"
-        />
-      {/if}
-      {#if SHOW_CRYPTO_PAYMENT_LOGOS}
-        <img src={btcLogo} alt="Bitcoin" width="77" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
-        <img src={ethLogo} alt="Ethereum" width="64" height="16" class="h-[18px] w-auto shrink-0" loading="lazy" />
-        <img src={usdtLogo} alt="USDT" width="18" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
-      {/if}
-      {#if SHOW_CRYPTO_PAYMENT_LOGOS}
-        <span class="text-gray-600 text-xs sm:text-sm font-medium whitespace-nowrap">and 300+ more</span>
-      {/if}
+      <img
+        src={paypalLogo}
+        alt="PayPal"
+        width="124"
+        height="33"
+        class="h-5 w-auto shrink-0"
+        loading="lazy"
+      />
+      <img src={amexLogo} alt="American Express" width="88" height="54" class="h-8 w-auto shrink-0" loading="lazy" />
+      <img src={discoverLogo} alt="Discover" width="88" height="54" class="h-8 w-auto shrink-0" loading="lazy" />
+      <img src={btcLogo} alt="Bitcoin" width="77" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
+      <img src={ethLogo} alt="Ethereum" width="64" height="16" class="h-[18px] w-auto shrink-0" loading="lazy" />
+      <img src={usdtLogo} alt="USDT" width="18" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
+      <img src={usdcLogo} alt="USDC" width="18" height="16" class="h-4 w-auto shrink-0" loading="lazy" />
+      <span class="text-gray-600 text-xs sm:text-sm font-medium whitespace-nowrap">+300 more</span>
     </div>
   </div>
 </div>

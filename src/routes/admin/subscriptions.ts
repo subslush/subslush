@@ -2,7 +2,6 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authPreHandler } from '../../middleware/authMiddleware';
 import { adminPreHandler } from '../../middleware/adminMiddleware';
 import { getDatabasePool } from '../../config/database';
-import { paymentService } from '../../services/paymentService';
 import { orderService } from '../../services/orderService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { upgradeSelectionService } from '../../services/upgradeSelectionService';
@@ -369,19 +368,6 @@ export async function adminSubscriptionRoutes(
           after: sanitizedAfter,
           metadata: { status: body.status, reason: body.reason },
         });
-
-        if (body.status === 'expired') {
-          try {
-            await paymentService.cancelPendingStripeRenewalPayments([
-              subscriptionId,
-            ]);
-          } catch (error) {
-            Logger.warn('Manual expiry Stripe cleanup failed', {
-              subscriptionId,
-              error,
-            });
-          }
-        }
 
         return SuccessResponses.ok(
           reply,

@@ -166,6 +166,27 @@ const parseUrlEncodedBody = (
   return parsed;
 };
 
+const readSingleHeader = (
+  value: string | string[] | undefined
+): string | null => {
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : null;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (typeof entry !== 'string') {
+        continue;
+      }
+      const normalized = entry.trim();
+      if (normalized.length > 0) {
+        return normalized;
+      }
+    }
+  }
+  return null;
+};
+
 const parsePay4bitCallbackBody = (
   request: FastifyRequest
 ):
@@ -420,7 +441,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
-  // Unified checkout: Card hosted checkout (Pay4bit/Stripe fallback) or credits
+  // Unified checkout: Card-like hosted checkout via PayPal or credits
   fastify.post(
     '/checkout',
     {
@@ -441,7 +462,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             },
             payment_method: {
               type: 'string',
-              enum: ['card', 'stripe', 'pay4bit', 'credits'],
+              enum: ['card', 'paypal', 'stripe', 'pay4bit', 'credits'],
               default: 'card',
             },
             auto_renew: {
@@ -482,19 +503,13 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             : payment_method === 'card'
               ? 'card'
               : payment_method;
-        const cardProvider = env.PAY4BIT_ENABLED ? 'pay4bit' : 'stripe';
-
-        if (requestedPaymentMethod === 'pay4bit' && !env.PAY4BIT_ENABLED) {
-          return ErrorResponses.badRequest(
-            reply,
-            'Pay4bit checkout is not enabled'
-          );
-        }
+        const cardProvider = 'paypal' as const;
 
         if (
-          ['card', 'stripe'].includes(requestedPaymentMethod) &&
-          !env.STRIPE_ENABLED &&
-          !env.PAY4BIT_ENABLED
+          ['card', 'paypal', 'stripe', 'pay4bit'].includes(
+            requestedPaymentMethod
+          ) &&
+          !env.PAYPAL_ENABLED
         ) {
           return ErrorResponses.serviceUnavailable(
             reply,
@@ -531,13 +546,14 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         const {
           product,
           variant,
+          productVariantId: resolvedProductVariantId,
           price: displayPrice,
           snapshot,
           currency,
           catalogMode,
         } = pricingResult.data;
         const lockContext = await resolvePricingLockContext({
-          variantId: variant.id,
+          variantId: resolvedProductVariantId || variant_id,
           displayCurrency: currency,
           displayPrice,
         });
@@ -643,7 +659,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         const priceCents = finalTotalCents;
         const price = priceCents / 100;
         const orderDescription = `Subscription: ${product.service_type} ${planCode} (${snapshot.termMonths} month${snapshot.termMonths > 1 ? 's' : ''})`;
-        const productVariantId = variant.id;
+        const productVariantId = resolvedProductVariantId;
         const orderInput = {
           user_id: user.userId,
           status: 'pending_payment' as const,
@@ -700,7 +716,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
 
         const orderItems = [
           {
-            product_variant_id: productVariantId,
+            product_variant_id: productVariantId ?? null,
             quantity: 1,
             unit_price_cents: finalTotalCents,
             base_price_cents: snapshot.basePriceCents,
@@ -862,24 +878,27 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (payment_method === 'credits') {
           // Reuse existing credit purchase flow
-          const validation = await subscriptionService.canPurchaseSubscription(
-            user.userId,
-            productVariantId
-          );
+          if (productVariantId) {
+            const validation =
+              await subscriptionService.canPurchaseSubscription(
+                user.userId,
+                productVariantId
+              );
 
-          if (!validation.canPurchase) {
-            await orderService.updateOrderStatus(
-              order.id,
-              'cancelled',
-              validation.reason || 'purchase_not_allowed'
-            );
-            if (coupon) {
-              await couponService.voidRedemptionForOrder(order.id);
+            if (!validation.canPurchase) {
+              await orderService.updateOrderStatus(
+                order.id,
+                'cancelled',
+                validation.reason || 'purchase_not_allowed'
+              );
+              if (coupon) {
+                await couponService.voidRedemptionForOrder(order.id);
+              }
+              return ErrorResponses.badRequest(
+                reply,
+                validation.reason || 'Purchase not allowed'
+              );
             }
-            return ErrorResponses.badRequest(
-              reply,
-              validation.reason || 'Purchase not allowed'
-            );
           }
 
           const creditResult = await creditService.spendCredits(
@@ -932,7 +951,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
               renewal_date: renewalDate,
               auto_renew,
               order_id: order.id,
-              product_variant_id: productVariantId,
+              product_variant_id: productVariantId ?? null,
               price_cents: termTotalCents,
               base_price_cents: snapshot.basePriceCents,
               discount_percent: snapshot.discountPercent,
@@ -1078,14 +1097,9 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         // Default: hosted card checkout
-        const cardResult =
-          cardProvider === 'pay4bit'
-            ? await paymentService.createPay4bitCheckoutSession({
-                orderId: order.id,
-              })
-            : await paymentService.createStripeCheckoutSession({
-                orderId: order.id,
-              });
+        const cardResult = await paymentService.createPayPalCheckoutSession({
+          orderId: order.id,
+        });
 
         if (!cardResult.success) {
           const isProviderTemporarilyUnavailable = [
@@ -1212,12 +1226,26 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           });
         }
 
-        const result = await paymentService.cancelStripeCheckout({
-          orderId: order_id,
-          paymentId: payment_id ?? null,
-          userId: user.userId,
-          reason: reason || 'checkout_cancelled',
-        });
+        const result =
+          existingOrder?.payment_provider === 'paypal'
+            ? await paymentService.cancelPayPalCheckout({
+                orderId: order_id,
+                paymentId: payment_id ?? null,
+                userId: user.userId,
+                reason: reason || 'checkout_cancelled',
+              })
+            : existingOrder?.payment_provider === 'nowpayments'
+              ? await paymentService.cancelNowPaymentsCheckout({
+                  orderId: order_id,
+                  userId: user.userId,
+                  reason: reason || 'checkout_cancelled',
+                })
+              : await paymentService.cancelStripeCheckout({
+                  orderId: order_id,
+                  paymentId: payment_id ?? null,
+                  userId: user.userId,
+                  reason: reason || 'checkout_cancelled',
+                });
 
         if (result.status === 'forbidden') {
           return ErrorResponses.forbidden(reply, 'Access denied');
@@ -1392,6 +1420,111 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.code(200).send({ received: true });
       } catch (error) {
         Logger.error('Stripe webhook error:', error);
+        return ErrorResponses.internalError(reply, 'Failed to handle webhook');
+      }
+    }
+  );
+
+  // PayPal webhook (no auth, feature-flagged)
+  fastify.post(
+    '/paypal/webhook',
+    {
+      config: {
+        rawBody: true,
+      },
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: true,
+        },
+      },
+      preHandler: [webhookRateLimit],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        if (!env.PAYPAL_ENABLED) {
+          return ErrorResponses.notFound(reply, 'PayPal webhook is disabled');
+        }
+        if (
+          !env.PAYPAL_WEBHOOK_ID ||
+          env.PAYPAL_WEBHOOK_ID.trim().length === 0
+        ) {
+          Logger.error(
+            'PayPal webhook received but PAYPAL_WEBHOOK_ID is not configured'
+          );
+          return ErrorResponses.serviceUnavailable(
+            reply,
+            'PayPal webhook is not configured'
+          );
+        }
+
+        const event =
+          request.body && typeof request.body === 'object'
+            ? (request.body as Record<string, unknown>)
+            : null;
+        if (!event || Array.isArray(event)) {
+          return ErrorResponses.badRequest(reply, 'Invalid webhook payload');
+        }
+
+        const transmissionId = readSingleHeader(
+          request.headers['paypal-transmission-id'] as
+            | string
+            | string[]
+            | undefined
+        );
+        const transmissionTime = readSingleHeader(
+          request.headers['paypal-transmission-time'] as
+            | string
+            | string[]
+            | undefined
+        );
+        const transmissionSig = readSingleHeader(
+          request.headers['paypal-transmission-sig'] as
+            | string
+            | string[]
+            | undefined
+        );
+        const certUrl = readSingleHeader(
+          request.headers['paypal-cert-url'] as string | string[] | undefined
+        );
+        const authAlgo = readSingleHeader(
+          request.headers['paypal-auth-algo'] as string | string[] | undefined
+        );
+
+        if (
+          !transmissionId ||
+          !transmissionTime ||
+          !transmissionSig ||
+          !certUrl ||
+          !authAlgo
+        ) {
+          Logger.warn('Missing PayPal webhook signature headers', {
+            ip: request.ip,
+          });
+          return ErrorResponses.unauthorized(
+            reply,
+            'Missing webhook signature headers'
+          );
+        }
+
+        const rawBody = (request as any).rawBody as Buffer | string | undefined;
+        const success = await paymentService.handlePayPalWebhook({
+          transmissionId,
+          transmissionTime,
+          transmissionSig,
+          certUrl,
+          authAlgo,
+          event,
+          ...(rawBody !== undefined ? { rawBody } : {}),
+        });
+
+        if (!success) {
+          return ErrorResponses.badRequest(reply, 'Failed to process webhook');
+        }
+
+        return SuccessResponses.ok(reply, { received: true });
+      } catch (error) {
+        Logger.error('PayPal webhook error:', error);
         return ErrorResponses.internalError(reply, 'Failed to handle webhook');
       }
     }
