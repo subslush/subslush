@@ -8,13 +8,13 @@
 	import { credits } from '$lib/stores/credits';
 	import { initializeCurrency } from '$lib/stores/currency';
 	import { page } from '$app/stores';
-	import PromoBanner from '$lib/components/PromoBanner.svelte';
 	import faviconIco from '$lib/assets/favicon.ico';
-	import iconSvg from '$lib/assets/icon0.svg';
-	import iconPng from '$lib/assets/icon1.png';
-	import appleIcon from '$lib/assets/apple-icon.png';
-	import manifest192 from '$lib/assets/web-app-manifest-192x192.png';
-	import manifest512 from '$lib/assets/web-app-manifest-512x512.png';
+	import favicon16 from '$lib/assets/favicon-16x16.png';
+	import favicon32 from '$lib/assets/favicon-32x32.png';
+	import appleTouchIcon from '$lib/assets/apple-touch-icon.png';
+	import androidChrome192 from '$lib/assets/android-chrome-192x192.png';
+	import androidChrome512 from '$lib/assets/android-chrome-512x512.png';
+	import siteWebmanifest from '$lib/assets/site.webmanifest';
 	import { initConsentSideEffects } from '$lib/consent/thirdParty.js';
 	import { identifyTikTokUser, trackPageView } from '$lib/utils/analytics.js';
 	import type { LayoutData } from './$types';
@@ -34,18 +34,6 @@
 	$: if (browser) {
 		void identifyTikTokUser($auth.user);
 	}
-
-	const promoBannerExclusions = ['/auth', '/admin', '/terms', '/privacy', '/returns', '/payment-security'];
-	$: showPromoBanner = !promoBannerExclusions.some(prefix =>
-		$page.url.pathname === prefix || $page.url.pathname.startsWith(`${prefix}/`)
-	);
-
-	const updateBannerOffset = () => {
-		if (!browser) return;
-		const bannerEl = document.getElementById('promo-banner');
-		const height = bannerEl?.offsetHeight ?? 0;
-		document.documentElement.style.setProperty('--promo-banner-height', `${height}px`);
-	};
 
 	let lastTrackedPath = '';
 
@@ -80,8 +68,7 @@
 
 	onMount(() => {
 		initConsentSideEffects();
-		updateBannerOffset();
-		window.addEventListener('resize', updateBannerOffset);
+		document.documentElement.style.setProperty('--promo-banner-height', '0px');
 		document.body.setAttribute('data-theme', 'skeleton');
 
 		console.log('🔐 [LAYOUT] Component mounted');
@@ -98,34 +85,25 @@
 			auth.setUser(data.user);
 		}
 
-		return () => {
-			window.removeEventListener('resize', updateBannerOffset);
-		};
-	});
-
-	afterUpdate(() => {
-		updateBannerOffset();
-	});
-
-	const manifestHref = `${base}/manifest.webmanifest`;
+			return () => {
+				document.documentElement.style.setProperty('--promo-banner-height', '0px');
+			};
+		});
 </script>
 
 <svelte:head>
 	<link rel="icon" href={faviconIco} type="image/x-icon" sizes="any" />
-	<link rel="icon" href={iconSvg} type="image/svg+xml" />
-	<link rel="icon" href={iconPng} type="image/png" sizes="96x96" />
-	<link rel="apple-touch-icon" href={appleIcon} sizes="180x180" />
-	<link rel="icon" href={manifest192} type="image/png" sizes="192x192" />
-	<link rel="icon" href={manifest512} type="image/png" sizes="512x512" />
-	<link rel="manifest" href={manifestHref} />
+	<link rel="icon" href={favicon32} type="image/png" sizes="32x32" />
+	<link rel="icon" href={favicon16} type="image/png" sizes="16x16" />
+	<link rel="apple-touch-icon" href={appleTouchIcon} sizes="180x180" />
+	<link rel="icon" href={androidChrome192} type="image/png" sizes="192x192" />
+	<link rel="icon" href={androidChrome512} type="image/png" sizes="512x512" />
+	<link rel="manifest" href={siteWebmanifest} />
 	<meta name="theme-color" content="#0F172A" />
 	<meta name="application-name" content="SubSlush" />
 	<meta name="apple-mobile-web-app-title" content="SubSlush" />
 </svelte:head>
 
 <QueryClientProvider client={queryClient}>
-	{#if showPromoBanner}
-		<PromoBanner />
-	{/if}
 	<slot />
 </QueryClientProvider>

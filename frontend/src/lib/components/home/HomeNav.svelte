@@ -39,6 +39,7 @@
 	import CartSidebar from '$lib/components/cart/CartSidebar.svelte';
 	import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
 	import { resolveLogoKey, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
+	import subslushLogoIcon from '$lib/assets/subslushlogos.webp';
 	import type { ProductListing } from '$lib/types/subscription.js';
 	import type { Picture } from 'imagetools-core';
 	import netflixNYImage from '$lib/assets/netflixny.jpg';
@@ -1101,13 +1102,19 @@
 		<div
 			class="grid grid-cols-1 gap-3 py-4 lg:grid-cols-[auto,minmax(0,500px),auto] lg:items-center lg:gap-4"
 		>
-			<a
-				href="/"
-				class="flex w-fit items-center rounded-lg px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-700/40"
-			>
-				<span
-					class="text-2xl font-extrabold bg-gradient-to-r from-purple-700 to-pink-600 bg-clip-text text-transparent"
+				<a
+					href="/"
+					class="flex w-fit items-center gap-2.5 rounded-lg px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-700/40"
 				>
+					<img
+						src={subslushLogoIcon}
+						alt="SubSlush logo icon"
+						class="h-8 w-8 rounded-md object-cover"
+						loading="lazy"
+					/>
+					<span
+						class="text-2xl font-extrabold bg-gradient-to-r from-purple-700 to-pink-600 bg-clip-text text-transparent"
+					>
 					SubSlush
 				</span>
 			</a>

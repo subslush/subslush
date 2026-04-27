@@ -2,6 +2,7 @@
   import TrustBar from '$lib/components/TrustBar.svelte';
   import { Instagram, Music2, Youtube, Twitter, MessageCircle, Twitch } from 'lucide-svelte';
   import { openCrispChat } from '$lib/consent/thirdParty.js';
+  import subslushLogoIcon from '$lib/assets/subslushlogos.webp';
 </script>
 
 <!-- Trust Bar -->
@@ -14,7 +15,13 @@
       <!-- Company Info -->
       <div>
         <!-- SubSlush Text Branding (NOT logo image) -->
-        <div class="mb-4">
+        <div class="mb-4 flex items-center gap-2.5">
+          <img
+            src={subslushLogoIcon}
+            alt="SubSlush logo icon"
+            class="h-8 w-8 rounded-md object-cover"
+            loading="lazy"
+          />
           <span
             class="text-2xl font-extrabold bg-gradient-to-r bg-clip-text text-transparent"
             style="background-image: linear-gradient(90deg, #7e22ce 0%, #db2777 100%);"

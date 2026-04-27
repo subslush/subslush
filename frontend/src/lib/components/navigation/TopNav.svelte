@@ -9,6 +9,7 @@
 	import { notificationService } from '$lib/api/notifications.js';
 	import { currency } from '$lib/stores/currency.js';
 	import { CURRENCY_OPTIONS, type SupportedCurrency } from '$lib/utils/currency.js';
+	import subslushLogoIcon from '$lib/assets/subslushlogos.webp';
 	import type { Notification } from '$lib/types/notification.js';
 	import type { User as AuthUser } from '$lib/types/auth.js';
 
@@ -321,7 +322,13 @@
 	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 		<div class="flex items-center justify-between h-16">
 			<!-- LEFT: SubSlush Text Branding -->
-			<a href="/" class="flex items-center">
+			<a href="/" class="flex items-center gap-2.5">
+				<img
+					src={subslushLogoIcon}
+					alt="SubSlush logo icon"
+					class="h-8 w-8 rounded-md object-cover"
+					loading="lazy"
+				/>
 				<span
 					class="text-2xl font-extrabold bg-gradient-to-r from-purple-700 to-pink-600 bg-clip-text text-transparent"
 				>
