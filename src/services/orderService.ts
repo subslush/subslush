@@ -18,6 +18,7 @@ import {
 import { notificationService } from './notificationService';
 import { emailService } from './emailService';
 import { guestCheckoutService } from './guestCheckoutService';
+import { orderComplianceEvidenceService } from './orderComplianceEvidenceService';
 import { env } from '../config/environment';
 import { formatSubscriptionDisplayName } from '../utils/subscriptionHelpers';
 
@@ -1043,6 +1044,24 @@ export class OrderService {
 
       if (userId && status === 'delivered' && previousStatus !== status) {
         try {
+          await orderComplianceEvidenceService.recordOrderDeliveredEvidence({
+            orderId,
+            userId,
+            customerEmail: order.contact_email ?? null,
+            deliveryTimestamp: order.updated_at,
+            metadata: {
+              source: 'orderService.updateOrderStatus',
+              status_reason: order.status_reason ?? null,
+            },
+          });
+        } catch (error) {
+          Logger.warn('Failed to record delivery evidence', {
+            orderId,
+            error,
+          });
+        }
+
+        try {
           await this.sendOrderDeliveredEmail({
             order,
             previousStatus,
@@ -1212,6 +1231,24 @@ export class OrderService {
         previousStatus &&
         previousStatus !== updates.status
       ) {
+        try {
+          await orderComplianceEvidenceService.recordOrderDeliveredEvidence({
+            orderId,
+            userId,
+            customerEmail: order.contact_email ?? null,
+            deliveryTimestamp: order.updated_at,
+            metadata: {
+              source: 'orderService.updateOrderPayment',
+              status_reason: order.status_reason ?? null,
+            },
+          });
+        } catch (error) {
+          Logger.warn('Failed to record delivery evidence', {
+            orderId,
+            error,
+          });
+        }
+
         try {
           await this.sendOrderDeliveredEmail({
             order,

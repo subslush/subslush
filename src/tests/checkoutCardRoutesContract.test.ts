@@ -124,6 +124,7 @@ describe('Checkout card route contract', () => {
         orderId,
         successUrl: null,
         cancelUrl: null,
+        buyerEmail: null,
       }
     );
   });
@@ -209,6 +210,13 @@ describe('Checkout card route contract', () => {
       order_status: 'in_process',
       fulfilled: true,
       payment_provider: 'paypal',
+    });
+    expect(
+      mockPaymentService.confirmPayPalCheckoutSession
+    ).toHaveBeenCalledWith({
+      orderId,
+      sessionId,
+      ipAddress: expect.any(String),
     });
   });
 });

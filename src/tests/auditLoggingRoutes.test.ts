@@ -35,13 +35,19 @@ jest.mock('../services/auditLogService', () => ({
   logAdminAction: jest.fn(),
   logCredentialRevealAttempt: jest.fn(),
 }));
+jest.mock('../services/orderComplianceEvidenceService', () => ({
+  orderComplianceEvidenceService: {
+    recordCredentialRevealEvidence: jest.fn(),
+  },
+}));
 jest.mock('../utils/logger');
 
 const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
   typeof getDatabasePool
 >;
-const mockOrderEntitlementService =
-  orderEntitlementService as jest.Mocked<typeof orderEntitlementService>;
+const mockOrderEntitlementService = orderEntitlementService as jest.Mocked<
+  typeof orderEntitlementService
+>;
 const mockLogAdminAction = logAdminAction as jest.MockedFunction<
   typeof logAdminAction
 >;

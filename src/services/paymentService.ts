@@ -61,6 +61,7 @@ import {
   validateUpgradeOptions,
 } from '../utils/upgradeOptions';
 import { ensureRenewalTask } from './renewalNotificationService';
+import { orderComplianceEvidenceService } from './orderComplianceEvidenceService';
 import type { OrderItem, Order, OrderWithItems } from '../types/order';
 
 interface StripeOrderContext {
@@ -168,6 +169,12 @@ const parsePercent = (value: unknown): number | null => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return null;
   return parsed;
+};
+
+const normalizeEmail = (value: string | null | undefined): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
 };
 
 export class PaymentService {
@@ -370,6 +377,49 @@ export class PaymentService {
     }
 
     return { valid: true };
+  }
+
+  private async resolvePayPalBuyerEmail(params: {
+    order: OrderWithItems;
+    preferredEmail?: string | null;
+  }): Promise<string | null> {
+    const preferredEmail = normalizeEmail(params.preferredEmail);
+    if (preferredEmail) {
+      return preferredEmail;
+    }
+
+    let accountEmail: string | null = null;
+    let userEmail: string | null = null;
+    try {
+      const result = await getDatabasePool().query(
+        'SELECT email, is_guest FROM users WHERE id = $1',
+        [params.order.user_id]
+      );
+      if (result.rows.length > 0) {
+        userEmail = normalizeEmail(result.rows[0].email as string | null);
+        const isGuest = result.rows[0].is_guest === true;
+        if (!isGuest && userEmail) {
+          accountEmail = userEmail;
+        }
+      }
+    } catch (error) {
+      Logger.warn('Failed to resolve account email for PayPal checkout', {
+        orderId: params.order.id,
+        userId: params.order.user_id,
+        error,
+      });
+    }
+
+    if (accountEmail) {
+      return accountEmail;
+    }
+
+    const contactEmail = normalizeEmail(params.order.contact_email ?? null);
+    if (contactEmail) {
+      return contactEmail;
+    }
+
+    return userEmail;
   }
 
   private async createPaymentItemAllocations(params: {
@@ -4309,6 +4359,7 @@ export class PaymentService {
     orderId: string;
     successUrl?: string | null;
     cancelUrl?: string | null;
+    buyerEmail?: string | null;
   }): Promise<
     | {
         success: true;
@@ -4425,6 +4476,10 @@ export class PaymentService {
         action: 'create',
         orderId: order.id,
       })}_${uuidv4().slice(0, 8)}`;
+      const buyerEmail = await this.resolvePayPalBuyerEmail({
+        order: order as OrderWithItems,
+        preferredEmail: params.buyerEmail ?? null,
+      });
       const createOrderResult = await paypalProvider.createOrder({
         orderId: order.id,
         amountCents: settlement.totalCents,
@@ -4433,6 +4488,7 @@ export class PaymentService {
         cancelUrl,
         requestId,
         description: this.buildPay4bitOrderDescription(order as OrderWithItems),
+        customerEmail: buyerEmail,
       });
 
       const statusMapping = this.mapPayPalOrderStatus(createOrderResult.status);
@@ -4450,6 +4506,7 @@ export class PaymentService {
         success_url: successUrl,
         cancel_url: cancelUrl,
         paypal_debug_id: createOrderResult.debugId,
+        customer_email: buyerEmail,
       };
 
       let createdPayment: UnifiedPayment;
@@ -4547,6 +4604,7 @@ export class PaymentService {
   async confirmPayPalCheckoutSession(params: {
     orderId: string;
     sessionId: string;
+    ipAddress?: string | null;
   }): Promise<
     | {
         success: true;
@@ -4753,6 +4811,27 @@ export class PaymentService {
       }
 
       const updatedOrder = await orderService.getOrderById(params.orderId);
+      const customerEmail =
+        normalizeEmail(capture.payer?.email_address ?? null) ??
+        normalizeEmail(order.contact_email ?? null) ??
+        normalizeEmail(
+          (payment.metadata?.['customer_email'] as string | null | undefined) ??
+            null
+        );
+      await orderComplianceEvidenceService.recordPayPalPaymentEvidence({
+        orderId: params.orderId,
+        userId: order.user_id,
+        customerEmail,
+        paypalOrderId: normalizedSessionId,
+        paypalTransactionId: unit.captureId || normalizedSessionId,
+        ipAddress: params.ipAddress ?? null,
+        metadata: {
+          source: 'paymentService.confirmPayPalCheckoutSession',
+          capture_status: unit.captureStatus || captureStatus || null,
+          order_status: updatedOrder?.status ?? null,
+        },
+      });
+
       Logger.info('PayPal checkout confirmed', {
         orderId: params.orderId,
         paypalOrderId: normalizedSessionId,

@@ -6,6 +6,7 @@
   import { currency } from '$lib/stores/currency.js';
   import { CURRENCY_OPTIONS } from '$lib/utils/currency.js';
   import { ROUTES } from '$lib/utils/constants.js';
+  import subslushLogoIcon from '$lib/assets/subslushlogos.webp';
   import { Lock, ChevronDown } from 'lucide-svelte';
 
   let sessionCleared = false;
@@ -63,10 +64,15 @@
           </div>
           <a
             href={ROUTES.HOME}
-            class="text-lg font-extrabold text-center subslush-text-gradient hover:opacity-90 transition-opacity"
+            class="mx-auto inline-flex items-center justify-center rounded-lg hover:opacity-90 transition-opacity"
             aria-label="SubSlush home"
           >
-            SubSlush
+            <img
+              src={subslushLogoIcon}
+              alt="SubSlush logo icon"
+              class="h-8 w-8 rounded-md object-cover"
+              loading="lazy"
+            />
           </a>
           <div class="relative justify-self-end">
             <select

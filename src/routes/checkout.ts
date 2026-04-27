@@ -18,6 +18,7 @@ import {
 } from '../services/tiktokEventsService';
 import { ErrorResponses, SuccessResponses, sendError } from '../utils/response';
 import { Logger } from '../utils/logger';
+import { getRequestIp } from '../utils/requestIp';
 import {
   paymentQuoteRateLimit,
   paymentRateLimit,
@@ -378,6 +379,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         orderId,
         successUrl: success_url ?? null,
         cancelUrl: cancel_url ?? null,
+        buyerEmail: request.user?.email ?? null,
       });
 
       if (!sessionResult.success) {
@@ -536,6 +538,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
       const confirmResult = await paymentService.confirmPayPalCheckoutSession({
         orderId: validation.data.order_id,
         sessionId: validation.data.session_id,
+        ipAddress: getRequestIp(request),
       });
 
       if (!confirmResult.success) {

@@ -11,6 +11,8 @@ import { Logger } from '../utils/logger';
 import { getPaymentMethodBadge } from '../utils/orderHelpers';
 import { credentialsEncryptionService } from '../utils/encryption';
 import { logCredentialRevealAttempt } from '../services/auditLogService';
+import { orderComplianceEvidenceService } from '../services/orderComplianceEvidenceService';
+import { getRequestIp } from '../utils/requestIp';
 import type { OrderStatus } from '../types/order';
 import type { PriceHistory } from '../types/catalog';
 import type { OrderEntitlement } from '../types/orderEntitlement';
@@ -378,7 +380,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       const { orderId } = request.params as { orderId: string };
       const pool = getDatabasePool();
       const orderResult = await pool.query(
-        'SELECT id, user_id FROM orders WHERE id = $1',
+        'SELECT id, user_id, contact_email FROM orders WHERE id = $1',
         [orderId]
       );
 
@@ -425,6 +427,19 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
             source: 'order_entitlement',
           },
         });
+        await orderComplianceEvidenceService.recordCredentialRevealEvidence({
+          orderId,
+          userId,
+          customerEmail: order.contact_email ?? null,
+          ipAddress: getRequestIp(request),
+          success: true,
+          evidence: {
+            source: 'order_entitlement',
+            entitlement_id: entitlementWithCredentials.id,
+            subscription_id:
+              entitlementWithCredentials.source_subscription_id ?? null,
+          },
+        });
 
         return SuccessResponses.ok(reply, {
           order_id: orderId,
@@ -458,6 +473,17 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
             source: 'order_entitlement_fallback',
           },
         });
+        await orderComplianceEvidenceService.recordCredentialRevealEvidence({
+          orderId,
+          userId,
+          customerEmail: order.contact_email ?? null,
+          ipAddress: getRequestIp(request),
+          success: false,
+          evidence: {
+            source: 'order_entitlement_fallback',
+            failure_reason: 'credentials_missing',
+          },
+        });
         return ErrorResponses.notFound(
           reply,
           'Credentials are not available for this order'
@@ -480,6 +506,17 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
         metadata: {
           order_id: orderId,
           source: 'subscription_fallback',
+        },
+      });
+      await orderComplianceEvidenceService.recordCredentialRevealEvidence({
+        orderId,
+        userId,
+        customerEmail: order.contact_email ?? null,
+        ipAddress: getRequestIp(request),
+        success: true,
+        evidence: {
+          source: 'subscription_fallback',
+          subscription_id: subscriptionWithCredentials.id as string,
         },
       });
 

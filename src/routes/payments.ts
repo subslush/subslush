@@ -1099,6 +1099,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         // Default: hosted card checkout
         const cardResult = await paymentService.createPayPalCheckoutSession({
           orderId: order.id,
+          buyerEmail: user.email ?? null,
         });
 
         if (!cardResult.success) {

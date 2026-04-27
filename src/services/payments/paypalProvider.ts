@@ -39,6 +39,7 @@ export type PayPalCreateOrderInput = {
   cancelUrl: string;
   requestId: string;
   description?: string | null;
+  customerEmail?: string | null;
 };
 
 export type PayPalCreateOrderResult = {
@@ -395,9 +396,15 @@ export class PayPalProvider {
       input.description.trim().length > 0
         ? input.description.trim().slice(0, 127)
         : `Order ${input.orderId}`;
+    const customerEmail =
+      typeof input.customerEmail === 'string' &&
+      input.customerEmail.trim().length > 0
+        ? input.customerEmail.trim().toLowerCase()
+        : null;
 
     const payload = {
       intent: 'CAPTURE',
+      ...(customerEmail ? { payer: { email_address: customerEmail } } : {}),
       purchase_units: [
         {
           reference_id: input.orderId,

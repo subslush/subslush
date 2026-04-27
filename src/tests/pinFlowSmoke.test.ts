@@ -30,13 +30,19 @@ jest.mock('../services/auditLogService', () => ({
   logCredentialRevealAttempt: jest.fn(),
   logAdminAction: jest.fn(),
 }));
+jest.mock('../services/orderComplianceEvidenceService', () => ({
+  orderComplianceEvidenceService: {
+    recordCredentialRevealEvidence: jest.fn(),
+  },
+}));
 jest.mock('../utils/logger');
 
 const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
   typeof getDatabasePool
 >;
-const mockOrderEntitlementService =
-  orderEntitlementService as jest.Mocked<typeof orderEntitlementService>;
+const mockOrderEntitlementService = orderEntitlementService as jest.Mocked<
+  typeof orderEntitlementService
+>;
 
 describe('Credential reveal smoke flow', () => {
   beforeEach(() => {
