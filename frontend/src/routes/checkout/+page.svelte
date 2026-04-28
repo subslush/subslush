@@ -25,6 +25,7 @@
   } from '$lib/utils/currency.js';
   import type {
     CheckoutDraftItemInput,
+    CheckoutPayPalSdkConfigResponse,
     CheckoutPricingSummary,
     CheckoutPricingSummaryItem,
     CheckoutNowPaymentsInvoiceResponse,
@@ -93,6 +94,13 @@
   type CheckoutFundingButton = 'paypal' | 'applepay' | 'googlepay' | 'card' | null;
   let activeFundingButton: CheckoutFundingButton = null;
   let walletDropdownOpen = false;
+  let paypalSdkConfig: CheckoutPayPalSdkConfigResponse | null = null;
+  let walletEligibilityLoading = false;
+  let applePayEligible = false;
+  let googlePayEligible = false;
+  let walletFlowError = '';
+  let googlePaymentsClient: any = null;
+  let googlePayConfig: any = null;
   let actionError = '';
   let lastPaymentMethod: 'card' | 'crypto' | 'credits' | null = null;
   type OwnAccountCheckoutInput = {
@@ -138,6 +146,29 @@
   let creditsQuoteMessage = '';
   let creditsRequired: number | null = null;
   let creditsInsufficient = false;
+
+  type PayPalSdkNamespace = {
+    Applepay?: () => {
+      config: () => Promise<any>;
+      validateMerchant: (input: {
+        validationUrl: string;
+        displayName?: string;
+      }) => Promise<any>;
+      confirmOrder: (input: {
+        orderId: string;
+        token: unknown;
+        billingContact?: unknown;
+        shippingContact?: unknown;
+      }) => Promise<any>;
+    };
+    Googlepay?: () => {
+      config: () => Promise<any>;
+      confirmOrder: (input: {
+        orderId: string;
+        paymentMethodData: unknown;
+      }) => Promise<any>;
+    };
+  };
 
   const resolveItemQuantity = (item: CartItem): number => {
     if (typeof item.quantity !== 'number' || !Number.isFinite(item.quantity)) {
@@ -1276,6 +1307,309 @@
     return false;
   };
 
+  const loadExternalScript = (
+    id: string,
+    src: string
+  ): Promise<void> =>
+    new Promise((resolve, reject) => {
+      if (!browser) {
+        reject(new Error('Browser environment is required.'));
+        return;
+      }
+
+      const existing = document.getElementById(id) as HTMLScriptElement | null;
+      if (existing) {
+        if (existing.getAttribute('data-loaded') === 'true') {
+          resolve();
+          return;
+        }
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener(
+          'error',
+          () => reject(new Error(`Failed to load ${src}`)),
+          { once: true }
+        );
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.id = id;
+      script.src = src;
+      script.async = true;
+      script.onload = () => {
+        script.setAttribute('data-loaded', 'true');
+        resolve();
+      };
+      script.onerror = () => reject(new Error(`Failed to load ${src}`));
+      document.head.appendChild(script);
+    });
+
+  const resolvePayPalSdk = (): PayPalSdkNamespace | null => {
+    if (!browser) return null;
+    const sdk = (window as Window & { paypal?: PayPalSdkNamespace }).paypal;
+    if (!sdk || typeof sdk !== 'object') {
+      return null;
+    }
+    return sdk;
+  };
+
+  const resolveGooglePayEnvironment = (): 'TEST' | 'PRODUCTION' =>
+    paypalSdkConfig?.mode === 'live' ? 'PRODUCTION' : 'TEST';
+
+  const initializeWalletEligibility = async (): Promise<void> => {
+    if (!browser) return;
+
+    walletEligibilityLoading = true;
+    walletFlowError = '';
+    applePayEligible = false;
+    googlePayEligible = false;
+    googlePaymentsClient = null;
+    googlePayConfig = null;
+    try {
+      const sdkConfig = await checkoutService.getPayPalSdkConfig();
+      paypalSdkConfig = sdkConfig;
+      if (!sdkConfig.enabled || !sdkConfig.client_id) {
+        return;
+      }
+
+      const sdkUrl = new URL('https://www.paypal.com/sdk/js');
+      sdkUrl.searchParams.set('client-id', sdkConfig.client_id);
+      sdkUrl.searchParams.set('components', 'applepay,googlepay');
+      sdkUrl.searchParams.set('currency', orderCurrency);
+      await loadExternalScript('paypal-js-sdk-wallets', sdkUrl.toString());
+      await loadExternalScript(
+        'google-pay-js-sdk',
+        'https://pay.google.com/gp/p/js/pay.js'
+      );
+      await loadExternalScript(
+        'apple-pay-js-sdk',
+        'https://applepay.cdn-apple.com/jsapi/1.latest/apple-pay-sdk.js'
+      );
+
+      const paypal = resolvePayPalSdk();
+      if (!paypal) {
+        throw new Error('PayPal JavaScript SDK is unavailable.');
+      }
+
+      if (typeof paypal.Googlepay === 'function') {
+        const googlepay = paypal.Googlepay();
+        googlePayConfig = await googlepay.config();
+        const google = (window as any).google;
+        if (google?.payments?.api?.PaymentsClient && googlePayConfig) {
+          googlePaymentsClient = new google.payments.api.PaymentsClient({
+            environment: resolveGooglePayEnvironment()
+          });
+          const readiness = await googlePaymentsClient.isReadyToPay({
+            apiVersion: 2,
+            apiVersionMinor: 0,
+            allowedPaymentMethods: googlePayConfig.allowedPaymentMethods || []
+          });
+          googlePayEligible = Boolean(readiness?.result);
+        }
+      }
+
+      const ApplePaySessionCtor = (window as any).ApplePaySession;
+      if (
+        typeof paypal.Applepay === 'function' &&
+        typeof ApplePaySessionCtor !== 'undefined' &&
+        typeof ApplePaySessionCtor?.canMakePayments === 'function' &&
+        ApplePaySessionCtor.canMakePayments()
+      ) {
+        const applepay = paypal.Applepay();
+        const appleConfig = await applepay.config();
+        applePayEligible = Boolean(appleConfig?.isEligible);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to initialize wallet payment methods.';
+      walletFlowError =
+        message === 'Failed to fetch'
+          ? 'Wallet setup endpoint is unavailable in this environment. Using hosted fallback.'
+          : message;
+      applePayEligible = false;
+      googlePayEligible = false;
+    } finally {
+      walletEligibilityLoading = false;
+    }
+  };
+
+  const getCheckoutSessionForWallet = async (
+    fundingPreference: 'applepay' | 'googlepay'
+  ): Promise<{ orderId: string; paypalOrderId: string } | null> => {
+    actionError = '';
+    walletFlowError = '';
+    if (!ensureConsentBeforeCheckout()) return null;
+    if (!ensureContactEmailBeforeCheckout()) return null;
+    if (!ensureOwnAccountDetailsBeforeCheckout()) return null;
+
+    const draftReady = await refreshDraft(true);
+    if (!draftReady || !getDraftCheckoutSessionKey()) {
+      actionError = draftError || 'Please review your checkout details.';
+      return null;
+    }
+
+    const trackingIds = trackCheckoutPaymentStep('card');
+    const response = await checkoutService.createCardSession({
+      checkout_session_key: getDraftCheckoutSessionKey(),
+      funding_preference: fundingPreference,
+      add_payment_info_event_id: trackingIds.addPaymentInfoEventId ?? null
+    });
+    return {
+      orderId: response.order_id,
+      paypalOrderId: response.session_id
+    };
+  };
+
+  const finalizeWalletOrder = async (
+    orderId: string,
+    paypalOrderId: string
+  ): Promise<void> => {
+    const confirm = await checkoutService.confirmCardSession({
+      order_id: orderId,
+      session_id: paypalOrderId
+    });
+    if (!confirm.fulfilled) {
+      throw new Error('Payment was authorized but fulfillment did not complete.');
+    }
+    cart.clear();
+    clearDraftState();
+    await goto('/dashboard/orders');
+  };
+
+  const handleGooglePayNativeCheckout = async () => {
+    activeFundingButton = 'googlepay';
+    redirecting = true;
+    walletDropdownOpen = false;
+    try {
+      if (!googlePayEligible || !googlePaymentsClient || !googlePayConfig) {
+        await startHostedPayPalCheckout('googlepay');
+        return;
+      }
+      const session = await getCheckoutSessionForWallet('googlepay');
+      if (!session) return;
+      const paymentDataRequest = {
+        apiVersion: 2,
+        apiVersionMinor: 0,
+        allowedPaymentMethods: googlePayConfig.allowedPaymentMethods || [],
+        merchantInfo: googlePayConfig.merchantInfo,
+        transactionInfo: {
+          totalPriceStatus: 'FINAL',
+          totalPrice: total.toFixed(2),
+          currencyCode: orderCurrency,
+          countryCode: 'US'
+        }
+      };
+      const paymentData = await googlePaymentsClient.loadPaymentData(
+        paymentDataRequest
+      );
+      const paypal = resolvePayPalSdk();
+      if (!paypal?.Googlepay) {
+        throw new Error('Google Pay SDK bridge unavailable.');
+      }
+      await paypal.Googlepay().confirmOrder({
+        orderId: session.paypalOrderId,
+        paymentMethodData: paymentData?.paymentMethodData
+      });
+      await finalizeWalletOrder(session.orderId, session.paypalOrderId);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to start Google Pay checkout.';
+      walletFlowError = message;
+      actionError = message;
+    } finally {
+      redirecting = false;
+      activeFundingButton = null;
+    }
+  };
+
+  const handleApplePayNativeCheckout = async () => {
+    activeFundingButton = 'applepay';
+    redirecting = true;
+    walletDropdownOpen = false;
+    try {
+      if (!applePayEligible) {
+        await startHostedPayPalCheckout('applepay');
+        return;
+      }
+      const paypal = resolvePayPalSdk();
+      const ApplePaySessionCtor = (window as any).ApplePaySession;
+      if (!paypal?.Applepay || !ApplePaySessionCtor) {
+        await startHostedPayPalCheckout('applepay');
+        return;
+      }
+
+      const applepay = paypal.Applepay();
+      const appleConfig = await applepay.config();
+      const sessionData = await getCheckoutSessionForWallet('applepay');
+      if (!sessionData) return;
+
+      const paymentRequest = {
+        countryCode: appleConfig.countryCode || 'US',
+        merchantCapabilities:
+          appleConfig.merchantCapabilities || ['supports3DS'],
+        supportedNetworks: appleConfig.supportedNetworks || ['visa', 'masterCard'],
+        currencyCode: orderCurrency,
+        total: {
+          label: 'SubSlush',
+          amount: total.toFixed(2),
+          type: 'final'
+        }
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        const appleSession = new ApplePaySessionCtor(4, paymentRequest);
+        appleSession.onvalidatemerchant = async (event: any) => {
+          try {
+            const merchantSession = await applepay.validateMerchant({
+              validationUrl: event.validationURL,
+              displayName: 'SubSlush'
+            });
+            appleSession.completeMerchantValidation(merchantSession);
+          } catch (validationError) {
+            reject(validationError);
+          }
+        };
+        appleSession.onpaymentauthorized = async (event: any) => {
+          try {
+            await applepay.confirmOrder({
+              orderId: sessionData.paypalOrderId,
+              token: event.payment.token,
+              billingContact: event.payment.billingContact,
+              shippingContact: event.payment.shippingContact
+            });
+            appleSession.completePayment(ApplePaySessionCtor.STATUS_SUCCESS);
+            await finalizeWalletOrder(
+              sessionData.orderId,
+              sessionData.paypalOrderId
+            );
+            resolve();
+          } catch (confirmError) {
+            appleSession.completePayment(ApplePaySessionCtor.STATUS_FAILURE);
+            reject(confirmError);
+          }
+        };
+        appleSession.oncancel = () => {
+          reject(new Error('Apple Pay checkout was canceled.'));
+        };
+        appleSession.begin();
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to start Apple Pay checkout.';
+      walletFlowError = message;
+      actionError = message;
+    } finally {
+      redirecting = false;
+      activeFundingButton = null;
+    }
+  };
+
   const startHostedPayPalCheckout = async (
     fundingPreference: 'paypal' | 'applepay' | 'googlepay' | 'card'
   ) => {
@@ -1357,11 +1691,11 @@
   };
 
   const handleApplePayCheckout = async () => {
-    await startHostedPayPalCheckout('applepay');
+    await handleApplePayNativeCheckout();
   };
 
   const handleGooglePayCheckout = async () => {
-    await startHostedPayPalCheckout('googlepay');
+    await handleGooglePayNativeCheckout();
   };
 
   const handleCardCheckout = async () => {
@@ -1807,6 +2141,7 @@
   onMount(() => {
     loadDraftState();
     draftInitialized = true;
+    void initializeWalletEligibility();
   });
 
   onDestroy(() => {
@@ -2238,7 +2573,11 @@
                       <button
                         type="button"
                         class="flex h-11 w-full items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={redirecting || invoiceLoading || creditsInsufficient}
+                        disabled={
+                          redirecting ||
+                          invoiceLoading ||
+                          creditsInsufficient
+                        }
                         on:click={() => {
                           walletDropdownOpen = !walletDropdownOpen;
                         }}
@@ -2254,7 +2593,11 @@
                           <button
                             type="button"
                             class="flex h-10 w-full items-center justify-between rounded-lg px-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={redirecting || invoiceLoading || creditsInsufficient}
+                            disabled={
+                              redirecting ||
+                              invoiceLoading ||
+                              creditsInsufficient
+                            }
                             on:click={() => {
                               paymentMethod = 'card';
                               void handleApplePayCheckout();
@@ -2274,7 +2617,11 @@
                           <button
                             type="button"
                             class="mt-1 flex h-10 w-full items-center justify-between rounded-lg px-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={redirecting || invoiceLoading || creditsInsufficient}
+                            disabled={
+                              redirecting ||
+                              invoiceLoading ||
+                              creditsInsufficient
+                            }
                             on:click={() => {
                               paymentMethod = 'card';
                               void handleGooglePayCheckout();
@@ -2321,6 +2668,13 @@
                   <p class="mt-2 px-1 text-xs text-slate-500">
                     Secure hosted checkout. Choose PayPal account, digital wallet, or card.
                   </p>
+                  {#if walletEligibilityLoading}
+                    <p class="mt-1 px-1 text-xs text-slate-500">
+                      Checking Apple Pay and Google Pay availability...
+                    </p>
+                  {:else if walletFlowError}
+                    <p class="mt-1 px-1 text-xs text-rose-600">{walletFlowError}</p>
+                  {/if}
                 </div>
 
                 {#if SHOW_CRYPTO_CHECKOUT_OPTION}

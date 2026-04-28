@@ -103,6 +103,12 @@ export interface CheckoutCardConfirmResponse {
   fulfilled: boolean;
 }
 
+export interface CheckoutPayPalSdkConfigResponse {
+  enabled: boolean;
+  client_id: string | null;
+  mode: 'sandbox' | 'live';
+}
+
 export type CheckoutStripeSessionRequest = CheckoutCardSessionRequest;
 export type CheckoutStripeSessionResponse = CheckoutCardSessionResponse;
 export type CheckoutStripeConfirmRequest = CheckoutCardConfirmRequest;

@@ -9,6 +9,7 @@ import type {
   CheckoutCardSessionResponse,
   CheckoutCardConfirmRequest,
   CheckoutCardConfirmResponse,
+  CheckoutPayPalSdkConfigResponse,
   CheckoutCreditsCompleteRequest,
   CheckoutCreditsCompleteResponse,
   CheckoutNowPaymentsInvoiceRequest,
@@ -49,6 +50,11 @@ export class CheckoutService {
       input
     );
     return unwrapApiData<CheckoutCardConfirmResponse>(response);
+  }
+
+  async getPayPalSdkConfig(): Promise<CheckoutPayPalSdkConfigResponse> {
+    const response = await apiClient.get(API_ENDPOINTS.CHECKOUT.PAYPAL_SDK_CONFIG);
+    return unwrapApiData<CheckoutPayPalSdkConfigResponse>(response);
   }
 
   async createStripeSession(

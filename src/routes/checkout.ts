@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { env } from '../config/environment';
 import {
   validateGuestIdentityInput,
   validateGuestDraftInput,
@@ -138,6 +139,20 @@ const buildOrderTikTokProperties = (
 };
 
 export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
+  fastify.get(
+    '/paypal/sdk-config',
+    {
+      preHandler: [optionalAuthPreHandler],
+    },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      return SuccessResponses.ok(reply, {
+        enabled: Boolean(env.PAYPAL_ENABLED && env.PAYPAL_CLIENT_ID),
+        client_id: env.PAYPAL_CLIENT_ID || null,
+        mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
+      });
+    }
+  );
+
   fastify.post(
     '/identity',
     {
