@@ -4826,7 +4826,9 @@ export class PaymentService {
       }
 
       const captureCompleted =
-        captureStatus === 'COMPLETED' || unit.captureStatus === 'COMPLETED';
+        unit.captureStatus === 'COMPLETED' &&
+        typeof unit.captureId === 'string' &&
+        unit.captureId.length > 0;
       if (!captureCompleted) {
         Logger.warn(
           'PayPal capture not completed during checkout confirmation',
@@ -4835,6 +4837,7 @@ export class PaymentService {
             paypalOrderId: normalizedSessionId,
             orderStatus: captureStatus,
             captureStatus: unit.captureStatus,
+            captureId: unit.captureId,
             debugId:
               capture && typeof capture === 'object'
                 ? ((capture as { debugId?: unknown }).debugId ?? null)
