@@ -187,6 +187,16 @@
     message.toLowerCase().includes('payment_provider_mismatch');
   const normalizeTicker = (value: string | null | undefined): string =>
     (value || '').trim().toLowerCase();
+  const isWalletUserCancellation = (message: string): boolean => {
+    const normalized = message.trim().toLowerCase();
+    return (
+      normalized.includes('result_canceled') ||
+      normalized.includes('payment app returned result_canceled') ||
+      normalized.includes('checkout was canceled') ||
+      normalized.includes('was cancelled') ||
+      normalized.includes('was canceled')
+    );
+  };
   const normalizeNetworkToken = (value: string | null | undefined): string =>
     (value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const mapCouponErrorMessage = (message: string): string => {
@@ -1518,6 +1528,11 @@
         error instanceof Error
           ? error.message
           : 'Unable to start Google Pay checkout.';
+      if (isWalletUserCancellation(message)) {
+        walletFlowError = '';
+        actionError = '';
+        return;
+      }
       walletFlowError = message;
       actionError = message;
     } finally {
@@ -1593,7 +1608,7 @@
           }
         };
         appleSession.oncancel = () => {
-          reject(new Error('Apple Pay checkout was canceled.'));
+          reject(new Error('Apple Pay checkout canceled by user.'));
         };
         appleSession.begin();
       });
@@ -1602,6 +1617,11 @@
         error instanceof Error
           ? error.message
           : 'Unable to start Apple Pay checkout.';
+      if (isWalletUserCancellation(message)) {
+        walletFlowError = '';
+        actionError = '';
+        return;
+      }
       walletFlowError = message;
       actionError = message;
     } finally {
