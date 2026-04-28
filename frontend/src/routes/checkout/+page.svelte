@@ -1483,9 +1483,9 @@
     if (!confirm.fulfilled) {
       throw new Error('Payment was authorized but fulfillment did not complete.');
     }
-    cart.clear();
-    clearDraftState();
-    await goto('/dashboard/orders');
+    await goto(
+      `/checkout/card?status=success&order_id=${encodeURIComponent(orderId)}&session_id=${encodeURIComponent(paypalOrderId)}`
+    );
   };
 
   const handleGooglePayNativeCheckout = async () => {
