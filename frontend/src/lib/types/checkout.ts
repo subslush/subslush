@@ -74,6 +74,7 @@ export interface CheckoutCardSessionRequest {
   order_id?: string | null;
   success_url?: string | null;
   cancel_url?: string | null;
+  funding_preference?: 'paypal' | 'applepay' | 'googlepay' | 'card' | null;
   initiate_checkout_event_id?: string | null;
   add_payment_info_event_id?: string | null;
 }

@@ -93,6 +93,10 @@ export const checkoutPayPalSessionSchema = z.object({
     .optional()
     .nullable(),
   cancel_url: z.string().url('Cancel URL must be valid').optional().nullable(),
+  funding_preference: z
+    .enum(['paypal', 'applepay', 'googlepay', 'card'])
+    .optional()
+    .nullable(),
   initiate_checkout_event_id: optionalEventIdSchema,
   add_payment_info_event_id: optionalEventIdSchema,
 });

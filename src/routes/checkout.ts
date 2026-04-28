@@ -339,6 +339,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         order_id,
         success_url,
         cancel_url,
+        funding_preference,
         add_payment_info_event_id,
       } = validation.data;
 
@@ -380,6 +381,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         successUrl: success_url ?? null,
         cancelUrl: cancel_url ?? null,
         buyerEmail: request.user?.email ?? null,
+        fundingPreference: funding_preference ?? null,
       });
 
       if (!sessionResult.success) {
@@ -503,6 +505,10 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               order_id: { type: 'string' },
               success_url: { type: 'string' },
               cancel_url: { type: 'string' },
+              funding_preference: {
+                type: 'string',
+                enum: ['paypal', 'applepay', 'googlepay', 'card'],
+              },
               initiate_checkout_event_id: { type: 'string' },
               add_payment_info_event_id: { type: 'string' },
             },

@@ -335,6 +335,97 @@ export class PaymentService {
     );
   }
 
+  private buildPayPalLineItems(params: {
+    order: OrderWithItems;
+    settlementCurrency: string;
+    settlementTotalCents: number;
+  }): Array<{
+    name: string;
+    quantity: number;
+    unitAmountCents: number;
+    description?: string | null;
+    sku?: string | null;
+    category?: 'DIGITAL_GOODS' | 'PHYSICAL_GOODS';
+  }> | null {
+    const lineItems: Array<{
+      name: string;
+      quantity: number;
+      unitAmountCents: number;
+      description?: string | null;
+      sku?: string | null;
+      category?: 'DIGITAL_GOODS' | 'PHYSICAL_GOODS';
+    }> = [];
+
+    for (const item of params.order.items) {
+      const rawLineTotal =
+        parseNonNegativeInt(item.settlement_total_price_cents) ??
+        parseNonNegativeInt(item.total_price_cents) ??
+        null;
+      if (rawLineTotal === null || rawLineTotal <= 0) {
+        continue;
+      }
+
+      const rawQuantity = parsePositiveInt(item.quantity) ?? 1;
+      const quantity = Math.max(1, rawQuantity);
+      let itemQuantity = quantity;
+      let unitAmountCents = Math.floor(rawLineTotal / quantity);
+
+      if (unitAmountCents * quantity !== rawLineTotal) {
+        itemQuantity = 1;
+        unitAmountCents = rawLineTotal;
+      }
+
+      const fallbackQuantitySuffix =
+        itemQuantity === 1 && quantity > 1 ? ` (x${quantity})` : '';
+      const descriptionRaw =
+        typeof item.description === 'string' &&
+        item.description.trim().length > 0
+          ? item.description.trim()
+          : null;
+      const description =
+        descriptionRaw || fallbackQuantitySuffix
+          ? `${descriptionRaw || 'Subscription'}${fallbackQuantitySuffix}`.slice(
+              0,
+              127
+            )
+          : null;
+
+      lineItems.push({
+        name: this.resolveOrderItemDisplayName(item).slice(0, 127),
+        quantity: itemQuantity,
+        unitAmountCents,
+        description,
+        sku: item.product_variant_id ?? item.id,
+        category: 'DIGITAL_GOODS',
+      });
+    }
+
+    if (lineItems.length === 0) {
+      return null;
+    }
+
+    const lineTotal = lineItems.reduce(
+      (sum, item) => sum + item.unitAmountCents * item.quantity,
+      0
+    );
+    const delta = params.settlementTotalCents - lineTotal;
+    if (delta !== 0) {
+      const last = lineItems[lineItems.length - 1];
+      if (!last || last.quantity !== 1 || last.unitAmountCents + delta <= 0) {
+        Logger.warn('Skipping PayPal line items due to amount mismatch', {
+          orderId: params.order.id,
+          settlementCurrency: params.settlementCurrency,
+          settlementTotalCents: params.settlementTotalCents,
+          lineItemsTotalCents: lineTotal,
+        });
+        return null;
+      }
+      last.unitAmountCents += delta;
+    }
+
+    return lineItems;
+  }
+
   private async validateOwnAccountSelectionData(
     order: OrderWithItems
   ): Promise<{ valid: true } | { valid: false; missingItemLabel: string }> {
@@ -4360,6 +4451,7 @@ export class PaymentService {
     successUrl?: string | null;
     cancelUrl?: string | null;
     buyerEmail?: string | null;
+    fundingPreference?: 'paypal' | 'applepay' | 'googlepay' | 'card' | null;
   }): Promise<
     | {
         success: true;
@@ -4480,6 +4572,11 @@ export class PaymentService {
         order: order as OrderWithItems,
         preferredEmail: params.buyerEmail ?? null,
       });
+      const paypalLineItems = this.buildPayPalLineItems({
+        order: order as OrderWithItems,
+        settlementCurrency: settlement.currency,
+        settlementTotalCents: settlement.totalCents,
+      });
       const createOrderResult = await paypalProvider.createOrder({
         orderId: order.id,
         amountCents: settlement.totalCents,
@@ -4489,6 +4586,8 @@ export class PaymentService {
         requestId,
         description: this.buildPay4bitOrderDescription(order as OrderWithItems),
         customerEmail: buyerEmail,
+        fundingPreference: params.fundingPreference ?? null,
+        lineItems: paypalLineItems,
       });
 
       const statusMapping = this.mapPayPalOrderStatus(createOrderResult.status);
@@ -4507,6 +4606,8 @@ export class PaymentService {
         cancel_url: cancelUrl,
         paypal_debug_id: createOrderResult.debugId,
         customer_email: buyerEmail,
+        preferred_funding_source: params.fundingPreference ?? null,
+        paypal_line_items_count: paypalLineItems?.length ?? 0,
       };
 
       let createdPayment: UnifiedPayment;

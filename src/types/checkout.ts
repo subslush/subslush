@@ -81,6 +81,13 @@ export interface CheckoutPayPalSessionInput {
   order_id?: string | null | undefined;
   success_url?: string | null | undefined;
   cancel_url?: string | null | undefined;
+  funding_preference?:
+    | 'paypal'
+    | 'applepay'
+    | 'googlepay'
+    | 'card'
+    | null
+    | undefined;
   initiate_checkout_event_id?: string | null | undefined;
   add_payment_info_event_id?: string | null | undefined;
 }

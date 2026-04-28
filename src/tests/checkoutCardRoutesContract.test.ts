@@ -125,6 +125,7 @@ describe('Checkout card route contract', () => {
         successUrl: null,
         cancelUrl: null,
         buyerEmail: null,
+        fundingPreference: null,
       }
     );
   });

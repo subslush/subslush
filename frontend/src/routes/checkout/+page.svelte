@@ -33,7 +33,18 @@
   import type { Currency } from '$lib/types/payment.js';
   import type { OwnAccountCredentialRequirement } from '$lib/types/subscription.js';
   import { SHOW_CRYPTO_CHECKOUT_OPTION } from '$lib/config/paymentBrandVisibility.js';
-  import { Eye, EyeOff, Loader2, ShieldCheck, Trash2 } from 'lucide-svelte';
+  import applePayLogo from '$lib/assets/apple-pay.svg';
+  import googlePayLogo from '$lib/assets/google-pay.svg';
+  import paypalLogo from '$lib/assets/paypal-logo.svg';
+  import {
+    ChevronRight,
+    CreditCard,
+    Eye,
+    EyeOff,
+    Loader2,
+    ShieldCheck,
+    Trash2
+  } from 'lucide-svelte';
 
   const DRAFT_STORAGE_KEY = 'checkout_draft_state';
   const CHECKOUT_INITIATE_TRACKING_KEY = 'checkout_initiate_tracking';
@@ -79,6 +90,9 @@
   let paymentMethod: 'card' | 'crypto' | 'credits' | null = null;
   let immediatePerformanceConsent = false;
   let redirecting = false;
+  type CheckoutFundingButton = 'paypal' | 'applepay' | 'googlepay' | 'card' | null;
+  let activeFundingButton: CheckoutFundingButton = null;
+  let walletDropdownOpen = false;
   let actionError = '';
   let lastPaymentMethod: 'card' | 'crypto' | 'credits' | null = null;
   type OwnAccountCheckoutInput = {
@@ -1262,7 +1276,9 @@
     return false;
   };
 
-  const handleCardCheckout = async () => {
+  const startHostedPayPalCheckout = async (
+    fundingPreference: 'paypal' | 'applepay' | 'googlepay' | 'card'
+  ) => {
     actionError = '';
     if (!ensureConsentBeforeCheckout()) {
       return;
@@ -1285,12 +1301,15 @@
     }): Promise<string | null> => {
       const response = await checkoutService.createCardSession({
         checkout_session_key: getDraftCheckoutSessionKey(),
+        funding_preference: fundingPreference,
         add_payment_info_event_id:
           trackingIds?.addPaymentInfoEventId ?? null
       });
       return response.session_url || null;
     };
 
+    activeFundingButton = fundingPreference;
+    walletDropdownOpen = false;
     redirecting = true;
     try {
       const trackingIds = trackCheckoutPaymentStep('card');
@@ -1327,7 +1346,26 @@
       actionError = message;
     } finally {
       redirecting = false;
+      if (window.location.pathname !== '/checkout/card') {
+        activeFundingButton = null;
+      }
     }
+  };
+
+  const handlePayPalCheckout = async () => {
+    await startHostedPayPalCheckout('paypal');
+  };
+
+  const handleApplePayCheckout = async () => {
+    await startHostedPayPalCheckout('applepay');
+  };
+
+  const handleGooglePayCheckout = async () => {
+    await startHostedPayPalCheckout('googlepay');
+  };
+
+  const handleCardCheckout = async () => {
+    await startHostedPayPalCheckout('card');
   };
 
   const handleCryptoInvoice = async () => {
@@ -1758,7 +1796,7 @@
     Boolean(invoice) &&
     normalizeTicker(invoice?.pay_currency) === normalizeTicker(payCurrency);
   $: showPrimaryActionButton =
-    paymentMethod !== 'crypto' || !cryptoInvoiceMatchesSelection;
+    paymentMethod === 'crypto' && !cryptoInvoiceMatchesSelection;
   $: selectedCryptoCoinLabel =
     cryptoCoinOptions.find(option => option.value === payCoin)?.label ||
     payCoin.toUpperCase();
@@ -2179,25 +2217,111 @@
               <h3 class="text-sm font-semibold text-slate-900">Choose payment method</h3>
 
               <div class="mt-3 space-y-3">
-                <label class={`flex items-start gap-3 rounded-xl border px-3 py-3 transition ${
-                  paymentMethod === 'card'
-                    ? 'border-fuchsia-300 bg-fuchsia-50/40 shadow-sm'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                }`}>
-                  <input
-                    type="radio"
-                    name="payment-method"
-                    value="card"
-                    bind:group={paymentMethod}
-                    class="mt-1 h-4 w-4 text-slate-900"
-                  />
-                  <div>
-                    <p class="text-sm font-semibold text-slate-900">PayPal / Card</p>
-                    <p class="mt-1 text-xs text-slate-500">
-                      You will be redirected to secure PayPal hosted checkout. PayPal account and card options are supported.
-                    </p>
+                <div class="rounded-2xl border border-slate-200 bg-white p-3">
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      class="flex h-11 items-center justify-center self-center rounded-md border border-[#f4c64f] bg-[#ffc439] transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={redirecting || invoiceLoading || creditsInsufficient}
+                      on:click={() => {
+                        paymentMethod = 'card';
+                        void handlePayPalCheckout();
+                      }}
+                    >
+                      {#if activeFundingButton === 'paypal'}
+                        <Loader2 class="h-4 w-4 animate-spin text-[#1f4eb0]" />
+                      {:else}
+                        <img src={paypalLogo} alt="PayPal" class="h-5 w-auto" />
+                      {/if}
+                    </button>
+                    <div class="relative">
+                      <button
+                        type="button"
+                        class="flex h-11 w-full items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={redirecting || invoiceLoading || creditsInsufficient}
+                        on:click={() => {
+                          walletDropdownOpen = !walletDropdownOpen;
+                        }}
+                      >
+                        <span class="inline-flex items-center gap-2">
+                          <img src={applePayLogo} alt="Apple Pay" class="h-5 w-auto" />
+                          <span class="text-slate-400">/</span>
+                          <img src={googlePayLogo} alt="Google Pay" class="h-5 w-auto" />
+                        </span>
+                      </button>
+                      {#if walletDropdownOpen}
+                        <div class="absolute left-0 right-0 top-[calc(100%+0.45rem)] z-20 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+                          <button
+                            type="button"
+                            class="flex h-10 w-full items-center justify-between rounded-lg px-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={redirecting || invoiceLoading || creditsInsufficient}
+                            on:click={() => {
+                              paymentMethod = 'card';
+                              void handleApplePayCheckout();
+                            }}
+                          >
+                            <span class="inline-flex items-center gap-2">
+                              <img src={applePayLogo} alt="Apple Pay" class="h-5 w-auto" />
+                            </span>
+                            <span class="inline-flex items-center justify-center">
+                              {#if activeFundingButton === 'applepay'}
+                                <Loader2 class="h-4 w-4 animate-spin" />
+                              {:else}
+                                <ChevronRight class="h-4 w-4 text-slate-500" />
+                              {/if}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            class="mt-1 flex h-10 w-full items-center justify-between rounded-lg px-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={redirecting || invoiceLoading || creditsInsufficient}
+                            on:click={() => {
+                              paymentMethod = 'card';
+                              void handleGooglePayCheckout();
+                            }}
+                          >
+                            <span class="inline-flex items-center gap-2">
+                              <img src={googlePayLogo} alt="Google Pay" class="h-5 w-auto" />
+                            </span>
+                            <span class="inline-flex items-center justify-center">
+                              {#if activeFundingButton === 'googlepay'}
+                                <Loader2 class="h-4 w-4 animate-spin" />
+                              {:else}
+                                <ChevronRight class="h-4 w-4 text-slate-500" />
+                              {/if}
+                            </span>
+                          </button>
+                        </div>
+                      {/if}
+                    </div>
                   </div>
-                </label>
+
+                  <div class="checkout-or-divider mt-3 text-xs text-slate-500">
+                    <span>or pay with card</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    class="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-slate-800 px-3 text-sm font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={redirecting || invoiceLoading || creditsInsufficient}
+                    on:click={() => {
+                      paymentMethod = 'card';
+                      void handleCardCheckout();
+                    }}
+                  >
+                    {#if activeFundingButton === 'card'}
+                      <Loader2 class="h-4 w-4 animate-spin" />
+                      Processing...
+                    {:else}
+                      <CreditCard class="h-4 w-4" />
+                      Debit or Credit Card
+                    {/if}
+                  </button>
+
+                  <p class="mt-2 px-1 text-xs text-slate-500">
+                    Secure hosted checkout. Choose PayPal account, digital wallet, or card.
+                  </p>
+                </div>
 
                 {#if SHOW_CRYPTO_CHECKOUT_OPTION}
                   <label class={`flex items-start gap-3 rounded-xl border px-3 py-3 transition ${
@@ -2394,9 +2518,7 @@
                     creditsInsufficient
                   }
                   on:click={() => {
-                    if (paymentMethod === 'card') {
-                      void handleCardCheckout();
-                    } else if (paymentMethod === 'crypto') {
+                    if (paymentMethod === 'crypto') {
                       void handleCryptoInvoice();
                     }
                   }}
@@ -2405,9 +2527,7 @@
                     <Loader2 class="h-4 w-4 animate-spin" />
                     {invoiceLoading ? 'Generating invoice...' : 'Processing...'}
                   {:else}
-                    {#if paymentMethod === 'card'}
-                      CONTINUE TO PAYMENT
-                    {:else if paymentMethod === 'crypto'}
+                    {#if paymentMethod === 'crypto'}
                       Generate invoice
                     {:else}
                       Choose payment method
@@ -2515,5 +2635,19 @@
 
   .consent-attention-pulse {
     animation: emailAttentionPulse 820ms ease-in-out 2;
+  }
+
+  .checkout-or-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+  }
+
+  .checkout-or-divider::before,
+  .checkout-or-divider::after {
+    content: '';
+    height: 1px;
+    flex: 1 1 auto;
+    background: #cbd5e1;
   }
 </style>

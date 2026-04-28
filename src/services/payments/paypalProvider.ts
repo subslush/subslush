@@ -40,6 +40,15 @@ export type PayPalCreateOrderInput = {
   requestId: string;
   description?: string | null;
   customerEmail?: string | null;
+  fundingPreference?: 'paypal' | 'applepay' | 'googlepay' | 'card' | null;
+  lineItems?: Array<{
+    name: string;
+    quantity: number;
+    unitAmountCents: number;
+    description?: string | null;
+    sku?: string | null;
+    category?: 'DIGITAL_GOODS' | 'PHYSICAL_GOODS';
+  }> | null;
 };
 
 export type PayPalCreateOrderResult = {
@@ -120,6 +129,18 @@ type PayPalRequestOptions = {
 const PAYPAL_API_SANDBOX_BASE = 'https://api-m.sandbox.paypal.com';
 const PAYPAL_API_LIVE_BASE = 'https://api-m.paypal.com';
 const TOKEN_EXPIRY_SKEW_MS = 60_000;
+
+type PayPalOrderLineItem = {
+  name: string;
+  description?: string;
+  sku?: string;
+  category: 'DIGITAL_GOODS' | 'PHYSICAL_GOODS';
+  quantity: string;
+  unit_amount: {
+    currency_code: string;
+    value: string;
+  };
+};
 
 export class PayPalProvider {
   private tokenCache: PayPalTokenCache = null;
@@ -387,6 +408,40 @@ export class PayPalProvider {
     return null;
   }
 
+  private withFundingSourceHint(
+    approvalUrl: string,
+    fundingPreference: PayPalCreateOrderInput['fundingPreference']
+  ): string {
+    const normalizedPreference =
+      typeof fundingPreference === 'string'
+        ? fundingPreference.trim().toLowerCase()
+        : '';
+    const fundingSource =
+      normalizedPreference === 'paypal'
+        ? 'paypal'
+        : normalizedPreference === 'card'
+          ? 'card'
+          : normalizedPreference === 'applepay'
+            ? 'applepay'
+            : normalizedPreference === 'googlepay'
+              ? 'googlepay'
+              : null;
+    if (!fundingSource) {
+      return approvalUrl;
+    }
+
+    try {
+      const url = new globalThis.URL(approvalUrl);
+      url.searchParams.set('fundingSource', fundingSource);
+      return url.toString();
+    } catch {
+      const separator = approvalUrl.includes('?') ? '&' : '?';
+      return `${approvalUrl}${separator}fundingSource=${encodeURIComponent(
+        fundingSource
+      )}`;
+    }
+  }
+
   async createOrder(
     input: PayPalCreateOrderInput
   ): Promise<PayPalCreateOrderResult> {
@@ -401,6 +456,56 @@ export class PayPalProvider {
       input.customerEmail.trim().length > 0
         ? input.customerEmail.trim().toLowerCase()
         : null;
+    const landingPage =
+      input.fundingPreference === 'paypal'
+        ? 'LOGIN'
+        : input.fundingPreference === 'card'
+          ? 'BILLING'
+          : null;
+    const normalizedItems: PayPalOrderLineItem[] = [];
+    if (Array.isArray(input.lineItems)) {
+      for (const item of input.lineItems) {
+        const quantity = Number.isFinite(item.quantity)
+          ? Math.max(1, Math.floor(item.quantity))
+          : 1;
+        const unitAmountCents = Number.isFinite(item.unitAmountCents)
+          ? Math.max(0, Math.round(item.unitAmountCents))
+          : 0;
+        const normalizedName = item.name?.trim().slice(0, 127);
+        if (!normalizedName || unitAmountCents <= 0) {
+          continue;
+        }
+        const normalizedDescription =
+          typeof item.description === 'string' && item.description.trim()
+            ? item.description.trim().slice(0, 127)
+            : undefined;
+        const normalizedSku =
+          typeof item.sku === 'string' && item.sku.trim()
+            ? item.sku.trim().slice(0, 127)
+            : undefined;
+        normalizedItems.push({
+          name: normalizedName,
+          category: item.category ?? 'DIGITAL_GOODS',
+          quantity: String(quantity),
+          unit_amount: {
+            currency_code: currency,
+            value: this.amountValueFromCents(unitAmountCents),
+          },
+          ...(normalizedDescription
+            ? { description: normalizedDescription }
+            : {}),
+          ...(normalizedSku ? { sku: normalizedSku } : {}),
+        });
+      }
+    }
+    const itemTotalCents = normalizedItems.reduce((sum, item) => {
+      const unitValue = Number.parseFloat(item.unit_amount.value);
+      const quantity = Number.parseInt(item.quantity, 10);
+      if (!Number.isFinite(unitValue) || !Number.isFinite(quantity)) {
+        return sum;
+      }
+      return sum + Math.round(unitValue * 100) * quantity;
+    }, 0);
 
     const payload = {
       intent: 'CAPTURE',
@@ -413,7 +518,21 @@ export class PayPalProvider {
           amount: {
             currency_code: currency,
             value: this.amountValueFromCents(input.amountCents),
+            ...(normalizedItems.length > 0 &&
+            itemTotalCents === input.amountCents
+              ? {
+                  breakdown: {
+                    item_total: {
+                      currency_code: currency,
+                      value: this.amountValueFromCents(itemTotalCents),
+                    },
+                  },
+                }
+              : {}),
           },
+          ...(normalizedItems.length > 0 && itemTotalCents === input.amountCents
+            ? { items: normalizedItems }
+            : {}),
         },
       ],
       application_context: {
@@ -421,6 +540,7 @@ export class PayPalProvider {
         user_action: 'PAY_NOW',
         return_url: input.successUrl,
         cancel_url: input.cancelUrl,
+        ...(landingPage ? { landing_page: landingPage } : {}),
       },
     };
 
@@ -450,7 +570,10 @@ export class PayPalProvider {
         ? { status: result.data.status }
         : {}),
       ...(Array.isArray(result.data.links) ? { links: result.data.links } : {}),
-      approvalUrl,
+      approvalUrl: this.withFundingSourceHint(
+        approvalUrl,
+        input.fundingPreference ?? null
+      ),
       debugId: result.debugId,
     };
   }
