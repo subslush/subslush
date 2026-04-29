@@ -99,6 +99,10 @@
   let applePayEligible = false;
   let googlePayEligible = false;
   let walletFlowError = '';
+  let showWalletFailureModal = false;
+  let walletFailureTitle = '';
+  let walletFailureMessage = '';
+  let walletFailureDetails = '';
   let googlePaymentsClient: any = null;
   let googlePayConfig: any = null;
   let actionError = '';
@@ -196,6 +200,54 @@
       normalized.includes('was cancelled') ||
       normalized.includes('was canceled')
     );
+  };
+  const openWalletFailureModal = (message: string): void => {
+    const normalized = message.trim().toLowerCase();
+    const genericFailureMessage =
+      'We could not process your payment. This may be due to insufficient balance or your bank rejecting the payment.';
+
+    let title = 'Payment could not be completed';
+    let body = genericFailureMessage;
+    let details = '';
+
+    if (
+      normalized.includes('declined') ||
+      normalized.includes('denied') ||
+      normalized.includes('rejected')
+    ) {
+      title = 'Payment rejected';
+      body = 'Your payment was rejected by your bank or payment provider.';
+    } else if (normalized.includes('insufficient')) {
+      title = 'Payment rejected';
+      body = 'Your payment was rejected due to insufficient available balance.';
+    } else if (
+      normalized.includes('payment_not_completed') ||
+      normalized.includes('payment not completed') ||
+      normalized.includes('unable to confirm')
+    ) {
+      title = 'Payment could not be completed';
+      body = genericFailureMessage;
+    }
+
+    const shouldShowDetails =
+      normalized.length > 0 &&
+      ![
+        'payment_not_completed',
+        'payment not completed',
+        'unable to confirm',
+        'unable to start google pay checkout.',
+        'unable to start apple pay checkout.'
+      ].includes(normalized);
+    if (shouldShowDetails) {
+      details = message.trim();
+    }
+
+    walletFailureTitle = title;
+    walletFailureMessage = body;
+    walletFailureDetails = details;
+    walletFlowError = '';
+    actionError = '';
+    showWalletFailureModal = true;
   };
   const normalizeNetworkToken = (value: string | null | undefined): string =>
     (value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1533,8 +1585,7 @@
         actionError = '';
         return;
       }
-      walletFlowError = message;
-      actionError = message;
+      openWalletFailureModal(message);
     } finally {
       redirecting = false;
       activeFundingButton = null;
@@ -1622,8 +1673,7 @@
         actionError = '';
         return;
       }
-      walletFlowError = message;
-      actionError = message;
+      openWalletFailureModal(message);
     } finally {
       redirecting = false;
       activeFundingButton = null;
@@ -2954,6 +3004,53 @@
             on:click={confirmItemRemoval}
           >
             Remove
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if showWalletFailureModal}
+    <div
+      class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 px-4 py-5 sm:py-6"
+      role="presentation"
+      on:click={(event) => {
+        if (event.target === event.currentTarget) {
+          showWalletFailureModal = false;
+        }
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wallet-failure-title"
+        class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.26)]"
+      >
+        <h3 id="wallet-failure-title" class="text-base font-semibold text-slate-900">
+          {walletFailureTitle || 'Payment could not be completed'}
+        </h3>
+        <p class="mt-2 text-sm text-slate-700">
+          {walletFailureMessage ||
+            'We could not process your payment. This may be due to insufficient balance or your bank rejecting the payment.'}
+        </p>
+        <p class="mt-2 text-xs text-slate-500">
+          Please try again. If the payment is rejected, declined, or denied again,
+          please use another available payment method.
+        </p>
+        {#if walletFailureDetails}
+          <p class="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            {walletFailureDetails}
+          </p>
+        {/if}
+        <div class="mt-4 flex justify-end">
+          <button
+            type="button"
+            class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            on:click={() => {
+              showWalletFailureModal = false;
+            }}
+          >
+            OK
           </button>
         </div>
       </div>
