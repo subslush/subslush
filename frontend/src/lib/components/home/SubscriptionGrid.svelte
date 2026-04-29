@@ -121,6 +121,31 @@
     return best > 0 ? Math.round(best) : null;
   }
 
+  function resolveSubCategoryCardDiscountPercent(
+    product: ProductListing
+  ): number | null {
+    const comparisonDiscountPercent = resolveComparisonDiscountPercent(product);
+    const maxDiscountPercent = Number(product.max_discount_percent);
+    const fromDiscountPercent = Number(product.from_discount_percent);
+
+    let best = 0;
+    if (
+      comparisonDiscountPercent !== null &&
+      Number.isFinite(comparisonDiscountPercent) &&
+      comparisonDiscountPercent > 0
+    ) {
+      best = Math.max(best, comparisonDiscountPercent);
+    }
+    if (Number.isFinite(maxDiscountPercent) && maxDiscountPercent > 0) {
+      best = Math.max(best, maxDiscountPercent);
+    }
+    if (Number.isFinite(fromDiscountPercent) && fromDiscountPercent > 0) {
+      best = Math.max(best, fromDiscountPercent);
+    }
+
+    return best > 0 ? Math.round(best) : null;
+  }
+
   function resolvePlatformRegion(product: ProductListing): string {
     const platform = (product.platform || product.name || '').trim();
     const regionRaw = (product.region || 'GLOBAL').trim();
@@ -318,7 +343,7 @@
     {@const zoomLogoInTile = shouldZoomLogoInTile(product, serviceType)}
     {@const displayPrice = resolveDisplayPrice(product)}
     {@const comparisonPrice = resolveComparisonPrice(product)}
-    {@const subCategoryDiscountPercent = resolveComparisonDiscountPercent(product)}
+    {@const subCategoryDiscountPercent = resolveSubCategoryCardDiscountPercent(product)}
     {@const mainCardDiscountPercent = resolveMainCardDiscountPercent(product)}
     {@const platformRegion = resolvePlatformRegion(product)}
 
