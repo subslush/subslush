@@ -20,6 +20,7 @@ import {
 import { ErrorResponses, SuccessResponses, sendError } from '../utils/response';
 import { Logger } from '../utils/logger';
 import { getRequestIp } from '../utils/requestIp';
+import { resolveCountryFromHeaders } from '../utils/currency';
 import {
   paymentQuoteRateLimit,
   paymentRateLimit,
@@ -144,11 +145,15 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
     {
       preHandler: [optionalAuthPreHandler],
     },
-    async (_request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const requestCountry = resolveCountryFromHeaders(
+        request.headers as Record<string, string | string[] | undefined>
+      );
       return SuccessResponses.ok(reply, {
         enabled: Boolean(env.PAYPAL_ENABLED && env.PAYPAL_CLIENT_ID),
         client_id: env.PAYPAL_CLIENT_ID || null,
         mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
+        country_code: requestCountry || 'US',
       });
     }
   );
@@ -564,6 +569,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (!confirmResult.success) {
         const error = confirmResult.error || 'card_session_confirm_failed';
+        const details = confirmResult.details || undefined;
         if (
           [
             'checkout_session_mismatch',
@@ -573,11 +579,22 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             'payment_currency_mismatch',
           ].includes(error)
         ) {
-          return ErrorResponses.badRequest(reply, error.replace(/_/g, ' '));
+          return sendError(
+            reply,
+            400,
+            'Bad Request',
+            error.replace(/_/g, ' '),
+            'INVALID_REQUEST',
+            details
+          );
         }
-        return ErrorResponses.internalError(
+        return sendError(
           reply,
-          'Failed to confirm card session'
+          500,
+          'Internal Server Error',
+          'Failed to confirm card session',
+          'INTERNAL_ERROR',
+          details
         );
       }
 

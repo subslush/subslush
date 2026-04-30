@@ -115,6 +115,15 @@ type PayPalWebhookInput = {
   rawBody?: Buffer | string;
 };
 
+type WalletFundingSource = 'paypal' | 'applepay' | 'googlepay' | 'card';
+
+type PayPalWalletFailureDetails = {
+  paypalDebugId: string | null;
+  processorResponseCode: string | null;
+  processorResponseMessage: string | null;
+  walletFundingSource: WalletFundingSource | null;
+};
+
 const NETWORK_SUFFIXES: Array<{ suffix: string; label: string }> = [
   { suffix: 'trc20', label: 'TRC20' },
   { suffix: 'erc20', label: 'ERC20' },
@@ -3442,6 +3451,91 @@ export class PaymentService {
     );
   }
 
+  private resolveWalletFundingSource(
+    paymentMetadata: Record<string, any> | null | undefined
+  ): WalletFundingSource | null {
+    const raw = paymentMetadata?.['preferred_funding_source'];
+    if (typeof raw !== 'string') {
+      return null;
+    }
+    const normalized = raw.trim().toLowerCase();
+    if (
+      normalized === 'paypal' ||
+      normalized === 'applepay' ||
+      normalized === 'googlepay' ||
+      normalized === 'card'
+    ) {
+      return normalized;
+    }
+    return null;
+  }
+
+  private extractPayPalWalletFailureDetails(params: {
+    error: unknown;
+    walletFundingSource: WalletFundingSource | null;
+  }): PayPalWalletFailureDetails | null {
+    const { error, walletFundingSource } = params;
+
+    if (!(error instanceof PayPalProviderError)) {
+      return walletFundingSource
+        ? {
+            paypalDebugId: null,
+            processorResponseCode: null,
+            processorResponseMessage: null,
+            walletFundingSource,
+          }
+        : null;
+    }
+
+    const response =
+      error.response && typeof error.response === 'object'
+        ? (error.response as Record<string, unknown>)
+        : null;
+    const detailsArray = Array.isArray(response?.['details'])
+      ? (response['details'] as Array<Record<string, unknown>>)
+      : [];
+    const firstDetail =
+      detailsArray.length > 0 &&
+      detailsArray[0] &&
+      typeof detailsArray[0] === 'object'
+        ? detailsArray[0]
+        : null;
+
+    const processorResponseCode =
+      (firstDetail &&
+      typeof firstDetail['issue'] === 'string' &&
+      firstDetail['issue'].trim().length > 0
+        ? firstDetail['issue'].trim()
+        : null) ||
+      (response &&
+      typeof response['name'] === 'string' &&
+      response['name'].trim().length > 0
+        ? response['name'].trim()
+        : null);
+
+    const processorResponseMessage =
+      (firstDetail &&
+      typeof firstDetail['description'] === 'string' &&
+      firstDetail['description'].trim().length > 0
+        ? firstDetail['description'].trim()
+        : null) ||
+      (response &&
+      typeof response['message'] === 'string' &&
+      response['message'].trim().length > 0
+        ? response['message'].trim()
+        : null) ||
+      (typeof error.message === 'string' && error.message.trim().length > 0
+        ? error.message.trim()
+        : null);
+
+    return {
+      paypalDebugId: error.debugId || null,
+      processorResponseCode,
+      processorResponseMessage,
+      walletFundingSource,
+    };
+  }
+
   private parsePayPalAmountToCents(
     value: string | null | undefined
   ): number | null {
@@ -4714,7 +4808,16 @@ export class PaymentService {
         orderStatus: string | null;
         fulfilled: boolean;
       }
-    | { success: false; error: string }
+    | {
+        success: false;
+        error: string;
+        details?: {
+          paypal_debug_id?: string | null;
+          processor_response_code?: string | null;
+          processor_response_message?: string | null;
+          wallet_funding_source?: WalletFundingSource | null;
+        };
+      }
   > {
     try {
       if (!env.PAYPAL_ENABLED) {
@@ -4953,6 +5056,70 @@ export class PaymentService {
           ['in_process', 'delivered', 'paid'].includes(updatedOrder.status),
       };
     } catch (error) {
+      let walletFailureDetails:
+        | {
+            paypal_debug_id?: string | null;
+            processor_response_code?: string | null;
+            processor_response_message?: string | null;
+            wallet_funding_source?: WalletFundingSource | null;
+          }
+        | undefined;
+      try {
+        const normalizedSessionId = params.sessionId.trim();
+        if (normalizedSessionId) {
+          const existingPayment =
+            await paymentRepository.findByProviderPaymentId(
+              'paypal',
+              normalizedSessionId
+            );
+          const fundingSource = this.resolveWalletFundingSource(
+            existingPayment?.metadata as Record<string, any> | null | undefined
+          );
+          const parsedFailureDetails = this.extractPayPalWalletFailureDetails({
+            error,
+            walletFundingSource: fundingSource,
+          });
+
+          if (parsedFailureDetails && existingPayment) {
+            await paymentRepository.updateStatusByProviderPaymentId(
+              'paypal',
+              normalizedSessionId,
+              existingPayment.status,
+              existingPayment.providerStatus || undefined,
+              {
+                ...(existingPayment.metadata || {}),
+                paypal_debug_id: parsedFailureDetails.paypalDebugId,
+                paypal_processor_response_code:
+                  parsedFailureDetails.processorResponseCode,
+                paypal_processor_response_message:
+                  parsedFailureDetails.processorResponseMessage,
+                wallet_funding_source: parsedFailureDetails.walletFundingSource,
+                last_confirm_failure_at: new Date().toISOString(),
+                last_confirm_failure_reason:
+                  error instanceof Error ? error.message : 'unknown_error',
+              }
+            );
+          }
+
+          if (parsedFailureDetails) {
+            walletFailureDetails = {
+              paypal_debug_id: parsedFailureDetails.paypalDebugId,
+              processor_response_code:
+                parsedFailureDetails.processorResponseCode,
+              processor_response_message:
+                parsedFailureDetails.processorResponseMessage,
+              wallet_funding_source: parsedFailureDetails.walletFundingSource,
+            };
+          }
+        }
+      } catch (metadataError) {
+        Logger.warn('Failed to persist PayPal wallet failure metadata', {
+          orderId: params.orderId,
+          sessionId: params.sessionId,
+          metadataError,
+        });
+      }
+
       if (error instanceof PayPalProviderError && error.debugId) {
         Logger.error('Failed to confirm PayPal checkout session', {
           orderId: params.orderId,
@@ -4960,26 +5127,44 @@ export class PaymentService {
           statusCode: error.statusCode,
           debugId: error.debugId,
           message: error.message,
+          walletFailureDetails: walletFailureDetails || null,
         });
       } else {
         Logger.error('Failed to confirm PayPal checkout session', {
           orderId: params.orderId,
           sessionId: params.sessionId,
           error,
+          walletFailureDetails: walletFailureDetails || null,
         });
       }
 
       if (this.isPayPalUnavailableError(error)) {
-        return { success: false, error: 'payment_provider_unavailable' };
+        return {
+          success: false,
+          error: 'payment_provider_unavailable',
+          ...(walletFailureDetails ? { details: walletFailureDetails } : {}),
+        };
       }
       if (this.isPayPalRateLimitError(error)) {
-        return { success: false, error: 'payment_provider_rate_limited' };
+        return {
+          success: false,
+          error: 'payment_provider_rate_limited',
+          ...(walletFailureDetails ? { details: walletFailureDetails } : {}),
+        };
       }
       if (this.isPayPalMisconfiguredError(error)) {
-        return { success: false, error: 'payment_provider_misconfigured' };
+        return {
+          success: false,
+          error: 'payment_provider_misconfigured',
+          ...(walletFailureDetails ? { details: walletFailureDetails } : {}),
+        };
       }
 
-      return { success: false, error: 'paypal_session_confirm_failed' };
+      return {
+        success: false,
+        error: 'paypal_session_confirm_failed',
+        ...(walletFailureDetails ? { details: walletFailureDetails } : {}),
+      };
     }
   }
 

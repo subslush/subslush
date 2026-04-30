@@ -201,7 +201,57 @@
       normalized.includes('was canceled')
     );
   };
-  const openWalletFailureModal = (message: string): void => {
+  const buildWalletFailureDetailsFromError = (error: unknown): string => {
+    if (!error || typeof error !== 'object') {
+      return '';
+    }
+
+    const details =
+      'details' in error && error.details && typeof error.details === 'object'
+        ? (error.details as Record<string, unknown>)
+        : null;
+    if (!details) {
+      return '';
+    }
+
+    const lines: string[] = [];
+    const walletFundingSource =
+      typeof details.wallet_funding_source === 'string'
+        ? details.wallet_funding_source.trim()
+        : '';
+    const paypalDebugId =
+      typeof details.paypal_debug_id === 'string'
+        ? details.paypal_debug_id.trim()
+        : '';
+    const processorCode =
+      typeof details.processor_response_code === 'string'
+        ? details.processor_response_code.trim()
+        : '';
+    const processorMessage =
+      typeof details.processor_response_message === 'string'
+        ? details.processor_response_message.trim()
+        : '';
+
+    if (walletFundingSource) {
+      lines.push(`Funding source: ${walletFundingSource}`);
+    }
+    if (processorCode) {
+      lines.push(`Processor code: ${processorCode}`);
+    }
+    if (processorMessage) {
+      lines.push(`Processor message: ${processorMessage}`);
+    }
+    if (paypalDebugId) {
+      lines.push(`PayPal debug_id: ${paypalDebugId}`);
+    }
+
+    return lines.join('\n');
+  };
+
+  const openWalletFailureModal = (
+    message: string,
+    extraDetails?: string
+  ): void => {
     const normalized = message.trim().toLowerCase();
     const genericFailureMessage =
       'We could not process your payment. This may be due to insufficient balance or your bank rejecting the payment.';
@@ -241,6 +291,9 @@
     if (shouldShowDetails) {
       details = message.trim();
     }
+    if (extraDetails && extraDetails.trim().length > 0) {
+      details = details ? `${details}\n${extraDetails.trim()}` : extraDetails.trim();
+    }
 
     walletFailureTitle = title;
     walletFailureMessage = body;
@@ -248,6 +301,46 @@
     walletFlowError = '';
     actionError = '';
     showWalletFailureModal = true;
+  };
+  const resolveGooglePayCountryCode = (): string => {
+    const candidateCodes = [
+      typeof googlePayConfig?.countryCode === 'string'
+        ? googlePayConfig.countryCode
+        : null,
+      typeof paypalSdkConfig?.country_code === 'string'
+        ? paypalSdkConfig.country_code
+        : null,
+      orderCurrency === 'SEK' ? 'SE' : null
+    ];
+
+    for (const candidate of candidateCodes) {
+      const normalized = (candidate || '').trim().toUpperCase();
+      if (/^[A-Z]{2}$/.test(normalized)) {
+        return normalized;
+      }
+    }
+
+    return 'US';
+  };
+  const resolveApplePayCountryCode = (
+    appleCountryCode?: string | null
+  ): string => {
+    const candidateCodes = [
+      typeof appleCountryCode === 'string' ? appleCountryCode : null,
+      typeof paypalSdkConfig?.country_code === 'string'
+        ? paypalSdkConfig.country_code
+        : null,
+      orderCurrency === 'SEK' ? 'SE' : null
+    ];
+
+    for (const candidate of candidateCodes) {
+      const normalized = (candidate || '').trim().toUpperCase();
+      if (/^[A-Z]{2}$/.test(normalized)) {
+        return normalized;
+      }
+    }
+
+    return 'US';
   };
   const normalizeNetworkToken = (value: string | null | undefined): string =>
     (value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1560,7 +1653,7 @@
           totalPriceStatus: 'FINAL',
           totalPrice: total.toFixed(2),
           currencyCode: orderCurrency,
-          countryCode: 'US'
+          countryCode: resolveGooglePayCountryCode()
         }
       };
       const paymentData = await googlePaymentsClient.loadPaymentData(
@@ -1580,12 +1673,13 @@
         error instanceof Error
           ? error.message
           : 'Unable to start Google Pay checkout.';
+      const extraDetails = buildWalletFailureDetailsFromError(error);
       if (isWalletUserCancellation(message)) {
         walletFlowError = '';
         actionError = '';
         return;
       }
-      openWalletFailureModal(message);
+      openWalletFailureModal(message, extraDetails);
     } finally {
       redirecting = false;
       activeFundingButton = null;
@@ -1614,7 +1708,7 @@
       if (!sessionData) return;
 
       const paymentRequest = {
-        countryCode: appleConfig.countryCode || 'US',
+        countryCode: resolveApplePayCountryCode(appleConfig.countryCode),
         merchantCapabilities:
           appleConfig.merchantCapabilities || ['supports3DS'],
         supportedNetworks: appleConfig.supportedNetworks || ['visa', 'masterCard'],
@@ -1668,12 +1762,13 @@
         error instanceof Error
           ? error.message
           : 'Unable to start Apple Pay checkout.';
+      const extraDetails = buildWalletFailureDetailsFromError(error);
       if (isWalletUserCancellation(message)) {
         walletFlowError = '';
         actionError = '';
         return;
       }
-      openWalletFailureModal(message);
+      openWalletFailureModal(message, extraDetails);
     } finally {
       redirecting = false;
       activeFundingButton = null;

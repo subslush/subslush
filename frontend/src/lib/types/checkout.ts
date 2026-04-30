@@ -107,6 +107,7 @@ export interface CheckoutPayPalSdkConfigResponse {
   enabled: boolean;
   client_id: string | null;
   mode: 'sandbox' | 'live';
+  country_code?: string | null;
 }
 
 export type CheckoutStripeSessionRequest = CheckoutCardSessionRequest;

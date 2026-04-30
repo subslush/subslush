@@ -22,6 +22,9 @@
   let filters = {
     category: ''
   };
+  const DELIVERED_PAGE_SIZE = 50;
+  let deliveredPage = 0;
+  let deliveredHasMore = false;
 
   const tabs = [
     {
@@ -229,13 +232,37 @@
       if (filters.category && activeTab !== 'selection') {
         params.task_category = filters.category;
       }
+      if (activeTab === 'delivered') {
+        params.limit = String(DELIVERED_PAGE_SIZE);
+        params.offset = String(deliveredPage * DELIVERED_PAGE_SIZE);
+      }
       const fetched = await adminService.listTasks(params);
       tasks = activeTab === 'queue' ? fetched.filter(task => !isSelectionPendingTask(task)) : fetched;
+      deliveredHasMore =
+        activeTab === 'delivered' && fetched.length === DELIVERED_PAGE_SIZE;
+
+      if (activeTab === 'delivered' && deliveredPage > 0 && fetched.length === 0) {
+        deliveredPage -= 1;
+        const fallbackFetched = await adminService.listTasks({
+          bucket: 'delivered',
+          limit: DELIVERED_PAGE_SIZE,
+          offset: deliveredPage * DELIVERED_PAGE_SIZE,
+          ...(filters.category ? { task_category: filters.category } : {})
+        });
+        tasks = fallbackFetched;
+        deliveredHasMore = fallbackFetched.length === DELIVERED_PAGE_SIZE;
+      }
     } catch (error) {
       errorMessage = getErrorMessage(error, 'Failed to load tasks.');
     } finally {
       loading = false;
     }
+  };
+
+  const goToDeliveredPage = async (nextPage: number) => {
+    if (nextPage < 0 || loading) return;
+    deliveredPage = nextPage;
+    await fetchTasks();
   };
 
   const fetchPrelaunchTasks = async () => {
@@ -257,6 +284,9 @@
   const switchTab = async (tabId: 'queue' | 'selection' | 'issues' | 'delivered' | 'prelaunch') => {
     if (activeTab === tabId) return;
     activeTab = tabId;
+    if (activeTab === 'delivered') {
+      deliveredPage = 0;
+    }
     if (activeTab === 'prelaunch') {
       await fetchPrelaunchTasks();
       return;
@@ -441,6 +471,29 @@
         {activeTab === 'prelaunch' ? prelaunchTasks.length : tasks.length} tasks
       </p>
     </div>
+    {#if activeTab === 'delivered'}
+      <div class="mb-4 flex items-center justify-between">
+        <p class="text-sm text-gray-500">
+          Page {deliveredPage + 1}
+        </p>
+        <div class="flex items-center gap-2">
+          <button
+            class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+            on:click={() => void goToDeliveredPage(deliveredPage - 1)}
+            disabled={loading || deliveredPage === 0}
+          >
+            Previous
+          </button>
+          <button
+            class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+            on:click={() => void goToDeliveredPage(deliveredPage + 1)}
+            disabled={loading || !deliveredHasMore}
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    {/if}
 
     {#if activeTab === 'prelaunch'}
       {#if prelaunchTasks.length === 0}
