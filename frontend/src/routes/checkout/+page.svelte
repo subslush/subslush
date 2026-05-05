@@ -248,9 +248,47 @@
     return lines.join('\n');
   };
 
+  const extractWalletFailureContext = (error: unknown) => {
+    if (!error || typeof error !== 'object') {
+      return {
+        walletFundingSource: '',
+        processorCode: '',
+        processorMessage: ''
+      };
+    }
+
+    const details =
+      'details' in error && error.details && typeof error.details === 'object'
+        ? (error.details as Record<string, unknown>)
+        : null;
+    if (!details) {
+      return {
+        walletFundingSource: '',
+        processorCode: '',
+        processorMessage: ''
+      };
+    }
+
+    return {
+      walletFundingSource:
+        typeof details.wallet_funding_source === 'string'
+          ? details.wallet_funding_source.trim().toLowerCase()
+          : '',
+      processorCode:
+        typeof details.processor_response_code === 'string'
+          ? details.processor_response_code.trim()
+          : '',
+      processorMessage:
+        typeof details.processor_response_message === 'string'
+          ? details.processor_response_message.trim()
+          : ''
+    };
+  };
+
   const openWalletFailureModal = (
     message: string,
-    extraDetails?: string
+    extraDetails?: string,
+    issuerDeclineSource?: 'applepay' | 'googlepay' | ''
   ): void => {
     const normalized = message.trim().toLowerCase();
     const genericFailureMessage =
@@ -277,6 +315,12 @@
     ) {
       title = 'Payment could not be completed';
       body = genericFailureMessage;
+    }
+
+    if (issuerDeclineSource) {
+      const walletLabel = issuerDeclineSource === 'applepay' ? 'Apple Pay' : 'Google Pay';
+      title = 'Payment rejected by card issuer';
+      body = `Your bank/card issuer rejected this ${walletLabel} payment. Try another card in ${walletLabel}. If it is also rejected, please use another payment method instead of ${walletLabel}.`;
     }
 
     const shouldShowDetails =
@@ -1674,12 +1718,22 @@
           ? error.message
           : 'Unable to start Google Pay checkout.';
       const extraDetails = buildWalletFailureDetailsFromError(error);
+      const context = extractWalletFailureContext(error);
+      const isIssuerDecline =
+        context.walletFundingSource === 'googlepay' &&
+        (context.processorCode.length > 0 ||
+          context.processorMessage.length > 0 ||
+          message.toLowerCase().includes('declined'));
       if (isWalletUserCancellation(message)) {
         walletFlowError = '';
         actionError = '';
         return;
       }
-      openWalletFailureModal(message, extraDetails);
+      openWalletFailureModal(
+        message,
+        extraDetails,
+        isIssuerDecline ? 'googlepay' : ''
+      );
     } finally {
       redirecting = false;
       activeFundingButton = null;
@@ -1763,12 +1817,22 @@
           ? error.message
           : 'Unable to start Apple Pay checkout.';
       const extraDetails = buildWalletFailureDetailsFromError(error);
+      const context = extractWalletFailureContext(error);
+      const isIssuerDecline =
+        context.walletFundingSource === 'applepay' &&
+        (context.processorCode.length > 0 ||
+          context.processorMessage.length > 0 ||
+          message.toLowerCase().includes('declined'));
       if (isWalletUserCancellation(message)) {
         walletFlowError = '';
         actionError = '';
         return;
       }
-      openWalletFailureModal(message, extraDetails);
+      openWalletFailureModal(
+        message,
+        extraDetails,
+        isIssuerDecline ? 'applepay' : ''
+      );
     } finally {
       redirecting = false;
       activeFundingButton = null;

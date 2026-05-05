@@ -3662,6 +3662,52 @@ export class PaymentService {
     };
   }
 
+  private extractPayPalProcessorDetailsFromRecord(record: unknown): {
+    processorResponseCode: string | null;
+    processorResponseMessage: string | null;
+  } {
+    const normalizedRecord =
+      record && typeof record === 'object'
+        ? (record as {
+            purchase_units?: Array<{
+              payments?: {
+                captures?: Array<{
+                  id?: string;
+                  status_details?: {
+                    reason?: string;
+                  };
+                  processor_response?: {
+                    response_code?: string;
+                  };
+                }>;
+              };
+            }>;
+          })
+        : null;
+    const unit = Array.isArray(normalizedRecord?.purchase_units)
+      ? (normalizedRecord?.purchase_units[0] ?? null)
+      : null;
+    const capture = Array.isArray(unit?.payments?.captures)
+      ? (unit?.payments?.captures?.[0] ?? null)
+      : null;
+
+    const processorResponseCode =
+      typeof capture?.processor_response?.response_code === 'string' &&
+      capture.processor_response.response_code.trim().length > 0
+        ? capture.processor_response.response_code.trim()
+        : null;
+    const processorResponseMessage =
+      typeof capture?.status_details?.reason === 'string' &&
+      capture.status_details.reason.trim().length > 0
+        ? capture.status_details.reason.trim()
+        : null;
+
+    return {
+      processorResponseCode,
+      processorResponseMessage,
+    };
+  }
+
   private extractPayPalWebhookOrderId(
     eventType: string,
     resource: Record<string, unknown> | null
@@ -4933,6 +4979,27 @@ export class PaymentService {
         typeof unit.captureId === 'string' &&
         unit.captureId.length > 0;
       if (!captureCompleted) {
+        const paymentRecord = await paymentRepository.findByProviderPaymentId(
+          'paypal',
+          normalizedSessionId
+        );
+        const walletFundingSource = this.resolveWalletFundingSource(
+          paymentRecord?.metadata as Record<string, any> | null | undefined
+        );
+        const processorDetails =
+          this.extractPayPalProcessorDetailsFromRecord(capture);
+        const paypalDebugIdRaw =
+          capture && typeof capture === 'object'
+            ? (capture as { debugId?: unknown }).debugId
+            : null;
+        const notCompletedDetails = {
+          paypal_debug_id:
+            typeof paypalDebugIdRaw === 'string' ? paypalDebugIdRaw : null,
+          processor_response_code: processorDetails.processorResponseCode,
+          processor_response_message: processorDetails.processorResponseMessage,
+          wallet_funding_source: walletFundingSource,
+        };
+
         Logger.warn(
           'PayPal capture not completed during checkout confirmation',
           {
@@ -4945,9 +5012,16 @@ export class PaymentService {
               capture && typeof capture === 'object'
                 ? ((capture as { debugId?: unknown }).debugId ?? null)
                 : null,
+            processorResponseCode: processorDetails.processorResponseCode,
+            processorResponseMessage: processorDetails.processorResponseMessage,
+            walletFundingSource,
           }
         );
-        return { success: false, error: 'payment_not_completed' };
+        return {
+          success: false,
+          error: 'payment_not_completed',
+          details: notCompletedDetails,
+        };
       }
 
       const statusMapping = this.mapPayPalOrderStatus(
