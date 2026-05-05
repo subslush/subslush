@@ -290,6 +290,7 @@
     extraDetails?: string,
     issuerDeclineSource?: 'applepay' | 'googlepay' | ''
   ): void => {
+    void extraDetails;
     const normalized = message.trim().toLowerCase();
     const genericFailureMessage =
       'We could not process your payment. This may be due to insufficient balance or your bank rejecting the payment.';
@@ -321,22 +322,6 @@
       const walletLabel = issuerDeclineSource === 'applepay' ? 'Apple Pay' : 'Google Pay';
       title = 'Payment rejected by card issuer';
       body = `Your bank/card issuer rejected this ${walletLabel} payment. Try another card in ${walletLabel}. If it is also rejected, please use another payment method instead of ${walletLabel}.`;
-    }
-
-    const shouldShowDetails =
-      normalized.length > 0 &&
-      ![
-        'payment_not_completed',
-        'payment not completed',
-        'unable to confirm',
-        'unable to start google pay checkout.',
-        'unable to start apple pay checkout.'
-      ].includes(normalized);
-    if (shouldShowDetails) {
-      details = message.trim();
-    }
-    if (extraDetails && extraDetails.trim().length > 0) {
-      details = details ? `${details}\n${extraDetails.trim()}` : extraDetails.trim();
     }
 
     walletFailureTitle = title;
@@ -3192,15 +3177,6 @@
           {walletFailureMessage ||
             'We could not process your payment. This may be due to insufficient balance or your bank rejecting the payment.'}
         </p>
-        <p class="mt-2 text-xs text-slate-500">
-          Please try again. If the payment is rejected, declined, or denied again,
-          please use another available payment method.
-        </p>
-        {#if walletFailureDetails}
-          <p class="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            {walletFailureDetails}
-          </p>
-        {/if}
         <div class="mt-4 flex justify-end">
           <button
             type="button"
