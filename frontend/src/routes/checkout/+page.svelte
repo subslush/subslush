@@ -2615,7 +2615,7 @@
                           <p class="mt-2 text-[10px] text-slate-500">
                             Details are encrypted and only used to complete this order.
                           </p>
-                          <p class="mt-1 text-[10px] text-slate-500">
+                          <p class="mt-1 hidden text-[10px] text-slate-500 sm:block">
                             Personal Information Collection Statement: We collect these details to fulfill your order,
                             run fraud/security checks, and support your request. We may share relevant data with
                             payment, fraud-screening, and fulfillment providers as needed.

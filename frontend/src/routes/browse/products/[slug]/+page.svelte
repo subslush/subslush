@@ -2,6 +2,7 @@
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
+  import { onMount } from 'svelte';
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
   import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
@@ -63,6 +64,7 @@
   let showFeaturesGuide = false;
   let showExtraFeaturesDetails = false;
   let descriptionExpanded = false;
+  let isMobileViewport = false;
   let selectionError = '';
   let extraFeaturesEnabled = false;
   let extraFeatures: string[] = [];
@@ -204,6 +206,24 @@
     };
   };
 
+  const buildFirstSentencePreview = (
+    value: string
+  ): { text: string; truncated: boolean } => {
+    const text = value.trim();
+    if (!text) return { text: '', truncated: false };
+
+    const sentenceMatch = text.match(/^([\s\S]*?[.!?])(?:\s|$)/);
+    if (sentenceMatch && sentenceMatch[1]) {
+      const sentence = sentenceMatch[1].trim();
+      return {
+        text: sentence,
+        truncated: sentence.length < text.length
+      };
+    }
+
+    return { text, truncated: false };
+  };
+
   const normalizeFilterValue = (value?: string | null): string =>
     typeof value === 'string' ? value.trim().toLowerCase() : '';
 
@@ -319,11 +339,13 @@
     ? `${formatMonthsLabel(selectedTerm.months)} fixed period`
     : 'Fixed period';
   $: productDescription = (product?.description || '').trim();
-  $: descriptionPreview = buildDescriptionPreview(
-    productDescription,
-    DESCRIPTION_MAX_WORDS,
-    DESCRIPTION_MAX_CHARS
-  );
+  $: descriptionPreview = isMobileViewport
+    ? buildFirstSentencePreview(productDescription)
+    : buildDescriptionPreview(
+        productDescription,
+        DESCRIPTION_MAX_WORDS,
+        DESCRIPTION_MAX_CHARS
+      );
   $: hasTruncatedDescription = descriptionPreview.truncated;
   $: visibleDescription =
     descriptionExpanded || !hasTruncatedDescription
@@ -333,6 +355,17 @@
   $: if (!hasTruncatedDescription) {
     descriptionExpanded = false;
   }
+
+  onMount(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 640px)');
+    const updateViewport = () => {
+      isMobileViewport = mediaQuery.matches;
+    };
+    updateViewport();
+    mediaQuery.addEventListener('change', updateViewport);
+    return () => mediaQuery.removeEventListener('change', updateViewport);
+  });
 
   const resolveCountryName = (countryCode?: string | null): string => {
     const normalized = typeof countryCode === 'string' ? countryCode.trim().toUpperCase() : '';
@@ -729,16 +762,16 @@
                 </section>
               </div>
 
-              <div class="mt-4 flex flex-wrap gap-2">
-                <span class="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-semibold">
+              <div class="product-trust-row mt-4 flex flex-wrap gap-2">
+                <span class="product-trust-pill inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-semibold">
                   <Shield size={13} class="text-purple-600" />
                   <span class="text-slate-700">Money back guarantee</span>
                 </span>
-                <span class="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-semibold">
+                <span class="product-trust-pill inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-semibold">
                   <Lock size={13} class="text-fuchsia-600" />
                   <span class="text-slate-700">Secure checkout</span>
                 </span>
-                <span class="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-semibold">
+                <span class="product-trust-pill inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-white px-3 py-1 text-[11px] font-semibold">
                   <Headphones size={13} class="text-pink-600" />
                   <span class="text-slate-700">24/7 Customer support</span>
                 </span>
@@ -1322,5 +1355,33 @@
     bottom: -0.95rem;
     width: 1px;
     background: linear-gradient(180deg, rgba(148, 163, 184, 0.52), rgba(226, 232, 240, 0.15));
+  }
+
+  @media (max-width: 640px) {
+    .product-trust-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.35rem;
+    }
+
+    .product-trust-pill {
+      min-width: 0;
+      justify-content: center;
+      padding: 0.22rem 0.28rem;
+      gap: 0.2rem;
+      border-radius: 0.7rem;
+    }
+
+    .product-trust-pill :global(svg) {
+      width: 11px;
+      height: 11px;
+      flex: 0 0 auto;
+    }
+
+    .product-trust-pill > span:last-child {
+      font-size: 0.56rem;
+      line-height: 1.08;
+      text-align: center;
+    }
   }
 </style>

@@ -326,7 +326,9 @@
   class={
     cardMode === 'default' && linkMode === 'subcategory'
       ? 'subscription-showcase-home-row'
-      : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6'
+      : cardMode === 'subcategory-page'
+        ? 'grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3'
+        : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6'
   }
 >
   {#each products as product, index}
@@ -445,7 +447,7 @@
             <h3 class="text-2xl font-bold text-gray-900 line-clamp-2" title={cardTitle}>
               {cardTitle}
             </h3>
-            <p class="mt-2 text-base leading-tight text-gray-700 whitespace-nowrap">
+            <p class="subscription-main-price mt-2 text-base leading-tight text-gray-700 whitespace-nowrap">
               From <span class="text-gray-900 font-bold text-xl">{formatPlanPrice(product.from_price, product.currency)}</span> /month
             </p>
             <p class="subscription-main-guarantee text-[11px] leading-snug text-gray-500">
@@ -864,36 +866,91 @@
 
   @media (max-width: 640px) {
     .subscription-showcase-card {
-      min-height: 14.5rem;
+      min-height: 12.75rem;
     }
 
     .subscription-showcase-card--subcategory {
-      min-height: 15.2rem;
+      min-height: 13.8rem;
+    }
+
+    .subscription-showcase-surface {
+      padding: 0.85rem 0.72rem 0.72rem;
+      border-radius: 1.2rem;
+    }
+
+    .subscription-main-discount-badge {
+      top: 0.82rem;
+      left: -0.22rem;
+      transform: none;
+      border-radius: 0 0.58rem 0.58rem 0;
+      padding: 0.2rem 0.46rem;
+      font-size: 0.63rem;
+      z-index: 6;
+    }
+
+    .subscription-logo-tile {
+      width: min(100%, 5.6rem);
+      border-radius: 1.25rem;
+    }
+
+    .subscription-logo-tile--compact {
+      width: min(100%, 5.1rem);
     }
 
     .subscription-showcase-content {
-      padding-top: 1rem;
+      padding: 0.72rem 0.2rem 0.08rem;
     }
 
     .subscription-showcase-content:not(.subscription-showcase-content--subcategory) h3 {
-      font-size: 1.4rem;
+      font-size: 1.03rem;
+      line-height: 1.22;
     }
 
-    .subscription-showcase-content:not(.subscription-showcase-content--subcategory) p {
-      font-size: 0.95rem;
+    .subscription-main-price {
+      margin-top: 0.42rem;
+      font-size: 0.72rem;
+      line-height: 1.22;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .subscription-main-price span {
+      font-size: 0.95rem !important;
+      line-height: 1.2;
+    }
+
+    .subscription-main-guarantee {
+      padding-top: 0.38rem;
+      margin-top: auto;
+      font-size: 0.58rem;
+      line-height: 1.22;
     }
 
     .subscription-subcategory-discount-badge {
       left: -0.22rem;
-      transform: translateY(-50%);
+      top: 5.75rem;
+      transform: none;
+      padding: 0.2rem 0.46rem;
+      font-size: 0.63rem;
+      border-radius: 0 0.58rem 0.58rem 0;
     }
 
     .subscription-subcategory-title {
-      font-size: 1.02rem;
+      font-size: 0.92rem;
+      line-height: 1.2;
     }
 
     .subscription-subcategory-price-current {
-      font-size: 1.08rem;
+      font-size: 0.96rem;
+    }
+
+    .subscription-showcase-card--subcategory .subscription-showcase-content--subcategory {
+      padding-top: 0.45rem;
+    }
+
+    .subscription-showcase-card--subcategory .subscription-subcategory-guarantee {
+      margin-top: 0.55rem;
+      font-size: 0.56rem;
     }
 
     .subscription-showcase-home-row {
@@ -903,7 +960,7 @@
     }
 
     .subscription-showcase-home-row .subscription-showcase-card--home {
-      flex-basis: min(78vw, 10.1rem);
+      flex-basis: min(45vw, 9rem);
     }
   }
 

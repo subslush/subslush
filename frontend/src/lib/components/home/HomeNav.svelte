@@ -6,6 +6,7 @@
 		Menu,
 		ChevronDown,
 		ChevronRight,
+		Globe,
 		Headphones,
 		ShoppingCart,
 		LogIn,
@@ -1100,11 +1101,11 @@
 
 	<div class="relative z-50 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 		<div
-			class="grid grid-cols-1 gap-3 py-4 lg:grid-cols-[auto,minmax(0,500px),auto] lg:items-center lg:gap-4"
+			class="home-nav-top grid grid-cols-1 gap-3 py-4 lg:grid-cols-[auto,minmax(0,500px),auto] lg:items-center lg:gap-4"
 		>
 				<a
 					href="/"
-					class="flex w-fit items-center gap-2.5 rounded-lg px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-700/40"
+					class="home-nav-logo flex w-fit items-center gap-2.5 rounded-lg px-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-700/40"
 				>
 					<img
 						src={subslushLogoIcon}
@@ -1113,13 +1114,13 @@
 						loading="lazy"
 					/>
 					<span
-						class="text-2xl font-extrabold bg-gradient-to-r from-purple-700 to-pink-600 bg-clip-text text-transparent"
+						class="home-nav-brand-text text-2xl font-extrabold bg-gradient-to-r from-purple-700 to-pink-600 bg-clip-text text-transparent"
 					>
 					SubSlush
 				</span>
 			</a>
 
-			<div class="w-full">
+			<div class="home-nav-search w-full">
 				<label class="sr-only" for="nav-search">Search</label>
 				<div class="relative w-full">
 					<Search
@@ -1147,7 +1148,7 @@
 				</div>
 			</div>
 
-			<div class="flex flex-wrap items-center justify-end gap-2 text-slate-900">
+			<div class="home-nav-actions flex flex-wrap items-center justify-end gap-2 text-slate-900">
 				<div class="relative currency-menu-anchor">
 					<button
 						type="button"
@@ -1157,6 +1158,9 @@
 						on:click|stopPropagation={toggleCurrencyMenu}
 						bind:this={currencyMenuTriggerRef}
 					>
+						<span class="currency-trigger-mobile-icon" aria-hidden="true">
+							<Globe size={14} />
+						</span>
 						<span class="currency-trigger-value">{selectedLanguageOption.shortLabel}</span>
 						<span class="currency-trigger-divider" aria-hidden="true"></span>
 						<span class="currency-trigger-value">{$currency}</span>
@@ -1529,7 +1533,7 @@
 					{/if}
 				</div>
 
-				<div class="min-w-0 flex-1 overflow-x-auto nav-quick-scroll">
+				<div class="min-w-0 flex-1 overflow-x-auto nav-quick-scroll home-nav-quick-links">
 					<div class="flex items-center gap-3 pl-1">
 						{#each quickLinks as link}
 							<a
@@ -1652,6 +1656,10 @@
 
 	.currency-trigger-value {
 		white-space: nowrap;
+	}
+
+	.currency-trigger-mobile-icon {
+		display: none;
 	}
 
 	.currency-trigger-divider {
@@ -2204,7 +2212,86 @@
 		color: #64748b;
 	}
 
+	@media (max-width: 1023px) {
+		.home-nav-top {
+			grid-template-columns: minmax(0, 1fr) auto;
+			grid-template-areas:
+				'logo actions'
+				'search search';
+			align-items: center;
+		}
+
+		.home-nav-logo {
+			grid-area: logo;
+		}
+
+		.home-nav-actions {
+			grid-area: actions;
+			flex-wrap: nowrap;
+			gap: 0.35rem;
+		}
+
+		.home-nav-search {
+			grid-area: search;
+		}
+
+		.home-nav-actions :global(a),
+		.home-nav-actions :global(button) {
+			padding-left: 0.5rem;
+			padding-right: 0.5rem;
+		}
+	}
+
 	@media (max-width: 767px) {
+		.home-nav-brand-text {
+			font-size: 1.34rem;
+			line-height: 1;
+		}
+
+		.currency-menu-anchor {
+			min-width: auto;
+			height: auto;
+		}
+
+		.currency-trigger {
+			min-height: 1.9rem;
+			font-size: 0.68rem;
+			padding: 0.34rem 0.46rem;
+			gap: 0.34rem;
+		}
+
+		.currency-trigger-mobile-icon {
+			display: inline-flex;
+			align-items: center;
+			color: #334155;
+		}
+
+		.currency-trigger-value,
+		.currency-trigger-divider {
+			display: none;
+		}
+
+		.currency-trigger-divider {
+			height: 0.72rem;
+		}
+
+		.currency-trigger-chevron {
+			margin-left: 0;
+		}
+
+		.home-nav-actions {
+			gap: 0.25rem;
+		}
+
+		.mega-middle,
+		.mega-right {
+			display: none;
+		}
+
+		.home-nav-quick-links {
+			display: none;
+		}
+
 		.mega-grid {
 			grid-template-columns: 1fr;
 			min-height: 0;
