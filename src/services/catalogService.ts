@@ -1530,6 +1530,56 @@ export class CatalogService {
           );
         }
 
+        if (fixedFieldUpdatesProvided) {
+          const resolvedFixedPriceCents =
+            updates.fixed_price_cents !== undefined
+              ? normalizeIntegerOrNull(updates.fixed_price_cents)
+              : normalizeIntegerOrNull(existingProduct.fixed_price_cents);
+          const resolvedFixedPriceCurrency =
+            updates.fixed_price_currency !== undefined
+              ? (normalizedFixedPriceCurrency ?? null)
+              : normalizeCurrencyCode(existingProduct.fixed_price_currency) ||
+                null;
+          const now = new Date();
+
+          await client.query(
+            `UPDATE product_fixed_price_history
+             SET ends_at = $1
+             WHERE product_id = $2
+               AND starts_at < $1
+               AND (ends_at IS NULL OR ends_at > $1)
+               AND (
+                 $3::text IS NULL
+                 OR UPPER(currency) = $3
+               )`,
+            [now, productId, resolvedFixedPriceCurrency]
+          );
+
+          if (
+            Number.isInteger(resolvedFixedPriceCents) &&
+            resolvedFixedPriceCents !== null &&
+            resolvedFixedPriceCents >= 0 &&
+            resolvedFixedPriceCurrency
+          ) {
+            await client.query(
+              `INSERT INTO product_fixed_price_history
+                (product_id, price_cents, currency, starts_at, ends_at, metadata)
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [
+                productId,
+                resolvedFixedPriceCents,
+                resolvedFixedPriceCurrency,
+                now,
+                null,
+                JSON.stringify({
+                  source: 'admin_product_update',
+                  updated_fields: Object.keys(updates || {}),
+                }),
+              ]
+            );
+          }
+        }
+
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');
