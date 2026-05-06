@@ -75,6 +75,7 @@ function parseUpgradeOptionsSnapshot(value: any): {
   allow_new_account: boolean;
   allow_own_account: boolean;
   manual_monthly_upgrade: boolean;
+  manual_monthly_upgrade_interval_months: number;
 } | null {
   const parsed = parseJson(value);
   if (!parsed || typeof parsed !== 'object') {
@@ -94,6 +95,17 @@ function parseUpgradeOptionsSnapshot(value: any): {
     return false;
   };
 
+  const coerceIntervalMonths = (input: any): number => {
+    const parsed = Number(input);
+    if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+      return 1;
+    }
+    if (parsed < 1 || parsed > 12) {
+      return 1;
+    }
+    return parsed;
+  };
+
   return {
     allow_new_account: coerceBoolean(
       parsed['allow_new_account'] ?? parsed['allowNewAccount']
@@ -103,6 +115,10 @@ function parseUpgradeOptionsSnapshot(value: any): {
     ),
     manual_monthly_upgrade: coerceBoolean(
       parsed['manual_monthly_upgrade'] ?? parsed['manualMonthlyUpgrade']
+    ),
+    manual_monthly_upgrade_interval_months: coerceIntervalMonths(
+      parsed['manual_monthly_upgrade_interval_months'] ??
+        parsed['manualMonthlyUpgradeIntervalMonths']
     ),
   };
 }
@@ -1244,6 +1260,14 @@ export async function runManualMonthlyUpgradeSweep(): Promise<void> {
       }
 
       if (!shouldCreateMmuTask(cycleInfo.cycleEnd, now, MMU_TASK_LEAD_DAYS)) {
+        continue;
+      }
+
+      const intervalMonths = Math.max(
+        1,
+        Math.min(12, options.manual_monthly_upgrade_interval_months || 1)
+      );
+      if (cycleInfo.cycleIndex % intervalMonths !== 0) {
         continue;
       }
 

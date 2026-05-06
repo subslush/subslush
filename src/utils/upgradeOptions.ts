@@ -26,6 +26,26 @@ const coerceBoolean = (value: unknown): boolean => {
   return false;
 };
 
+const MMU_INTERVAL_MIN = 1;
+const MMU_INTERVAL_MAX = 12;
+
+const coerceMmuIntervalMonths = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || !Number.isInteger(numeric)) {
+    return null;
+  }
+
+  if (numeric < MMU_INTERVAL_MIN || numeric > MMU_INTERVAL_MAX) {
+    return null;
+  }
+
+  return numeric;
+};
+
 export const normalizeOwnAccountCredentialRequirement = (
   value: unknown
 ): OwnAccountCredentialRequirement | null => {
@@ -112,6 +132,10 @@ export const normalizeUpgradeOptions = (
   const manualMonthlyUpgrade = coerceBoolean(
     parsed['manual_monthly_upgrade'] ?? parsed['manualMonthlyUpgrade']
   );
+  const manualMonthlyUpgradeIntervalMonths = coerceMmuIntervalMonths(
+    parsed['manual_monthly_upgrade_interval_months'] ??
+      parsed['manualMonthlyUpgradeIntervalMonths']
+  );
   const ownAccountCredentialRequirement =
     readOwnAccountCredentialRequirement(parsed);
 
@@ -123,6 +147,12 @@ export const normalizeUpgradeOptions = (
     allow_new_account: allowNewAccount,
     allow_own_account: allowOwnAccount,
     manual_monthly_upgrade: manualMonthlyUpgrade,
+    ...(manualMonthlyUpgradeIntervalMonths !== null
+      ? {
+          manual_monthly_upgrade_interval_months:
+            manualMonthlyUpgradeIntervalMonths,
+        }
+      : {}),
     ...(ownAccountCredentialRequirement
       ? {
           own_account_credential_requirement: ownAccountCredentialRequirement,
@@ -158,6 +188,17 @@ export const validateUpgradeOptions = (
       valid: false,
       reason: 'invalid_own_account_credential_requirement',
     };
+  }
+
+  const rawInterval = optionsRecord['manual_monthly_upgrade_interval_months'];
+  if (rawInterval !== undefined && rawInterval !== null) {
+    const interval = coerceMmuIntervalMonths(rawInterval);
+    if (interval === null) {
+      return {
+        valid: false,
+        reason: 'invalid_manual_monthly_upgrade_interval_months',
+      };
+    }
   }
 
   return { valid: true };

@@ -246,6 +246,7 @@
     allowNewAccount: boolean;
     allowOwnAccount: boolean;
     manualMonthlyUpgrade: boolean;
+    manualMonthlyUpgradeIntervalMonths: number;
     ownAccountCredentialRequirement: OwnAccountCredentialRequirement | null;
   } => {
     const raw = metadata['upgrade_options'] ?? metadata['upgradeOptions'];
@@ -262,6 +263,7 @@
         allowNewAccount: false,
         allowOwnAccount: false,
         manualMonthlyUpgrade: false,
+        manualMonthlyUpgradeIntervalMonths: 1,
         ownAccountCredentialRequirement: null
       };
     }
@@ -273,6 +275,17 @@
           record['own_account_credentials_mode'] ??
           record['ownAccountCredentialsMode']
       );
+    const intervalRaw =
+      record['manual_monthly_upgrade_interval_months'] ??
+      record['manualMonthlyUpgradeIntervalMonths'];
+    const intervalParsed = Number(intervalRaw);
+    const manualMonthlyUpgradeIntervalMonths =
+      Number.isInteger(intervalParsed) &&
+      intervalParsed >= 1 &&
+      intervalParsed <= 12
+        ? intervalParsed
+        : 1;
+
     return {
       allowNewAccount: coerceMetadataBoolean(
         record['allow_new_account'] ?? record['allowNewAccount']
@@ -283,6 +296,7 @@
       manualMonthlyUpgrade: coerceMetadataBoolean(
         record['manual_monthly_upgrade'] ?? record['manualMonthlyUpgrade']
       ),
+      manualMonthlyUpgradeIntervalMonths,
       ownAccountCredentialRequirement
     };
   };
@@ -332,6 +346,7 @@
         allowNewAccount: boolean;
         allowOwnAccount: boolean;
         manualMonthlyUpgrade: boolean;
+        manualMonthlyUpgradeIntervalMonths: number;
         ownAccountCredentialRequirement: OwnAccountCredentialRequirementOption;
       };
     }
@@ -423,6 +438,8 @@
         allow_new_account: upgradeOptions.allowNewAccount,
         allow_own_account: upgradeOptions.allowOwnAccount,
         manual_monthly_upgrade: upgradeOptions.manualMonthlyUpgrade,
+        manual_monthly_upgrade_interval_months:
+          upgradeOptions.manualMonthlyUpgradeIntervalMonths,
         ...(upgradeOptions.ownAccountCredentialRequirement
           ? {
               own_account_credential_requirement:
@@ -461,6 +478,7 @@
     allowNewAccount: boolean;
     allowOwnAccount: boolean;
     manualMonthlyUpgrade: boolean;
+    manualMonthlyUpgradeIntervalMonths: string;
     ownAccountCredentialRequirement: OwnAccountCredentialRequirementOption;
   };
 
@@ -693,6 +711,9 @@
       allowNewAccount: upgradeOptions.allowNewAccount,
       allowOwnAccount: upgradeOptions.allowOwnAccount,
       manualMonthlyUpgrade: upgradeOptions.manualMonthlyUpgrade,
+      manualMonthlyUpgradeIntervalMonths: String(
+        upgradeOptions.manualMonthlyUpgradeIntervalMonths
+      ),
       ownAccountCredentialRequirement:
         (upgradeOptions.ownAccountCredentialRequirement ?? '') as OwnAccountCredentialRequirementOption
     };
@@ -941,6 +962,22 @@
           'Comparison price cents must be a non-negative integer.';
         return;
       }
+      const manualMonthlyUpgradeIntervalRaw = String(
+        productForm.manualMonthlyUpgradeIntervalMonths ?? ''
+      ).trim();
+      const parsedManualMonthlyUpgradeIntervalMonths = Number(
+        manualMonthlyUpgradeIntervalRaw
+      );
+      if (
+        productForm.manualMonthlyUpgrade &&
+        (!Number.isInteger(parsedManualMonthlyUpgradeIntervalMonths) ||
+          parsedManualMonthlyUpgradeIntervalMonths < 1 ||
+          parsedManualMonthlyUpgradeIntervalMonths > 12)
+      ) {
+        productError =
+          'MMU interval months must be an integer between 1 and 12.';
+        return;
+      }
 
       const metadata = buildProductMetadata(normalizeMetadata(product.metadata), {
         infoBoxText: productForm.infoBoxText,
@@ -955,6 +992,10 @@
           allowNewAccount: productForm.allowNewAccount,
           allowOwnAccount: productForm.allowOwnAccount,
           manualMonthlyUpgrade: productForm.manualMonthlyUpgrade,
+          manualMonthlyUpgradeIntervalMonths:
+            productForm.manualMonthlyUpgrade
+              ? parsedManualMonthlyUpgradeIntervalMonths
+              : 1,
           ownAccountCredentialRequirement:
             productForm.ownAccountCredentialRequirement
         }
@@ -1757,6 +1798,28 @@
           <input type="checkbox" bind:checked={productForm.manualMonthlyUpgrade} />
           Manual monthly upgrade (MMU)
         </label>
+        {#if productForm.manualMonthlyUpgrade}
+          <div>
+            <label
+              for="mmu-interval-months"
+              class="text-xs font-semibold text-gray-600"
+            >
+              MMU interval (months)
+            </label>
+            <input
+              id="mmu-interval-months"
+              class="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              type="number"
+              min="1"
+              max="12"
+              step="1"
+              bind:value={productForm.manualMonthlyUpgradeIntervalMonths}
+            />
+            <p class="mt-1 text-[11px] text-gray-500">
+              Create MMU tasks every N months (1-12). Example: 2 creates tasks on cycles 2, 4, 6.
+            </p>
+          </div>
+        {/if}
       </div>
       {#if productMessage}
         <p class="text-sm text-green-600">{productMessage}</p>

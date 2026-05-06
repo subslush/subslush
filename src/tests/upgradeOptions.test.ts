@@ -52,4 +52,53 @@ describe('upgradeOptions utilities', () => {
     expect(result.valid).toBe(false);
     expect(result.reason).toBe('invalid_own_account_credential_requirement');
   });
+
+  it('normalizes manual monthly interval months when valid', () => {
+    const options = normalizeUpgradeOptions({
+      upgrade_options: {
+        allow_new_account: false,
+        allow_own_account: false,
+        manual_monthly_upgrade: true,
+        manual_monthly_upgrade_interval_months: 2,
+      },
+    });
+
+    expect(options).toEqual({
+      allow_new_account: false,
+      allow_own_account: false,
+      manual_monthly_upgrade: true,
+      manual_monthly_upgrade_interval_months: 2,
+    });
+  });
+
+  it('drops invalid manual monthly interval during normalization', () => {
+    const options = normalizeUpgradeOptions({
+      upgrade_options: {
+        allow_new_account: false,
+        allow_own_account: false,
+        manual_monthly_upgrade: true,
+        manual_monthly_upgrade_interval_months: 24,
+      },
+    });
+
+    expect(options).toEqual({
+      allow_new_account: false,
+      allow_own_account: false,
+      manual_monthly_upgrade: true,
+    });
+  });
+
+  it('marks invalid manual monthly interval values as invalid', () => {
+    const result = validateUpgradeOptions({
+      allow_new_account: false,
+      allow_own_account: false,
+      manual_monthly_upgrade: true,
+      manual_monthly_upgrade_interval_months: 0,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe(
+      'invalid_manual_monthly_upgrade_interval_months'
+    );
+  });
 });

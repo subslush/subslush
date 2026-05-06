@@ -10,6 +10,7 @@ export interface UpgradeOptions {
   allow_new_account: boolean;
   allow_own_account: boolean;
   manual_monthly_upgrade: boolean;
+  manual_monthly_upgrade_interval_months?: number | null;
   own_account_credential_requirement?: OwnAccountCredentialRequirement | null;
 }
 

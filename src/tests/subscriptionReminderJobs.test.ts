@@ -1,8 +1,10 @@
 import { getDatabasePool } from '../config/database';
+import { Logger } from '../utils/logger';
 import { emailService } from '../services/emailService';
 import { notificationService } from '../services/notificationService';
 import {
   isSubscriptionReminderDue,
+  runManualMonthlyUpgradeSweep,
   runSubscriptionReminderSweep,
 } from '../services/jobs/subscriptionJobs';
 
@@ -19,6 +21,14 @@ jest.mock('../services/notificationService', () => ({
 jest.mock('../services/emailService', () => ({
   emailService: {
     send: jest.fn(),
+  },
+}));
+
+jest.mock('../utils/logger', () => ({
+  Logger: {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
   },
 }));
 
@@ -48,6 +58,18 @@ type ReminderEventRow = {
   email_sent_at: Date | null;
 };
 
+type MmuCandidateRow = {
+  subscription_id: string;
+  user_id: string;
+  order_id: string | null;
+  service_type: string;
+  service_plan: string;
+  term_start_at: Date;
+  term_months: number;
+  end_date: Date;
+  upgrade_options_snapshot: Record<string, unknown>;
+};
+
 const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
   typeof getDatabasePool
 >;
@@ -55,6 +77,7 @@ const mockNotificationService = notificationService as jest.Mocked<
   typeof notificationService
 >;
 const mockEmailService = emailService as jest.Mocked<typeof emailService>;
+const mockLogger = Logger as jest.Mocked<typeof Logger>;
 
 function eventKey(
   subscriptionId: string,
@@ -269,5 +292,102 @@ describe('subscription reminder jobs', () => {
       expect(event.notification_id).toBeTruthy();
       expect(event.email_sent_at).toBeNull();
     }
+  });
+
+  it('creates MMU tasks based on interval months (1, 2, 3)', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-02-25T00:00:00.000Z'));
+
+    const mmuCandidates: MmuCandidateRow[] = [
+      {
+        subscription_id: 'sub-interval-1',
+        user_id: 'user-1',
+        order_id: 'order-1',
+        service_type: 'netflix',
+        service_plan: 'basic',
+        term_start_at: new Date('2026-01-01T00:00:00.000Z'),
+        term_months: 5,
+        end_date: new Date('2026-06-01T00:00:00.000Z'),
+        upgrade_options_snapshot: {
+          manual_monthly_upgrade: true,
+          manual_monthly_upgrade_interval_months: 1,
+        },
+      },
+      {
+        subscription_id: 'sub-interval-2',
+        user_id: 'user-2',
+        order_id: 'order-2',
+        service_type: 'chatgpt',
+        service_plan: 'pro',
+        term_start_at: new Date('2026-01-01T00:00:00.000Z'),
+        term_months: 5,
+        end_date: new Date('2026-06-01T00:00:00.000Z'),
+        upgrade_options_snapshot: {
+          manual_monthly_upgrade: true,
+          manual_monthly_upgrade_interval_months: 2,
+        },
+      },
+      {
+        subscription_id: 'sub-interval-3',
+        user_id: 'user-3',
+        order_id: 'order-3',
+        service_type: 'spotify',
+        service_plan: 'premium',
+        term_start_at: new Date('2026-01-01T00:00:00.000Z'),
+        term_months: 5,
+        end_date: new Date('2026-06-01T00:00:00.000Z'),
+        upgrade_options_snapshot: {
+          manual_monthly_upgrade: true,
+          manual_monthly_upgrade_interval_months: 3,
+        },
+      },
+    ];
+
+    const createdTaskParams: any[][] = [];
+    const pool = {
+      query: jest.fn(async (sql: string, params: any[] = []) => {
+        const normalizedSql = sql.toLowerCase();
+
+        if (
+          normalizedSql.includes('from subscriptions s') &&
+          normalizedSql.includes('term_start_at')
+        ) {
+          return { rows: mmuCandidates };
+        }
+
+        if (
+          normalizedSql.includes('from admin_tasks') &&
+          normalizedSql.includes("task_type = 'manual_monthly_upgrade'")
+        ) {
+          return { rows: [] };
+        }
+
+        if (
+          normalizedSql.includes('insert into admin_tasks') &&
+          normalizedSql.includes("'manual_monthly_upgrade'")
+        ) {
+          createdTaskParams.push(params);
+          return { rows: [] };
+        }
+
+        throw new Error(`Unexpected SQL in MMU test: ${sql}`);
+      }),
+    };
+
+    mockGetDatabasePool.mockReturnValue(pool as any);
+
+    await runManualMonthlyUpgradeSweep();
+
+    expect(mockLogger.error).not.toHaveBeenCalled();
+    expect(createdTaskParams).toHaveLength(2);
+    const insertedSubscriptionIds = createdTaskParams.map(
+      params => params[0] as string
+    );
+    expect(insertedSubscriptionIds).toEqual(
+      expect.arrayContaining(['sub-interval-1', 'sub-interval-2'])
+    );
+    expect(insertedSubscriptionIds).not.toContain('sub-interval-3');
+
+    jest.useRealTimers();
   });
 });
