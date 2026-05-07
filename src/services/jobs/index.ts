@@ -20,6 +20,7 @@ import {
 import { runEmailVerificationSync } from './authJobs';
 import { runDailyFxFetch, runWeeklyPricingPublish } from './fxJobs';
 import { getDelayUntilNextFxRunMs, parseFxCronSchedule } from './fxSchedule';
+import { runOrderDeliveryEmailWatchdogSweep } from './orderJobs';
 
 const scheduler = new JobScheduler();
 let jobsRegistered = false;
@@ -141,6 +142,15 @@ function registerJobs(): void {
     lockKey: 'jobs:checkout_abandon_sweep',
     lockTtlSeconds: 300,
     handler: runCheckoutAbandonSweep,
+  });
+
+  scheduler.register({
+    name: 'order-delivery-email-watchdog',
+    intervalMs: env.ORDER_DELIVERY_EMAIL_WATCHDOG_INTERVAL,
+    initialDelayMs: 45000,
+    lockKey: 'jobs:order_delivery_email_watchdog',
+    lockTtlSeconds: 300,
+    handler: runOrderDeliveryEmailWatchdogSweep,
   });
 
   if (env.FX_ENGINE_ENABLED && env.FX_FETCH_JOB_ENABLED) {

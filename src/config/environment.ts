@@ -481,6 +481,7 @@ const environmentSchema = z.object({
   VIRAL_METRICS_INTERVAL: z.coerce.number().default(86400000),
   EMAIL_VERIFICATION_SYNC_INTERVAL: z.coerce.number().default(300000),
   EMAIL_VERIFICATION_SYNC_BATCH_SIZE: z.coerce.number().default(200),
+  ORDER_DELIVERY_EMAIL_WATCHDOG_INTERVAL: z.coerce.number().default(60000),
 });
 
 function isValidAbsoluteUrl(value: string): boolean {

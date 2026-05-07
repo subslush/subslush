@@ -65,7 +65,10 @@ class OrderComplianceEvidenceService {
   private async listDeliveredProducts(orderId: string): Promise<string[]> {
     const pool = getDatabasePool();
     const result = await pool.query(
-      `SELECT id, product_name, variant_name, description
+      `SELECT id,
+              metadata->>'product_name' AS product_name,
+              metadata->>'variant_name' AS variant_name,
+              description
        FROM order_items
        WHERE order_id = $1
        ORDER BY created_at ASC`,

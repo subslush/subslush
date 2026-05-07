@@ -193,6 +193,29 @@ const isRenewalOrder = (order: Order): boolean => {
   return orderType === 'renewal';
 };
 
+type DeliveryEmailAttemptResult = {
+  success: boolean;
+  reason?: string;
+  skipped?: boolean;
+};
+
+type DeliveryEmailWatchdogState = {
+  status: 'pending' | 'done' | 'escalated';
+  last_reason?: string | null;
+  last_error?: string | null;
+  attempts: number;
+  next_attempt_at?: string | null;
+  deadline_at?: string | null;
+  pending_since?: string | null;
+  completed_at?: string | null;
+  escalated_at?: string | null;
+  task_id?: string | null;
+};
+
+const DELIVERY_EMAIL_WATCHDOG_CATEGORY = 'order_delivery_email_watchdog';
+const DELIVERY_EMAIL_RETRY_DELAYS_SECONDS = [30, 120, 300];
+const DELIVERY_EMAIL_WATCHDOG_TIMEOUT_MS = 5 * 60 * 1000;
+
 export class OrderService {
   private async fetchUserEmail(userId: string): Promise<string | null> {
     try {
@@ -324,20 +347,88 @@ export class OrderService {
     return fallbackLabel ? [fallbackLabel] : [];
   }
 
+  private async updateOrderMetadata(
+    orderId: string,
+    patch: Record<string, unknown>
+  ): Promise<void> {
+    const pool = getDatabasePool();
+    await pool.query(
+      `UPDATE orders
+       SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [orderId, JSON.stringify(patch)]
+    );
+  }
+
+  private async markOrderDeliveryEmailOutcome(
+    orderId: string,
+    context: string,
+    result: DeliveryEmailAttemptResult
+  ): Promise<void> {
+    const nowIso = new Date().toISOString();
+    const patch: Record<string, unknown> = {
+      order_delivery_email_last_attempt_at: nowIso,
+      order_delivery_email_last_context: context,
+      order_delivery_email_last_result: result.success ? 'success' : 'failed',
+      order_delivery_email_last_reason: result.reason || null,
+    };
+
+    if (result.success) {
+      patch['order_delivered_email_sent_at'] = nowIso;
+      patch['order_delivery_email_last_error'] = null;
+    } else {
+      patch['order_delivery_email_last_error'] = result.reason || 'send_failed';
+    }
+
+    await this.updateOrderMetadata(orderId, patch);
+  }
+
+  private async upsertDeliveryEmailWatchdogState(
+    orderId: string,
+    state: DeliveryEmailWatchdogState
+  ): Promise<void> {
+    await this.updateOrderMetadata(orderId, {
+      delivery_email_watchdog: state,
+    });
+  }
+
+  private buildRetryDelaySeconds(attempts: number): number {
+    const index = Math.max(0, attempts - 1);
+    const lastDelay =
+      DELIVERY_EMAIL_RETRY_DELAYS_SECONDS[
+        DELIVERY_EMAIL_RETRY_DELAYS_SECONDS.length - 1
+      ] ?? 300;
+    if (index >= DELIVERY_EMAIL_RETRY_DELAYS_SECONDS.length) {
+      return lastDelay;
+    }
+    return DELIVERY_EMAIL_RETRY_DELAYS_SECONDS[index] ?? lastDelay;
+  }
+
   private async sendOrderDeliveredEmail(params: {
     order: Order;
     previousStatus: OrderStatus | null;
     userId: string;
-  }): Promise<void> {
+  }): Promise<DeliveryEmailAttemptResult> {
     const { order, previousStatus, userId } = params;
     if (order.status !== 'delivered' || previousStatus === 'delivered') {
-      return;
+      return {
+        success: false,
+        reason: 'not_delivered_transition',
+        skipped: true,
+      };
     }
-    const { payload } = await this.buildOrderDeliveredEmailPayload(
+    const { payload, reason } = await this.buildOrderDeliveredEmailPayload(
       order,
       userId
     );
-    if (!payload) return;
+    if (!payload) {
+      return {
+        success: false,
+        reason: reason || 'email_unavailable',
+        skipped: true,
+      };
+    }
 
     const sendResult = await emailService.send(payload);
     if (!sendResult.success) {
@@ -345,7 +436,9 @@ export class OrderService {
         orderId: order.id,
         error: sendResult.error,
       });
+      return { success: false, reason: sendResult.error || 'send_failed' };
     }
+    return { success: true };
   }
 
   private async buildOrderDeliveredEmailPayload(
@@ -804,6 +897,10 @@ export class OrderService {
       order.user_id
     );
     if (!payload) {
+      await this.markOrderDeliveryEmailOutcome(orderId, 'manual_resend', {
+        success: false,
+        reason: reason || 'email_unavailable',
+      });
       return { success: false, reason: reason || 'email_unavailable' };
     }
 
@@ -813,10 +910,198 @@ export class OrderService {
         orderId,
         error: sendResult.error,
       });
+      await this.markOrderDeliveryEmailOutcome(orderId, 'manual_resend', {
+        success: false,
+        reason: sendResult.error || 'send_failed',
+      });
       return { success: false, reason: sendResult.error || 'send_failed' };
     }
 
+    await this.markOrderDeliveryEmailOutcome(orderId, 'manual_resend', {
+      success: true,
+    });
+
     return { success: true };
+  }
+
+  private async scheduleDeliveryEmailWatchdogForOrder(
+    order: Order
+  ): Promise<void> {
+    try {
+      if (order.status !== 'delivered' || isRenewalOrder(order)) {
+        return;
+      }
+
+      const existing = order.metadata?.['delivery_email_watchdog'];
+      const existingStatus =
+        existing && typeof existing === 'object'
+          ? (existing as Record<string, any>)['status']
+          : null;
+      if (existingStatus === 'done') {
+        return;
+      }
+
+      const now = Date.now();
+      await this.upsertDeliveryEmailWatchdogState(order.id, {
+        status: 'pending',
+        attempts: 0,
+        pending_since: new Date(now).toISOString(),
+        next_attempt_at: new Date(now + 30_000).toISOString(),
+        deadline_at: new Date(
+          now + DELIVERY_EMAIL_WATCHDOG_TIMEOUT_MS
+        ).toISOString(),
+        last_reason: null,
+        last_error: null,
+      });
+    } catch (error) {
+      Logger.warn('Failed to schedule delivery email watchdog', {
+        orderId: order.id,
+        error,
+      });
+    }
+  }
+
+  private async createDeliveryEmailEscalationTask(
+    order: Order
+  ): Promise<string | null> {
+    try {
+      const pool = getDatabasePool();
+      const dueDate = new Date();
+      const result = await pool.query(
+        `INSERT INTO admin_tasks (
+           subscription_id,
+           user_id,
+           order_id,
+           task_type,
+           due_date,
+           priority,
+           notes,
+           task_category,
+           sla_due_at
+         )
+         SELECT NULL, $1, $2, 'support', $3, 'high', $4, $5, $3
+         WHERE NOT EXISTS (
+           SELECT 1
+           FROM admin_tasks
+           WHERE order_id = $2
+             AND task_category = $5
+             AND completed_at IS NULL
+         )
+         RETURNING id`,
+        [
+          order.user_id,
+          order.id,
+          dueDate,
+          `Order ${order.id}: no successful delivery email confirmation within 5 minutes.`,
+          DELIVERY_EMAIL_WATCHDOG_CATEGORY,
+        ]
+      );
+      return result.rows[0]?.id ?? null;
+    } catch (error) {
+      Logger.warn('Failed to create delivery email escalation task', {
+        orderId: order.id,
+        error,
+      });
+      return null;
+    }
+  }
+
+  async runDeliveryEmailWatchdogSweep(now: Date = new Date()): Promise<{
+    scanned: number;
+    retried: number;
+    succeeded: number;
+    escalated: number;
+  }> {
+    const pool = getDatabasePool();
+    const result = await pool.query(
+      `SELECT *
+       FROM orders
+       WHERE status = 'delivered'
+         AND metadata->'delivery_email_watchdog'->>'status' = 'pending'
+       ORDER BY updated_at ASC
+       LIMIT 200`
+    );
+
+    let retried = 0;
+    let succeeded = 0;
+    let escalated = 0;
+    for (const row of result.rows) {
+      const order = mapOrder(row);
+      if (isRenewalOrder(order)) {
+        await this.upsertDeliveryEmailWatchdogState(order.id, {
+          status: 'done',
+          attempts: 0,
+          completed_at: now.toISOString(),
+          last_reason: 'renewal_order',
+          last_error: null,
+        });
+        continue;
+      }
+
+      const watchdog = (order.metadata?.['delivery_email_watchdog'] ||
+        {}) as Record<string, any>;
+      const attempts = Number(watchdog['attempts'] ?? 0);
+      const deadlineAt = watchdog['deadline_at']
+        ? new Date(String(watchdog['deadline_at']))
+        : new Date(now.getTime() + DELIVERY_EMAIL_WATCHDOG_TIMEOUT_MS);
+      const nextAttemptAt = watchdog['next_attempt_at']
+        ? new Date(String(watchdog['next_attempt_at']))
+        : new Date(0);
+
+      if (Number.isFinite(nextAttemptAt.getTime()) && nextAttemptAt > now) {
+        continue;
+      }
+
+      const resend = await this.resendOrderDeliveredEmail(order.id);
+      retried += 1;
+      if (resend.success) {
+        succeeded += 1;
+        await this.upsertDeliveryEmailWatchdogState(order.id, {
+          status: 'done',
+          attempts: attempts + 1,
+          completed_at: now.toISOString(),
+          last_reason: null,
+          last_error: null,
+        });
+        continue;
+      }
+
+      const expired =
+        Number.isFinite(deadlineAt.getTime()) && now >= deadlineAt;
+      if (expired) {
+        const taskId = await this.createDeliveryEmailEscalationTask(order);
+        escalated += 1;
+        await this.upsertDeliveryEmailWatchdogState(order.id, {
+          status: 'escalated',
+          attempts: attempts + 1,
+          escalated_at: now.toISOString(),
+          last_reason: resend.reason || 'send_failed',
+          last_error: resend.reason || 'send_failed',
+          task_id: taskId,
+        });
+        continue;
+      }
+
+      const delaySeconds = this.buildRetryDelaySeconds(attempts + 1);
+      await this.upsertDeliveryEmailWatchdogState(order.id, {
+        status: 'pending',
+        attempts: attempts + 1,
+        pending_since: String(watchdog['pending_since'] || now.toISOString()),
+        deadline_at: deadlineAt.toISOString(),
+        next_attempt_at: new Date(
+          now.getTime() + delaySeconds * 1000
+        ).toISOString(),
+        last_reason: resend.reason || 'send_failed',
+        last_error: resend.reason || 'send_failed',
+      });
+    }
+
+    return {
+      scanned: result.rows.length,
+      retried,
+      succeeded,
+      escalated,
+    };
   }
 
   private async insertOrderWithItems(
@@ -1062,16 +1347,27 @@ export class OrderService {
         }
 
         try {
-          await this.sendOrderDeliveredEmail({
+          const emailResult = await this.sendOrderDeliveredEmail({
             order,
             previousStatus,
             userId,
           });
+          await this.markOrderDeliveryEmailOutcome(
+            order.id,
+            'status_update',
+            emailResult
+          );
+          if (!emailResult.success && !isRenewalOrder(order)) {
+            await this.scheduleDeliveryEmailWatchdogForOrder(order);
+          }
         } catch (error) {
           Logger.warn('Failed to send order delivery email', {
             orderId,
             error,
           });
+          if (!isRenewalOrder(order)) {
+            await this.scheduleDeliveryEmailWatchdogForOrder(order);
+          }
         }
       }
 
@@ -1250,16 +1546,27 @@ export class OrderService {
         }
 
         try {
-          await this.sendOrderDeliveredEmail({
+          const emailResult = await this.sendOrderDeliveredEmail({
             order,
             previousStatus,
             userId,
           });
+          await this.markOrderDeliveryEmailOutcome(
+            order.id,
+            'payment_update',
+            emailResult
+          );
+          if (!emailResult.success && !isRenewalOrder(order)) {
+            await this.scheduleDeliveryEmailWatchdogForOrder(order);
+          }
         } catch (error) {
           Logger.warn('Failed to send order delivery email', {
             orderId,
             error,
           });
+          if (!isRenewalOrder(order)) {
+            await this.scheduleDeliveryEmailWatchdogForOrder(order);
+          }
         }
       }
 
