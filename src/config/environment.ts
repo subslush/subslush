@@ -104,6 +104,18 @@ const environmentSchema = z.object({
       }
       return true;
     }),
+  PAYPAL_CHECKOUT_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(false)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return false;
+    }),
   PAYPAL_MODE: z.enum(['sandbox', 'live']).optional().default('sandbox'),
   PAYPAL_CLIENT_ID: z
     .preprocess(

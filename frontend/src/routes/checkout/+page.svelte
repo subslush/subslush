@@ -105,6 +105,7 @@
   let walletFailureDetails = '';
   let googlePaymentsClient: any = null;
   let googlePayConfig: any = null;
+  let isPayPalCheckoutEnabled = false;
   let actionError = '';
   let lastPaymentMethod: 'card' | 'crypto' | 'credits' | null = null;
   type OwnAccountCheckoutInput = {
@@ -1540,6 +1541,16 @@
   const resolveGooglePayEnvironment = (): 'TEST' | 'PRODUCTION' =>
     paypalSdkConfig?.mode === 'live' ? 'PRODUCTION' : 'TEST';
 
+  const ensurePayPalCheckoutAvailable = (): boolean => {
+    if (isPayPalCheckoutEnabled) {
+      return true;
+    }
+    walletDropdownOpen = false;
+    actionError =
+      'PayPal / card checkout is temporarily unavailable. Please choose crypto payment instead.';
+    return false;
+  };
+
   const initializeWalletEligibility = async (): Promise<void> => {
     if (!browser) return;
 
@@ -1622,6 +1633,7 @@
   const getCheckoutSessionForWallet = async (
     fundingPreference: 'applepay' | 'googlepay'
   ): Promise<{ orderId: string; paypalOrderId: string } | null> => {
+    if (!ensurePayPalCheckoutAvailable()) return null;
     actionError = '';
     walletFlowError = '';
     if (!ensureConsentBeforeCheckout()) return null;
@@ -1827,6 +1839,9 @@
   const startHostedPayPalCheckout = async (
     fundingPreference: 'paypal' | 'applepay' | 'googlepay' | 'card'
   ) => {
+    if (!ensurePayPalCheckoutAvailable()) {
+      return;
+    }
     actionError = '';
     if (!ensureConsentBeforeCheckout()) {
       return;
@@ -1901,18 +1916,22 @@
   };
 
   const handlePayPalCheckout = async () => {
+    if (!ensurePayPalCheckoutAvailable()) return;
     await startHostedPayPalCheckout('paypal');
   };
 
   const handleApplePayCheckout = async () => {
+    if (!ensurePayPalCheckoutAvailable()) return;
     await handleApplePayNativeCheckout();
   };
 
   const handleGooglePayCheckout = async () => {
+    if (!ensurePayPalCheckoutAvailable()) return;
     await handleGooglePayNativeCheckout();
   };
 
   const handleCardCheckout = async () => {
+    if (!ensurePayPalCheckoutAvailable()) return;
     await startHostedPayPalCheckout('card');
   };
 
@@ -2204,6 +2223,12 @@
   }
 
   $: if (!SHOW_CRYPTO_CHECKOUT_OPTION && paymentMethod === 'crypto') {
+    paymentMethod = null;
+  }
+
+  $: isPayPalCheckoutEnabled = Boolean(paypalSdkConfig?.enabled);
+
+  $: if (!isPayPalCheckoutEnabled && paymentMethod === 'card') {
     paymentMethod = null;
   }
 
@@ -2766,12 +2791,28 @@
               <h3 class="text-sm font-semibold text-slate-900">Choose payment method</h3>
 
               <div class="mt-3 space-y-3">
-                <div class="rounded-2xl border border-slate-200 bg-white p-3">
-                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div
+                  class={`rounded-2xl border p-3 ${
+                    isPayPalCheckoutEnabled
+                      ? 'border-slate-200 bg-white'
+                      : 'cursor-not-allowed border-slate-200 bg-slate-100 opacity-70 grayscale'
+                  }`}
+                  aria-disabled={!isPayPalCheckoutEnabled}
+                >
+                  <div
+                    class={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${
+                      isPayPalCheckoutEnabled ? '' : 'pointer-events-none select-none'
+                    }`}
+                  >
                     <button
                       type="button"
                       class="flex h-11 items-center justify-center self-center rounded-md border border-[#f4c64f] bg-[#ffc439] transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={redirecting || invoiceLoading || creditsInsufficient}
+                      disabled={
+                        !isPayPalCheckoutEnabled ||
+                        redirecting ||
+                        invoiceLoading ||
+                        creditsInsufficient
+                      }
                       on:click={() => {
                         paymentMethod = 'card';
                         void handlePayPalCheckout();
@@ -2788,6 +2829,7 @@
                         type="button"
                         class="flex h-11 w-full items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                         disabled={
+                          !isPayPalCheckoutEnabled ||
                           redirecting ||
                           invoiceLoading ||
                           creditsInsufficient
@@ -2808,6 +2850,7 @@
                             type="button"
                             class="flex h-10 w-full items-center justify-between rounded-lg px-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                             disabled={
+                              !isPayPalCheckoutEnabled ||
                               redirecting ||
                               invoiceLoading ||
                               creditsInsufficient
@@ -2832,6 +2875,7 @@
                             type="button"
                             class="mt-1 flex h-10 w-full items-center justify-between rounded-lg px-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                             disabled={
+                              !isPayPalCheckoutEnabled ||
                               redirecting ||
                               invoiceLoading ||
                               creditsInsufficient
@@ -2864,7 +2908,12 @@
                   <button
                     type="button"
                     class="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-slate-800 px-3 text-sm font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={redirecting || invoiceLoading || creditsInsufficient}
+                    disabled={
+                      !isPayPalCheckoutEnabled ||
+                      redirecting ||
+                      invoiceLoading ||
+                      creditsInsufficient
+                    }
                     on:click={() => {
                       paymentMethod = 'card';
                       void handleCardCheckout();
@@ -2879,9 +2928,15 @@
                     {/if}
                   </button>
 
-                  <p class="mt-2 px-1 text-xs text-slate-500">
-                    Secure hosted checkout. Choose PayPal account, digital wallet, or card.
-                  </p>
+                  {#if !isPayPalCheckoutEnabled}
+                    <p class="mt-2 px-1 text-xs font-medium text-slate-600">
+                      PayPal / card checkout is temporarily unavailable.
+                    </p>
+                  {:else}
+                    <p class="mt-2 px-1 text-xs text-slate-500">
+                      Secure hosted checkout. Choose PayPal account, digital wallet, or card.
+                    </p>
+                  {/if}
                   {#if walletEligibilityLoading}
                     <p class="mt-1 px-1 text-xs text-slate-500">
                       Checking Apple Pay and Google Pay availability...

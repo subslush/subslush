@@ -31,6 +31,7 @@ export interface EnvironmentConfig {
   PAY4BIT_CALLBACK_URL: string;
   PAY4BIT_BASE_URL: string;
   PAYPAL_ENABLED: boolean;
+  PAYPAL_CHECKOUT_ENABLED: boolean;
   PAYPAL_MODE: 'sandbox' | 'live';
   PAYPAL_CLIENT_ID: string;
   PAYPAL_CLIENT_SECRET: string;

@@ -4603,7 +4603,7 @@ export class PaymentService {
     | { success: false; error: string }
   > {
     try {
-      if (!env.PAYPAL_ENABLED) {
+      if (!env.PAYPAL_ENABLED || !env.PAYPAL_CHECKOUT_ENABLED) {
         return { success: false, error: 'payment_provider_unavailable' };
       }
 

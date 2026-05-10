@@ -150,7 +150,11 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         request.headers as Record<string, string | string[] | undefined>
       );
       return SuccessResponses.ok(reply, {
-        enabled: Boolean(env.PAYPAL_ENABLED && env.PAYPAL_CLIENT_ID),
+        enabled: Boolean(
+          env.PAYPAL_ENABLED &&
+            env.PAYPAL_CHECKOUT_ENABLED &&
+            env.PAYPAL_CLIENT_ID
+        ),
         client_id: env.PAYPAL_CLIENT_ID || null,
         mode: env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox',
         country_code: requestCountry || 'US',
@@ -394,6 +398,13 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (!orderId) {
         return ErrorResponses.badRequest(reply, 'Order not found');
+      }
+
+      if (!env.PAYPAL_CHECKOUT_ENABLED) {
+        return ErrorResponses.serviceUnavailable(
+          reply,
+          'Card checkout is temporarily unavailable. Please try again later.'
+        );
       }
 
       const sessionResult = await paymentService.createPayPalCheckoutSession({

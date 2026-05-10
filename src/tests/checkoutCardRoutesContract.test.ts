@@ -48,18 +48,21 @@ describe('Checkout card route contract', () => {
   const snapshotId = '22222222-2222-4222-8222-222222222222';
   const sessionId = 'paypal-order-12345';
   const originalPayPalEnabled = env.PAYPAL_ENABLED;
+  const originalPayPalCheckoutEnabled = env.PAYPAL_CHECKOUT_ENABLED;
   const originalPay4bitEnabled = env.PAY4BIT_ENABLED;
   const originalStripeEnabled = env.STRIPE_ENABLED;
 
   beforeEach(() => {
     jest.clearAllMocks();
     env.PAYPAL_ENABLED = true;
+    env.PAYPAL_CHECKOUT_ENABLED = true;
     env.PAY4BIT_ENABLED = false;
     env.STRIPE_ENABLED = false;
   });
 
   afterAll(() => {
     env.PAYPAL_ENABLED = originalPayPalEnabled;
+    env.PAYPAL_CHECKOUT_ENABLED = originalPayPalCheckoutEnabled;
     env.PAY4BIT_ENABLED = originalPay4bitEnabled;
     env.STRIPE_ENABLED = originalStripeEnabled;
   });

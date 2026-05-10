@@ -509,7 +509,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           ['card', 'paypal', 'stripe', 'pay4bit'].includes(
             requestedPaymentMethod
           ) &&
-          !env.PAYPAL_ENABLED
+          (!env.PAYPAL_ENABLED || !env.PAYPAL_CHECKOUT_ENABLED)
         ) {
           return ErrorResponses.serviceUnavailable(
             reply,
