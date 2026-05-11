@@ -1270,6 +1270,12 @@
     </div>
   {/if}
 
+  <div class="mx-auto mt-6 max-w-7xl px-4 sm:px-6 lg:px-8">
+    <p class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
+      Unless explicitly stated otherwise, SubSlush is not affiliated with, endorsed by, or sponsored by any brand owner.
+    </p>
+  </div>
+
   <Footer />
 </div>
 

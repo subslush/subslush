@@ -37,7 +37,7 @@
 
 				<div class="hero-content">
 					<h1 class="hero-headline">
-						Premium subscriptions. <span class="hero-headline-offer">Up to 90% off.</span>
+						Digital Entertainment, Software &amp; Subscription Access in One Secure Store
 					</h1>
 					<div class="hero-actions">
 						<a

@@ -104,7 +104,7 @@
   <title>Feedback - SubSlush</title>
   <meta
     name="description"
-    content="Report bugs, issues, or improvement suggestions for the SubSlush Marketplace beta."
+    content="Report bugs, issues, or improvement suggestions for the SubSlush platform beta."
   />
 </svelte:head>
 

@@ -451,7 +451,7 @@
 			],
 			featured: {
 				title: 'Fitness Memberships',
-				description: 'Training, nutrition, and wellness services in one marketplace.',
+				description: 'Training, nutrition, and wellness services in one platform.',
 				cta: 'Browse fitness',
 				href: '/browse?category=fitness'
 			}

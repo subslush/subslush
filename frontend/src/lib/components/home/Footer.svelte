@@ -57,7 +57,9 @@
       <div>
         <h3 class="font-semibold text-white mb-4">Support</h3>
         <ul class="space-y-2 text-sm">
+          <li><a href="/about" class="hover:text-white transition-colors">About us</a></li>
           <li><a href="/help" class="hover:text-white transition-colors">Help</a></li>
+          <li><a href="/how-delivery-works" class="hover:text-white transition-colors">How delivery works</a></li>
           <li><a href="/terms" class="hover:text-white transition-colors">Terms and conditions</a></li>
           <li><a href="/privacy" class="hover:text-white transition-colors">Privacy and cookie policy</a></li>
           <li><a href="/returns" class="hover:text-white transition-colors">Refund policy</a></li>
@@ -95,8 +97,10 @@
       <p class="text-sm text-gray-400">
         Copyright © SubSlush, 2026. All rights reserved.
       </p>
-      <p class="text-sm text-gray-300 mt-2">Premium For Less.</p>
       <p class="text-xs text-gray-500 mt-2">SubSlush is a trading name of 3NITY DIGITAL LIMITED.</p>
+      <p class="text-xs text-gray-500 mt-2">
+        Unless explicitly stated otherwise, SubSlush is not affiliated with, endorsed by, or sponsored by any brand owner.
+      </p>
       <p class="text-xs text-gray-500 mt-4">
         Using the SUBSLUSH.COM platform constitutes acceptance of the SubSlush
         <a href="/terms" class="underline underline-offset-2 hover:text-gray-300">Terms and Conditions</a>.

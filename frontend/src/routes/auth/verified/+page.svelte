@@ -51,7 +51,7 @@
 
 <svelte:head>
   <title>Email Verified - SubSlush</title>
-  <meta name="description" content="Your email was successfully verified. Continue to the marketplace." />
+  <meta name="description" content="Your email was successfully verified. Continue to the platform." />
 </svelte:head>
 
 <section class="mx-auto max-w-2xl space-y-8 text-center">
@@ -73,7 +73,7 @@
       href="/browse"
       class="inline-flex items-center justify-center rounded-lg bg-surface-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-surface-800 dark:bg-surface-100 dark:text-surface-900 dark:hover:bg-white"
     >
-      Go to marketplace
+      Go to platform
     </a>
     <a
       href="/dashboard"

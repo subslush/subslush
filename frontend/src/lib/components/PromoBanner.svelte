@@ -12,10 +12,10 @@
 >
   <div class="flex items-center justify-center gap-2 text-sm font-semibold tracking-wide">
     <Megaphone size={16} aria-hidden="true" />
-    <span>Marketplace update in progress</span>
+    <span>Store update in progress</span>
   </div>
   <p class="mt-1 text-[11px] leading-relaxed md:text-xs">
-    We are currently updating the marketplace. You may notice changes during the next few days, but we are working to keep everything usable and stable. If you face any issue, contact support via live chat or
+    We are currently updating the platform. You may notice changes during the next few days, but we are working to keep everything usable and stable. If you face any issue, contact support via live chat or
     <a href="mailto:hello@subslush.com" class="font-semibold underline underline-offset-2">hello@subslush.com</a>.
   </p>
 </div>

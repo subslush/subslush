@@ -28,7 +28,7 @@
       </div>
       <div class="space-y-3 px-4 py-3 text-sm text-gray-700">
         <p>
-          SubSlush Marketplace just launched and this is a beta. We have run extensive tests to
+          SubSlush just launched and this is a beta. We have run extensive tests to
           remove obvious issues, but there may still be hidden bugs.
         </p>
         <p>
@@ -37,7 +37,7 @@
         </p>
         <p>
           We also welcome suggestions and recommendations for improvements as we continue developing
-          the marketplace.
+          the platform.
         </p>
         <a
           href="/feedback"

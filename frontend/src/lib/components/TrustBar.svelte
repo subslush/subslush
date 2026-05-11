@@ -20,16 +20,16 @@
         <span class="font-medium">256-bit Bank-Level Encryption</span>
       </div>
 
-      <!-- 99.9% Uptime Badge -->
+      <!-- Fulfillment Support Badge -->
       <div class="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
         <CheckCircle size={16} class="text-black flex-shrink-0" />
-        <span class="font-medium">99.9% Uptime Guaranteed</span>
+        <span class="font-medium">Support-backed fulfillment</span>
       </div>
 
       <!-- User Count Badge -->
       <div class="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
         <Users size={16} class="text-black flex-shrink-0" />
-        <span class="font-medium">Trusted by 2,847+ Users</span>
+        <span class="font-medium">Trusted by 600+ users</span>
       </div>
     </div>
     <div class="mt-4 flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600">
