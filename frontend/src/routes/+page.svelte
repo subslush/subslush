@@ -498,7 +498,7 @@
 </script>
 
 <svelte:head>
-  <title>SubSlush - Save Up To 90% On Premium Subscriptions</title>
+  <title>SubSlush</title>
   <meta name="description" content="Join 250,000+ users getting Spotify, Netflix, and 500+ services at a fraction of retail price. Instant access. Verified accounts." />
 </svelte:head>
 
