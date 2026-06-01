@@ -99,6 +99,36 @@ const resolveMetadataNumber = (
   return undefined;
 };
 
+type CheckoutLegalConsentPayload =
+  | {
+      immediate_fulfillment_consent: boolean;
+      terms_policy_consent: boolean;
+      consent_timestamp?: string | null | undefined;
+      checkout_session_key_snapshot?: string | null | undefined;
+      consent_source?: string | null | undefined;
+    }
+  | null
+  | undefined;
+
+const hasRequiredLegalConsent = (
+  payload: CheckoutLegalConsentPayload
+): payload is Exclude<CheckoutLegalConsentPayload, null | undefined> =>
+  Boolean(
+    payload &&
+      payload.immediate_fulfillment_consent === true &&
+      payload.terms_policy_consent === true
+  );
+
+const resolveConsentTimestamp = (value?: string | null): string => {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return new Date().toISOString();
+};
+
 const buildOrderTikTokProperties = (
   order: OrderWithItems
 ): Record<string, unknown> => {
@@ -140,6 +170,46 @@ const buildOrderTikTokProperties = (
 };
 
 export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
+  const persistLegalConsentEvidence = async (params: {
+    orderId: string;
+    legalConsent: CheckoutLegalConsentPayload;
+    request: FastifyRequest;
+    checkoutSessionKey?: string | null;
+    channel: 'card' | 'crypto' | 'credits';
+  }): Promise<boolean> => {
+    if (!hasRequiredLegalConsent(params.legalConsent)) {
+      return false;
+    }
+    const consentTimestamp = resolveConsentTimestamp(
+      params.legalConsent.consent_timestamp
+    );
+    const requestIp = getRequestIp(params.request);
+    const userAgentHeader = params.request.headers['user-agent'];
+    const userAgent =
+      Array.isArray(userAgentHeader) && userAgentHeader.length > 0
+        ? userAgentHeader[0]
+        : typeof userAgentHeader === 'string'
+          ? userAgentHeader
+          : null;
+
+    return orderService.appendOrderMetadata(params.orderId, {
+      checkout_legal_consent: {
+        immediate_fulfillment_consent: true,
+        terms_policy_consent: true,
+        consent_timestamp: consentTimestamp,
+        recorded_at: new Date().toISOString(),
+        ip_address: requestIp ?? null,
+        user_agent: userAgent,
+        checkout_session_key_snapshot:
+          params.legalConsent.checkout_session_key_snapshot ??
+          params.checkoutSessionKey ??
+          null,
+        consent_source:
+          params.legalConsent.consent_source ?? `checkout_${params.channel}`,
+      },
+    });
+  };
+
   fastify.get(
     '/paypal/sdk-config',
     {
@@ -365,6 +435,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         cancel_url,
         funding_preference,
         add_payment_info_event_id,
+        legal_consent,
       } = validation.data;
 
       if (!checkout_session_key && !order_id) {
@@ -398,6 +469,27 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (!orderId) {
         return ErrorResponses.badRequest(reply, 'Order not found');
+      }
+
+      if (!hasRequiredLegalConsent(legal_consent)) {
+        return ErrorResponses.badRequest(
+          reply,
+          'Digital fulfillment consent and policy acceptance are required'
+        );
+      }
+
+      const consentSaved = await persistLegalConsentEvidence({
+        orderId,
+        legalConsent: legal_consent,
+        request,
+        checkoutSessionKey: checkout_session_key ?? null,
+        channel: 'card',
+      });
+      if (!consentSaved) {
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to record checkout consent evidence'
+        );
       }
 
       if (!env.PAYPAL_CHECKOUT_ENABLED) {
@@ -542,6 +634,16 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               },
               initiate_checkout_event_id: { type: 'string' },
               add_payment_info_event_id: { type: 'string' },
+              legal_consent: {
+                type: 'object',
+                properties: {
+                  immediate_fulfillment_consent: { type: 'boolean' },
+                  terms_policy_consent: { type: 'boolean' },
+                  consent_timestamp: { type: 'string' },
+                  checkout_session_key_snapshot: { type: 'string' },
+                  consent_source: { type: 'string' },
+                },
+              },
             },
           },
         },
@@ -665,6 +767,16 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             cancel_url: { type: 'string' },
             initiate_checkout_event_id: { type: 'string' },
             add_payment_info_event_id: { type: 'string' },
+            legal_consent: {
+              type: 'object',
+              properties: {
+                immediate_fulfillment_consent: { type: 'boolean' },
+                terms_policy_consent: { type: 'boolean' },
+                consent_timestamp: { type: 'string' },
+                checkout_session_key_snapshot: { type: 'string' },
+                consent_source: { type: 'string' },
+              },
+            },
           },
         },
       },
@@ -693,6 +805,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           success_url,
           cancel_url,
           add_payment_info_event_id,
+          legal_consent,
         } = validation.data;
 
         if (!checkout_session_key && !order_id) {
@@ -734,6 +847,27 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (!orderId) {
           return ErrorResponses.badRequest(reply, 'Order not found');
+        }
+
+        if (!hasRequiredLegalConsent(legal_consent)) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Digital fulfillment consent and policy acceptance are required'
+          );
+        }
+
+        const consentSaved = await persistLegalConsentEvidence({
+          orderId,
+          legalConsent: legal_consent,
+          request,
+          checkoutSessionKey: checkout_session_key ?? null,
+          channel: 'crypto',
+        });
+        if (!consentSaved) {
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to record checkout consent evidence'
+          );
         }
 
         const invoiceResult =
@@ -943,6 +1077,16 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             initiate_checkout_event_id: { type: 'string' },
             add_payment_info_event_id: { type: 'string' },
             purchase_event_id: { type: 'string' },
+            legal_consent: {
+              type: 'object',
+              properties: {
+                immediate_fulfillment_consent: { type: 'boolean' },
+                terms_policy_consent: { type: 'boolean' },
+                consent_timestamp: { type: 'string' },
+                checkout_session_key_snapshot: { type: 'string' },
+                consent_source: { type: 'string' },
+              },
+            },
           },
         },
       },
@@ -971,6 +1115,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           order_id,
           add_payment_info_event_id,
           purchase_event_id,
+          legal_consent,
         } = validation.data;
         if (!checkout_session_key && !order_id) {
           return ErrorResponses.badRequest(
@@ -1004,6 +1149,27 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (!orderId) {
           return ErrorResponses.badRequest(reply, 'Order not found');
+        }
+
+        if (!hasRequiredLegalConsent(legal_consent)) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Digital fulfillment consent and policy acceptance are required'
+          );
+        }
+
+        const consentSaved = await persistLegalConsentEvidence({
+          orderId,
+          legalConsent: legal_consent,
+          request,
+          checkoutSessionKey: checkout_session_key ?? null,
+          channel: 'credits',
+        });
+        if (!consentSaved) {
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to record checkout consent evidence'
+          );
         }
 
         const orderForTracking = await orderService.getOrderWithItems(orderId);

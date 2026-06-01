@@ -129,6 +129,10 @@ class EmailService {
                       Need help? Contact us via live chat or
                       <a href="mailto:hello@subslush.com" style="color:#7e22ce;font-weight:600;text-decoration:underline;">hello@subslush.com</a>.
                       <span style="display:block;margin-top:4px;">
+                        Legal/payment enquiries:
+                        <a href="mailto:compliance@subslush.com" style="color:#7e22ce;font-weight:600;text-decoration:underline;">compliance@subslush.com</a>.
+                      </span>
+                      <span style="display:block;margin-top:4px;">
                         You can also visit our
                         <a href="${helpUrl}" style="color:#7e22ce;font-weight:600;text-decoration:underline;">help center</a>.
                       </span>

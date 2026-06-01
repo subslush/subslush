@@ -58,6 +58,7 @@ describe('Checkout card route contract', () => {
     env.PAYPAL_CHECKOUT_ENABLED = true;
     env.PAY4BIT_ENABLED = false;
     env.STRIPE_ENABLED = false;
+    mockOrderService.appendOrderMetadata.mockResolvedValue(true);
   });
 
   afterAll(() => {
@@ -104,6 +105,11 @@ describe('Checkout card route contract', () => {
       url: '/checkout/card/session',
       payload: {
         checkout_session_key: 'checkout_abc123',
+        legal_consent: {
+          immediate_fulfillment_consent: true,
+          terms_policy_consent: true,
+          consent_timestamp: '2026-06-01T00:00:00.000Z',
+        },
       },
     });
 
@@ -170,6 +176,11 @@ describe('Checkout card route contract', () => {
       url: '/checkout/stripe/session',
       payload: {
         checkout_session_key: 'checkout_abc123',
+        legal_consent: {
+          immediate_fulfillment_consent: true,
+          terms_policy_consent: true,
+          consent_timestamp: '2026-06-01T00:00:00.000Z',
+        },
       },
     });
 

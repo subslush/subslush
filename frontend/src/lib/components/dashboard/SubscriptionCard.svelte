@@ -124,11 +124,11 @@
 			</div>
 
 			<!-- Critical Status Message for Low Balance -->
-			{#if enhancedStatusBadge?.priority === 'critical'}
-				<div class="mt-2 text-xs text-orange-700 bg-orange-50 rounded px-2 py-1 border border-orange-200">
-					<span class="font-medium">Action needed:</span> Top up €{(parseFloat(monthlyCost.replace('€', '')) - (enhancedStatusBadge.userBalance || 0)).toFixed(2)} to cover renewal
-				</div>
-			{/if}
+				{#if enhancedStatusBadge?.priority === 'critical'}
+					<div class="mt-2 text-xs text-orange-700 bg-orange-50 rounded px-2 py-1 border border-orange-200">
+						<span class="font-medium">Action needed:</span> Add €{(parseFloat(monthlyCost.replace('€', '')) - (enhancedStatusBadge.userBalance || 0)).toFixed(2)} to your balance to cover renewal
+					</div>
+				{/if}
 		</div>
 
 		<!-- Card body -->
@@ -209,13 +209,13 @@
 					</div>
 
 					<!-- Explanation Text -->
-					<p class="text-xs text-gray-500">
-						{#if autoRenew === 'Auto'}
-							✓ We'll automatically renew this subscription using your credit balance. You can cancel anytime.
-						{:else}
-							📧 We'll notify you 3 days before renewal so you can manually top up your balance.
-						{/if}
-					</p>
+						<p class="text-xs text-gray-500">
+							{#if autoRenew === 'Auto'}
+								✓ We'll automatically renew this subscription using your credit balance. You can cancel anytime.
+							{:else}
+								📧 We'll notify you 3 days before renewal so you can manually add balance.
+							{/if}
+						</p>
 				</div>
 			</div>
 

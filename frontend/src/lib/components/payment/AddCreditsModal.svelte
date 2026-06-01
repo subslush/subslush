@@ -64,8 +64,8 @@
   let expirationTime: Date | null = null;
   let timeRemaining = '';
   let resumedPaymentId: string | null = null;
-  let lastTopupTrackingId = '';
-  let lastTopupPurchaseTrackingId = '';
+  let lastBalanceTrackingId = '';
+  let lastBalancePurchaseTrackingId = '';
 
   const stableDefaultCodes = ['usdt', 'usdc'];
   const preferredCoinOrder = [
@@ -211,8 +211,8 @@
     value?.toLowerCase().replace(/[^a-z0-9]/g, '').trim() || '';
   const normalizeCode = (value?: string | null) => value?.toLowerCase().trim() || '';
   const buildCreditsItem = (amount: number) => ({
-    item_id: 'credits_topup',
-    item_name: 'Credits Top Up',
+    item_id: 'balance_add',
+    item_name: 'Balance Purchase',
     item_category: 'credits',
     price: amount,
     currency: 'USD',
@@ -803,11 +803,11 @@
 
       await generateQRCode(response.payAddress);
 
-      if (response.paymentId && response.paymentId !== lastTopupTrackingId) {
+      if (response.paymentId && response.paymentId !== lastBalanceTrackingId) {
         const item = buildCreditsItem(amount);
         trackTikTokInitiateCheckout('USD', amount, [item]);
         trackTikTokAddPaymentInfo('USD', amount, [item]);
-        lastTopupTrackingId = response.paymentId;
+        lastBalanceTrackingId = response.paymentId;
       }
 
       currentStep = 2;
@@ -864,12 +864,12 @@
 
       if (status.status === 'finished' || status.status === 'confirmed') {
         stopPolling();
-        if (paymentData?.paymentId && paymentData.paymentId !== lastTopupPurchaseTrackingId) {
+        if (paymentData?.paymentId && paymentData.paymentId !== lastBalancePurchaseTrackingId) {
           const creditAmount = status.creditAmount;
           if (typeof creditAmount === 'number' && Number.isFinite(creditAmount)) {
             const item = buildCreditsItem(creditAmount);
             trackTikTokPurchase('USD', creditAmount, [item]);
-            lastTopupPurchaseTrackingId = paymentData.paymentId;
+            lastBalancePurchaseTrackingId = paymentData.paymentId;
           }
         }
 
@@ -1076,10 +1076,9 @@
               <div class="flex items-start gap-2">
                 <AlertCircle size={16} class="mt-0.5 text-amber-600" />
                 <div>
-                  <p class="font-semibold text-amber-900">Crypto-only credits</p>
+                  <p class="font-semibold text-amber-900">Crypto invoice checkout</p>
                   <p class="text-amber-800">
-                    Credit topups and credit payments are intended for crypto. You can still buy any product
-                    directly with card at checkout without adding credits.
+                    Balance prepayments are no longer offered. For crypto, choose the crypto option directly at checkout and pay the invoice created for that order.
                   </p>
                 </div>
               </div>

@@ -147,6 +147,65 @@ const escapeHtml = (value: string): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+const formatCurrencyCents = (
+  amountCents: number | null | undefined,
+  currencyCode: string | null | undefined
+): string => {
+  if (
+    typeof amountCents !== 'number' ||
+    !Number.isFinite(amountCents) ||
+    amountCents < 0
+  ) {
+    return '--';
+  }
+  const normalizedCurrency =
+    typeof currencyCode === 'string' && currencyCode.trim().length > 0
+      ? currencyCode.trim().toUpperCase()
+      : 'USD';
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: normalizedCurrency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amountCents / 100);
+  } catch {
+    return `${(amountCents / 100).toFixed(2)} ${normalizedCurrency}`;
+  }
+};
+
+const resolveOrderDisplayCurrency = (order: Order): string => {
+  const metadata = order.metadata || {};
+  const metadataCurrency = metadata['display_currency'];
+  if (
+    typeof metadataCurrency === 'string' &&
+    metadataCurrency.trim().length > 0
+  ) {
+    return metadataCurrency.trim().toUpperCase();
+  }
+  if (typeof order.currency === 'string' && order.currency.trim().length > 0) {
+    return order.currency.trim().toUpperCase();
+  }
+  return 'USD';
+};
+
+const resolveOrderDisplayTotalCents = (order: Order): number | null => {
+  const metadata = order.metadata || {};
+  const metadataTotal =
+    metadata['display_total_cents'] ?? metadata['displayTotalCents'] ?? null;
+  const parsedMetadataTotal = Number(metadataTotal);
+  if (Number.isFinite(parsedMetadataTotal) && parsedMetadataTotal >= 0) {
+    return Math.round(parsedMetadataTotal);
+  }
+  if (
+    typeof order.total_cents === 'number' &&
+    Number.isFinite(order.total_cents)
+  ) {
+    return Math.round(order.total_cents);
+  }
+  return null;
+};
+
 const resolveTermMonths = (item: OrderItem): number | null => {
   const termMonths =
     item.term_months ??
@@ -359,6 +418,22 @@ export class OrderService {
        WHERE id = $1`,
       [orderId, JSON.stringify(patch)]
     );
+  }
+
+  async appendOrderMetadata(
+    orderId: string,
+    patch: Record<string, unknown>
+  ): Promise<boolean> {
+    try {
+      await this.updateOrderMetadata(orderId, patch);
+      return true;
+    } catch (error) {
+      Logger.warn('Failed to append order metadata', {
+        orderId,
+        error,
+      });
+      return false;
+    }
   }
 
   private async markOrderDeliveryEmailOutcome(
@@ -764,6 +839,92 @@ export class OrderService {
 
     const helpLink = buildAppLink('/help');
     const dashboardLink = buildAppLink('/dashboard/orders');
+    const termsLink = buildAppLink('/terms');
+    const refundLink = buildAppLink('/returns');
+    const privacyLink = buildAppLink('/privacy');
+    const orderPlacedAt = new Date(order.created_at);
+    const orderPlacedAtIso = Number.isNaN(orderPlacedAt.getTime())
+      ? new Date().toISOString()
+      : orderPlacedAt.toISOString();
+    const displayCurrency = resolveOrderDisplayCurrency(order);
+    const displayTotalCents = resolveOrderDisplayTotalCents(order);
+    const displayTotal = formatCurrencyCents(
+      displayTotalCents,
+      displayCurrency
+    );
+    const paymentProvider = (order.payment_provider || '').toLowerCase();
+    const isCardMorTransaction =
+      paymentProvider === 'paypal' || paymentProvider === 'stripe';
+    const customerNameRaw =
+      typeof order.metadata?.['customer_name'] === 'string'
+        ? order.metadata['customer_name']
+        : typeof order.metadata?.['customerName'] === 'string'
+          ? order.metadata['customerName']
+          : null;
+    const customerName =
+      typeof customerNameRaw === 'string' && customerNameRaw.trim().length > 0
+        ? customerNameRaw.trim()
+        : null;
+    const sellerLabel = isCardMorTransaction
+      ? '2Sneaks AB'
+      : 'SubSlush selling entity shown at checkout';
+    const sellerDetailsHtml = isCardMorTransaction
+      ? `
+          <div><strong>Seller / merchant of record:</strong> 2Sneaks AB</div>
+          <div>Company registration no: 559265-0963</div>
+          <div>Address: Madängsvägen 5 b, 556 28 Jönköping, Sweden</div>
+          <div>VAT no: SE559265096301</div>
+          <div style="margin-top:6px;">Fulfilled by SubSlush / 3NITY DIGITAL LIMITED.</div>
+        `.trim()
+      : `
+          <div><strong>Seller:</strong> SubSlush selling entity shown at checkout</div>
+          <div>For applicable card and regulated payment transactions, seller/MoR is 2Sneaks AB.</div>
+          <div style="margin-top:6px;">Fulfilled by SubSlush / 3NITY DIGITAL LIMITED.</div>
+        `.trim();
+    const legalConsentRaw =
+      order.metadata &&
+      typeof order.metadata === 'object' &&
+      order.metadata['checkout_legal_consent'] &&
+      typeof order.metadata['checkout_legal_consent'] === 'object'
+        ? (order.metadata['checkout_legal_consent'] as Record<string, any>)
+        : null;
+    const consentTimestamp =
+      typeof legalConsentRaw?.['consent_timestamp'] === 'string'
+        ? legalConsentRaw['consent_timestamp']
+        : null;
+    const consentIp =
+      typeof legalConsentRaw?.['ip_address'] === 'string'
+        ? legalConsentRaw['ip_address']
+        : null;
+    const consentSessionSnapshot =
+      typeof legalConsentRaw?.['checkout_session_key_snapshot'] === 'string'
+        ? legalConsentRaw['checkout_session_key_snapshot']
+        : null;
+    const consentEvidenceText =
+      consentTimestamp || consentIp || consentSessionSnapshot
+        ? [
+            '',
+            'Digital performance consent evidence:',
+            `- Consent timestamp: ${consentTimestamp || 'not captured'}`,
+            `- Consent IP: ${consentIp || 'not captured'}`,
+            `- Session snapshot: ${consentSessionSnapshot || 'not captured'}`,
+          ].join('\n')
+        : '';
+    const consentEvidenceHtml =
+      consentTimestamp || consentIp || consentSessionSnapshot
+        ? `
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+            <tr>
+              <td style="padding:14px 16px;font-size:13px;color:#334155;">
+                <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Digital performance consent evidence</div>
+                <div>Consent timestamp: ${escapeHtml(consentTimestamp || 'not captured')}</div>
+                <div>Consent IP: ${escapeHtml(consentIp || 'not captured')}</div>
+                <div>Session snapshot: ${escapeHtml(consentSessionSnapshot || 'not captured')}</div>
+              </td>
+            </tr>
+          </table>
+        `.trim()
+        : '';
     const shouldIssueClaimToken = await this.isGuestUser(order.user_id);
     const guestIdentityId =
       typeof order.metadata?.['guest_identity_id'] === 'string'
@@ -816,16 +977,43 @@ export class OrderService {
       'Order delivery is usually completed within 24 hours during business days.',
       'In some cases, delivery can take up to 72 hours.',
       '',
+      'Order confirmation summary:',
+      `- Order ID: ${order.id}`,
+      `- Date/time (UTC): ${orderPlacedAtIso}`,
+      `- Customer name: ${customerName || 'Not provided'}`,
+      `- Customer email: ${email}`,
+      `- Total price: ${displayTotal}`,
+      `- Delivery method: Digital delivery through dashboard and/or email, depending on product type`,
+      `- VAT/tax treatment: Final checkout price includes applicable taxes/fees where required`,
+      `- Seller/MoR: ${sellerLabel}`,
+      '',
       'Order items:',
       subscriptionsText,
       '',
+      `Policy links: Terms ${termsLink} | Refund ${refundLink} | Privacy ${privacyLink}`,
       `Need help? ${helpLink}`,
+      'Legal/payment enquiries: compliance@subslush.com',
+      consentEvidenceText,
       claimText,
     ].join('\n');
     const html = emailService.buildBrandedEmail({
       title: 'Payment received',
       intro: `We received your payment for order ${orderShort}. Delivery is usually completed within 24 hours on business days, and can take up to 72 hours in some cases.`,
       bodyHtml: `
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 16px;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <tr>
+            <td style="padding:14px 16px;font-size:13px;color:#334155;">
+              <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Order confirmation summary</div>
+              <div>Order ID: ${escapeHtml(order.id)}</div>
+              <div>Date/time (UTC): ${escapeHtml(orderPlacedAtIso)}</div>
+              <div>Customer name: ${escapeHtml(customerName || 'Not provided')}</div>
+              <div>Customer email: ${escapeHtml(email)}</div>
+              <div>Total price: ${escapeHtml(displayTotal)}</div>
+              <div>Delivery method: Digital delivery through dashboard and/or email, depending on product type</div>
+              <div>VAT/tax treatment: Final checkout price includes applicable taxes/fees where required</div>
+            </td>
+          </tr>
+        </table>
         <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
           <tr>
             <td style="padding:14px 16px;font-size:13px;color:#334155;">
@@ -834,11 +1022,29 @@ export class OrderService {
             </td>
           </tr>
         </table>
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <tr>
+            <td style="padding:14px 16px;font-size:13px;color:#334155;">
+              ${sellerDetailsHtml}
+            </td>
+          </tr>
+        </table>
+        ${consentEvidenceHtml}
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <tr>
+            <td style="padding:14px 16px;font-size:13px;color:#334155;">
+              <div><strong>Policy links</strong></div>
+              <div><a href="${termsLink}" style="color:#7e22ce;text-decoration:underline;">Terms and Conditions</a></div>
+              <div><a href="${refundLink}" style="color:#7e22ce;text-decoration:underline;">Refund Policy</a></div>
+              <div><a href="${privacyLink}" style="color:#7e22ce;text-decoration:underline;">Privacy Policy</a></div>
+            </td>
+          </tr>
+        </table>
         ${claimHtml}
       `.trim(),
       ctaLabel: 'View My Orders',
       ctaUrl: dashboardLink,
-      note: `Need help? ${helpLink}`,
+      note: `Need help? ${helpLink} · Legal/payment enquiries: compliance@subslush.com`,
       previewText: `Payment received for order ${orderShort}`,
     });
 

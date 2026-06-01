@@ -15,7 +15,9 @@
 	import androidChrome192 from '$lib/assets/android-chrome-192x192.png';
 	import androidChrome512 from '$lib/assets/android-chrome-512x512.png';
 	import siteWebmanifest from '$lib/assets/site.webmanifest';
+	import CookieConsentBanner from '$lib/components/consent/CookieConsentBanner.svelte';
 	import { initConsentSideEffects } from '$lib/consent/thirdParty.js';
+	import { initConsent } from '$lib/stores/consent.js';
 	import { identifyTikTokUser, trackPageView } from '$lib/utils/analytics.js';
 	import type { LayoutData } from './$types';
 	import '../app.css';
@@ -67,6 +69,7 @@
 	}
 
 	onMount(() => {
+		initConsent();
 		initConsentSideEffects();
 		document.documentElement.style.setProperty('--promo-banner-height', '0px');
 		document.body.setAttribute('data-theme', 'skeleton');
@@ -106,4 +109,5 @@
 
 <QueryClientProvider client={queryClient}>
 	<slot />
+	<CookieConsentBanner />
 </QueryClientProvider>

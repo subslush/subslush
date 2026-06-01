@@ -129,10 +129,10 @@
             </div>
             <div class="rounded-lg bg-gray-50 border border-gray-100 p-3 space-y-1 text-sm">
               <p class="text-xs font-semibold uppercase text-gray-500">Deposits</p>
-              <p>Top-ups: {formatNumber(user.deposit_count)}</p>
+              <p>Deposits: {formatNumber(user.deposit_count)}</p>
               <p>Confirmed: {formatNumber(user.deposit_confirmed_total ?? user.deposit_total)} credits</p>
               <p>Pending: {formatNumber(user.deposit_pending_count)}</p>
-              <p>Last top-up: {formatOptionalDate(user.last_deposit_at)}</p>
+              <p>Last deposit: {formatOptionalDate(user.last_deposit_at)}</p>
             </div>
             <div class="rounded-lg bg-gray-50 border border-gray-100 p-3 space-y-1 text-sm">
               <p class="text-xs font-semibold uppercase text-gray-500">Credits</p>

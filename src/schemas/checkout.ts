@@ -24,6 +24,29 @@ const optionalEventIdSchema = z.preprocess(value => {
   return normalized.length > 0 ? normalized : null;
 }, z.string().max(150, 'Event ID is too long').nullable().optional());
 
+const optionalLegalConsentSchema = z
+  .object({
+    immediate_fulfillment_consent: z.boolean(),
+    terms_policy_consent: z.boolean(),
+    consent_timestamp: z
+      .string()
+      .max(80, 'Consent timestamp is too long')
+      .optional()
+      .nullable(),
+    checkout_session_key_snapshot: z
+      .string()
+      .max(256, 'Checkout session key snapshot is too long')
+      .optional()
+      .nullable(),
+    consent_source: z
+      .string()
+      .max(80, 'Consent source is too long')
+      .optional()
+      .nullable(),
+  })
+  .optional()
+  .nullable();
+
 export const guestIdentitySchema = z.object({
   email: z
     .string()
@@ -99,6 +122,7 @@ export const checkoutPayPalSessionSchema = z.object({
     .nullable(),
   initiate_checkout_event_id: optionalEventIdSchema,
   add_payment_info_event_id: optionalEventIdSchema,
+  legal_consent: optionalLegalConsentSchema,
 });
 
 export const checkoutStripeSessionSchema = checkoutPayPalSessionSchema;
@@ -114,6 +138,7 @@ export const checkoutCreditsCompleteSchema = z.object({
   initiate_checkout_event_id: optionalEventIdSchema,
   add_payment_info_event_id: optionalEventIdSchema,
   purchase_event_id: optionalEventIdSchema,
+  legal_consent: optionalLegalConsentSchema,
 });
 
 export type CheckoutCreditsCompleteInput = z.infer<
@@ -140,6 +165,7 @@ export const checkoutNowPaymentsInvoiceSchema = z.object({
   cancel_url: z.string().url('Cancel URL must be valid').optional().nullable(),
   initiate_checkout_event_id: optionalEventIdSchema,
   add_payment_info_event_id: optionalEventIdSchema,
+  legal_consent: optionalLegalConsentSchema,
 });
 
 export type CheckoutNowPaymentsInvoiceInput = z.infer<

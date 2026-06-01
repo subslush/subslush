@@ -8,7 +8,7 @@
   <title>About Us - SubSlush</title>
   <meta
     name="description"
-    content="Learn about SubSlush, a digital goods retailer operated by 3NITY DIGITAL LIMITED, and how we fulfill and support digital orders."
+    content="Learn about SubSlush, operated by 3NITY DIGITAL LIMITED together with 2Sneaks AB, and how platform operations, payments, and digital fulfillment are handled."
   />
 </svelte:head>
 
@@ -24,15 +24,14 @@
         <Building2 size={14} aria-hidden="true" />
         Company
       </div>
-      <h1 class="mt-4 text-3xl sm:text-4xl font-bold text-gray-900">About us</h1>
+      <h1 class="mt-4 text-3xl sm:text-4xl font-bold text-gray-900">About SubSlush</h1>
       <p class="mt-3 max-w-4xl text-sm leading-relaxed text-gray-600">
-        SubSlush is a digital goods retailer operated by 3NITY DIGITAL LIMITED, a Hong Kong company.
-        We sell selected digital subscriptions, software access products, activation-based products, and
-        account-based digital access products.
+        SubSlush is a digital goods and digital access platform operated by
+        3NITY DIGITAL LIMITED together with 2Sneaks AB.
       </p>
       <p class="mt-3 max-w-4xl text-sm leading-relaxed text-gray-600">
-        Orders are fulfilled through our secure customer dashboard, with delivery tracking, support,
-        and fraud prevention controls.
+        SubSlush is not an open marketplace. Products are sold directly by the applicable
+        SubSlush selling entity shown at checkout and in the order confirmation.
       </p>
     </div>
   </section>
@@ -43,47 +42,47 @@
         <article class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div class="flex items-center gap-2 text-sm font-semibold text-gray-900">
             <BadgeCheck size={18} class="text-cyan-600" aria-hidden="true" />
-            Who we are
+            3NITY DIGITAL LIMITED role
           </div>
           <p class="mt-3 text-sm leading-relaxed text-gray-700">
-            SubSlush is a trading name of <span class="font-semibold">3NITY DIGITAL LIMITED</span>
-            (BRN: <span class="font-semibold">79886556</span>), incorporated in Hong Kong.
+            3NITY DIGITAL LIMITED is responsible for platform operations, product catalog management,
+            digital fulfillment, order handling, customer support workflows, delivery records,
+            and supplier/fulfillment operations.
           </p>
           <p class="mt-3 text-sm leading-relaxed text-gray-700">
-            We are the direct seller of record for products sold on SubSlush. SubSlush is not an open marketplace.
-          </p>
-          <p class="mt-3 text-sm leading-relaxed text-gray-700">
-            Unless explicitly stated otherwise, SubSlush is not affiliated with, endorsed by, or sponsored by any brand owner.
+            Registered in Hong Kong (BRN 79886556), 3NITY provides the operational and fulfillment
+            services that power SubSlush.
           </p>
         </article>
 
         <article class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div class="flex items-center gap-2 text-sm font-semibold text-gray-900">
             <PackageCheck size={18} class="text-cyan-600" aria-hidden="true" />
-            What we sell
+            2Sneaks AB role
           </div>
           <p class="mt-3 text-sm leading-relaxed text-gray-700">
-            We focus on selected digital access products with clear pre-purchase disclosures. Product pages
-            and checkout present key characteristics such as duration, delivery format, and activation method.
+            2Sneaks AB acts as merchant of record and contracting seller for applicable payment
+            transactions processed through SubSlush.
           </p>
           <p class="mt-3 text-sm leading-relaxed text-gray-700">
-            Our catalog includes digital subscriptions and access products delivered through account credentials,
-            activation links, activation codes/keys, and account-applied fulfillment where applicable.
+            Where 2Sneaks AB is shown at checkout, on your payment statement, or in your order
+            confirmation, 2Sneaks AB is responsible for payment acceptance, receipts/order confirmations,
+            payment-related refunds, and payment-dispute handling for that transaction.
           </p>
         </article>
 
         <article class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div class="flex items-center gap-2 text-sm font-semibold text-gray-900">
             <ShieldCheck size={18} class="text-cyan-600" aria-hidden="true" />
-            Secure fulfillment and fraud prevention
+            Product and pre-purchase clarity
           </div>
           <p class="mt-3 text-sm leading-relaxed text-gray-700">
-            We use secure hosted payment flows and layered fraud/risk screening to protect customers and reduce
-            unauthorized transactions, abuse, and chargeback misuse.
+            SubSlush sells selected digital access products, software access products, activation-based
+            products, and account-based digital delivery products.
           </p>
           <p class="mt-3 text-sm leading-relaxed text-gray-700">
-            Order events and delivery records are tracked to support operational quality, customer support, and
-            payment-dispute resolution where needed.
+            Product pages and checkout disclose core characteristics including duration, delivery method,
+            activation method, region/account requirements where relevant, and refund limitations.
           </p>
         </article>
 
@@ -93,22 +92,46 @@
             Delivery, dashboard, and support
           </div>
           <p class="mt-3 text-sm leading-relaxed text-gray-700">
-            Customers can track order status in the dashboard and receive email notifications when delivery is completed.
-            Delivered credentials or activation details are accessible through the relevant order view.
+            Customers can track order status in the dashboard and receive email notifications
+            when delivery is completed.
           </p>
           <p class="mt-3 text-sm leading-relaxed text-gray-700">
             Support is available via live chat during published hours and by email at
             <a href="mailto:hello@subslush.com" class="font-semibold text-cyan-700 hover:underline">hello@subslush.com</a>.
+            Legal and payment enquiries can be sent to
+            <a href="mailto:compliance@subslush.com" class="font-semibold text-cyan-700 hover:underline">compliance@subslush.com</a>.
           </p>
         </article>
+      </div>
+
+      <div class="mt-8 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 class="text-base font-semibold text-gray-900">Legal company information</h2>
+        <div class="mt-3 grid gap-4 md:grid-cols-2 text-sm leading-relaxed text-gray-700">
+          <div>
+            <p class="font-semibold text-gray-900">3NITY DIGITAL LIMITED</p>
+            <p>Role: Platform operator and fulfillment provider</p>
+            <p>Business Registration No: 79886556</p>
+            <p>Registered address: UNIT B, 12/F, HANG SENG CAUSEWAY BAY BUILDING, 28 YEE WO STREET, CAUSEWAY BAY, HONG KONG</p>
+            <p>Email: compliance@subslush.com</p>
+          </div>
+          <div>
+            <p class="font-semibold text-gray-900">2Sneaks AB</p>
+            <p>Role: Merchant of record and contracting seller for applicable payment transactions</p>
+            <p>Swedish company registration no: 559265-0963</p>
+            <p>VAT no: SE559265096301</p>
+            <p>Registered address: Madängsvägen 5 b, 556 28 Jönköping, Sweden</p>
+            <p>Email: compliance@subslush.com</p>
+          </div>
+        </div>
       </div>
 
       <div class="mt-8 rounded-2xl border border-gray-200 bg-gradient-to-r from-purple-50 via-white to-pink-50 p-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 class="text-base font-semibold text-gray-900">Global service with transparent policies</h2>
+            <h2 class="text-base font-semibold text-gray-900">Brand relationship disclosure</h2>
             <p class="mt-1 text-sm text-gray-600">
-              We serve customers worldwide and publish clear terms for delivery, refunds, data handling, and payment security.
+              Unless explicitly stated otherwise, SubSlush is not affiliated with, endorsed by,
+              or sponsored by any third-party brand owner. All trademarks belong to their respective owners.
             </p>
           </div>
           <a

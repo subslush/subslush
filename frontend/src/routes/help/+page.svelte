@@ -33,7 +33,7 @@
     {
       tag: 'Payments',
       question: 'How can I pay?',
-      answer: 'We accept card and crypto payments. Card payments use secure hosted checkout. Crypto payments are handled via credits top-ups.',
+      answer: 'Available payment methods are shown at checkout and may vary by country, currency, risk review, and provider availability. For applicable card and regulated payment transactions, 2Sneaks AB acts as merchant of record.',
     },
     {
       tag: 'Delivery',
@@ -55,7 +55,7 @@
     {
       tag: 'Refunds',
       question: 'Can I cancel or refund an order?',
-      answer: 'If delivery has not started, we can cancel and refund. After delivery, refunds are not available because the products are digital.',
+      answer: 'If fulfillment has not started, cancellation is available with full refund. After delivery, refunds are limited because digital fulfillment may be irreversible, but remedies may still be available if a product is faulty, not as described, not delivered, or mandatory law requires it.',
       linkHref: '/returns',
       linkText: 'Read the Refund Policy',
     },
@@ -74,9 +74,9 @@
     {
       tag: 'Crypto',
       question: 'How do crypto payments work?',
-      answer: 'Top up your credits with crypto, then use those credits at checkout. We begin fulfillment once the blockchain confirmation is received.',
-      linkHref: '/dashboard/credits',
-      linkText: 'View credits',
+      answer: 'At checkout, select crypto as your payment method. We create a dedicated invoice for that specific order, and fulfillment starts after the required blockchain confirmation.',
+      linkHref: '/browse',
+      linkText: 'Start an order',
     },
     {
       tag: 'Feedback',
@@ -227,6 +227,11 @@
             <a href="mailto:hello@subslush.com" class="text-cyan-700 font-semibold hover:underline">hello@subslush.com</a>.
             Email support is available 24/7.
           </p>
+          <p class="text-xs text-gray-600 leading-relaxed">
+            Orders are sold by the SubSlush selling entity shown at checkout. For applicable card and regulated
+            payment transactions, 2Sneaks AB acts as merchant of record, while 3NITY DIGITAL LIMITED handles
+            platform operations, digital fulfillment, and support services.
+          </p>
 
           <div class="grid gap-4 sm:grid-cols-2">
             <button
@@ -336,7 +341,7 @@
             Payments and billing
           </div>
           <p class="mt-2 text-xs text-gray-600">
-            Pay by card or crypto credits. Card transactions use secure hosted checkout.
+            Available methods are shown at checkout and vary by country, currency, risk review, and provider availability.
           </p>
         </div>
         <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

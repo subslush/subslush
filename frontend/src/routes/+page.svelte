@@ -607,7 +607,7 @@
           </button>
           {#if showNewsletterDetails}
             <div class="absolute left-0 right-0 mt-2 text-xs text-gray-800 bg-white/90 border border-gray-200 rounded-lg p-3 leading-relaxed shadow">
-              By subscribing to the newsletter, you consent to SUBSLUSH.COM sending commercial communications to your email, including personalized offers available on the SubSlush platform. The administrator of your personal data is SUBSLUSH.COM. You can withdraw your consent at any time. If you withdraw your consent, it will not affect the legality of your data processed before. We process your personal data in line with the Privacy and Cookies Policy. Every new user who subscribes for the first time to the newsletter receives a one-time 12% discount code that may use once for future purchases on the subslush.com platform. The code is valid for 3 days.
+              By subscribing to the newsletter, you consent to SubSlush sending commercial communications to your email, including personalized offers available on the platform. You can withdraw consent at any time. Withdrawal does not affect prior lawful processing. Personal data is processed in line with our Privacy and Cookie Policy, including controller-role disclosures for 3NITY DIGITAL LIMITED and 2Sneaks AB where applicable. Every new user who subscribes for the first time receives a one-time 12% discount code for future purchases on subslush.com. The code is valid for 3 days.
             </div>
           {/if}
         </div>

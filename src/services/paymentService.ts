@@ -6787,7 +6787,7 @@ export class PaymentService {
       if (baseCurrency !== 'usd') {
         return {
           success: false,
-          error: 'Credit top-ups require base currency to be USD',
+          error: 'Balance payments require base currency to be USD',
         };
       }
 
@@ -6857,7 +6857,7 @@ export class PaymentService {
         if (this.isUnsupportedPairError(error)) {
           return {
             success: false,
-            error: `Currency ${payCurrency.toUpperCase()} is not supported for USD top-ups`,
+            error: `Currency ${payCurrency.toUpperCase()} is not supported for USD balance payments`,
             errorCode: 'PAYMENT_UNSUPPORTED_PAIR',
           };
         }
@@ -6931,7 +6931,7 @@ export class PaymentService {
           if (this.isUnsupportedPairError(error)) {
             return {
               success: false,
-              error: `Currency ${payCurrency.toUpperCase()} is not supported for USD top-ups`,
+              error: `Currency ${payCurrency.toUpperCase()} is not supported for USD balance payments`,
               errorCode: 'PAYMENT_UNSUPPORTED_PAIR',
             };
           }
@@ -7141,7 +7141,7 @@ export class PaymentService {
       if (this.isUnsupportedPairError(error)) {
         return {
           success: false,
-          error: `Currency ${payCurrency.toUpperCase()} is not supported for USD top-ups`,
+          error: `Currency ${payCurrency.toUpperCase()} is not supported for USD balance payments`,
           errorCode: 'PAYMENT_UNSUPPORTED_PAIR',
         };
       }

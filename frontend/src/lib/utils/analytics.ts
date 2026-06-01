@@ -33,10 +33,7 @@ type TikTokPixel = {
 const getGtag = (): GtagFunction | null => {
   if (!browser) return null;
   if (typeof window.gtag === 'function') return window.gtag;
-  window.dataLayer = window.dataLayer || [];
-  return (...args: unknown[]) => {
-    window.dataLayer?.push(args);
-  };
+  return null;
 };
 
 const getTtq = (): TikTokPixel | null => {

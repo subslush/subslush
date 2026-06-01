@@ -234,7 +234,7 @@
     <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
       <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Available credits</p>
       <p class="mt-1 text-2xl font-semibold text-gray-900">{$credits.balance ?? 0}</p>
-      <p class="mt-1 text-xs text-gray-500">Credits top-up is currently unavailable.</p>
+      <p class="mt-1 text-xs text-gray-500">Additional balance purchases are currently unavailable.</p>
     </div>
 
     <div class="mt-4">

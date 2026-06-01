@@ -244,6 +244,9 @@
                 <p class="mt-1 text-sm text-slate-200">
                   We have your payment and your order is now in processing.
                 </p>
+                {#if orderId}
+                  <p class="mt-1 text-xs text-slate-300">Order reference: {orderId}</p>
+                {/if}
               </div>
             </div>
           </div>
@@ -318,6 +321,20 @@
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Need help?</p>
                     <p class="mt-1 text-sm text-slate-700">If something looks off, contact support and include your order email.</p>
                   </div>
+                </div>
+
+                <div class="rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-600">
+                  <p class="font-semibold text-slate-900">Seller disclosure</p>
+                  <p class="mt-1">
+                    For applicable transactions, orders are sold by 2Sneaks AB (Org.nr 559265-0963, VAT SE559265096301) and fulfilled by SubSlush / 3NITY DIGITAL LIMITED.
+                  </p>
+                  <p class="mt-1">Support: hello@subslush.com · Legal/payment: compliance@subslush.com</p>
+                  <p class="mt-1">
+                    Policy links:
+                    <a href="/terms" class="underline underline-offset-2 hover:text-slate-900">Terms</a>,
+                    <a href="/returns" class="underline underline-offset-2 hover:text-slate-900">Refund Policy</a>,
+                    <a href="/privacy" class="underline underline-offset-2 hover:text-slate-900">Privacy Policy</a>
+                  </p>
                 </div>
               </div>
             </aside>

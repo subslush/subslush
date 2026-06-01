@@ -180,13 +180,13 @@
         {#if totalCost > userBalance}
           <div class="bg-red-50 border border-red-200 rounded-lg p-3">
             <p class="text-sm text-red-800">
-              Insufficient credits. You need {totalCost - userBalance} more credits to complete this purchase.
+              Insufficient balance. You need {totalCost - userBalance} more to complete this purchase.
             </p>
             <a
-              href="/dashboard/credits"
+              href="/checkout"
               class="text-sm text-red-600 underline hover:text-red-700"
             >
-              Add more credits
+              Use checkout payment options
             </a>
           </div>
         {/if}

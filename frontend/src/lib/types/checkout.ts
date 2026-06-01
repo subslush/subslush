@@ -77,6 +77,7 @@ export interface CheckoutCardSessionRequest {
   funding_preference?: 'paypal' | 'applepay' | 'googlepay' | 'card' | null;
   initiate_checkout_event_id?: string | null;
   add_payment_info_event_id?: string | null;
+  legal_consent?: CheckoutLegalConsentInput | null;
 }
 
 export interface CheckoutCardSessionResponse {
@@ -121,6 +122,7 @@ export interface CheckoutCreditsCompleteRequest {
   initiate_checkout_event_id?: string | null;
   add_payment_info_event_id?: string | null;
   purchase_event_id?: string | null;
+  legal_consent?: CheckoutLegalConsentInput | null;
 }
 
 export interface CheckoutCreditsCompleteResponse {
@@ -141,6 +143,15 @@ export interface CheckoutNowPaymentsInvoiceRequest {
   cancel_url?: string | null;
   initiate_checkout_event_id?: string | null;
   add_payment_info_event_id?: string | null;
+  legal_consent?: CheckoutLegalConsentInput | null;
+}
+
+export interface CheckoutLegalConsentInput {
+  immediate_fulfillment_consent: boolean;
+  terms_policy_consent: boolean;
+  consent_timestamp?: string | null;
+  checkout_session_key_snapshot?: string | null;
+  consent_source?: string | null;
 }
 
 export interface CheckoutNowPaymentsInvoiceResponse {

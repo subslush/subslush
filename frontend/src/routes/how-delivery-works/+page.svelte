@@ -40,6 +40,11 @@
         Delivery depends on the product type. The sections below explain the expected flow, timing,
         and where to find your delivered access.
       </p>
+      <p class="mt-3 max-w-3xl text-xs leading-relaxed text-gray-600">
+        Orders are sold by the SubSlush selling entity shown at checkout. For applicable card and
+        regulated payment transactions, 2Sneaks AB acts as merchant of record. Platform operations,
+        digital fulfillment, and support services may be handled by 3NITY DIGITAL LIMITED.
+      </p>
       <div class="mt-6 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm">
         <BellRing size={14} class="text-cyan-600" aria-hidden="true" />
         You always receive an email notification after delivery is completed.
@@ -103,6 +108,9 @@
             <h2 class="text-base font-semibold text-gray-900">Need help with an order?</h2>
             <p class="mt-1 text-sm text-gray-600">
               Contact support and include your order ID for faster verification and fulfillment assistance.
+            </p>
+            <p class="mt-1 text-xs text-gray-600">
+              General support: hello@subslush.com · Legal/payment enquiries: compliance@subslush.com
             </p>
           </div>
           <a

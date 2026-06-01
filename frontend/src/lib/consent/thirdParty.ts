@@ -1,5 +1,6 @@
 import { browser } from '$app/environment';
 import { trackPageView } from '$lib/utils/analytics.js';
+import { consentStore, type ConsentState } from '$lib/stores/consent.js';
 
 const ANALYTICS_ID = 'G-VQ0N792RNT';
 const TIKTOK_PIXEL_ID = 'D62CLGJC77U8OPSUBNLG';
@@ -10,7 +11,7 @@ let marketingLoaded = false;
 let supportLoaded = false;
 let analyticsScheduled = false;
 let marketingScheduled = false;
-let supportScheduled = false;
+let consentWatcherBound = false;
 
 const deferAfterLoad = (fn: () => void): void => {
   if (!browser) return;
@@ -44,15 +45,6 @@ const scheduleMarketing = (): void => {
   deferAfterLoad(() => {
     marketingScheduled = false;
     initTikTokPixel();
-  });
-};
-
-const scheduleSupport = (): void => {
-  if (supportLoaded || supportScheduled) return;
-  supportScheduled = true;
-  deferAfterLoad(() => {
-    supportScheduled = false;
-    initCrisp();
   });
 };
 
@@ -169,7 +161,15 @@ export const openCrispChat = (): void => {
 
 export const initConsentSideEffects = (): void => {
   if (!browser) return;
-  scheduleSupport();
-  scheduleAnalytics();
-  scheduleMarketing();
+  if (consentWatcherBound) return;
+  consentWatcherBound = true;
+
+  consentStore.subscribe((state: ConsentState | null) => {
+    if (state?.preferences.analytics) {
+      scheduleAnalytics();
+    }
+    if (state?.preferences.marketing) {
+      scheduleMarketing();
+    }
+  });
 };

@@ -202,7 +202,7 @@
   $: hasEnoughCredits = creditsRequired !== null && resolvedCredits >= creditsRequired;
   $: creditsPurchaseBlocked = creditsQuote?.canPurchase === false;
   $: creditsCostLabel = creditsRequired ?? totalCost;
-  $: topUpHref = $user?.id ? ROUTES.CREDITS : ROUTES.AUTH.REGISTER;
+  $: balancePageHref = $user?.id ? ROUTES.CREDITS : ROUTES.AUTH.REGISTER;
   $: currentCheckoutKey = buildCheckoutKey({
     variantId: selectedPlan?.variant_id,
     duration: selectedDuration,
@@ -1311,7 +1311,7 @@
                   class="mt-1 h-4 w-4 text-slate-900 focus:ring-slate-300"
                 />
                 <div>
-                  <p class="text-sm font-semibold text-slate-900">Pay with crypto (credits)</p>
+                  <p class="text-sm font-semibold text-slate-900">Pay with balance</p>
                   <p class="text-xs text-slate-500">
                     Use your available balance.
                   </p>
@@ -1329,14 +1329,14 @@
                 on:click={handleCreditsAuthNotice}
               >
                 <div>
-                  <p class="text-sm font-semibold text-slate-900">Pay with crypto (credits)</p>
+                  <p class="text-sm font-semibold text-slate-900">Pay with balance</p>
                   <p class="text-xs text-slate-500">Requires an account.</p>
                 </div>
               </button>
             {:else}
               <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
                 <p class="text-xs text-slate-600">
-                  To pay with crypto (credits), please
+                  To pay with balance, please
                   <a href={ROUTES.AUTH.LOGIN} class="font-semibold text-slate-900 underline">login</a>
                   or
                   <a href={ROUTES.AUTH.REGISTER} class="font-semibold text-slate-900 underline">register</a>
@@ -1370,7 +1370,7 @@
               <div class="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
                 <AlertCircle class="mt-0.5 h-4 w-4" />
                 <p class="text-xs">
-                  You don't have enough credits. <a href={topUpHref} class="font-semibold underline">Top up</a> to continue.
+                  You don't have enough credits. <a href={balancePageHref} class="font-semibold underline">Add balance</a> to continue.
                 </p>
               </div>
             {/if}

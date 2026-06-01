@@ -7,16 +7,6 @@
   import Footer from '$lib/components/home/Footer.svelte';
   import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
   import { resolveLogoKey, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
-  import visaLogo from '$lib/assets/visa.svg';
-  import mastercardIcon from '$lib/assets/mastercard-icon.svg';
-  import paypalIcon from '$lib/assets/paypal-icon.svg';
-  import amexLogo from '$lib/assets/amex.webp';
-  import discoverLogo from '$lib/assets/discover.webp';
-  import btcIcon from '$lib/assets/bitcoin-icon.svg';
-  import ethIcon from '$lib/assets/eth-icon.svg';
-  import ltcIcon from '$lib/assets/litecoin-icon.svg';
-  import usdtLogo from '$lib/assets/usdt.svg';
-  import usdcLogo from '$lib/assets/usdc.svg';
   import { cart } from '$lib/stores/cart.js';
   import { cartSidebar } from '$lib/stores/cartSidebar.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
@@ -985,48 +975,6 @@
             </button>
           </div>
 
-          <div class="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={visaLogo} alt="Visa" class="h-4 w-auto object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img
-                src={mastercardIcon}
-                alt="Mastercard"
-                class="h-6 w-auto object-contain"
-                loading="lazy"
-              />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img
-                src={paypalIcon}
-                alt="PayPal"
-                class="h-5 w-auto object-contain"
-                loading="lazy"
-              />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={amexLogo} alt="American Express" class="h-8 w-auto object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={discoverLogo} alt="Discover" class="h-8 w-auto object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={btcIcon} alt="Bitcoin" class="h-5 w-auto object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={ethIcon} alt="Ethereum" class="h-6 w-auto object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={ltcIcon} alt="Litecoin" class="h-5 w-auto object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={usdtLogo} alt="USDT" class="h-5 w-5 object-contain" loading="lazy" />
-            </span>
-            <span class="flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-2">
-              <img src={usdcLogo} alt="USDC" class="h-5 w-5 object-contain" loading="lazy" />
-            </span>
-          </div>
           <div class="mt-4 space-y-2 border-t border-slate-200 pt-3">
             <details class="group rounded-xl border border-slate-200 bg-white">
               <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5">
@@ -1041,7 +989,7 @@
               <p class="px-3 pb-3 text-xs text-slate-600">
                 Every order is manually fulfilled through a fair queue. Most orders are delivered
                 within 24 hours, and in rare cases delivery can take up to 72 hours. You can
-                request cancellation before delivery.
+                request cancellation before fulfillment begins for a full refund.
               </p>
             </details>
             <details class="group rounded-xl border border-slate-200 bg-white">

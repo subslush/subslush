@@ -561,7 +561,7 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
             type: 'subscription_renewal_failed',
             title: 'Auto-renewal failed',
             message: needsTopUp
-              ? `We couldn't auto-renew your ${serviceLabel} subscription (${subscriptionShort}) because your credit balance is too low. Please top up before ${endDateLabel} to avoid expiration. We'll retry automatically.`
+              ? `We couldn't auto-renew your ${serviceLabel} subscription (${subscriptionShort}) because your credit balance is too low. Please add balance before ${endDateLabel} to avoid expiration. We'll retry automatically.`
               : `We couldn't auto-renew your ${serviceLabel} subscription (${subscriptionShort}). Please ensure you have enough credits before ${endDateLabel} to avoid expiration. We'll retry automatically.`,
             metadata: {
               subscription_id: subscriptionId,

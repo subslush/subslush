@@ -8,13 +8,10 @@
 <!-- Trust Bar -->
 <TrustBar />
 
-<footer class="bg-gray-900 text-gray-300 py-12">
+<footer class="bg-gray-900 text-gray-300 py-10">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <!-- Top Section -->
-    <div class="grid grid-cols-1 md:grid-cols-[1.6fr_1fr_1fr] gap-8 mb-8">
-      <!-- Company Info -->
+    <div class="grid grid-cols-1 md:grid-cols-[1.5fr_1fr_1fr] gap-8 mb-7">
       <div>
-        <!-- SubSlush Text Branding (NOT logo image) -->
         <div class="mb-4 flex items-center gap-2.5">
           <img
             src={subslushLogoIcon}
@@ -30,32 +27,29 @@
           </span>
         </div>
 
-        <div class="mb-4 font-serif text-[13px] leading-6 text-gray-400">
-          <p class="font-semibold tracking-[0.02em] text-gray-300">3NITY DIGITAL LIMITED</p>
-          <p>Address:</p>
-          <p>UNIT B, 12/F, HANG SENG CAUSEWAY BAY BUILDING, 28 YEE WO STREET,</p>
-          <p>CAUSEWAY BAY, HONG KONG</p>
-          <p>Business registration number:</p>
-          <p>79886556</p>
-        </div>
-
-        <div class="text-sm">
-          <p class="font-medium text-gray-300 mb-2">
-            hello@subslush.com
+        <div class="text-[13px] leading-6 text-gray-400 space-y-2.5">
+          <p class="text-gray-300">
+            SubSlush is operated by <span class="font-semibold">3NITY DIGITAL LIMITED</span> and
+            <span class="font-semibold">2Sneaks AB</span>.
           </p>
-          <button
-            type="button"
-            class="text-gray-400 transition-colors hover:text-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-700/40 rounded"
-            on:click={openCrispChat}
-          >
-            Live chat support
-          </button>
+          <p>
+            3NITY DIGITAL LIMITED · Platform operator &amp; fulfillment provider · BRN 79886556
+          </p>
+          <p>
+            2Sneaks AB · Merchant of record for applicable transactions · Org.nr 559265-0963 · VAT SE559265096301
+          </p>
+          <p>
+            Full legal company details are available in our
+            <a href="/terms" class="underline underline-offset-2 hover:text-gray-200">Terms and Conditions</a>.
+          </p>
+          <p class="text-gray-300">
+            Customer support: hello@subslush.com · Legal/payment: compliance@subslush.com
+          </p>
         </div>
       </div>
 
-      <!-- Support -->
       <div>
-        <h3 class="font-semibold text-white mb-4">Support</h3>
+        <h3 class="font-semibold text-white mb-4">Support &amp; legal</h3>
         <ul class="space-y-2 text-sm">
           <li><a href="/about" class="hover:text-white transition-colors">About us</a></li>
           <li><a href="/help" class="hover:text-white transition-colors">Help</a></li>
@@ -64,9 +58,15 @@
           <li><a href="/privacy" class="hover:text-white transition-colors">Privacy and cookie policy</a></li>
           <li><a href="/returns" class="hover:text-white transition-colors">Refund policy</a></li>
         </ul>
+        <button
+          type="button"
+          class="mt-3 text-sm text-gray-400 transition-colors hover:text-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-700/40 rounded"
+          on:click={openCrispChat}
+        >
+          Live chat support
+        </button>
       </div>
 
-      <!-- Social -->
       <div>
         <h3 class="font-semibold text-white mb-4">Follow us</h3>
         <div class="flex flex-wrap gap-3">
@@ -92,20 +92,12 @@
       </div>
     </div>
 
-    <!-- Bottom Section -->
-    <div class="border-t border-gray-800 pt-8 text-center">
+    <div class="border-t border-gray-800 pt-6 space-y-2 text-center">
       <p class="text-sm text-gray-400">
         Copyright © SubSlush, 2026. All rights reserved.
       </p>
-      <p class="text-xs text-gray-500 mt-2">SubSlush is a trading name of 3NITY DIGITAL LIMITED.</p>
       <p class="text-xs text-gray-500 mt-2">
-        Unless explicitly stated otherwise, SubSlush is not affiliated with, endorsed by, or sponsored by any brand owner.
-      </p>
-      <p class="text-xs text-gray-500 mt-4">
-        Using the SUBSLUSH.COM platform constitutes acceptance of the SubSlush
-        <a href="/terms" class="underline underline-offset-2 hover:text-gray-300">Terms and Conditions</a>.
-        Information on how we process your personal data can be found in the
-        <a href="/privacy" class="underline underline-offset-2 hover:text-gray-300">Privacy and Cookies Policy</a>.
+        Unless explicitly stated otherwise, SubSlush is not affiliated with, endorsed by, or sponsored by any third-party brand owner.
       </p>
     </div>
   </div>
