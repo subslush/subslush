@@ -99,6 +99,12 @@ async function startServer(): Promise<void> {
       throw new Error('Failed to connect to database');
     }
 
+    if (env.PAYOP_ENABLED) {
+      server.log.info('Validating Payop database compatibility...');
+      await paymentService.validatePayopSchemaCompatibility();
+      server.log.info('Payop database compatibility validated successfully');
+    }
+
     // Attempt Redis connection (optional in development)
     try {
       await redisClient.connect();

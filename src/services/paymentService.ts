@@ -14,6 +14,11 @@ import { paymentEventRepository } from './paymentEventRepository';
 import { nowPaymentsProvider } from './payments/nowPaymentsProvider';
 import { stripeProvider } from './payments/stripeProvider';
 import { pay4bitProvider } from './payments/pay4bitProvider';
+import {
+  payopProvider,
+  PayopProviderError,
+  type PayopAvailableMethod,
+} from './payments/payopProvider';
 import { PayPalProviderError, paypalProvider } from './payments/paypalProvider';
 import { Logger } from '../utils/logger';
 import { paymentMonitoringService } from './paymentMonitoringService';
@@ -63,6 +68,12 @@ import {
 import { ensureRenewalTask } from './renewalNotificationService';
 import { orderComplianceEvidenceService } from './orderComplianceEvidenceService';
 import type { OrderItem, Order, OrderWithItems } from '../types/order';
+import {
+  buildPayopMethodQuotes,
+  findPayopMethodQuote,
+  resolvePayopCountryOptions,
+  type PayopMethodQuote,
+} from './payments/payopQuoteService';
 
 interface StripeOrderContext {
   orderId?: string;
@@ -123,6 +134,91 @@ type PayPalWalletFailureDetails = {
   processorResponseMessage: string | null;
   walletFundingSource: WalletFundingSource | null;
 };
+
+type PayopCheckoutIpnPayload = {
+  invoice?: {
+    id?: string;
+    status?: number;
+    txid?: string;
+    metadata?: Record<string, unknown> | null;
+  } | null;
+  transaction?: {
+    id?: string;
+    state?: number;
+    order?: {
+      id?: string;
+    } | null;
+    error?: {
+      message?: string | null;
+      code?: string | null;
+    } | null;
+  } | null;
+};
+
+type PayopMethodCacheEntry = {
+  methods: PayopAvailableMethod[];
+  fetchedAt: number;
+  expiresAt: number;
+  lkgExpiresAt: number;
+};
+
+type ConstraintDefinitionRow = {
+  conname: string;
+  definition: string;
+};
+
+const PAYOP_PROVIDER_CONSTRAINTS = [
+  {
+    name: 'payments_provider_check',
+    label: 'payments.provider',
+  },
+  {
+    name: 'credit_transactions_payment_provider_check',
+    label: 'credit_transactions.payment_provider',
+  },
+  {
+    name: 'orders_payment_provider_check',
+    label: 'orders.payment_provider',
+  },
+] as const;
+
+const constraintDefinitionSupportsProvider = (
+  definition: string | null | undefined,
+  provider: string
+): boolean => {
+  if (typeof definition !== 'string') {
+    return false;
+  }
+  return definition.toLowerCase().includes(`'${provider.toLowerCase()}'`);
+};
+
+const isPayopProviderConstraintFailure = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as {
+    code?: string;
+    constraint?: string;
+  };
+
+  return (
+    candidate.code === '23514' &&
+    PAYOP_PROVIDER_CONSTRAINTS.some(({ name }) => candidate.constraint === name)
+  );
+};
+
+class PayopSchemaCompatibilityError extends Error {
+  readonly missingTargets: string[];
+
+  constructor(missingTargets: string[]) {
+    super(
+      `Payop database constraints are missing support for: ${missingTargets.join(', ')}. Apply database/migrations/20260604_120000_add_payop_provider_constraints.sql before enabling Payop.`
+    );
+    this.name = 'PayopSchemaCompatibilityError';
+    this.missingTargets = missingTargets;
+  }
+}
 
 const NETWORK_SUFFIXES: Array<{ suffix: string; label: string }> = [
   { suffix: 'trc20', label: 'TRC20' },
@@ -186,6 +282,14 @@ const normalizeEmail = (value: string | null | undefined): string | null => {
   return normalized.length > 0 ? normalized : null;
 };
 
+const normalizeString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
 export class PaymentService {
   private readonly CACHE_PREFIX = 'payment:';
   private readonly PAYMENT_CACHE_TTL = 300; // 5 minutes
@@ -205,6 +309,14 @@ export class PaymentService {
     'ENETUNREACH',
   ]);
   private readonly PAY4BIT_CALLBACK_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
+  private readonly PAYOP_ALLOWED_IPS = new Set([
+    '18.199.249.46',
+    '35.158.36.143',
+    '3.125.109.58',
+    '3.127.103.117',
+  ]);
+  private payopMethodCache: PayopMethodCacheEntry | null = null;
+  private payopSchemaCompatibilityValidated = false;
 
   private mapNowPaymentsStatus(status: PaymentStatus): UnifiedPaymentStatus {
     switch (status) {
@@ -3409,6 +3521,189 @@ export class PaymentService {
     };
   }
 
+  private normalizePayopCountryCode(value?: string | null): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    const normalized = value.trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(normalized)) {
+      return null;
+    }
+    return normalized === 'UK' ? 'GB' : normalized;
+  }
+
+  private normalizeIpAddress(value?: string | null): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    const normalized = value.trim();
+    if (!normalized) {
+      return null;
+    }
+    if (normalized.startsWith('::ffff:')) {
+      return normalized.slice('::ffff:'.length);
+    }
+    return normalized;
+  }
+
+  private isAllowedPayopIp(value?: string | null): boolean {
+    const normalized = this.normalizeIpAddress(value);
+    return normalized ? this.PAYOP_ALLOWED_IPS.has(normalized) : false;
+  }
+
+  async validatePayopSchemaCompatibility(options?: {
+    force?: boolean;
+  }): Promise<void> {
+    if (!env.PAYOP_ENABLED) {
+      return;
+    }
+
+    if (this.payopSchemaCompatibilityValidated && !options?.force) {
+      return;
+    }
+
+    const pool = getDatabasePool();
+    const result = await pool.query<ConstraintDefinitionRow>(
+      `
+        SELECT
+          conname,
+          pg_get_constraintdef(oid) AS definition
+        FROM pg_constraint
+        WHERE conname = ANY($1::text[])
+      `,
+      [PAYOP_PROVIDER_CONSTRAINTS.map(constraint => constraint.name)]
+    );
+
+    const definitions = new Map<string, string>(
+      result.rows.map(row => [row.conname, row.definition])
+    );
+    const missingTargets = PAYOP_PROVIDER_CONSTRAINTS.filter(
+      constraint =>
+        !constraintDefinitionSupportsProvider(
+          definitions.get(constraint.name),
+          'payop'
+        )
+    ).map(constraint => constraint.label);
+
+    if (missingTargets.length > 0) {
+      this.payopSchemaCompatibilityValidated = false;
+      throw new PayopSchemaCompatibilityError(missingTargets);
+    }
+
+    this.payopSchemaCompatibilityValidated = true;
+  }
+
+  private mapPayopTransactionState(state: number | null | undefined): {
+    status: UnifiedPaymentStatus;
+    providerStatus: string;
+  } {
+    switch (state) {
+      case 2:
+        return { status: 'succeeded', providerStatus: 'accepted' };
+      case 3:
+      case 5:
+        return { status: 'failed', providerStatus: 'failed' };
+      case 15:
+        return { status: 'expired', providerStatus: 'timeout' };
+      case 1:
+      case 4:
+      case 9:
+        return { status: 'processing', providerStatus: `state_${state}` };
+      default:
+        return {
+          status: 'pending',
+          providerStatus:
+            typeof state === 'number' ? `state_${state}` : 'unknown',
+        };
+    }
+  }
+
+  private async getPayopAvailableMethods(): Promise<PayopAvailableMethod[]> {
+    const now = Date.now();
+    const cached = this.payopMethodCache;
+    if (cached && cached.expiresAt > now) {
+      return cached.methods;
+    }
+
+    try {
+      const methods = await payopProvider.listAvailablePaymentMethods(
+        env.PAYOP_PROJECT_ID
+      );
+      this.payopMethodCache = {
+        methods,
+        fetchedAt: now,
+        expiresAt: now + env.PAYOP_METHOD_CACHE_TTL_SECONDS * 1000,
+        lkgExpiresAt: now + env.PAYOP_METHOD_LKG_TTL_SECONDS * 1000,
+      };
+      return methods;
+    } catch (error) {
+      if (cached && cached.lkgExpiresAt > now) {
+        Logger.warn('Falling back to cached Payop method list', {
+          fetchedAt: new Date(cached.fetchedAt).toISOString(),
+          error,
+        });
+        return cached.methods;
+      }
+      throw error;
+    }
+  }
+
+  private buildPayopReturnUrls(orderId: string): {
+    successUrl: string;
+    failUrl: string;
+  } | null {
+    const baseUrl = this.resolveAppBaseUrl();
+    if (!baseUrl) {
+      return null;
+    }
+
+    const encodedOrderId = encodeURIComponent(orderId);
+    return {
+      successUrl: `${baseUrl}/checkout/payop?status=success&order_id=${encodedOrderId}&invoice_id={{invoiceId}}&txid={{txid}}`,
+      failUrl: `${baseUrl}/checkout/payop?status=fail&order_id=${encodedOrderId}&invoice_id={{invoiceId}}&txid={{txid}}`,
+    };
+  }
+
+  private buildPayopPaymentEventId(params: {
+    invoiceId: string;
+    txid?: string | null;
+    state?: number | null;
+  }): string {
+    return [
+      params.invoiceId.trim(),
+      params.txid?.trim() || 'no_txid',
+      typeof params.state === 'number' ? params.state.toString() : 'no_state',
+    ].join(':');
+  }
+
+  private buildPayopMethodOrderMetadata(params: {
+    order: OrderWithItems;
+    selectedCountry: string | null;
+    detectedCountry: string | null;
+    selectedQuote: PayopMethodQuote;
+  }): Record<string, unknown> {
+    const metadata =
+      params.order.metadata && typeof params.order.metadata === 'object'
+        ? { ...(params.order.metadata as Record<string, unknown>) }
+        : {};
+
+    metadata['payment_country'] = params.selectedCountry;
+    metadata['detected_country'] = params.detectedCountry;
+    metadata['payop_method_id'] = params.selectedQuote.methodId;
+    metadata['payop_method_title'] = params.selectedQuote.title;
+    metadata['payop_method_type'] = params.selectedQuote.type;
+    metadata['payop_processing_currency'] =
+      params.selectedQuote.processingCurrency;
+    metadata['payop_processing_subtotal_cents'] =
+      params.selectedQuote.processingSubtotalCents;
+    metadata['payop_processing_fee_cents'] =
+      params.selectedQuote.processingFeeCents;
+    metadata['payop_processing_total_cents'] =
+      params.selectedQuote.processingTotalCents;
+
+    return metadata;
+  }
+
   private mapPayPalOrderStatus(status: string | null | undefined): {
     status: UnifiedPaymentStatus;
     providerStatus: string;
@@ -4586,6 +4881,139 @@ export class PaymentService {
     }
   }
 
+  private async processPayopOrderPayment(params: {
+    orderId: string;
+    invoiceId: string;
+    payment: UnifiedPayment;
+  }): Promise<boolean> {
+    await paymentRepository.updateStatusByProviderPaymentId(
+      'payop',
+      params.invoiceId,
+      'succeeded',
+      'accepted',
+      {
+        ...(params.payment.metadata || {}),
+        payop_invoice_id: params.invoiceId,
+        payop_last_capture_at: new Date().toISOString(),
+      }
+    );
+
+    const lockClient = await getDatabasePool().connect();
+    let lockAcquired = false;
+    try {
+      await lockClient.query('SELECT pg_advisory_lock(hashtext($1))', [
+        params.orderId,
+      ]);
+      lockAcquired = true;
+    } catch (error) {
+      Logger.error('Payop capture lock acquisition failed', {
+        orderId: params.orderId,
+        invoiceId: params.invoiceId,
+        error,
+      });
+      lockClient.release();
+      return false;
+    }
+
+    try {
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        Logger.error('Payop order not found while processing payment', {
+          orderId: params.orderId,
+          invoiceId: params.invoiceId,
+        });
+        return false;
+      }
+
+      if (['in_process', 'paid', 'delivered'].includes(order.status)) {
+        return true;
+      }
+
+      if (!['pending_payment', 'cart'].includes(order.status)) {
+        Logger.warn('Payop success ignored for non-payable order', {
+          orderId: params.orderId,
+          invoiceId: params.invoiceId,
+          status: order.status,
+        });
+        return false;
+      }
+
+      const updateResult = await getDatabasePool().query(
+        `UPDATE orders
+         SET status = 'in_process',
+             status_reason = 'payment_succeeded',
+             payment_provider = 'payop',
+             payment_reference = $1,
+             checkout_mode = 'session',
+             updated_at = NOW()
+         WHERE id = $2
+           AND status IN ('pending_payment', 'cart')
+         RETURNING id`,
+        [params.invoiceId, params.orderId]
+      );
+
+      if (updateResult.rows.length === 0) {
+        return true;
+      }
+
+      if (order.items.length === 1) {
+        const singleItem = order.items[0]?.id ?? null;
+        if (singleItem) {
+          await getDatabasePool().query(
+            `UPDATE payments
+             SET order_item_id = COALESCE(order_item_id, $2),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [params.payment.id, singleItem]
+          );
+        }
+      }
+
+      await this.createPaymentItemAllocations({
+        paymentRecordId: params.payment.id,
+        orderItems: order.items,
+      });
+
+      await this.createSubscriptionsForOrder({
+        order,
+        orderItems: order.items,
+        renewalMethod: null,
+      });
+
+      await couponService.finalizeRedemptionForOrder(params.orderId);
+
+      try {
+        const confirmationResult =
+          await orderService.sendOrderPaymentConfirmationEmail(params.orderId);
+        if (
+          !confirmationResult.success &&
+          !['already_sent', 'renewal_order'].includes(
+            confirmationResult.reason ?? ''
+          )
+        ) {
+          Logger.warn('Failed to send order payment confirmation email', {
+            orderId: params.orderId,
+            reason: confirmationResult.reason,
+          });
+        }
+      } catch (error) {
+        Logger.warn('Order payment confirmation email call failed', {
+          orderId: params.orderId,
+          error,
+        });
+      }
+
+      return true;
+    } finally {
+      if (lockAcquired) {
+        await lockClient.query('SELECT pg_advisory_unlock(hashtext($1))', [
+          params.orderId,
+        ]);
+      }
+      lockClient.release();
+    }
+  }
+
   async createPayPalCheckoutSession(params: {
     orderId: string;
     successUrl?: string | null;
@@ -5242,6 +5670,487 @@ export class PaymentService {
     }
   }
 
+  async getPayopCheckoutOptions(params: {
+    orderId: string;
+    selectedCountry?: string | null;
+    detectedCountry?: string | null;
+  }): Promise<
+    | {
+        success: true;
+        orderId: string;
+        orderStatus: string;
+        displayCurrency: string;
+        displayTotalCents: number;
+        detectedCountry: string | null;
+        selectedCountry: string | null;
+        countryOptions: string[];
+        selectedMethodId: number | null;
+        methods: PayopMethodQuote[];
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      if (!env.PAYOP_ENABLED) {
+        return { success: false, error: 'payment_provider_unavailable' };
+      }
+
+      await this.validatePayopSchemaCompatibility();
+
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      if (!['cart', 'pending_payment'].includes(order.status)) {
+        return { success: false, error: 'order_not_pending' };
+      }
+
+      if (order.payment_provider && order.payment_provider !== 'payop') {
+        return { success: false, error: 'payment_provider_mismatch' };
+      }
+
+      if (!order.items || order.items.length === 0) {
+        return { success: false, error: 'order_missing_items' };
+      }
+
+      const orderMetadata =
+        order.metadata && typeof order.metadata === 'object'
+          ? (order.metadata as Record<string, unknown>)
+          : {};
+      const detectedCountry =
+        this.normalizePayopCountryCode(params.detectedCountry) ?? null;
+      const selectedCountry =
+        this.normalizePayopCountryCode(params.selectedCountry) ??
+        this.normalizePayopCountryCode(
+          orderMetadata['payment_country'] as string | null | undefined
+        ) ??
+        detectedCountry;
+
+      const liveMethods = await this.getPayopAvailableMethods();
+      const methods = await buildPayopMethodQuotes({
+        order: order as OrderWithItems,
+        selectedCountry,
+        detectedCountry,
+        liveMethods,
+      });
+
+      const latestPayment = await paymentRepository.findLatestByOrderId(
+        'payop',
+        order.id,
+        'subscription'
+      );
+      const selectedMethodId =
+        parsePositiveInt(orderMetadata['payop_method_id']) ??
+        parsePositiveInt(latestPayment?.metadata?.['payop_method_id']) ??
+        null;
+      const displayCurrency =
+        normalizeCurrencyCode(
+          typeof orderMetadata['display_currency'] === 'string'
+            ? orderMetadata['display_currency']
+            : null
+        ) ||
+        normalizeCurrencyCode(order.currency) ||
+        'USD';
+      const displayTotalCents =
+        parseNonNegativeInt(orderMetadata['display_total_cents']) ??
+        parseNonNegativeInt(order.total_cents) ??
+        0;
+
+      return {
+        success: true,
+        orderId: order.id,
+        orderStatus: order.status,
+        displayCurrency,
+        displayTotalCents,
+        detectedCountry,
+        selectedCountry,
+        countryOptions: resolvePayopCountryOptions({
+          detectedCountry,
+          selectedCountry,
+        }),
+        selectedMethodId,
+        methods,
+      };
+    } catch (error) {
+      Logger.error('Failed to resolve Payop checkout options', {
+        orderId: params.orderId,
+        error,
+      });
+
+      if (error instanceof PayopProviderError) {
+        if (error.statusCode === 429) {
+          return { success: false, error: 'payment_provider_rate_limited' };
+        }
+        if ([401, 403].includes(error.statusCode)) {
+          return { success: false, error: 'payment_provider_misconfigured' };
+        }
+      }
+
+      if (
+        error instanceof PayopSchemaCompatibilityError ||
+        isPayopProviderConstraintFailure(error)
+      ) {
+        return { success: false, error: 'payment_provider_misconfigured' };
+      }
+
+      return { success: false, error: 'payop_options_failed' };
+    }
+  }
+
+  async createPayopCheckoutSession(params: {
+    orderId: string;
+    methodId: number;
+    selectedCountry?: string | null;
+    detectedCountry?: string | null;
+    buyerEmail?: string | null;
+    buyerName?: string | null;
+    buyerPhone?: string | null;
+  }): Promise<
+    | {
+        success: true;
+        orderId: string;
+        sessionId: string;
+        sessionUrl: string;
+        paymentId: string;
+        paymentProvider: 'payop';
+        methodQuote: PayopMethodQuote;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      if (!env.PAYOP_ENABLED) {
+        return { success: false, error: 'payment_provider_unavailable' };
+      }
+
+      await this.validatePayopSchemaCompatibility();
+
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      if (!['cart', 'pending_payment'].includes(order.status)) {
+        return { success: false, error: 'order_not_pending' };
+      }
+
+      if (order.payment_provider && order.payment_provider !== 'payop') {
+        return { success: false, error: 'payment_provider_mismatch' };
+      }
+
+      if (!order.items || order.items.length === 0) {
+        return { success: false, error: 'order_missing_items' };
+      }
+
+      const ownAccountValidation = await this.validateOwnAccountSelectionData(
+        order as OrderWithItems
+      );
+      if (!ownAccountValidation.valid) {
+        Logger.warn(
+          'Missing own-account credentials while creating Payop checkout session',
+          {
+            orderId: order.id,
+            item: ownAccountValidation.missingItemLabel,
+          }
+        );
+        return { success: false, error: 'own_account_credentials_required' };
+      }
+
+      const orderMetadata =
+        order.metadata && typeof order.metadata === 'object'
+          ? (order.metadata as Record<string, unknown>)
+          : {};
+      const detectedCountry =
+        this.normalizePayopCountryCode(params.detectedCountry) ?? null;
+      const selectedCountry =
+        this.normalizePayopCountryCode(params.selectedCountry) ??
+        this.normalizePayopCountryCode(
+          orderMetadata['payment_country'] as string | null | undefined
+        ) ??
+        detectedCountry;
+
+      const liveMethods = await this.getPayopAvailableMethods();
+      const methodQuotes = await buildPayopMethodQuotes({
+        order: order as OrderWithItems,
+        selectedCountry,
+        detectedCountry,
+        liveMethods,
+      });
+      const selectedQuote = findPayopMethodQuote(methodQuotes, params.methodId);
+      if (!selectedQuote) {
+        return { success: false, error: 'invalid_payment_method' };
+      }
+
+      const returnUrls = this.buildPayopReturnUrls(order.id);
+      if (!returnUrls) {
+        return { success: false, error: 'missing_app_base_url' };
+      }
+
+      const payerEmail =
+        normalizeEmail(params.buyerEmail) ??
+        normalizeEmail(order.contact_email ?? null);
+      if (!payerEmail) {
+        return { success: false, error: 'payer_email_required' };
+      }
+
+      const processingAmount = payopProvider.formatAmountFromCents(
+        selectedQuote.processingTotalCents
+      );
+      const description = this.buildPay4bitOrderDescription(
+        order as OrderWithItems
+      );
+      const signature = payopProvider.generateInvoiceSignature({
+        amount: processingAmount,
+        currency: selectedQuote.processingCurrency,
+        orderId: order.id,
+      });
+
+      const payloadMetadata = {
+        orderId: order.id,
+        checkoutSessionKey: order.checkout_session_key ?? null,
+        pricingSnapshotId: order.pricing_snapshot_id ?? null,
+        displayCurrency:
+          typeof orderMetadata['display_currency'] === 'string'
+            ? orderMetadata['display_currency']
+            : (order.currency ?? null),
+        displayTotalCents:
+          parseNonNegativeInt(orderMetadata['display_total_cents']) ??
+          parseNonNegativeInt(order.total_cents),
+        paymentCountry: selectedCountry,
+        detectedCountry,
+        payopMethodId: selectedQuote.methodId,
+        payopMethodTitle: selectedQuote.title,
+        processingCurrency: selectedQuote.processingCurrency,
+        processingSubtotalCents: selectedQuote.processingSubtotalCents,
+        processingFeeCents: selectedQuote.processingFeeCents,
+        processingTotalCents: selectedQuote.processingTotalCents,
+      };
+
+      const invoice = await payopProvider.createInvoice({
+        publicKey: env.PAYOP_PUBLIC_KEY,
+        order: {
+          id: order.id,
+          amount: processingAmount,
+          currency: selectedQuote.processingCurrency,
+          description,
+          items: selectedQuote.items.map(item => ({
+            id: item.orderItemId,
+            name: item.label,
+            price: payopProvider.formatAmountFromCents(item.totalCents),
+          })),
+        },
+        payer: {
+          email: payerEmail,
+          ...(normalizeString(params.buyerName)
+            ? { name: normalizeString(params.buyerName) as string }
+            : {}),
+          ...(normalizeString(params.buyerPhone)
+            ? { phone: normalizeString(params.buyerPhone) as string }
+            : {}),
+        },
+        signature,
+        language: 'en',
+        resultUrl: returnUrls.successUrl,
+        failPath: returnUrls.failUrl,
+        paymentMethod: selectedQuote.methodId,
+        metadata: payloadMetadata,
+      });
+
+      const checkoutUrl = payopProvider.buildInvoicePreprocessingUrl({
+        invoiceId: invoice.invoiceId,
+        language: 'en',
+      });
+
+      const createdPaymentInput: CreateUnifiedPaymentInput = {
+        userId: order.user_id,
+        provider: 'payop',
+        providerPaymentId: invoice.invoiceId,
+        status: 'pending',
+        providerStatus: 'invoice_created',
+        purpose: 'subscription',
+        amount: selectedQuote.processingTotalCents / 100,
+        currency: selectedQuote.processingCurrency.toLowerCase(),
+        orderId: order.id,
+        checkoutMode: 'session',
+        metadata: {
+          order_id: order.id,
+          checkout_mode: 'session',
+          payop_invoice_id: invoice.invoiceId,
+          payop_method_id: selectedQuote.methodId,
+          payop_method_title: selectedQuote.title,
+          payop_method_type: selectedQuote.type,
+          payop_processing_currency: selectedQuote.processingCurrency,
+          payop_processing_subtotal_cents:
+            selectedQuote.processingSubtotalCents,
+          payop_processing_fee_cents: selectedQuote.processingFeeCents,
+          payop_processing_total_cents: selectedQuote.processingTotalCents,
+          payop_selected_country: selectedCountry,
+          payop_detected_country: detectedCountry,
+          payop_result_url: returnUrls.successUrl,
+          payop_fail_url: returnUrls.failUrl,
+          payop_checkout_url: checkoutUrl,
+          payop_required_payer_fields: selectedQuote.requiredPayerFields,
+          payop_invoice_status: invoice.payloadStatus,
+          payop_invoice_metadata: payloadMetadata,
+        },
+      };
+      if (selectedQuote.type) {
+        createdPaymentInput.paymentMethodType = selectedQuote.type;
+      }
+
+      const singleItemId = order.items.length === 1 ? order.items[0]?.id : null;
+      if (singleItemId) {
+        createdPaymentInput.orderItemId = singleItemId;
+      }
+
+      const createdPayment =
+        await paymentRepository.create(createdPaymentInput);
+
+      await orderService.updateOrderPayment(order.id, {
+        payment_provider: 'payop',
+        payment_reference: invoice.invoiceId,
+        checkout_mode: 'session',
+        status: order.status === 'cart' ? 'pending_payment' : order.status,
+        status_reason:
+          order.status === 'cart'
+            ? 'awaiting_payment'
+            : (order.status_reason ?? null),
+        metadata: this.buildPayopMethodOrderMetadata({
+          order: order as OrderWithItems,
+          selectedCountry,
+          detectedCountry,
+          selectedQuote,
+        }),
+      });
+
+      Logger.info('Payop checkout session created', {
+        orderId: order.id,
+        invoiceId: invoice.invoiceId,
+        paymentId: createdPayment.providerPaymentId,
+        methodId: selectedQuote.methodId,
+        processingCurrency: selectedQuote.processingCurrency,
+        processingTotalCents: selectedQuote.processingTotalCents,
+      });
+
+      return {
+        success: true,
+        orderId: order.id,
+        sessionId: invoice.invoiceId,
+        sessionUrl: checkoutUrl,
+        paymentId: createdPayment.providerPaymentId,
+        paymentProvider: 'payop',
+        methodQuote: selectedQuote,
+      };
+    } catch (error) {
+      Logger.error('Failed to create Payop checkout session', {
+        orderId: params.orderId,
+        methodId: params.methodId,
+        error,
+      });
+
+      if (error instanceof PayopProviderError) {
+        if (error.statusCode === 429) {
+          return { success: false, error: 'payment_provider_rate_limited' };
+        }
+        if ([401, 403].includes(error.statusCode)) {
+          return { success: false, error: 'payment_provider_misconfigured' };
+        }
+      }
+
+      if (
+        error instanceof PayopSchemaCompatibilityError ||
+        isPayopProviderConstraintFailure(error)
+      ) {
+        return { success: false, error: 'payment_provider_misconfigured' };
+      }
+
+      return { success: false, error: 'payop_session_failed' };
+    }
+  }
+
+  async getPayopCheckoutStatus(params: { orderId: string }): Promise<
+    | {
+        success: true;
+        orderId: string;
+        orderStatus: string;
+        paymentStatus: UnifiedPaymentStatus | null;
+        providerStatus: string | null;
+        invoiceId: string | null;
+        txid: string | null;
+        methodTitle: string | null;
+        processingCurrency: string | null;
+        processingSubtotalCents: number | null;
+        processingFeeCents: number | null;
+        processingTotalCents: number | null;
+        canRetry: boolean;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      const order = await orderService.getOrderById(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      const payment = await paymentRepository.findLatestByOrderId(
+        'payop',
+        order.id,
+        'subscription'
+      );
+      const metadata =
+        payment?.metadata && typeof payment.metadata === 'object'
+          ? payment.metadata
+          : {};
+      const canRetry =
+        ['cart', 'pending_payment'].includes(order.status) &&
+        (!payment ||
+          payment.status === 'failed' ||
+          payment.status === 'expired' ||
+          payment.status === 'canceled');
+
+      return {
+        success: true,
+        orderId: order.id,
+        orderStatus: order.status,
+        paymentStatus: payment?.status ?? null,
+        providerStatus:
+          typeof payment?.providerStatus === 'string'
+            ? payment.providerStatus
+            : null,
+        invoiceId:
+          payment?.providerPaymentId ??
+          (typeof metadata['payop_invoice_id'] === 'string'
+            ? (metadata['payop_invoice_id'] as string)
+            : null),
+        txid:
+          typeof metadata['payop_txid'] === 'string'
+            ? (metadata['payop_txid'] as string)
+            : null,
+        methodTitle:
+          typeof metadata['payop_method_title'] === 'string'
+            ? (metadata['payop_method_title'] as string)
+            : null,
+        processingCurrency:
+          typeof metadata['payop_processing_currency'] === 'string'
+            ? (metadata['payop_processing_currency'] as string)
+            : null,
+        processingSubtotalCents:
+          parseNonNegativeInt(metadata['payop_processing_subtotal_cents']) ??
+          null,
+        processingFeeCents:
+          parseNonNegativeInt(metadata['payop_processing_fee_cents']) ?? null,
+        processingTotalCents:
+          parseNonNegativeInt(metadata['payop_processing_total_cents']) ?? null,
+        canRetry,
+      };
+    } catch (error) {
+      Logger.error('Failed to resolve Payop checkout status', {
+        orderId: params.orderId,
+        error,
+      });
+      return { success: false, error: 'payop_status_failed' };
+    }
+  }
+
   async createPay4bitCheckoutSession(params: { orderId: string }): Promise<
     | {
         success: true;
@@ -5441,6 +6350,336 @@ export class PaymentService {
         error,
       });
       return { success: false, error: 'pay4bit_session_confirm_failed' };
+    }
+  }
+
+  async handlePayopCheckoutIpn(params: {
+    payload: PayopCheckoutIpnPayload;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  }): Promise<{
+    statusCode: number;
+    body: {
+      ok: boolean;
+      reason: string;
+    };
+  }> {
+    try {
+      if (!this.isAllowedPayopIp(params.ipAddress)) {
+        Logger.warn('Rejected Payop IPN from untrusted IP', {
+          ipAddress: params.ipAddress ?? null,
+        });
+        return {
+          statusCode: 401,
+          body: {
+            ok: false,
+            reason: 'ip_not_allowed',
+          },
+        };
+      }
+
+      const invoiceId = normalizeString(params.payload.invoice?.id);
+      const txid =
+        normalizeString(params.payload.transaction?.id) ||
+        normalizeString(params.payload.invoice?.txid);
+      const invoiceStatus =
+        typeof params.payload.invoice?.status === 'number'
+          ? Math.round(params.payload.invoice.status)
+          : null;
+      const transactionState =
+        typeof params.payload.transaction?.state === 'number'
+          ? Math.round(params.payload.transaction.state)
+          : null;
+      const orderId =
+        normalizeString(params.payload.transaction?.order?.id) ||
+        normalizeString(params.payload.invoice?.metadata?.['orderId']) ||
+        normalizeString(
+          (
+            params.payload.invoice?.metadata?.[
+              'any other merchant data which were passed to invoice on create it'
+            ] as Record<string, unknown> | undefined
+          )?.['orderId']
+        );
+
+      if (!invoiceId || !txid || !orderId) {
+        return {
+          statusCode: 200,
+          body: {
+            ok: true,
+            reason: 'invalid_payload_ignored',
+          },
+        };
+      }
+
+      const order = await orderService.getOrderWithItems(orderId);
+      if (!order) {
+        Logger.warn('Payop IPN ignored because order was not found', {
+          orderId,
+          invoiceId,
+          txid,
+        });
+        return {
+          statusCode: 200,
+          body: {
+            ok: true,
+            reason: 'order_not_found',
+          },
+        };
+      }
+
+      const existingPayment =
+        (await paymentRepository.findByProviderPaymentId('payop', invoiceId)) ??
+        (await paymentRepository.findLatestByOrderId(
+          'payop',
+          order.id,
+          'subscription'
+        ));
+      const paymentMetadata =
+        existingPayment?.metadata &&
+        typeof existingPayment.metadata === 'object'
+          ? existingPayment.metadata
+          : order.metadata && typeof order.metadata === 'object'
+            ? (order.metadata as Record<string, unknown>)
+            : {};
+
+      const expectedCurrency =
+        normalizeCurrencyCode(
+          paymentMetadata['payop_processing_currency'] as string | undefined
+        ) ||
+        normalizeCurrencyCode(
+          paymentMetadata['processingCurrency'] as string | undefined
+        ) ||
+        null;
+      const expectedTotalCents =
+        parseNonNegativeInt(paymentMetadata['payop_processing_total_cents']) ??
+        parseNonNegativeInt(paymentMetadata['processingTotalCents']) ??
+        null;
+
+      if (!expectedCurrency || expectedTotalCents === null) {
+        Logger.error('Payop IPN missing expected charge metadata', {
+          orderId: order.id,
+          invoiceId,
+          txid,
+        });
+        return {
+          statusCode: 200,
+          body: {
+            ok: true,
+            reason: 'missing_expected_amount',
+          },
+        };
+      }
+
+      let verifiedInvoice;
+      let verifiedTransaction;
+      try {
+        const [invoiceResult, transactionResult] = await Promise.all([
+          payopProvider.getInvoice(invoiceId),
+          payopProvider.getTransactionDetails(txid),
+        ]);
+        verifiedInvoice = invoiceResult;
+        verifiedTransaction = transactionResult;
+      } catch (error) {
+        Logger.error('Payop IPN verification failed', {
+          orderId: order.id,
+          invoiceId,
+          txid,
+          error,
+        });
+        return {
+          statusCode: 503,
+          body: {
+            ok: false,
+            reason: 'verification_failed',
+          },
+        };
+      }
+
+      const verifiedInvoiceId = normalizeString(verifiedInvoice.identifier);
+      const verifiedOrderId = normalizeString(
+        verifiedTransaction.orderId ?? verifiedInvoice.orderIdentifier
+      );
+      const verifiedCurrency =
+        normalizeCurrencyCode(verifiedTransaction.currency) ||
+        normalizeCurrencyCode(verifiedInvoice.currency) ||
+        null;
+      const verifiedAmountCents =
+        this.parseAmountToCents(String(verifiedTransaction.amount)) ??
+        this.parseAmountToCents(String(verifiedInvoice.amount));
+      const verifiedState =
+        typeof verifiedTransaction.state === 'number'
+          ? Math.round(verifiedTransaction.state)
+          : transactionState;
+
+      if (
+        verifiedInvoiceId !== invoiceId ||
+        verifiedOrderId !== order.id ||
+        verifiedCurrency !== expectedCurrency ||
+        verifiedAmountCents !== expectedTotalCents
+      ) {
+        Logger.error('Payop IPN verification mismatch', {
+          orderId: order.id,
+          invoiceId,
+          txid,
+          expectedCurrency,
+          verifiedCurrency,
+          expectedTotalCents,
+          verifiedAmountCents,
+          verifiedOrderId,
+        });
+        return {
+          statusCode: 200,
+          body: {
+            ok: true,
+            reason: 'verification_mismatch',
+          },
+        };
+      }
+
+      const statusMapping = this.mapPayopTransactionState(verifiedState);
+      if (
+        existingPayment?.status === 'succeeded' &&
+        statusMapping.status !== 'succeeded'
+      ) {
+        Logger.warn('Ignoring Payop status regression after success', {
+          orderId: order.id,
+          invoiceId,
+          txid,
+          existingStatus: existingPayment.status,
+          nextStatus: statusMapping.status,
+          nextProviderStatus: statusMapping.providerStatus,
+        });
+        return {
+          statusCode: 200,
+          body: {
+            ok: true,
+            reason: 'status_regression_ignored',
+          },
+        };
+      }
+
+      const payment =
+        existingPayment ||
+        (await (() => {
+          const input: CreateUnifiedPaymentInput = {
+            userId: order.user_id,
+            provider: 'payop',
+            providerPaymentId: invoiceId,
+            status: statusMapping.status,
+            providerStatus: statusMapping.providerStatus,
+            purpose: 'subscription',
+            amount: expectedTotalCents / 100,
+            currency: expectedCurrency.toLowerCase(),
+            orderId: order.id,
+            checkoutMode: 'session',
+            metadata: {
+              ...paymentMetadata,
+              payop_invoice_id: invoiceId,
+            },
+          };
+          if (typeof paymentMetadata['payop_method_type'] === 'string') {
+            input.paymentMethodType = paymentMetadata[
+              'payop_method_type'
+            ] as string;
+          }
+          return paymentRepository.create(input);
+        })());
+
+      const eventId = this.buildPayopPaymentEventId({
+        invoiceId,
+        txid,
+        state: verifiedState,
+      });
+      const recorded = await this.recordPaymentEvent({
+        provider: 'payop',
+        eventId,
+        eventType: 'payop_checkout_ipn',
+        orderId: order.id,
+        paymentId: payment.id,
+      });
+
+      const mergedMetadata = {
+        ...(payment.metadata || {}),
+        payop_invoice_id: invoiceId,
+        payop_txid: txid,
+        payop_invoice_status: invoiceStatus ?? verifiedInvoice.status,
+        payop_transaction_state: verifiedState,
+        payop_transaction_error: verifiedTransaction.error || null,
+        payop_last_ipn_at: new Date().toISOString(),
+        payop_last_ipn_payload: params.payload,
+        payop_last_verified_invoice: verifiedInvoice,
+        payop_last_verified_transaction: verifiedTransaction,
+        payop_last_ipn_ip: this.normalizeIpAddress(params.ipAddress) ?? null,
+        payop_last_ipn_user_agent: params.userAgent ?? null,
+      };
+
+      const persistedPayment =
+        await paymentRepository.updateStatusByProviderPaymentId(
+          'payop',
+          invoiceId,
+          statusMapping.status,
+          statusMapping.providerStatus,
+          mergedMetadata
+        );
+
+      if (!persistedPayment) {
+        return {
+          statusCode: 200,
+          body: {
+            ok: true,
+            reason: 'payment_not_found',
+          },
+        };
+      }
+
+      if (!recorded) {
+        return {
+          statusCode: 200,
+          body: {
+            ok: true,
+            reason: 'duplicate',
+          },
+        };
+      }
+
+      if (statusMapping.status === 'succeeded') {
+        const processed = await this.processPayopOrderPayment({
+          orderId: order.id,
+          invoiceId,
+          payment: persistedPayment,
+        });
+        return {
+          statusCode: processed ? 200 : 500,
+          body: {
+            ok: processed,
+            reason: processed ? 'processed' : 'fulfillment_failed',
+          },
+        };
+      }
+
+      return {
+        statusCode: 200,
+        body: {
+          ok: true,
+          reason:
+            statusMapping.status === 'expired'
+              ? 'expired'
+              : statusMapping.status === 'failed'
+                ? 'failed'
+                : 'pending',
+        },
+      };
+    } catch (error) {
+      Logger.error('Unhandled Payop IPN failure', {
+        error,
+      });
+      return {
+        statusCode: 500,
+        body: {
+          ok: false,
+          reason: 'internal_error',
+        },
+      };
     }
   }
 
@@ -8590,6 +9829,10 @@ export class PaymentService {
     try {
       const pool = getDatabasePool();
       await pool.query('SELECT 1 FROM credit_transactions LIMIT 1');
+
+      if (env.PAYOP_ENABLED) {
+        await this.validatePayopSchemaCompatibility();
+      }
 
       return await nowpaymentsClient.healthCheck();
     } catch (error) {

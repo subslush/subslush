@@ -86,6 +86,7 @@ export type CheckoutPaymentMethod =
   | 'card'
   | 'paypal'
   | 'stripe'
+  | 'payop'
   | 'pay4bit'
   | 'credits';
 
@@ -100,7 +101,7 @@ export interface CheckoutRequest {
 
 export interface CheckoutResponseCard {
   payment_method: 'card';
-  payment_provider: 'paypal' | 'pay4bit' | 'stripe';
+  payment_provider: 'paypal' | 'pay4bit' | 'payop' | 'stripe';
   order_id: string;
   paymentId?: string | null;
   sessionId: string;

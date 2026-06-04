@@ -187,6 +187,59 @@ export type CheckoutNowPaymentsMinimumInput = z.infer<
   typeof checkoutNowPaymentsMinimumSchema
 >;
 
+const optionalCountryCodeSchema = z.preprocess(
+  value => {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (typeof value !== 'string') {
+      return value;
+    }
+    const normalized = value.trim().toUpperCase();
+    return normalized.length > 0 ? normalized : null;
+  },
+  z
+    .string()
+    .regex(/^[A-Z]{2}$/, 'Country code must be a 2-letter ISO code')
+    .nullable()
+    .optional()
+);
+
+export const checkoutPayopOptionsSchema = z.object({
+  checkout_session_key: checkoutSessionKeySchema,
+  order_id: uuidSchema.optional().nullable(),
+  country_code: optionalCountryCodeSchema,
+});
+
+export type CheckoutPayopOptionsInput = z.infer<
+  typeof checkoutPayopOptionsSchema
+>;
+
+export const checkoutPayopSessionSchema = z.object({
+  checkout_session_key: checkoutSessionKeySchema,
+  order_id: uuidSchema.optional().nullable(),
+  method_id: z
+    .number()
+    .int('Payment method id must be an integer')
+    .positive('Payment method id must be positive'),
+  country_code: optionalCountryCodeSchema,
+  add_payment_info_event_id: optionalEventIdSchema,
+  legal_consent: optionalLegalConsentSchema,
+});
+
+export type CheckoutPayopSessionInput = z.infer<
+  typeof checkoutPayopSessionSchema
+>;
+
+export const checkoutPayopStatusSchema = z.object({
+  checkout_session_key: checkoutSessionKeySchema,
+  order_id: uuidSchema.optional().nullable(),
+});
+
+export type CheckoutPayopStatusInput = z.infer<
+  typeof checkoutPayopStatusSchema
+>;
+
 export const checkoutPayPalConfirmSchema = z.object({
   order_id: uuidSchema,
   session_id: z
@@ -355,6 +408,75 @@ export function validateCheckoutNowPaymentsMinimumInput(
   | { success: false; error: string; details?: string } {
   try {
     const validatedData = checkoutNowPaymentsMinimumSchema.parse(data);
+    return { success: true, data: validatedData };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const firstError = error.issues[0];
+      if (firstError) {
+        return {
+          success: false,
+          error: firstError.message,
+          details: `Field: ${firstError.path.join('.')}`,
+        };
+      }
+    }
+    return { success: false, error: 'Invalid input data' };
+  }
+}
+
+export function validateCheckoutPayopOptionsInput(
+  data: unknown
+):
+  | { success: true; data: CheckoutPayopOptionsInput }
+  | { success: false; error: string; details?: string } {
+  try {
+    const validatedData = checkoutPayopOptionsSchema.parse(data);
+    return { success: true, data: validatedData };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const firstError = error.issues[0];
+      if (firstError) {
+        return {
+          success: false,
+          error: firstError.message,
+          details: `Field: ${firstError.path.join('.')}`,
+        };
+      }
+    }
+    return { success: false, error: 'Invalid input data' };
+  }
+}
+
+export function validateCheckoutPayopSessionInput(
+  data: unknown
+):
+  | { success: true; data: CheckoutPayopSessionInput }
+  | { success: false; error: string; details?: string } {
+  try {
+    const validatedData = checkoutPayopSessionSchema.parse(data);
+    return { success: true, data: validatedData };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const firstError = error.issues[0];
+      if (firstError) {
+        return {
+          success: false,
+          error: firstError.message,
+          details: `Field: ${firstError.path.join('.')}`,
+        };
+      }
+    }
+    return { success: false, error: 'Invalid input data' };
+  }
+}
+
+export function validateCheckoutPayopStatusInput(
+  data: unknown
+):
+  | { success: true; data: CheckoutPayopStatusInput }
+  | { success: false; error: string; details?: string } {
+  try {
+    const validatedData = checkoutPayopStatusSchema.parse(data);
     return { success: true, data: validatedData };
   } catch (error) {
     if (error instanceof z.ZodError) {

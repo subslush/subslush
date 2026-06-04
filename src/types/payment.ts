@@ -15,6 +15,7 @@ export type PaymentProvider =
   | 'stripe'
   | 'pay4bit'
   | 'paypal'
+  | 'payop'
   | 'manual'
   | 'admin';
 

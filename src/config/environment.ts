@@ -92,6 +92,68 @@ const environmentSchema = z.object({
       z.string().optional()
     )
     .default(''),
+  PAYOP_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(false)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return false;
+    }),
+  PAYOP_PUBLIC_KEY: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  PAYOP_SECRET_KEY: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  PAYOP_PROJECT_ID: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  PAYOP_JWT_TOKEN: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  PAYOP_INVOICE_BASE_URL: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default('https://api.payop.com'),
+  PAYOP_API_BASE_URL: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default('https://payop.com'),
+  PAYOP_CHECKOUT_BASE_URL: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default('https://checkout.payop.com'),
+  PAYOP_IPN_URL: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  PAYOP_METHOD_CACHE_TTL_SECONDS: z.coerce.number().default(300),
+  PAYOP_METHOD_LKG_TTL_SECONDS: z.coerce.number().default(3600),
   PAYPAL_ENABLED: z
     .union([z.string(), z.boolean()])
     .optional()
@@ -579,6 +641,50 @@ function validateEnvironment(): EnvironmentConfig {
       }
       if (!isValidAbsoluteUrl(withTestOverrides.PAY4BIT_BASE_URL)) {
         throw new Error('PAY4BIT_BASE_URL must be a valid URL');
+      }
+    }
+
+    if (withTestOverrides.PAYOP_ENABLED) {
+      const missing: string[] = [];
+      if (!withTestOverrides.PAYOP_PUBLIC_KEY) {
+        missing.push('PAYOP_PUBLIC_KEY');
+      }
+      if (!withTestOverrides.PAYOP_SECRET_KEY) {
+        missing.push('PAYOP_SECRET_KEY');
+      }
+      if (!withTestOverrides.PAYOP_PROJECT_ID) {
+        missing.push('PAYOP_PROJECT_ID');
+      }
+      if (!withTestOverrides.PAYOP_JWT_TOKEN) {
+        missing.push('PAYOP_JWT_TOKEN');
+      }
+      if (!withTestOverrides.PAYOP_IPN_URL) {
+        missing.push('PAYOP_IPN_URL');
+      }
+      if (missing.length > 0) {
+        throw new Error(
+          `Payop configuration missing required fields: ${missing.join(', ')}`
+        );
+      }
+      if (!isValidAbsoluteUrl(withTestOverrides.PAYOP_INVOICE_BASE_URL)) {
+        throw new Error('PAYOP_INVOICE_BASE_URL must be a valid URL');
+      }
+      if (!isValidAbsoluteUrl(withTestOverrides.PAYOP_API_BASE_URL)) {
+        throw new Error('PAYOP_API_BASE_URL must be a valid URL');
+      }
+      if (!isValidAbsoluteUrl(withTestOverrides.PAYOP_CHECKOUT_BASE_URL)) {
+        throw new Error('PAYOP_CHECKOUT_BASE_URL must be a valid URL');
+      }
+      if (!isValidAbsoluteUrl(withTestOverrides.PAYOP_IPN_URL)) {
+        throw new Error('PAYOP_IPN_URL must be a valid URL');
+      }
+      if (withTestOverrides.PAYOP_METHOD_CACHE_TTL_SECONDS <= 0) {
+        throw new Error(
+          'PAYOP_METHOD_CACHE_TTL_SECONDS must be greater than 0'
+        );
+      }
+      if (withTestOverrides.PAYOP_METHOD_LKG_TTL_SECONDS <= 0) {
+        throw new Error('PAYOP_METHOD_LKG_TTL_SECONDS must be greater than 0');
       }
     }
 

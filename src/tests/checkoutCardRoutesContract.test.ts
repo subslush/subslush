@@ -12,6 +12,7 @@ jest.mock('../middleware/authMiddleware', () => ({
 jest.mock('../middleware/paymentMiddleware', () => ({
   paymentQuoteRateLimit: jest.fn(async () => {}),
   paymentRateLimit: jest.fn(async () => {}),
+  paymentRefreshRateLimit: jest.fn(async () => {}),
 }));
 
 jest.mock('../services/guestCheckoutService');

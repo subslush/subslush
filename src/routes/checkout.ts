@@ -5,6 +5,9 @@ import {
   validateGuestDraftInput,
   validateGuestClaimInput,
   validateCheckoutPayPalSessionInput,
+  validateCheckoutPayopOptionsInput,
+  validateCheckoutPayopSessionInput,
+  validateCheckoutPayopStatusInput,
   validateCheckoutNowPaymentsInvoiceInput,
   validateCheckoutNowPaymentsMinimumInput,
   validateCheckoutPayPalConfirmInput,
@@ -24,12 +27,14 @@ import { resolveCountryFromHeaders } from '../utils/currency';
 import {
   paymentQuoteRateLimit,
   paymentRateLimit,
+  paymentRefreshRateLimit,
 } from '../middleware/paymentMiddleware';
 import {
   authPreHandler,
   optionalAuthPreHandler,
 } from '../middleware/authMiddleware';
 import type { OrderWithItems } from '../types/order';
+import type { PayopMethodQuote } from '../services/payments/payopQuoteService';
 
 const centsToAmount = (value?: number | null): number | null => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
@@ -169,6 +174,27 @@ const buildOrderTikTokProperties = (
   };
 };
 
+const serializePayopMethodQuote = (quote: PayopMethodQuote) => ({
+  method_id: quote.methodId,
+  title: quote.title,
+  type: quote.type,
+  form_type: quote.formType,
+  logo_url: quote.logoUrl,
+  supported_countries: quote.supportedCountries,
+  supported_currencies: quote.supportedCurrencies,
+  processing_currency: quote.processingCurrency,
+  processing_subtotal_cents: quote.processingSubtotalCents,
+  processing_fee_cents: quote.processingFeeCents,
+  processing_total_cents: quote.processingTotalCents,
+  converted_from_display_currency: quote.convertedFromDisplayCurrency,
+  required_payer_fields: quote.requiredPayerFields,
+  items: quote.items.map(item => ({
+    order_item_id: item.orderItemId,
+    label: item.label,
+    total_cents: item.totalCents,
+  })),
+});
+
 export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
   const persistLegalConsentEvidence = async (params: {
     orderId: string;
@@ -208,6 +234,51 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           params.legalConsent.consent_source ?? `checkout_${params.channel}`,
       },
     });
+  };
+
+  const resolveCheckoutOrderId = async (params: {
+    request: FastifyRequest;
+    reply: FastifyReply;
+    checkoutSessionKey?: string | null;
+    orderId?: string | null;
+  }): Promise<string | null> => {
+    const { request, reply, checkoutSessionKey, orderId } = params;
+
+    if (!checkoutSessionKey && !orderId) {
+      await ErrorResponses.badRequest(
+        reply,
+        'checkout_session_key or order_id is required'
+      );
+      return null;
+    }
+
+    if (checkoutSessionKey) {
+      const order =
+        await orderService.getOrderByCheckoutSessionKey(checkoutSessionKey);
+      if (!order) {
+        await ErrorResponses.notFound(reply, 'Checkout session not found');
+        return null;
+      }
+      if (orderId && orderId !== order.id) {
+        await ErrorResponses.badRequest(reply, 'Checkout session mismatch');
+        return null;
+      }
+      return order.id;
+    }
+
+    const userId = request.user?.userId;
+    if (!userId) {
+      await ErrorResponses.unauthorized(reply, 'Authentication required');
+      return null;
+    }
+
+    const order = await orderService.getOrderById(orderId as string);
+    if (!order || order.user_id !== userId) {
+      await ErrorResponses.notFound(reply, 'Order not found');
+      return null;
+    }
+
+    return order.id;
   };
 
   fastify.get(
@@ -1282,6 +1353,362 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         return ErrorResponses.internalError(
           reply,
           'Failed to complete credits checkout'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/payop/options',
+    {
+      preHandler: [optionalAuthPreHandler, paymentQuoteRateLimit],
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            checkout_session_key: { type: 'string' },
+            order_id: { type: 'string' },
+            country_code: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const validation = validateCheckoutPayopOptionsInput(request.body);
+        if (!validation.success) {
+          return sendError(
+            reply,
+            400,
+            'Invalid Input',
+            validation.error,
+            'INVALID_INPUT',
+            validation.details
+          );
+        }
+
+        const orderId = await resolveCheckoutOrderId({
+          request,
+          reply,
+          checkoutSessionKey: validation.data.checkout_session_key ?? null,
+          orderId: validation.data.order_id ?? null,
+        });
+        if (!orderId) {
+          return reply;
+        }
+
+        const detectedCountry = resolveCountryFromHeaders(
+          request.headers as Record<string, string | string[] | undefined>
+        );
+        const optionsResult = await paymentService.getPayopCheckoutOptions({
+          orderId,
+          selectedCountry: validation.data.country_code ?? null,
+          detectedCountry,
+        });
+
+        if (!optionsResult.success) {
+          const error = optionsResult.error || 'payop_options_failed';
+          if (error === 'order_not_found') {
+            return ErrorResponses.notFound(reply, 'Order not found');
+          }
+          if (
+            [
+              'order_not_pending',
+              'payment_provider_mismatch',
+              'order_missing_items',
+            ].includes(error)
+          ) {
+            return ErrorResponses.badRequest(reply, error.replace(/_/g, ' '));
+          }
+          if (
+            [
+              'payment_provider_unavailable',
+              'payment_provider_rate_limited',
+              'payment_provider_misconfigured',
+            ].includes(error)
+          ) {
+            return ErrorResponses.serviceUnavailable(
+              reply,
+              'Payment methods are temporarily unavailable. Please try again later.'
+            );
+          }
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to load payment methods'
+          );
+        }
+
+        return SuccessResponses.ok(reply, {
+          order_id: optionsResult.orderId,
+          order_status: optionsResult.orderStatus,
+          display_currency: optionsResult.displayCurrency,
+          display_total_cents: optionsResult.displayTotalCents,
+          detected_country: optionsResult.detectedCountry,
+          selected_country: optionsResult.selectedCountry,
+          country_options: optionsResult.countryOptions,
+          selected_method_id: optionsResult.selectedMethodId,
+          methods: optionsResult.methods.map(serializePayopMethodQuote),
+        });
+      } catch (error) {
+        Logger.error('Payop options lookup failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to load payment methods'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/payop/session',
+    {
+      preHandler: [optionalAuthPreHandler, paymentRateLimit],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['method_id'],
+          properties: {
+            checkout_session_key: { type: 'string' },
+            order_id: { type: 'string' },
+            method_id: { type: 'number' },
+            country_code: { type: 'string' },
+            add_payment_info_event_id: { type: 'string' },
+            legal_consent: {
+              type: 'object',
+              properties: {
+                immediate_fulfillment_consent: { type: 'boolean' },
+                terms_policy_consent: { type: 'boolean' },
+                consent_timestamp: { type: 'string' },
+                checkout_session_key_snapshot: { type: 'string' },
+                consent_source: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const validation = validateCheckoutPayopSessionInput(request.body);
+        if (!validation.success) {
+          return sendError(
+            reply,
+            400,
+            'Invalid Input',
+            validation.error,
+            'INVALID_INPUT',
+            validation.details
+          );
+        }
+
+        const {
+          checkout_session_key,
+          order_id,
+          method_id,
+          country_code,
+          add_payment_info_event_id,
+          legal_consent,
+        } = validation.data;
+
+        const orderId = await resolveCheckoutOrderId({
+          request,
+          reply,
+          checkoutSessionKey: checkout_session_key ?? null,
+          orderId: order_id ?? null,
+        });
+        if (!orderId) {
+          return reply;
+        }
+
+        if (!hasRequiredLegalConsent(legal_consent)) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Digital fulfillment consent and policy acceptance are required'
+          );
+        }
+
+        const consentSaved = await persistLegalConsentEvidence({
+          orderId,
+          legalConsent: legal_consent,
+          request,
+          checkoutSessionKey: checkout_session_key ?? null,
+          channel: 'card',
+        });
+        if (!consentSaved) {
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to record checkout consent evidence'
+          );
+        }
+
+        const detectedCountry = resolveCountryFromHeaders(
+          request.headers as Record<string, string | string[] | undefined>
+        );
+        const buyerName = [
+          request.user?.displayName,
+          [request.user?.firstName, request.user?.lastName]
+            .filter((value): value is string => Boolean(value?.trim()))
+            .join(' '),
+        ]
+          .map(value => (typeof value === 'string' ? value.trim() : ''))
+          .find(value => value.length > 0);
+
+        const sessionResult = await paymentService.createPayopCheckoutSession({
+          orderId,
+          methodId: method_id,
+          selectedCountry: country_code ?? null,
+          detectedCountry,
+          buyerEmail: request.user?.email ?? null,
+          buyerName: buyerName ?? null,
+        });
+
+        if (!sessionResult.success) {
+          const error = sessionResult.error || 'payop_session_failed';
+          if (error === 'order_not_found') {
+            return ErrorResponses.notFound(reply, 'Order not found');
+          }
+          if (
+            [
+              'order_not_pending',
+              'payment_provider_mismatch',
+              'order_missing_items',
+              'own_account_credentials_required',
+              'invalid_payment_method',
+              'missing_app_base_url',
+              'payer_email_required',
+            ].includes(error)
+          ) {
+            return ErrorResponses.badRequest(reply, error.replace(/_/g, ' '));
+          }
+          if (
+            [
+              'payment_provider_unavailable',
+              'payment_provider_rate_limited',
+              'payment_provider_misconfigured',
+            ].includes(error)
+          ) {
+            return ErrorResponses.serviceUnavailable(
+              reply,
+              'Payment is temporarily unavailable. Please try again later.'
+            );
+          }
+          return ErrorResponses.internalError(reply, 'Failed to start payment');
+        }
+
+        const orderForTracking = await orderService.getOrderWithItems(
+          sessionResult.orderId
+        );
+        if (orderForTracking) {
+          const properties = buildOrderTikTokProperties(orderForTracking);
+          const trackingUserId =
+            orderForTracking.user_id || request.user?.userId || null;
+          if (trackingUserId) {
+            void tiktokEventsService.trackAddPaymentInfo({
+              userId: trackingUserId,
+              email:
+                request.user?.email ?? orderForTracking.contact_email ?? null,
+              eventId: resolveEventId(
+                add_payment_info_event_id,
+                `order_${sessionResult.orderId}_add_payment_info_payop`
+              ),
+              properties: {
+                ...properties,
+                payment_type: 'payop',
+                payment_provider: 'payop',
+                payment_method_title: sessionResult.methodQuote.title,
+                payment_method_type: sessionResult.methodQuote.type,
+              },
+              context: buildTikTokRequestContext(request),
+            });
+          }
+        }
+
+        return SuccessResponses.ok(reply, {
+          order_id: sessionResult.orderId,
+          session_id: sessionResult.sessionId,
+          session_url: sessionResult.sessionUrl,
+          payment_id: sessionResult.paymentId,
+          payment_provider: sessionResult.paymentProvider,
+          method_quote: serializePayopMethodQuote(sessionResult.methodQuote),
+        });
+      } catch (error) {
+        Logger.error('Payop session creation failed:', error);
+        return ErrorResponses.internalError(reply, 'Failed to start payment');
+      }
+    }
+  );
+
+  fastify.post(
+    '/payop/status',
+    {
+      preHandler: [optionalAuthPreHandler, paymentRefreshRateLimit],
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            checkout_session_key: { type: 'string' },
+            order_id: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const validation = validateCheckoutPayopStatusInput(request.body);
+        if (!validation.success) {
+          return sendError(
+            reply,
+            400,
+            'Invalid Input',
+            validation.error,
+            'INVALID_INPUT',
+            validation.details
+          );
+        }
+
+        const orderId = await resolveCheckoutOrderId({
+          request,
+          reply,
+          checkoutSessionKey: validation.data.checkout_session_key ?? null,
+          orderId: validation.data.order_id ?? null,
+        });
+        if (!orderId) {
+          return reply;
+        }
+
+        const statusResult = await paymentService.getPayopCheckoutStatus({
+          orderId,
+        });
+        if (!statusResult.success) {
+          const error = statusResult.error || 'payop_status_failed';
+          if (error === 'order_not_found') {
+            return ErrorResponses.notFound(reply, 'Order not found');
+          }
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to load payment status'
+          );
+        }
+
+        return SuccessResponses.ok(reply, {
+          order_id: statusResult.orderId,
+          order_status: statusResult.orderStatus,
+          payment_status: statusResult.paymentStatus,
+          provider_status: statusResult.providerStatus,
+          invoice_id: statusResult.invoiceId,
+          txid: statusResult.txid,
+          method_title: statusResult.methodTitle,
+          processing_currency: statusResult.processingCurrency,
+          processing_subtotal_cents: statusResult.processingSubtotalCents,
+          processing_fee_cents: statusResult.processingFeeCents,
+          processing_total_cents: statusResult.processingTotalCents,
+          can_retry: statusResult.canRetry,
+        });
+      } catch (error) {
+        Logger.error('Payop status lookup failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to load payment status'
         );
       }
     }

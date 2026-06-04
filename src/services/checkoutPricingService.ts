@@ -44,6 +44,7 @@ export type CheckoutPricingItem = {
   termSubtotalCents: number;
   termDiscountCents: number;
   termTotalCents: number;
+  couponEligible: boolean;
   couponDiscountCents: number;
   finalTotalCents: number;
   settlementCurrency: string;
@@ -141,6 +142,7 @@ export class CheckoutPricingService {
         termSubtotalCents,
         termDiscountCents,
         termTotalCents,
+        couponEligible: false,
         couponDiscountCents: 0,
         finalTotalCents: termTotalCents,
         settlementCurrency: lockContext.settlementCurrency,
@@ -200,6 +202,7 @@ export class CheckoutPricingService {
         });
 
         pricingItems.forEach((item, index) => {
+          item.couponEligible = eligibleSet.has(index);
           const discount = allocation.itemDiscounts[index] ?? 0;
           item.couponDiscountCents = discount;
           item.finalTotalCents = Math.max(0, item.termTotalCents - discount);

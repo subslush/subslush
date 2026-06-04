@@ -35,8 +35,12 @@
   import type { OwnAccountCredentialRequirement } from '$lib/types/subscription.js';
   import { SHOW_CRYPTO_CHECKOUT_OPTION } from '$lib/config/paymentBrandVisibility.js';
   import {
+    clearCheckoutDraftStorage,
+    loadCheckoutDraftState,
+    saveCheckoutDraftState
+  } from '$lib/utils/checkoutDraftState.js';
+  import {
     ChevronRight,
-    CreditCard,
     Eye,
     EyeOff,
     Loader2,
@@ -44,7 +48,6 @@
     Trash2
   } from 'lucide-svelte';
 
-  const DRAFT_STORAGE_KEY = 'checkout_draft_state';
   const CHECKOUT_INITIATE_TRACKING_KEY = 'checkout_initiate_tracking';
   const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -54,6 +57,7 @@
   let guestIdentityId: string | null = null;
   let checkoutSessionKey: string | null = null;
   let orderId: string | null = null;
+  let selectedPaymentCountry: string | null = null;
   let pricing: CheckoutPricingSummary | null = null;
   let draftLoading = false;
   let draftError = '';
@@ -973,66 +977,52 @@
   };
 
   const persistDraftState = () => {
-    if (!browser) return;
-    if (!contactEmail) {
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
-      return;
-    }
-    const payload = {
+    saveCheckoutDraftState({
       email: normalizeEmail(contactEmail),
       guestIdentityId,
       checkoutSessionKey: getDraftCheckoutSessionKey(),
       orderId,
-      appliedCouponCode
-    };
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(payload));
+      appliedCouponCode,
+      selectedPaymentCountry,
+      legalConsent: {
+        immediateFulfillmentConsent: immediatePerformanceConsent,
+        termsPolicyConsent: termsPolicyConsent,
+      },
+    });
   };
 
   const clearDraftState = () => {
     guestIdentityId = null;
     checkoutSessionKey = null;
     orderId = null;
+    selectedPaymentCountry = null;
     pricing = null;
     lastDraftSignature = '';
     invoice = null;
     invoiceError = '';
     invoiceDraftSignature = '';
     resetInitiateCheckoutTracking();
-    persistDraftState();
+    clearCheckoutDraftStorage();
   };
 
   const loadDraftState = () => {
-    if (!browser) return;
-    try {
-      const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as {
-        email?: string;
-        guestIdentityId?: string;
-        checkoutSessionKey?: string;
-        orderId?: string;
-        appliedCouponCode?: string | null;
-      };
+    const parsed = loadCheckoutDraftState();
+    if (parsed) {
       if (parsed.email) {
         contactEmail = parsed.email;
         identityEmail = normalizeEmail(parsed.email);
         lastIdentityEmail = identityEmail;
       }
       guestIdentityId = parsed.guestIdentityId ?? null;
-      checkoutSessionKey =
-        typeof parsed.checkoutSessionKey === 'string' &&
-        parsed.checkoutSessionKey.trim().length >= 8
-          ? parsed.checkoutSessionKey.trim()
-          : null;
+      checkoutSessionKey = parsed.checkoutSessionKey ?? null;
       orderId = parsed.orderId ?? null;
-      appliedCouponCode =
-        typeof parsed.appliedCouponCode === 'string' && parsed.appliedCouponCode
-          ? parsed.appliedCouponCode
-          : null;
+      selectedPaymentCountry = parsed.selectedPaymentCountry ?? null;
+      appliedCouponCode = parsed.appliedCouponCode ?? null;
       couponCode = appliedCouponCode ?? '';
       showDiscountCodeInput = Boolean(appliedCouponCode);
-    } catch (error) {
-      console.warn('Failed to read checkout draft state:', error);
+      immediatePerformanceConsent =
+        parsed.legalConsent?.immediateFulfillmentConsent === true;
+      termsPolicyConsent = parsed.legalConsent?.termsPolicyConsent === true;
     }
 
     try {
@@ -2087,6 +2077,35 @@
     }
   };
 
+  const handleContinueToPayment = async () => {
+    actionError = '';
+    if (!ensureContactEmailBeforeCheckout()) {
+      return;
+    }
+    if (!ensureOwnAccountDetailsBeforeCheckout()) {
+      return;
+    }
+
+    redirecting = true;
+    try {
+      const draftReady = await refreshDraft(true);
+      if (!draftReady || !getDraftCheckoutSessionKey()) {
+        actionError = draftError || 'Please review your checkout details.';
+        return;
+      }
+
+      persistDraftState();
+      await goto('/checkout/payment');
+    } catch (error) {
+      actionError =
+        error instanceof Error
+          ? error.message
+          : 'Unable to continue to payment.';
+    } finally {
+      redirecting = false;
+    }
+  };
+
   $: if ($auth.isAuthenticated) {
     const accountEmail = ($user?.email || '').trim().toLowerCase();
     if (accountEmail && contactEmail !== accountEmail) {
@@ -2232,19 +2251,7 @@
     }
   }
 
-  $: if (!SHOW_CRYPTO_CHECKOUT_OPTION && paymentMethod === 'crypto') {
-    paymentMethod = null;
-  }
-
-  $: if (SHOW_CRYPTO_CHECKOUT_OPTION && paymentMethod !== 'crypto') {
-    paymentMethod = 'crypto';
-  }
-
   $: isPayPalCheckoutEnabled = Boolean(paypalSdkConfig?.enabled);
-
-  $: if (!isPayPalCheckoutEnabled && paymentMethod === 'card') {
-    paymentMethod = null;
-  }
 
   $: if (SHOW_CRYPTO_CHECKOUT_OPTION && paymentMethod === 'crypto') {
     void loadCurrencies();
@@ -2382,8 +2389,7 @@
     paymentMethod === 'crypto' &&
     Boolean(invoice) &&
     normalizeTicker(invoice?.pay_currency) === normalizeTicker(payCurrency);
-  $: showPrimaryActionButton =
-    paymentMethod === 'crypto' && !cryptoInvoiceMatchesSelection;
+  $: showPrimaryActionButton = true;
   $: selectedCryptoCoinLabel =
     cryptoCoinOptions.find(option => option.value === payCoin)?.label ||
     payCoin.toUpperCase();
@@ -2800,249 +2806,28 @@
               </div>
             </div>
 
-            <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_14px_28px_rgba(15,23,42,0.08)] sm:p-6">
-              <h3 class="text-sm font-semibold text-slate-900">Choose payment method</h3>
-
-              <div class="mt-3 space-y-3">
-                {#if SHOW_CRYPTO_CHECKOUT_OPTION}
-                  <label class={`flex items-start gap-3 rounded-xl border px-3 py-3 transition ${
-                    paymentMethod === 'crypto'
-                      ? 'border-fuchsia-300 bg-fuchsia-50/40 shadow-sm'
-                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="payment-method"
-                      value="crypto"
-                      bind:group={paymentMethod}
-                      class="mt-1 h-4 w-4 text-slate-900"
-                    />
-                    <div>
-                      <p class="text-sm font-semibold text-slate-900">Pay with crypto</p>
-                    </div>
-                  </label>
-                {/if}
+            {#if actionError}
+              <div class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+                {actionError}
               </div>
+            {/if}
 
-              {#if SHOW_CRYPTO_CHECKOUT_OPTION && paymentMethod === 'crypto'}
-                <div class="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                  <p class="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
-                    Select crypto
-                  </p>
-                  {#if currenciesLoading}
-                    <div class="flex items-center gap-2 text-xs text-slate-500">
-                      <Loader2 class="h-4 w-4 animate-spin" />
-                      Loading currencies...
-                    </div>
-                  {:else if currenciesError}
-                    <p class="text-xs text-rose-600">{currenciesError}</p>
-                  {:else}
-                    <div class="space-y-2">
-                      <div>
-                        <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                          Coin
-                        </p>
-                        <select
-                          class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
-                          bind:value={payCoin}
-                          on:change={() => {
-                            invoice = null;
-                            invoiceError = '';
-                            cryptoMinimum = null;
-                            cryptoMinimumError = '';
-                            lastCryptoMinimumKey = '';
-                          }}
-                        >
-                          {#each cryptoCoinOptions as coinOption}
-                            <option value={coinOption.value}>{coinOption.label}</option>
-                          {/each}
-                        </select>
-                      </div>
-
-                      <div>
-                        <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                          Network
-                        </p>
-                        <select
-                          class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
-                          bind:value={payCurrency}
-                          on:change={() => {
-                            invoice = null;
-                            invoiceError = '';
-                            cryptoMinimum = null;
-                            cryptoMinimumError = '';
-                            lastCryptoMinimumKey = '';
-                          }}
-                        >
-                          {#each cryptoNetworkOptions as networkOption}
-                            <option value={networkOption.code}>
-                              {networkOption.networkLabel}
-                            </option>
-                          {/each}
-                        </select>
-                      </div>
-                    </div>
-                  {/if}
-
-                  {#if cryptoMinimumLoading}
-                    <div class="flex justify-end text-slate-400">
-                      <Loader2 class="h-4 w-4 animate-spin" />
-                    </div>
-                  {:else if cryptoMinimumError}
-                    <p class="text-xs text-rose-600">{cryptoMinimumError}</p>
-                  {:else if cryptoMinimum && !cryptoMinimum.meets_minimum}
-                    <p class="text-xs text-amber-700">
-                      {selectedCryptoCoinLabel} on {selectedCryptoNetworkLabel} requires minimum {formatCurrency(cryptoMinimum.min_price_amount, orderCurrency)}.
-                    </p>
-                  {/if}
-
-                  {#if invoiceError}
-                    <p class="text-xs text-rose-600">{invoiceError}</p>
-                  {/if}
-
-                  {#if invoice}
-                    <div class="space-y-1 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-600">
-                      <p class="font-semibold text-slate-900">Invoice ready</p>
-                      <a
-                        href={invoice.invoice_url}
-                        class="mt-2 inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Open invoice
-                      </a>
-                      <p class="pt-1 text-[11px] text-slate-500">
-                        To generate a different invoice, change coin or network.
-                      </p>
-                    </div>
-                  {/if}
-                </div>
+            <button
+              type="button"
+              class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(126,34,206,0.28)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={redirecting}
+              on:click={() => {
+                void handleContinueToPayment();
+              }}
+            >
+              {#if redirecting}
+                <Loader2 class="h-4 w-4 animate-spin" />
+                Preparing payment...
+              {:else}
+                Continue to payment
+                <ChevronRight class="h-4 w-4" />
               {/if}
-
-              {#if $auth.isAuthenticated && paymentMethod === 'credits'}
-                <div class="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
-                  {#if creditsQuoteLoading}
-                    <div class="flex items-center gap-2">
-                      <Loader2 class="h-4 w-4 animate-spin" />
-                      Loading credits estimate...
-                    </div>
-                  {:else}
-                    <div class="flex items-center justify-between">
-                      <span>Available credits</span>
-                      <span class="font-semibold text-slate-900">{$credits.balance ?? '--'}</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                      <span>Credits required</span>
-                      <span class="font-semibold text-slate-900">
-                        {creditsRequired ?? '--'}
-                      </span>
-                    </div>
-                  {/if}
-                  {#if creditsQuoteMessage}
-                    <p class="text-xs text-amber-700">{creditsQuoteMessage}</p>
-                  {/if}
-                  {#if creditsInsufficient}
-                    <p class="text-xs text-amber-700">You do not have enough credits for this purchase.</p>
-                  {/if}
-                </div>
-              {/if}
-
-              <div
-                id="checkout-consent-card"
-                class={`mt-3 rounded-xl border bg-slate-50 px-3 py-3 ${
-                  consentNeedsAttention
-                    ? 'consent-attention-pulse border-fuchsia-300'
-                    : 'border-slate-200'
-                }`}
-              >
-                <label class="flex items-start gap-2.5 text-xs text-slate-700">
-                  <input
-                    id="checkout-consent-checkbox"
-                    type="checkbox"
-                    class="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-fuchsia-300"
-                    bind:checked={immediatePerformanceConsent}
-                    on:change={() => {
-                      actionError = '';
-                      if (immediatePerformanceConsent && termsPolicyConsent) {
-                        clearConsentAttention();
-                      }
-                    }}
-                  />
-                  <span>
-                    I request immediate digital delivery and understand that I may lose my 14-day withdrawal right once fulfillment begins.
-                  </span>
-                </label>
-                <label class="mt-2.5 flex items-start gap-2.5 text-xs text-slate-700">
-                  <input
-                    id="checkout-terms-checkbox"
-                    type="checkbox"
-                    class="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-fuchsia-300"
-                    bind:checked={termsPolicyConsent}
-                    on:change={() => {
-                      actionError = '';
-                      if (immediatePerformanceConsent && termsPolicyConsent) {
-                        clearConsentAttention();
-                      }
-                    }}
-                  />
-                  <span>
-                    I agree to the
-                    <a href="/terms" class="underline underline-offset-2 hover:text-slate-900">Terms and Conditions</a>
-                    ,
-                    <a href="/returns" class="underline underline-offset-2 hover:text-slate-900">Refund Policy</a>,
-                    and
-                    <a href="/privacy" class="underline underline-offset-2 hover:text-slate-900">Privacy Policy</a>.
-                  </span>
-                </label>
-                {#if consentNeedsAttention}
-                  <p class="mt-2 text-xs font-medium text-fuchsia-700">
-                    Please confirm both checkboxes to continue with checkout.
-                  </p>
-                {/if}
-              </div>
-
-              <p class="mt-2 text-xs text-slate-600">
-                Sold by 2Sneaks AB.
-                <a href="/terms#trader-identity-company-information" class="underline underline-offset-2 hover:text-slate-900">
-                  Full legal details
-                </a>.
-              </p>
-
-              {#if actionError}
-                <div class="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
-                  {actionError}
-                </div>
-              {/if}
-
-              {#if showPrimaryActionButton}
-                <button
-                  type="button"
-                  class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(126,34,206,0.28)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={
-                    !paymentMethod ||
-                    redirecting ||
-                    invoiceLoading ||
-                    creditsInsufficient
-                  }
-                  on:click={() => {
-                    if (paymentMethod === 'crypto') {
-                      void handleCryptoInvoice();
-                    }
-                  }}
-                >
-                  {#if redirecting || invoiceLoading}
-                    <Loader2 class="h-4 w-4 animate-spin" />
-                    {invoiceLoading ? 'Generating invoice...' : 'Processing...'}
-                  {:else}
-                    {#if paymentMethod === 'crypto'}
-                      Generate invoice
-                    {:else}
-                      Choose payment method
-                    {/if}
-                  {/if}
-                </button>
-              {/if}
-            </div>
+            </button>
           </aside>
         </div>
       {/if}

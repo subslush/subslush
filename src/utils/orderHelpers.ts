@@ -2,6 +2,7 @@ import { Order } from '../types/order';
 
 export type PaymentMethodBadgeType =
   | 'credits'
+  | 'payop'
   | 'paypal'
   | 'stripe'
   | 'other'
@@ -19,6 +20,10 @@ export const getPaymentMethodBadge = (order: Order): PaymentMethodBadge => {
 
   if (order.payment_provider === 'paypal') {
     return { type: 'paypal', label: 'PayPal' };
+  }
+
+  if (order.payment_provider === 'payop') {
+    return { type: 'payop', label: 'Payop' };
   }
 
   if (order.payment_provider === 'nowpayments') {

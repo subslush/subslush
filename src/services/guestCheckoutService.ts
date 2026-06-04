@@ -967,6 +967,11 @@ export class GuestCheckoutService {
             pricedItem.settlementFinalTotalCents,
             orderDescription,
             JSON.stringify({
+              product_id: pricedItem.product.id,
+              product_variant_id:
+                pricedItem.productVariantId ?? pricedItem.product.id,
+              pricing_reference_id:
+                pricedItem.productVariantId ?? pricedItem.product.id,
               service_type: serviceType,
               service_plan: planCode,
               duration_months: pricedItem.termMonths,
@@ -1005,6 +1010,7 @@ export class GuestCheckoutService {
                     coupon_code: coupon.code,
                     coupon_percent_off: coupon.percent_off,
                     coupon_apply_scope: coupon.apply_scope ?? null,
+                    coupon_eligible: pricedItem.couponEligible,
                     coupon_discount_cents: pricedItem.couponDiscountCents,
                   }
                 : {}),

@@ -169,3 +169,81 @@ export interface CheckoutNowPaymentsMinimumResult {
   shortfallAmount: number;
   minFiatEquivalent?: number | null;
 }
+
+export interface CheckoutPayopMethodQuoteItemResult {
+  orderItemId: string;
+  label: string;
+  totalCents: number;
+}
+
+export interface CheckoutPayopMethodQuoteResult {
+  methodId: number;
+  title: string;
+  type: 'ewallet' | 'bank_transfer';
+  formType?: string | null;
+  logoUrl?: string | null;
+  supportedCountries: string[];
+  supportedCurrencies: string[];
+  processingCurrency: string;
+  processingSubtotalCents: number;
+  processingFeeCents: number;
+  processingTotalCents: number;
+  convertedFromDisplayCurrency: boolean;
+  requiredPayerFields: string[];
+  items: CheckoutPayopMethodQuoteItemResult[];
+}
+
+export interface CheckoutPayopOptionsInput {
+  checkout_session_key?: string | null | undefined;
+  order_id?: string | null | undefined;
+  country_code?: string | null | undefined;
+}
+
+export interface CheckoutPayopOptionsResult {
+  orderId: string;
+  orderStatus: string;
+  displayCurrency: string;
+  displayTotalCents: number;
+  detectedCountry?: string | null;
+  selectedCountry?: string | null;
+  countryOptions: string[];
+  selectedMethodId?: number | null;
+  methods: CheckoutPayopMethodQuoteResult[];
+}
+
+export interface CheckoutPayopSessionInput {
+  checkout_session_key?: string | null | undefined;
+  order_id?: string | null | undefined;
+  method_id: number;
+  country_code?: string | null | undefined;
+  add_payment_info_event_id?: string | null | undefined;
+}
+
+export interface CheckoutPayopSessionResult {
+  orderId: string;
+  sessionId: string;
+  sessionUrl: string;
+  paymentId: string;
+  paymentProvider: 'payop';
+  methodQuote: CheckoutPayopMethodQuoteResult;
+}
+
+export interface CheckoutPayopStatusInput {
+  checkout_session_key?: string | null | undefined;
+  order_id?: string | null | undefined;
+}
+
+export interface CheckoutPayopStatusResult {
+  orderId: string;
+  orderStatus: string;
+  paymentStatus?: string | null;
+  providerStatus?: string | null;
+  invoiceId?: string | null;
+  txid?: string | null;
+  methodTitle?: string | null;
+  processingCurrency?: string | null;
+  processingSubtotalCents?: number | null;
+  processingFeeCents?: number | null;
+  processingTotalCents?: number | null;
+  canRetry: boolean;
+}

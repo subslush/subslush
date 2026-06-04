@@ -30,6 +30,17 @@ export interface EnvironmentConfig {
   PAY4BIT_SECRET_KEY: string;
   PAY4BIT_CALLBACK_URL: string;
   PAY4BIT_BASE_URL: string;
+  PAYOP_ENABLED: boolean;
+  PAYOP_PUBLIC_KEY: string;
+  PAYOP_SECRET_KEY: string;
+  PAYOP_PROJECT_ID: string;
+  PAYOP_JWT_TOKEN: string;
+  PAYOP_INVOICE_BASE_URL: string;
+  PAYOP_API_BASE_URL: string;
+  PAYOP_CHECKOUT_BASE_URL: string;
+  PAYOP_IPN_URL: string;
+  PAYOP_METHOD_CACHE_TTL_SECONDS: number;
+  PAYOP_METHOD_LKG_TTL_SECONDS: number;
   PAYPAL_ENABLED: boolean;
   PAYPAL_CHECKOUT_ENABLED: boolean;
   PAYPAL_MODE: 'sandbox' | 'live';

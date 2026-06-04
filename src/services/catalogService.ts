@@ -3601,6 +3601,37 @@ export class CatalogService {
     }
   }
 
+  async getSnapshotPriceForCurrency(params: {
+    variantId: string;
+    currency: string;
+    snapshotId: string;
+  }): Promise<PriceHistory | null> {
+    try {
+      const pool = getDatabasePool();
+      const currency = normalizeCurrencyCode(params.currency);
+      const snapshotId = normalizeTextField(params.snapshotId);
+      if (!currency || !snapshotId) {
+        return null;
+      }
+
+      const result = await pool.query(
+        `SELECT *
+         FROM price_history
+         WHERE product_variant_id = $1
+           AND UPPER(currency) = $2
+           AND metadata->>'snapshot_id' = $3
+         ORDER BY starts_at DESC
+         LIMIT 1`,
+        [params.variantId, currency, snapshotId]
+      );
+
+      return result.rows.length > 0 ? mapPriceHistory(result.rows[0]) : null;
+    } catch (error) {
+      Logger.error('Failed to fetch snapshot price for currency:', error);
+      return null;
+    }
+  }
+
   async listCurrentPricesForCurrency(params: {
     variantIds: string[];
     currency: string;
@@ -3671,6 +3702,42 @@ export class CatalogService {
     } catch (error) {
       Logger.error(
         'Failed to fetch current fixed product price for currency:',
+        error
+      );
+      return null;
+    }
+  }
+
+  async getSnapshotFixedProductPriceForCurrency(params: {
+    productId: string;
+    currency: string;
+    snapshotId: string;
+  }): Promise<FixedProductPriceHistory | null> {
+    try {
+      const pool = getDatabasePool();
+      const currency = normalizeCurrencyCode(params.currency);
+      const snapshotId = normalizeTextField(params.snapshotId);
+      if (!currency || !snapshotId) {
+        return null;
+      }
+
+      const result = await pool.query(
+        `SELECT *
+         FROM product_fixed_price_history
+         WHERE product_id = $1
+           AND UPPER(currency) = $2
+           AND metadata->>'snapshot_id' = $3
+         ORDER BY starts_at DESC
+         LIMIT 1`,
+        [params.productId, currency, snapshotId]
+      );
+
+      return result.rows.length > 0
+        ? mapFixedProductPriceHistory(result.rows[0])
+        : null;
+    } catch (error) {
+      Logger.error(
+        'Failed to fetch snapshot fixed product price for currency:',
         error
       );
       return null;

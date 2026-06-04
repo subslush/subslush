@@ -80,6 +80,9 @@ export const API_ENDPOINTS = {
     CREDITS_COMPLETE: '/checkout/credits/complete',
     NOWPAYMENTS_INVOICE: '/checkout/nowpayments/invoice',
     NOWPAYMENTS_MINIMUM: '/checkout/nowpayments/minimum',
+    PAYOP_OPTIONS: '/checkout/payop/options',
+    PAYOP_SESSION: '/checkout/payop/session',
+    PAYOP_STATUS: '/checkout/payop/status',
     CLAIM: '/checkout/claim'
   },
   USERS: {
@@ -130,6 +133,7 @@ export const ROUTES = {
     MY_SUBSCRIPTIONS: '/dashboard/orders'
   },
   CHECKOUT: '/checkout',
+  CHECKOUT_PAYMENT: '/checkout/payment',
   CHECKOUT_CLAIM: '/checkout/claim',
   CREDITS: '/dashboard/credits'
 } as const;

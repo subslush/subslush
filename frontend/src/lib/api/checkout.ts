@@ -16,6 +16,12 @@ import type {
   CheckoutNowPaymentsInvoiceResponse,
   CheckoutNowPaymentsMinimumRequest,
   CheckoutNowPaymentsMinimumResponse,
+  CheckoutPayopOptionsRequest,
+  CheckoutPayopOptionsResponse,
+  CheckoutPayopSessionRequest,
+  CheckoutPayopSessionResponse,
+  CheckoutPayopStatusRequest,
+  CheckoutPayopStatusResponse,
   CheckoutClaimResponse,
 } from '$lib/types/checkout.js';
 
@@ -97,6 +103,27 @@ export class CheckoutService {
       input
     );
     return unwrapApiData<CheckoutNowPaymentsMinimumResponse>(response);
+  }
+
+  async getPayopOptions(
+    input: CheckoutPayopOptionsRequest
+  ): Promise<CheckoutPayopOptionsResponse> {
+    const response = await apiClient.post(API_ENDPOINTS.CHECKOUT.PAYOP_OPTIONS, input);
+    return unwrapApiData<CheckoutPayopOptionsResponse>(response);
+  }
+
+  async createPayopSession(
+    input: CheckoutPayopSessionRequest
+  ): Promise<CheckoutPayopSessionResponse> {
+    const response = await apiClient.post(API_ENDPOINTS.CHECKOUT.PAYOP_SESSION, input);
+    return unwrapApiData<CheckoutPayopSessionResponse>(response);
+  }
+
+  async getPayopStatus(
+    input: CheckoutPayopStatusRequest
+  ): Promise<CheckoutPayopStatusResponse> {
+    const response = await apiClient.post(API_ENDPOINTS.CHECKOUT.PAYOP_STATUS, input);
+    return unwrapApiData<CheckoutPayopStatusResponse>(response);
   }
 
   async claimCheckout(token: string): Promise<CheckoutClaimResponse> {

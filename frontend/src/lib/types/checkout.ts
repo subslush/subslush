@@ -181,6 +181,85 @@ export interface CheckoutNowPaymentsMinimumResponse {
   min_fiat_equivalent?: number | null;
 }
 
+export interface CheckoutPayopMethodQuoteItem {
+  order_item_id: string;
+  label: string;
+  total_cents: number;
+}
+
+export interface CheckoutPayopMethodQuote {
+  method_id: number;
+  title: string;
+  type: 'ewallet' | 'bank_transfer';
+  form_type?: string | null;
+  logo_url?: string | null;
+  supported_countries: string[];
+  supported_currencies: string[];
+  processing_currency: string;
+  processing_subtotal_cents: number;
+  processing_fee_cents: number;
+  processing_total_cents: number;
+  converted_from_display_currency: boolean;
+  required_payer_fields: string[];
+  items: CheckoutPayopMethodQuoteItem[];
+}
+
+export interface CheckoutPayopOptionsRequest {
+  checkout_session_key?: string | null;
+  order_id?: string | null;
+  country_code?: string | null;
+}
+
+export interface CheckoutPayopOptionsResponse {
+  order_id: string;
+  order_status: string;
+  display_currency: string;
+  display_total_cents: number;
+  detected_country?: string | null;
+  selected_country?: string | null;
+  country_options: string[];
+  selected_method_id?: number | null;
+  methods: CheckoutPayopMethodQuote[];
+}
+
+export interface CheckoutPayopSessionRequest {
+  checkout_session_key?: string | null;
+  order_id?: string | null;
+  method_id: number;
+  country_code?: string | null;
+  add_payment_info_event_id?: string | null;
+  legal_consent?: CheckoutLegalConsentInput | null;
+}
+
+export interface CheckoutPayopSessionResponse {
+  order_id: string;
+  session_id: string;
+  session_url: string;
+  payment_id: string;
+  payment_provider: 'payop';
+  method_quote: CheckoutPayopMethodQuote;
+}
+
+export interface CheckoutPayopStatusRequest {
+  checkout_session_key?: string | null;
+  order_id?: string | null;
+}
+
+export interface CheckoutPayopStatusResponse {
+  order_id: string;
+  order_status: string;
+  payment_status?: string | null;
+  provider_status?: string | null;
+  invoice_id?: string | null;
+  txid?: string | null;
+  method_title?: string | null;
+  processing_currency?: string | null;
+  processing_subtotal_cents?: number | null;
+  processing_fee_cents?: number | null;
+  processing_total_cents?: number | null;
+  can_retry: boolean;
+}
+
 export interface CheckoutClaimResponse {
   guest_identity_id: string;
   reassigned: boolean;

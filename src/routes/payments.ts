@@ -24,6 +24,7 @@ import {
   HttpStatus,
 } from '../utils/response';
 import { Logger } from '../utils/logger';
+import { getRequestIp } from '../utils/requestIp';
 import {
   NOWPaymentsError,
   nowpaymentsClient,
@@ -1386,6 +1387,51 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
       }
     },
   });
+
+  fastify.post(
+    '/payop/ipn',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: true,
+        },
+      },
+      preHandler: [webhookRateLimit],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        if (!env.PAYOP_ENABLED) {
+          return ErrorResponses.notFound(reply, 'Payop IPN route is disabled');
+        }
+
+        const userAgentHeader = request.headers['user-agent'];
+        const userAgent =
+          Array.isArray(userAgentHeader) && userAgentHeader.length > 0
+            ? userAgentHeader[0]
+            : typeof userAgentHeader === 'string'
+              ? userAgentHeader
+              : null;
+
+        const ipnResult = await paymentService.handlePayopCheckoutIpn({
+          payload:
+            request.body && typeof request.body === 'object'
+              ? (request.body as Record<string, unknown>)
+              : {},
+          ipAddress: getRequestIp(request),
+          userAgent,
+        });
+
+        return reply.code(ipnResult.statusCode).send(ipnResult.body);
+      } catch (error) {
+        Logger.error('Payop IPN error:', error);
+        return reply.code(500).send({
+          ok: false,
+          reason: 'ipn_failed',
+        });
+      }
+    }
+  );
 
   // Stripe webhook (no auth, feature-flagged)
   fastify.post(
