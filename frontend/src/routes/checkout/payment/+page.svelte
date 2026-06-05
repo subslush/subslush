@@ -85,6 +85,25 @@
     }
   };
 
+  const isPaydoMethod = (
+    method: Pick<CheckoutPayopMethodQuote, 'method_id'>
+  ): boolean =>
+    [700001, 200002, 210013].includes(method.method_id);
+
+  const resolveMethodLogoBoxClass = (
+    method: Pick<CheckoutPayopMethodQuote, 'method_id'>
+  ): string =>
+    isPaydoMethod(method)
+      ? 'flex h-11 w-14 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-1.5 py-1.5'
+      : 'flex h-11 w-14 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-2 py-2';
+
+  const resolveMethodLogoClass = (
+    method: Pick<CheckoutPayopMethodQuote, 'method_id'>
+  ): string =>
+    isPaydoMethod(method)
+      ? 'h-full w-full object-contain'
+      : 'max-h-6 w-auto object-contain';
+
   const clearConsentAttention = (): void => {
     consentNeedsAttention = false;
     if (consentAttentionTimer) {
@@ -473,11 +492,11 @@
                               <div class="min-w-0">
                                 <div class="flex items-center gap-3">
                                   {#if resolveMethodLogo(method)}
-                                    <div class="flex h-11 w-14 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-2 py-2">
+                                    <div class={resolveMethodLogoBoxClass(method)}>
                                       <img
                                         src={resolveMethodLogo(method) || undefined}
                                         alt={method.title}
-                                        class="max-h-6 w-auto object-contain"
+                                        class={resolveMethodLogoClass(method)}
                                         loading="lazy"
                                       />
                                     </div>
