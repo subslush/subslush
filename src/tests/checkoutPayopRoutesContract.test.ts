@@ -69,7 +69,7 @@ describe('Checkout Payop route contract', () => {
       methods: [
         {
           methodId: 37000000,
-          title: 'Pay by Revolut',
+          title: 'Revolut',
           type: 'bank_transfer',
           formType: 'redirect',
           logoUrl: null,
@@ -123,7 +123,7 @@ describe('Checkout Payop route contract', () => {
       methods: [
         {
           method_id: 37000000,
-          title: 'Pay by Revolut',
+          title: 'Revolut',
           type: 'bank_transfer',
           form_type: 'redirect',
           logo_url: null,
@@ -158,7 +158,7 @@ describe('Checkout Payop route contract', () => {
       paymentProvider: 'payop',
       methodQuote: {
         methodId: 700001,
-        title: 'Pay Via PayDo',
+        title: 'PayDo',
         type: 'ewallet',
         formType: 'redirect',
         logoUrl: null,
@@ -220,7 +220,7 @@ describe('Checkout Payop route contract', () => {
       payment_provider: 'payop',
       method_quote: {
         method_id: 700001,
-        title: 'Pay Via PayDo',
+        title: 'PayDo',
         type: 'ewallet',
         form_type: 'redirect',
         logo_url: null,
@@ -255,7 +255,7 @@ describe('Checkout Payop route contract', () => {
       providerStatus: 'transaction_pending',
       invoiceId: 'payop-invoice-1',
       txid: 'tx-1',
-      methodTitle: 'Pay Via PayDo',
+      methodTitle: 'PayDo',
       processingCurrency: 'EUR',
       processingSubtotalCents: 2618,
       processingFeeCents: 135,
@@ -285,7 +285,7 @@ describe('Checkout Payop route contract', () => {
       provider_status: 'transaction_pending',
       invoice_id: 'payop-invoice-1',
       txid: 'tx-1',
-      method_title: 'Pay Via PayDo',
+      method_title: 'PayDo',
       processing_currency: 'EUR',
       processing_subtotal_cents: 2618,
       processing_fee_cents: 135,

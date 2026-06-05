@@ -2,8 +2,14 @@
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
+  import applePayLogo from '$lib/assets/apple-pay.svg';
+  import monzoLogo from '$lib/assets/monzo-logo.webp';
   import paydoLogo from '$lib/assets/paydo-logo.webp';
   import revolutLogo from '$lib/assets/revolut-logo.webp';
+  import mastercardLogo from '$lib/assets/mastercard.svg';
+  import sepaLogo from '$lib/assets/sepa-logo.webp';
+  import swiftLogo from '$lib/assets/swift-logo.webp';
+  import visaLogo from '$lib/assets/visa.svg';
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
   import { checkoutService } from '$lib/api/checkout.js';
@@ -19,6 +25,7 @@
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
   import {
     ArrowLeft,
+    Landmark,
     Loader2,
   } from 'lucide-svelte';
 
@@ -70,6 +77,14 @@
   const formatCents = (amountCents: number, currencyCode: string): string =>
     formatCurrency(amountCents / 100, normalizeCurrencyCode(currencyCode) || 'USD');
 
+  const paydoSupportLogos = [
+    { src: visaLogo, alt: 'Visa' },
+    { src: mastercardLogo, alt: 'Mastercard' },
+    { src: applePayLogo, alt: 'Apple Pay' },
+    { src: sepaLogo, alt: 'SEPA' },
+    { src: swiftLogo, alt: 'SWIFT' },
+  ] as const;
+
   const resolveMethodLogo = (
     method: Pick<CheckoutPayopMethodQuote, 'method_id'>
   ): string | null => {
@@ -80,6 +95,8 @@
         return paydoLogo;
       case 37000000:
         return revolutLogo;
+      case 38000000:
+        return monzoLogo;
       default:
         return null;
     }
@@ -90,11 +107,23 @@
   ): boolean =>
     [700001, 200002, 210013].includes(method.method_id);
 
+  const isPrimaryPaydoMethod = (
+    method: Pick<CheckoutPayopMethodQuote, 'method_id'>
+  ): boolean => method.method_id === 700001;
+
+  const isRevolutMethod = (
+    method: Pick<CheckoutPayopMethodQuote, 'method_id'>
+  ): boolean => method.method_id === 37000000;
+
+  const isBankIconMethod = (
+    method: Pick<CheckoutPayopMethodQuote, 'method_id'>
+  ): boolean => [30000018, 30001000].includes(method.method_id);
+
   const resolveMethodLogoBoxClass = (
     method: Pick<CheckoutPayopMethodQuote, 'method_id'>
   ): string =>
     isPaydoMethod(method)
-      ? 'flex h-11 w-14 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-1.5 py-1.5'
+      ? 'flex h-12 w-16 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-1 py-1'
       : 'flex h-11 w-14 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-2 py-2';
 
   const resolveMethodLogoClass = (
@@ -490,20 +519,45 @@
                           <div class="min-w-0 flex-1">
                             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                               <div class="min-w-0">
-                                <div class="flex items-center gap-3">
-                                  {#if resolveMethodLogo(method)}
+                                <div class="flex items-start gap-3">
+                                  {#if resolveMethodLogo(method) || isBankIconMethod(method)}
                                     <div class={resolveMethodLogoBoxClass(method)}>
-                                      <img
-                                        src={resolveMethodLogo(method) || undefined}
-                                        alt={method.title}
-                                        class={resolveMethodLogoClass(method)}
-                                        loading="lazy"
-                                      />
+                                      {#if resolveMethodLogo(method)}
+                                        <img
+                                          src={resolveMethodLogo(method) || undefined}
+                                          alt={method.title}
+                                          class={resolveMethodLogoClass(method)}
+                                          loading="lazy"
+                                        />
+                                      {:else if isBankIconMethod(method)}
+                                        <Landmark class="h-6 w-6 text-slate-500" />
+                                      {/if}
                                     </div>
                                   {/if}
-                                  <p class="text-sm font-semibold text-slate-900">
-                                    {method.title}
-                                  </p>
+                                  <div class="min-w-0">
+                                    <p class="text-sm font-semibold text-slate-900">
+                                      {method.title}
+                                    </p>
+                                    {#if isPrimaryPaydoMethod(method)}
+                                      <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                                        {#each paydoSupportLogos as logo}
+                                          <div class="flex h-8 w-10 items-center justify-center rounded-md border border-slate-200 bg-white px-1.5 py-1">
+                                            <img
+                                              src={logo.src}
+                                              alt={logo.alt}
+                                              class="h-4 w-auto object-contain"
+                                              loading="lazy"
+                                            />
+                                          </div>
+                                        {/each}
+                                      </div>
+                                    {:else if isRevolutMethod(method)}
+                                      <div class="mt-2 inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.08em] text-slate-500">
+                                        <Landmark class="h-3.5 w-3.5" />
+                                        Bank
+                                      </div>
+                                    {/if}
+                                  </div>
                                 </div>
                               </div>
                               <div class="shrink-0 text-left sm:text-right">

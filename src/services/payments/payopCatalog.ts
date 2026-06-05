@@ -65,7 +65,7 @@ const countryList = (countries: readonly string[]): string[] =>
 export const PAYOP_METHODS: readonly PayopConfiguredMethod[] = [
   {
     identifier: 700001,
-    title: 'Pay Via PayDo',
+    title: 'PayDo',
     type: 'ewallet',
     supportsInternational: true,
     supportedCountries: [],
@@ -78,7 +78,7 @@ export const PAYOP_METHODS: readonly PayopConfiguredMethod[] = [
   },
   {
     identifier: 200002,
-    title: 'EPS via PayDo',
+    title: 'PayDo (EPS)',
     type: 'bank_transfer',
     supportsInternational: false,
     supportedCountries: ['AT'],
@@ -91,7 +91,7 @@ export const PAYOP_METHODS: readonly PayopConfiguredMethod[] = [
   },
   {
     identifier: 30000018,
-    title: 'Pay by bank',
+    title: 'Bank transfer',
     type: 'bank_transfer',
     supportsInternational: false,
     supportedCountries: [
@@ -120,7 +120,7 @@ export const PAYOP_METHODS: readonly PayopConfiguredMethod[] = [
   },
   {
     identifier: 30001000,
-    title: 'Pay by bank in UK',
+    title: 'Bank transfer (UK)',
     type: 'bank_transfer',
     supportsInternational: false,
     supportedCountries: ['GB'],
@@ -133,7 +133,7 @@ export const PAYOP_METHODS: readonly PayopConfiguredMethod[] = [
   },
   {
     identifier: 37000000,
-    title: 'Pay by Revolut',
+    title: 'Revolut',
     type: 'bank_transfer',
     supportsInternational: false,
     supportedCountries: [
@@ -177,7 +177,7 @@ export const PAYOP_METHODS: readonly PayopConfiguredMethod[] = [
   },
   {
     identifier: 38000000,
-    title: 'Pay by Monzo',
+    title: 'Monzo',
     type: 'bank_transfer',
     supportsInternational: false,
     supportedCountries: ['GB'],
@@ -190,7 +190,7 @@ export const PAYOP_METHODS: readonly PayopConfiguredMethod[] = [
   },
   {
     identifier: 210013,
-    title: 'Interac via PayDo',
+    title: 'PayDo (Interac)',
     type: 'ewallet',
     supportsInternational: false,
     supportedCountries: ['CA'],
