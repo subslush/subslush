@@ -111,10 +111,6 @@
     method: Pick<CheckoutPayopMethodQuote, 'method_id'>
   ): boolean => method.method_id === 700001;
 
-  const isRevolutMethod = (
-    method: Pick<CheckoutPayopMethodQuote, 'method_id'>
-  ): boolean => method.method_id === 37000000;
-
   const isBankIconMethod = (
     method: Pick<CheckoutPayopMethodQuote, 'method_id'>
   ): boolean => [30000018, 30001000].includes(method.method_id);
@@ -541,20 +537,15 @@
                                     {#if isPrimaryPaydoMethod(method)}
                                       <div class="mt-2 flex flex-wrap items-center gap-1.5">
                                         {#each paydoSupportLogos as logo}
-                                          <div class="flex h-8 w-10 items-center justify-center rounded-md border border-slate-200 bg-white px-1.5 py-1">
+                                          <div class="flex h-9 w-12 items-center justify-center rounded-md border border-slate-200 bg-white px-1 py-1">
                                             <img
                                               src={logo.src}
                                               alt={logo.alt}
-                                              class="h-4 w-auto object-contain"
+                                              class="h-5 w-full object-contain"
                                               loading="lazy"
                                             />
                                           </div>
                                         {/each}
-                                      </div>
-                                    {:else if isRevolutMethod(method)}
-                                      <div class="mt-2 inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.08em] text-slate-500">
-                                        <Landmark class="h-3.5 w-3.5" />
-                                        Bank
                                       </div>
                                     {/if}
                                   </div>
