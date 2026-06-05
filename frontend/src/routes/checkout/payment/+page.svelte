@@ -2,6 +2,8 @@
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
+  import paydoLogo from '$lib/assets/paydo-logo.webp';
+  import revolutLogo from '$lib/assets/revolut-logo.webp';
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
   import { checkoutService } from '$lib/api/checkout.js';
@@ -24,11 +26,6 @@
     browser && typeof Intl !== 'undefined' && 'DisplayNames' in Intl
       ? new Intl.DisplayNames(['en'], { type: 'region' })
       : null;
-
-  const methodTypeLabels: Record<CheckoutPayopMethodQuote['type'], string> = {
-    ewallet: 'E-wallet',
-    bank_transfer: 'Bank transfer',
-  };
 
   let draftState: CheckoutDraftState | null = null;
   let checkoutSessionKey: string | null = null;
@@ -72,6 +69,21 @@
 
   const formatCents = (amountCents: number, currencyCode: string): string =>
     formatCurrency(amountCents / 100, normalizeCurrencyCode(currencyCode) || 'USD');
+
+  const resolveMethodLogo = (
+    method: Pick<CheckoutPayopMethodQuote, 'method_id'>
+  ): string | null => {
+    switch (method.method_id) {
+      case 700001:
+      case 200002:
+      case 210013:
+        return paydoLogo;
+      case 37000000:
+        return revolutLogo;
+      default:
+        return null;
+    }
+  };
 
   const clearConsentAttention = (): void => {
     consentNeedsAttention = false;
@@ -459,13 +471,20 @@
                           <div class="min-w-0 flex-1">
                             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                               <div class="min-w-0">
-                                <p class="text-sm font-semibold text-slate-900">
-                                  {method.title}
-                                </p>
-                                <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                                  <span class="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
-                                    {methodTypeLabels[method.type]}
-                                  </span>
+                                <div class="flex items-center gap-3">
+                                  {#if resolveMethodLogo(method)}
+                                    <div class="flex h-11 w-14 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-2 py-2">
+                                      <img
+                                        src={resolveMethodLogo(method) || undefined}
+                                        alt={method.title}
+                                        class="max-h-6 w-auto object-contain"
+                                        loading="lazy"
+                                      />
+                                    </div>
+                                  {/if}
+                                  <p class="text-sm font-semibold text-slate-900">
+                                    {method.title}
+                                  </p>
                                 </div>
                               </div>
                               <div class="shrink-0 text-left sm:text-right">
@@ -569,16 +588,6 @@
                 </span>
               </label>
             </div>
-
-            <p class="mt-3 text-xs text-slate-600">
-              Sold by 2Sneaks AB.
-              <a
-                href="/terms#trader-identity-company-information"
-                class="ml-1 underline underline-offset-2 hover:text-slate-900"
-              >
-                Full legal details
-              </a>.
-            </p>
 
             {#if actionError}
               <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
