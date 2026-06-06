@@ -6,7 +6,11 @@
   import { cart } from '$lib/stores/cart.js';
   import { currency } from '$lib/stores/currency.js';
   import { cartSidebar } from '$lib/stores/cartSidebar.js';
-  import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
+  import {
+    formatCurrency,
+    normalizeCurrencyCode,
+    type SupportedCurrency
+  } from '$lib/utils/currency.js';
 
   let previousBodyOverflow = '';
   const BODY_CART_OPEN_ATTR = 'data-cart-sidebar-open';
@@ -53,6 +57,15 @@
   });
 
   $: total = $cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  $: distinctItemCurrencies = Array.from(
+    new Set(
+      $cart
+        .map(item => resolveItemCurrency(item))
+        .filter((item): item is SupportedCurrency => Boolean(item))
+    )
+  );
+  $: totalCurrency =
+    distinctItemCurrencies.length === 1 ? distinctItemCurrencies[0] : $currency;
 
   $: if (browser) {
     document.body.style.overflow = $cartSidebar ? 'hidden' : previousBodyOverflow;
@@ -136,7 +149,7 @@
         <div class="mb-3 flex items-center justify-between">
           <span class="text-sm text-slate-500">Total</span>
           <span class="text-xl font-semibold text-slate-900">
-            {formatCurrency(total, $currency)}
+            {formatCurrency(total, totalCurrency)}
           </span>
         </div>
         <button

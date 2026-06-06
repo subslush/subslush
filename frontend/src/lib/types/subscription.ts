@@ -68,6 +68,40 @@ export interface AddToCartTrackResponse {
   message: string;
 }
 
+export interface CartPricingPreviewItemRequest {
+  cart_item_id: string;
+  variant_id: string;
+  term_months?: number | null;
+  quantity?: number | null;
+}
+
+export interface CartPricingPreviewRequest {
+  currency?: string | null;
+  items: CartPricingPreviewItemRequest[];
+}
+
+export interface CartPricingPreviewItemResponse {
+  cart_item_id: string;
+  variant_id: string;
+  term_months: number;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  currency: string;
+}
+
+export interface CartPricingPreviewSkippedItem {
+  cart_item_id: string;
+  variant_id: string;
+  reason: string;
+}
+
+export interface CartPricingPreviewResponse {
+  currency: string;
+  items: CartPricingPreviewItemResponse[];
+  skipped_items?: CartPricingPreviewSkippedItem[];
+}
+
 export type TikTokTrackEventType = 'view_content' | 'search';
 
 export interface TikTokTrackEventRequest {

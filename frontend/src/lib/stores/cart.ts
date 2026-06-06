@@ -143,6 +143,7 @@ function createCartStore() {
               index === existingIndex
                 ? {
                     ...cartItem,
+                    ...incoming,
                     quantity: Math.max(
                       1,
                       Math.floor(cartItem.quantity) + incoming.quantity

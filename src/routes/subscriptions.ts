@@ -217,6 +217,48 @@ const FastifySchemas = {
     },
   } as const,
 
+  cartPricingPreviewInput: {
+    type: 'object',
+    required: ['items'],
+    properties: {
+      currency: {
+        type: 'string',
+        minLength: 3,
+        maxLength: 3,
+      },
+      items: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 50,
+        items: {
+          type: 'object',
+          required: ['cart_item_id', 'variant_id'],
+          properties: {
+            cart_item_id: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 128,
+            },
+            variant_id: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 128,
+            },
+            term_months: {
+              type: 'number',
+              minimum: 1,
+            },
+            quantity: {
+              type: 'number',
+              minimum: 1,
+              maximum: 100,
+            },
+          },
+        },
+      },
+    },
+  } as const,
+
   mySubscriptionsQuery: {
     type: 'object',
     properties: {
@@ -2322,6 +2364,171 @@ export async function subscriptionRoutes(
         return ErrorResponses.internalError(
           reply,
           'Failed to fetch product detail'
+        );
+      }
+    }
+  );
+
+  fastify.post<{
+    Body: {
+      currency?: string | null;
+      items: Array<{
+        cart_item_id: string;
+        variant_id: string;
+        term_months?: number | null;
+        quantity?: number | null;
+      }>;
+    };
+  }>(
+    '/cart-pricing-preview',
+    {
+      preHandler: subscriptionQueryRateLimit,
+      schema: {
+        body: FastifySchemas.cartPricingPreviewInput,
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Body: {
+          currency?: string | null;
+          items: Array<{
+            cart_item_id: string;
+            variant_id: string;
+            term_months?: number | null;
+            quantity?: number | null;
+          }>;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const body = request.body || { items: [] };
+        const requestCurrency =
+          normalizeCurrencyCode(body.currency) ||
+          resolveRequestCurrency(request);
+
+        const pricedItems = await Promise.all(
+          body.items.map(async item => {
+            const cartItemId =
+              typeof item.cart_item_id === 'string'
+                ? item.cart_item_id.trim()
+                : '';
+            const variantId =
+              typeof item.variant_id === 'string' ? item.variant_id.trim() : '';
+
+            if (!cartItemId || !variantId) {
+              return {
+                ok: false as const,
+                cart_item_id: cartItemId,
+                variant_id: variantId,
+                reason: 'invalid_item',
+              };
+            }
+
+            const termMonths =
+              typeof item.term_months === 'number' &&
+              Number.isFinite(item.term_months) &&
+              item.term_months >= 1
+                ? Math.floor(item.term_months)
+                : 1;
+            const quantity =
+              typeof item.quantity === 'number' &&
+              Number.isFinite(item.quantity) &&
+              item.quantity >= 1
+                ? Math.floor(item.quantity)
+                : 1;
+
+            const pricing = await resolveVariantPricing({
+              variantId,
+              currency: requestCurrency,
+              termMonths,
+            });
+
+            if (!pricing.ok) {
+              return {
+                ok: false as const,
+                cart_item_id: cartItemId,
+                variant_id: variantId,
+                reason: pricing.error,
+              };
+            }
+
+            const unitPrice = pricing.data.snapshot.totalPriceCents / 100;
+
+            return {
+              ok: true as const,
+              cart_item_id: cartItemId,
+              variant_id: variantId,
+              term_months: termMonths,
+              quantity,
+              unit_price: unitPrice,
+              line_total: unitPrice * quantity,
+              currency: pricing.data.currency,
+            };
+          })
+        );
+
+        const items = pricedItems
+          .filter(
+            (
+              item
+            ): item is {
+              ok: true;
+              cart_item_id: string;
+              variant_id: string;
+              term_months: number;
+              quantity: number;
+              unit_price: number;
+              line_total: number;
+              currency: string;
+            } => item.ok
+          )
+          .map(
+            ({
+              cart_item_id,
+              variant_id,
+              term_months,
+              quantity,
+              unit_price,
+              line_total,
+              currency,
+            }) => ({
+              cart_item_id,
+              variant_id,
+              term_months,
+              quantity,
+              unit_price,
+              line_total,
+              currency,
+            })
+          );
+        const skippedItems = pricedItems
+          .filter(
+            (
+              item
+            ): item is {
+              ok: false;
+              cart_item_id: string;
+              variant_id: string;
+              reason: string;
+            } => !item.ok
+          )
+          .map(({ cart_item_id, variant_id, reason }) => ({
+            cart_item_id,
+            variant_id,
+            reason,
+          }));
+
+        return SuccessResponses.ok(reply, {
+          currency: requestCurrency,
+          items,
+          ...(skippedItems.length > 0 ? { skipped_items: skippedItems } : {}),
+        });
+      } catch (error) {
+        Logger.error('Failed to generate cart pricing preview:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to generate cart pricing preview'
         );
       }
     }

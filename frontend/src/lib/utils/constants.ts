@@ -27,6 +27,7 @@ export const API_ENDPOINTS = {
     AVAILABLE: '/subscriptions/available',
     PRODUCTS_AVAILABLE: '/subscriptions/products/available',
     PRODUCT_DETAIL: '/subscriptions/products',
+    CART_PRICING_PREVIEW: '/subscriptions/cart-pricing-preview',
     VALIDATE: '/subscriptions/validate-purchase',
     PURCHASE: '/subscriptions/purchase',
     ADD_TO_CART_TRACK: '/subscriptions/track/add-to-cart',

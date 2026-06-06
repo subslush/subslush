@@ -19,6 +19,7 @@
 	import { initConsentSideEffects } from '$lib/consent/thirdParty.js';
 	import { initConsent } from '$lib/stores/consent.js';
 	import { identifyTikTokUser, trackPageView } from '$lib/utils/analytics.js';
+	import { startCartPricingSync } from '$lib/utils/cartPricingSync.js';
 	import type { LayoutData } from './$types';
 	import '../app.css';
 
@@ -71,6 +72,7 @@
 	onMount(() => {
 		initConsent();
 		initConsentSideEffects();
+		const stopCartPricingSync = startCartPricingSync();
 		document.documentElement.style.setProperty('--promo-banner-height', '0px');
 		document.body.setAttribute('data-theme', 'skeleton');
 
@@ -89,6 +91,7 @@
 		}
 
 			return () => {
+				stopCartPricingSync();
 				document.documentElement.style.setProperty('--promo-banner-height', '0px');
 			};
 		});

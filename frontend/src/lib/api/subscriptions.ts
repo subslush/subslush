@@ -8,6 +8,8 @@ import type {
   AvailablePlansResponse,
   AvailableProductsResponse,
   ProductDetail,
+  CartPricingPreviewRequest,
+  CartPricingPreviewResponse,
   ValidationResponse,
   PurchaseResponse,
   SubscriptionsResponse,
@@ -51,6 +53,16 @@ export class SubscriptionService {
       `${API_ENDPOINTS.SUBSCRIPTIONS.PRODUCT_DETAIL}/${slug}`
     );
     return unwrapApiData<ProductDetail>(response);
+  }
+
+  async getCartPricingPreview(
+    payload: CartPricingPreviewRequest
+  ): Promise<CartPricingPreviewResponse> {
+    const response = await apiClient.post(
+      API_ENDPOINTS.SUBSCRIPTIONS.CART_PRICING_PREVIEW,
+      payload
+    );
+    return unwrapApiData<CartPricingPreviewResponse>(response);
   }
 
   async validatePurchase(data: ValidatePurchaseRequest): Promise<ValidationResponse> {
