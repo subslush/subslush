@@ -204,6 +204,7 @@ describe('Checkout Payop route contract', () => {
       },
       headers: {
         'cf-ipcountry': 'SE',
+        origin: 'https://subslush.com',
       },
     });
 
@@ -242,6 +243,15 @@ describe('Checkout Payop route contract', () => {
           immediate_fulfillment_consent: true,
           terms_policy_consent: true,
         }),
+      })
+    );
+    expect(mockPaymentService.createPayopCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId,
+        methodId: 700001,
+        selectedCountry: 'SE',
+        detectedCountry: 'SE',
+        returnBaseUrl: 'https://subslush.com',
       })
     );
   });
@@ -291,6 +301,57 @@ describe('Checkout Payop route contract', () => {
       processing_fee_cents: 135,
       processing_total_cents: 2753,
       can_retry: false,
+    });
+    expect(mockPaymentService.getPayopCheckoutStatus).toHaveBeenCalledWith({
+      orderId,
+      invoiceId: null,
+      txid: null,
+    });
+  });
+
+  it('allows guest Payop status lookup with order and invoice capability ids', async () => {
+    mockOrderService.getOrderById.mockResolvedValue({
+      id: orderId,
+      user_id: null,
+      payment_provider: 'payop',
+      payment_reference: 'payop-invoice-guest',
+    } as any);
+    mockPaymentService.getPayopCheckoutStatus.mockResolvedValue({
+      success: true,
+      orderId,
+      orderStatus: 'in_process',
+      paymentStatus: 'succeeded',
+      providerStatus: 'accepted',
+      invoiceId: 'payop-invoice-guest',
+      txid: 'tx-guest',
+      methodTitle: 'PayDo',
+      processingCurrency: 'EUR',
+      processingSubtotalCents: 2618,
+      processingFeeCents: 135,
+      processingTotalCents: 2753,
+      canRetry: false,
+    });
+
+    const app = Fastify();
+    await app.register(checkoutRoutes, { prefix: '/checkout' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/checkout/payop/status',
+      payload: {
+        order_id: orderId,
+        invoice_id: 'payop-invoice-guest',
+        txid: 'tx-guest',
+      },
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPaymentService.getPayopCheckoutStatus).toHaveBeenCalledWith({
+      orderId,
+      invoiceId: 'payop-invoice-guest',
+      txid: 'tx-guest',
     });
   });
 });

@@ -115,6 +115,10 @@
     method: Pick<CheckoutPayopMethodQuote, 'method_id'>
   ): boolean => [30000018, 30001000].includes(method.method_id);
 
+  const hasMethodSupportBadgeRow = (
+    method: Pick<CheckoutPayopMethodQuote, 'method_id'>
+  ): boolean => isPrimaryPaydoMethod(method);
+
   const resolveMethodLogoBoxClass = (
     method: Pick<CheckoutPayopMethodQuote, 'method_id'>
   ): string =>
@@ -515,7 +519,13 @@
                           <div class="min-w-0 flex-1">
                             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                               <div class="min-w-0">
-                                <div class="flex items-start gap-3">
+                                <div
+                                  class={`flex gap-3 ${
+                                    hasMethodSupportBadgeRow(method)
+                                      ? 'items-start'
+                                      : 'items-center'
+                                  }`}
+                                >
                                   {#if resolveMethodLogo(method) || isBankIconMethod(method)}
                                     <div class={resolveMethodLogoBoxClass(method)}>
                                       {#if resolveMethodLogo(method)}
@@ -534,7 +544,7 @@
                                     <p class="text-sm font-semibold text-slate-900">
                                       {method.title}
                                     </p>
-                                    {#if isPrimaryPaydoMethod(method)}
+                                    {#if hasMethodSupportBadgeRow(method)}
                                       <div class="mt-2 flex flex-wrap items-center gap-1.5">
                                         {#each paydoSupportLogos as logo}
                                           <div class="flex h-9 w-12 items-center justify-center rounded-md border border-slate-200 bg-white px-1 py-1">

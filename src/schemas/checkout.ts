@@ -234,6 +234,20 @@ export type CheckoutPayopSessionInput = z.infer<
 export const checkoutPayopStatusSchema = z.object({
   checkout_session_key: checkoutSessionKeySchema,
   order_id: uuidSchema.optional().nullable(),
+  invoice_id: z
+    .string()
+    .trim()
+    .min(1, 'Invoice ID is required')
+    .max(255, 'Invoice ID is too long')
+    .optional()
+    .nullable(),
+  txid: z
+    .string()
+    .trim()
+    .min(1, 'Transaction ID is required')
+    .max(255, 'Transaction ID is too long')
+    .optional()
+    .nullable(),
 });
 
 export type CheckoutPayopStatusInput = z.infer<

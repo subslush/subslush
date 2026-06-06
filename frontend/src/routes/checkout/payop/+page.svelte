@@ -46,10 +46,18 @@
 
   const getStatusPayload = () => {
     if (checkoutSessionKey) {
-      return { checkout_session_key: checkoutSessionKey };
+      return {
+        checkout_session_key: checkoutSessionKey,
+        invoice_id: invoiceId,
+        txid,
+      };
     }
     if (orderId) {
-      return { order_id: orderId };
+      return {
+        order_id: orderId,
+        invoice_id: invoiceId,
+        txid,
+      };
     }
     return null;
   };

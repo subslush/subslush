@@ -15,6 +15,7 @@ import {
 } from '../schemas/checkout';
 import { guestCheckoutService } from '../services/guestCheckoutService';
 import { paymentService } from '../services/paymentService';
+import { paymentRepository } from '../services/paymentRepository';
 import { orderService } from '../services/orderService';
 import {
   buildTikTokRequestContext,
@@ -104,6 +105,59 @@ const resolveMetadataNumber = (
   return undefined;
 };
 
+const readSingleHeader = (
+  value: string | string[] | undefined
+): string | null => {
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : null;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (typeof entry !== 'string') {
+        continue;
+      }
+      const normalized = entry.trim();
+      if (normalized.length > 0) {
+        return normalized;
+      }
+    }
+  }
+  return null;
+};
+
+const resolveCheckoutRequestBaseUrl = (
+  request: FastifyRequest
+): string | null => {
+  const origin = readSingleHeader(request.headers.origin);
+  if (origin) {
+    return origin;
+  }
+
+  const referer = readSingleHeader(request.headers.referer);
+  if (referer) {
+    try {
+      const refererUrl = new globalThis.URL(referer);
+      return refererUrl.origin;
+    } catch {
+      // Ignore invalid referer values and fall through to forwarded headers.
+    }
+  }
+
+  const host =
+    readSingleHeader(request.headers['x-forwarded-host']) ||
+    readSingleHeader(request.headers.host);
+  if (!host) {
+    return null;
+  }
+
+  const proto =
+    readSingleHeader(request.headers['x-forwarded-proto']) ||
+    (env.NODE_ENV === 'production' ? 'https' : 'http');
+
+  return `${proto}://${host}`;
+};
+
 type CheckoutLegalConsentPayload =
   | {
       immediate_fulfillment_consent: boolean;
@@ -174,7 +228,28 @@ const buildOrderTikTokProperties = (
   };
 };
 
-const serializePayopMethodQuote = (quote: PayopMethodQuote) => ({
+const serializePayopMethodQuote = (
+  quote: PayopMethodQuote
+): {
+  method_id: number;
+  title: string;
+  type: PayopMethodQuote['type'];
+  form_type: string | null | undefined;
+  logo_url: string | null | undefined;
+  supported_countries: string[];
+  supported_currencies: string[];
+  processing_currency: string;
+  processing_subtotal_cents: number;
+  processing_fee_cents: number | null;
+  processing_total_cents: number;
+  converted_from_display_currency: boolean;
+  required_payer_fields: string[];
+  items: Array<{
+    order_item_id: string;
+    label: string;
+    total_cents: number;
+  }>;
+} => ({
   method_id: quote.methodId,
   title: quote.title,
   type: quote.type,
@@ -275,6 +350,62 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
     const order = await orderService.getOrderById(orderId as string);
     if (!order || order.user_id !== userId) {
       await ErrorResponses.notFound(reply, 'Order not found');
+      return null;
+    }
+
+    return order.id;
+  };
+
+  const resolvePayopStatusOrderId = async (params: {
+    request: FastifyRequest;
+    reply: FastifyReply;
+    checkoutSessionKey?: string | null;
+    orderId?: string | null;
+    invoiceId?: string | null;
+  }): Promise<string | null> => {
+    if (params.checkoutSessionKey || params.request.user?.userId) {
+      return resolveCheckoutOrderId({
+        request: params.request,
+        reply: params.reply,
+        checkoutSessionKey: params.checkoutSessionKey ?? null,
+        orderId: params.orderId ?? null,
+      });
+    }
+
+    if (!params.orderId || !params.invoiceId) {
+      await ErrorResponses.unauthorized(
+        params.reply,
+        'Authentication required'
+      );
+      return null;
+    }
+
+    const order = await orderService.getOrderById(params.orderId);
+    if (!order || order.payment_provider !== 'payop') {
+      await ErrorResponses.notFound(params.reply, 'Order not found');
+      return null;
+    }
+
+    if (order.payment_reference === params.invoiceId) {
+      return order.id;
+    }
+
+    const metadata =
+      order.metadata && typeof order.metadata === 'object'
+        ? order.metadata
+        : {};
+    if (
+      resolveMetadataValue(metadata, 'payop_invoice_id') === params.invoiceId
+    ) {
+      return order.id;
+    }
+
+    const payment = await paymentRepository.findByProviderPaymentId(
+      'payop',
+      params.invoiceId
+    );
+    if (!payment || payment.orderId !== order.id) {
+      await ErrorResponses.notFound(params.reply, 'Order not found');
       return null;
     }
 
@@ -485,7 +616,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
   const cardSessionHandler = async (
     request: FastifyRequest,
     reply: FastifyReply
-  ) => {
+  ): Promise<FastifyReply> => {
     try {
       const validation = validateCheckoutPayPalSessionInput(request.body);
       if (!validation.success) {
@@ -726,7 +857,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
   const cardConfirmHandler = async (
     request: FastifyRequest,
     reply: FastifyReply
-  ) => {
+  ): Promise<FastifyReply> => {
     try {
       const validation = validateCheckoutPayPalConfirmInput(request.body);
       if (!validation.success) {
@@ -1558,6 +1689,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           methodId: method_id,
           selectedCountry: country_code ?? null,
           detectedCountry,
+          returnBaseUrl: resolveCheckoutRequestBaseUrl(request),
           buyerEmail: request.user?.email ?? null,
           buyerName: buyerName ?? null,
         });
@@ -1648,6 +1780,8 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           properties: {
             checkout_session_key: { type: 'string' },
             order_id: { type: 'string' },
+            invoice_id: { type: 'string' },
+            txid: { type: 'string' },
           },
         },
       },
@@ -1666,11 +1800,12 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
-        const orderId = await resolveCheckoutOrderId({
+        const orderId = await resolvePayopStatusOrderId({
           request,
           reply,
           checkoutSessionKey: validation.data.checkout_session_key ?? null,
           orderId: validation.data.order_id ?? null,
+          invoiceId: validation.data.invoice_id ?? null,
         });
         if (!orderId) {
           return reply;
@@ -1678,6 +1813,8 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
 
         const statusResult = await paymentService.getPayopCheckoutStatus({
           orderId,
+          invoiceId: validation.data.invoice_id ?? null,
+          txid: validation.data.txid ?? null,
         });
         if (!statusResult.success) {
           const error = statusResult.error || 'payop_status_failed';

@@ -243,6 +243,8 @@ export interface CheckoutPayopSessionResponse {
 export interface CheckoutPayopStatusRequest {
   checkout_session_key?: string | null;
   order_id?: string | null;
+  invoice_id?: string | null;
+  txid?: string | null;
 }
 
 export interface CheckoutPayopStatusResponse {

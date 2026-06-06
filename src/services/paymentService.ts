@@ -727,6 +727,68 @@ export class PaymentService {
     return null;
   }
 
+  private isEquivalentAppHostname(
+    candidate: string,
+    configured: string
+  ): boolean {
+    if (candidate === configured) {
+      return true;
+    }
+
+    const stripWww = (value: string): string =>
+      value.startsWith('www.') ? value.slice(4) : value;
+
+    return stripWww(candidate) === stripWww(configured);
+  }
+
+  private resolvePayopReturnBaseUrl(
+    preferredBaseUrl?: string | null
+  ): string | null {
+    const fallbackBaseUrl = this.resolveAppBaseUrl();
+    const normalizedPreferred =
+      typeof preferredBaseUrl === 'string' ? preferredBaseUrl.trim() : '';
+
+    if (!normalizedPreferred) {
+      return fallbackBaseUrl;
+    }
+
+    try {
+      const preferredUrl = new globalThis.URL(normalizedPreferred);
+      if (!['http:', 'https:'].includes(preferredUrl.protocol)) {
+        return fallbackBaseUrl;
+      }
+
+      preferredUrl.hash = '';
+      preferredUrl.search = '';
+      preferredUrl.pathname = '';
+      const preferredOrigin = preferredUrl.origin.replace(/\/$/, '');
+
+      if (env.NODE_ENV !== 'production') {
+        return preferredOrigin;
+      }
+
+      if (!fallbackBaseUrl) {
+        return preferredOrigin;
+      }
+
+      const configuredUrl = new globalThis.URL(fallbackBaseUrl);
+      if (
+        configuredUrl.protocol === preferredUrl.protocol &&
+        this.isEquivalentAppHostname(
+          preferredUrl.hostname,
+          configuredUrl.hostname
+        ) &&
+        preferredUrl.port === configuredUrl.port
+      ) {
+        return preferredOrigin;
+      }
+    } catch {
+      return fallbackBaseUrl;
+    }
+
+    return fallbackBaseUrl;
+  }
+
   private async createSubscriptionsForOrder(params: {
     order: Order;
     orderItems: OrderItem[];
@@ -3648,17 +3710,22 @@ export class PaymentService {
     }
   }
 
-  private buildPayopReturnUrls(orderId: string): {
+  private buildPayopReturnUrls(
+    orderId: string,
+    preferredBaseUrl?: string | null
+  ): {
+    baseUrl: string;
     successUrl: string;
     failUrl: string;
   } | null {
-    const baseUrl = this.resolveAppBaseUrl();
+    const baseUrl = this.resolvePayopReturnBaseUrl(preferredBaseUrl);
     if (!baseUrl) {
       return null;
     }
 
     const encodedOrderId = encodeURIComponent(orderId);
     return {
+      baseUrl,
       successUrl: `${baseUrl}/checkout/payop?status=success&order_id=${encodedOrderId}&invoice_id={{invoiceId}}&txid={{txid}}`,
       failUrl: `${baseUrl}/checkout/payop?status=fail&order_id=${encodedOrderId}&invoice_id={{invoiceId}}&txid={{txid}}`,
     };
@@ -3702,6 +3769,214 @@ export class PaymentService {
       params.selectedQuote.processingTotalCents;
 
     return metadata;
+  }
+
+  private async reconcilePayopCheckoutStatus(params: {
+    orderId: string;
+    invoiceId?: string | null;
+    txid?: string | null;
+  }): Promise<void> {
+    const order = await orderService.getOrderById(params.orderId);
+    if (!order || !['cart', 'pending_payment'].includes(order.status)) {
+      return;
+    }
+
+    const resolvedInvoiceId =
+      normalizeString(params.invoiceId) ||
+      normalizeString(order.payment_reference) ||
+      null;
+    const payment =
+      (resolvedInvoiceId
+        ? await paymentRepository.findByProviderPaymentId(
+            'payop',
+            resolvedInvoiceId
+          )
+        : null) ??
+      (await paymentRepository.findLatestByOrderId(
+        'payop',
+        params.orderId,
+        'subscription'
+      ));
+
+    if (!payment) {
+      return;
+    }
+
+    const metadata =
+      payment.metadata && typeof payment.metadata === 'object'
+        ? payment.metadata
+        : order.metadata && typeof order.metadata === 'object'
+          ? (order.metadata as Record<string, unknown>)
+          : {};
+
+    const invoiceId =
+      resolvedInvoiceId ||
+      normalizeString(payment.providerPaymentId) ||
+      normalizeString(metadata['payop_invoice_id'] as string | undefined) ||
+      null;
+    const expectedCurrency =
+      normalizeCurrencyCode(
+        metadata['payop_processing_currency'] as string | undefined
+      ) ||
+      normalizeCurrencyCode(
+        metadata['processingCurrency'] as string | undefined
+      ) ||
+      null;
+    const expectedTotalCents =
+      parseNonNegativeInt(metadata['payop_processing_total_cents']) ??
+      parseNonNegativeInt(metadata['processingTotalCents']) ??
+      null;
+
+    if (!invoiceId || !expectedCurrency || expectedTotalCents === null) {
+      return;
+    }
+
+    let verifiedInvoice;
+    try {
+      verifiedInvoice = await payopProvider.getInvoice(invoiceId);
+    } catch (error) {
+      Logger.warn(
+        'Payop checkout status reconciliation invoice lookup failed',
+        {
+          orderId: params.orderId,
+          invoiceId,
+          error,
+        }
+      );
+      return;
+    }
+
+    const verifiedInvoiceId = normalizeString(verifiedInvoice.identifier);
+    const verifiedOrderId = normalizeString(verifiedInvoice.orderIdentifier);
+    const verifiedInvoiceCurrency =
+      normalizeCurrencyCode(verifiedInvoice.currency) || null;
+    const verifiedInvoiceAmountCents = this.parseAmountToCents(
+      String(verifiedInvoice.amount)
+    );
+
+    if (
+      verifiedInvoiceId !== invoiceId ||
+      verifiedOrderId !== params.orderId ||
+      verifiedInvoiceCurrency !== expectedCurrency ||
+      verifiedInvoiceAmountCents !== expectedTotalCents
+    ) {
+      Logger.warn('Payop checkout status reconciliation mismatch', {
+        orderId: params.orderId,
+        invoiceId,
+        verifiedInvoiceId,
+        verifiedOrderId,
+        expectedCurrency,
+        verifiedInvoiceCurrency,
+        expectedTotalCents,
+        verifiedInvoiceAmountCents,
+      });
+      return;
+    }
+
+    const invoiceRecord = verifiedInvoice as unknown as Record<
+      string,
+      unknown
+    > | null;
+    const resolvedTxid =
+      normalizeString(params.txid) ||
+      normalizeString(metadata['payop_txid'] as string | undefined) ||
+      normalizeString(
+        typeof invoiceRecord?.['txid'] === 'string'
+          ? (invoiceRecord['txid'] as string)
+          : undefined
+      ) ||
+      null;
+    if (!resolvedTxid) {
+      return;
+    }
+
+    let verifiedTransaction;
+    try {
+      verifiedTransaction =
+        await payopProvider.getTransactionDetails(resolvedTxid);
+    } catch (error) {
+      Logger.warn(
+        'Payop checkout status reconciliation transaction lookup failed',
+        {
+          orderId: params.orderId,
+          invoiceId,
+          txid: resolvedTxid,
+          error,
+        }
+      );
+      return;
+    }
+
+    const verifiedTxid = normalizeString(verifiedTransaction.identifier);
+    const verifiedTransactionOrderId =
+      normalizeString(verifiedTransaction.orderId) || verifiedOrderId;
+    const verifiedTransactionCurrency =
+      normalizeCurrencyCode(verifiedTransaction.currency) ||
+      verifiedInvoiceCurrency;
+    const verifiedState =
+      typeof verifiedTransaction.state === 'number'
+        ? Math.round(verifiedTransaction.state)
+        : null;
+
+    if (
+      verifiedTxid !== resolvedTxid ||
+      verifiedTransactionOrderId !== params.orderId ||
+      verifiedTransactionCurrency !== expectedCurrency
+    ) {
+      Logger.warn('Payop checkout status reconciliation transaction mismatch', {
+        orderId: params.orderId,
+        invoiceId,
+        txid: resolvedTxid,
+        verifiedTxid,
+        verifiedTransactionOrderId,
+        expectedCurrency,
+        verifiedTransactionCurrency,
+      });
+      return;
+    }
+
+    const statusMapping = this.mapPayopTransactionState(verifiedState);
+    if (
+      payment.status === 'succeeded' &&
+      statusMapping.status !== 'succeeded'
+    ) {
+      return;
+    }
+
+    const mergedMetadata = {
+      ...(payment.metadata || {}),
+      payop_invoice_id: invoiceId,
+      payop_txid: resolvedTxid,
+      payop_invoice_status: verifiedInvoice.status,
+      payop_transaction_state: verifiedState,
+      payop_transaction_amount_cents: this.parseAmountToCents(
+        String(verifiedTransaction.amount)
+      ),
+      payop_last_verified_invoice: verifiedInvoice,
+      payop_last_verified_transaction: verifiedTransaction,
+      payop_last_status_reconcile_at: new Date().toISOString(),
+    };
+
+    const persistedPayment =
+      await paymentRepository.updateStatusByProviderPaymentId(
+        'payop',
+        invoiceId,
+        statusMapping.status,
+        statusMapping.providerStatus,
+        mergedMetadata
+      );
+
+    if (!persistedPayment) {
+      return;
+    }
+
+    if (statusMapping.status === 'succeeded') {
+      await this.processPayopOrderPayment({
+        orderId: params.orderId,
+        invoiceId,
+        payment: persistedPayment,
+      });
+    }
   }
 
   private mapPayPalOrderStatus(status: string | null | undefined): {
@@ -5802,6 +6077,7 @@ export class PaymentService {
     methodId: number;
     selectedCountry?: string | null;
     detectedCountry?: string | null;
+    returnBaseUrl?: string | null;
     buyerEmail?: string | null;
     buyerName?: string | null;
     buyerPhone?: string | null;
@@ -5880,7 +6156,10 @@ export class PaymentService {
         return { success: false, error: 'invalid_payment_method' };
       }
 
-      const returnUrls = this.buildPayopReturnUrls(order.id);
+      const returnUrls = this.buildPayopReturnUrls(
+        order.id,
+        params.returnBaseUrl
+      );
       if (!returnUrls) {
         return { success: false, error: 'missing_app_base_url' };
       }
@@ -5906,8 +6185,11 @@ export class PaymentService {
 
       const payloadMetadata = {
         orderId: order.id,
+        order_id: order.id,
         checkoutSessionKey: order.checkout_session_key ?? null,
+        checkout_session_key: order.checkout_session_key ?? null,
         pricingSnapshotId: order.pricing_snapshot_id ?? null,
+        pricing_snapshot_id: order.pricing_snapshot_id ?? null,
         displayCurrency:
           typeof orderMetadata['display_currency'] === 'string'
             ? orderMetadata['display_currency']
@@ -5916,13 +6198,21 @@ export class PaymentService {
           parseNonNegativeInt(orderMetadata['display_total_cents']) ??
           parseNonNegativeInt(order.total_cents),
         paymentCountry: selectedCountry,
+        payment_country: selectedCountry,
         detectedCountry,
+        detected_country: detectedCountry,
         payopMethodId: selectedQuote.methodId,
+        payop_method_id: selectedQuote.methodId,
         payopMethodTitle: selectedQuote.title,
+        payop_method_title: selectedQuote.title,
         processingCurrency: selectedQuote.processingCurrency,
+        processing_currency: selectedQuote.processingCurrency,
         processingSubtotalCents: selectedQuote.processingSubtotalCents,
+        processing_subtotal_cents: selectedQuote.processingSubtotalCents,
         processingFeeCents: selectedQuote.processingFeeCents,
+        processing_fee_cents: selectedQuote.processingFeeCents,
         processingTotalCents: selectedQuote.processingTotalCents,
+        processing_total_cents: selectedQuote.processingTotalCents,
       };
 
       const invoice = await payopProvider.createInvoice({
@@ -5987,6 +6277,7 @@ export class PaymentService {
           payop_detected_country: detectedCountry,
           payop_result_url: returnUrls.successUrl,
           payop_fail_url: returnUrls.failUrl,
+          payop_return_base_url: returnUrls.baseUrl,
           payop_checkout_url: checkoutUrl,
           payop_required_payer_fields: selectedQuote.requiredPayerFields,
           payop_invoice_status: invoice.payloadStatus,
@@ -6067,7 +6358,11 @@ export class PaymentService {
     }
   }
 
-  async getPayopCheckoutStatus(params: { orderId: string }): Promise<
+  async getPayopCheckoutStatus(params: {
+    orderId: string;
+    invoiceId?: string | null;
+    txid?: string | null;
+  }): Promise<
     | {
         success: true;
         orderId: string;
@@ -6086,6 +6381,12 @@ export class PaymentService {
     | { success: false; error: string }
   > {
     try {
+      await this.reconcilePayopCheckoutStatus({
+        orderId: params.orderId,
+        invoiceId: params.invoiceId ?? null,
+        txid: params.txid ?? null,
+      });
+
       const order = await orderService.getOrderById(params.orderId);
       if (!order) {
         return { success: false, error: 'order_not_found' };
@@ -6390,15 +6691,31 @@ export class PaymentService {
         typeof params.payload.transaction?.state === 'number'
           ? Math.round(params.payload.transaction.state)
           : null;
+      const invoiceMetadata =
+        params.payload.invoice?.metadata &&
+        typeof params.payload.invoice.metadata === 'object'
+          ? params.payload.invoice.metadata
+          : null;
+      const nestedInvoiceMetadata =
+        invoiceMetadata?.[
+          'any other merchant data which were passed to invoice on create it'
+        ] &&
+        typeof invoiceMetadata[
+          'any other merchant data which were passed to invoice on create it'
+        ] === 'object'
+          ? (invoiceMetadata[
+              'any other merchant data which were passed to invoice on create it'
+            ] as Record<string, unknown>)
+          : null;
       const orderId =
         normalizeString(params.payload.transaction?.order?.id) ||
-        normalizeString(params.payload.invoice?.metadata?.['orderId']) ||
+        normalizeString(invoiceMetadata?.['orderId'] as string | undefined) ||
+        normalizeString(invoiceMetadata?.['order_id'] as string | undefined) ||
         normalizeString(
-          (
-            params.payload.invoice?.metadata?.[
-              'any other merchant data which were passed to invoice on create it'
-            ] as Record<string, unknown> | undefined
-          )?.['orderId']
+          nestedInvoiceMetadata?.['orderId'] as string | undefined
+        ) ||
+        normalizeString(
+          nestedInvoiceMetadata?.['order_id'] as string | undefined
         );
 
       if (!invoiceId || !txid || !orderId) {
@@ -6497,15 +6814,22 @@ export class PaymentService {
 
       const verifiedInvoiceId = normalizeString(verifiedInvoice.identifier);
       const verifiedOrderId = normalizeString(
-        verifiedTransaction.orderId ?? verifiedInvoice.orderIdentifier
+        verifiedInvoice.orderIdentifier ?? verifiedTransaction.orderId
       );
+      const verifiedInvoiceCurrency =
+        normalizeCurrencyCode(verifiedInvoice.currency) || null;
+      const verifiedTransactionCurrency =
+        normalizeCurrencyCode(verifiedTransaction.currency) || null;
       const verifiedCurrency =
-        normalizeCurrencyCode(verifiedTransaction.currency) ||
-        normalizeCurrencyCode(verifiedInvoice.currency) ||
-        null;
+        verifiedInvoiceCurrency || verifiedTransactionCurrency || null;
+      const verifiedInvoiceAmountCents = this.parseAmountToCents(
+        String(verifiedInvoice.amount)
+      );
+      const verifiedTransactionAmountCents = this.parseAmountToCents(
+        String(verifiedTransaction.amount)
+      );
       const verifiedAmountCents =
-        this.parseAmountToCents(String(verifiedTransaction.amount)) ??
-        this.parseAmountToCents(String(verifiedInvoice.amount));
+        verifiedInvoiceAmountCents ?? verifiedTransactionAmountCents;
       const verifiedState =
         typeof verifiedTransaction.state === 'number'
           ? Math.round(verifiedTransaction.state)
@@ -6560,7 +6884,7 @@ export class PaymentService {
 
       const payment =
         existingPayment ||
-        (await (() => {
+        (await (async (): Promise<UnifiedPayment> => {
           const input: CreateUnifiedPaymentInput = {
             userId: order.user_id,
             provider: 'payop',
@@ -6604,6 +6928,7 @@ export class PaymentService {
         payop_txid: txid,
         payop_invoice_status: invoiceStatus ?? verifiedInvoice.status,
         payop_transaction_state: verifiedState,
+        payop_transaction_amount_cents: verifiedTransactionAmountCents,
         payop_transaction_error: verifiedTransaction.error || null,
         payop_last_ipn_at: new Date().toISOString(),
         payop_last_ipn_payload: params.payload,
