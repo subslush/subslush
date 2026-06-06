@@ -3,10 +3,10 @@
   import { goto } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
   import applePayLogo from '$lib/assets/apple-pay.svg';
+  import mastercardLogo from '$lib/assets/mastercard-logo.webp';
   import monzoLogo from '$lib/assets/monzo-logo.webp';
   import paydoLogo from '$lib/assets/paydo-logo.webp';
   import revolutLogo from '$lib/assets/revolut-logo.webp';
-  import mastercardLogo from '$lib/assets/mastercard.svg';
   import sepaLogo from '$lib/assets/sepa-logo.webp';
   import swiftLogo from '$lib/assets/swift-logo.webp';
   import visaLogo from '$lib/assets/visa.svg';
@@ -62,6 +62,7 @@
   let summarySubtotalCents = 0;
   let summaryFeeCents: number | null = null;
   let summaryTotalCents = 0;
+  let showDisplayTotalReference = false;
   let requestCounter = 0;
   let consentNeedsAttention = false;
   let consentAttentionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -78,11 +79,19 @@
     formatCurrency(amountCents / 100, normalizeCurrencyCode(currencyCode) || 'USD');
 
   const paydoSupportLogos = [
-    { src: visaLogo, alt: 'Visa' },
-    { src: mastercardLogo, alt: 'Mastercard' },
-    { src: applePayLogo, alt: 'Apple Pay' },
-    { src: sepaLogo, alt: 'SEPA' },
-    { src: swiftLogo, alt: 'SWIFT' },
+    { src: visaLogo, alt: 'Visa', className: 'h-5 w-full object-contain' },
+    {
+      src: mastercardLogo,
+      alt: 'Mastercard',
+      className: 'h-5 w-full object-contain',
+    },
+    {
+      src: applePayLogo,
+      alt: 'Apple Pay',
+      className: 'h-5 w-full object-contain',
+    },
+    { src: sepaLogo, alt: 'SEPA', className: 'h-8 w-full object-contain' },
+    { src: swiftLogo, alt: 'SWIFT', className: 'h-5 w-full object-contain' },
   ] as const;
 
   const resolveMethodLogo = (
@@ -372,6 +381,12 @@
   $: summaryTotalCents =
     selectedMethod?.processing_total_cents ?? displayTotalCents;
 
+  $: showDisplayTotalReference =
+    Boolean(selectedMethod?.converted_from_display_currency) &&
+    Boolean(normalizeCurrencyCode(displayCurrency)) &&
+    normalizeCurrencyCode(displayCurrency) !==
+      normalizeCurrencyCode(summaryCurrency);
+
   onMount(async () => {
     draftState = loadCheckoutDraftState();
     checkoutSessionKey = draftState?.checkoutSessionKey ?? null;
@@ -551,7 +566,7 @@
                                             <img
                                               src={logo.src}
                                               alt={logo.alt}
-                                              class="h-5 w-full object-contain"
+                                              class={logo.className}
                                               loading="lazy"
                                             />
                                           </div>
@@ -609,6 +624,11 @@
               <p class="mt-1 text-3xl font-black leading-none tracking-tight text-slate-900">
                 {formatCents(summaryTotalCents, summaryCurrency)}
               </p>
+              {#if showDisplayTotalReference}
+                <p class="mt-2 text-sm font-medium text-slate-500">
+                  ({formatCents(displayTotalCents, displayCurrency)})
+                </p>
+              {/if}
             </div>
 
             <div
