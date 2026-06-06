@@ -6,6 +6,7 @@
   import HomeNav from '$lib/components/home/HomeNav.svelte';
   import Footer from '$lib/components/home/Footer.svelte';
   import { checkoutService } from '$lib/api/checkout.js';
+  import { auth } from '$lib/stores/auth.js';
   import { cart } from '$lib/stores/cart.js';
   import {
     clearCheckoutDraftStorage,
@@ -38,6 +39,8 @@
   let methodTitle: string | null = null;
   let processingCurrency: string | null = null;
   let processingTotalCents: number | null = null;
+  let checkoutContactEmail: string | null = null;
+  let confirmationEmail: string | null = null;
   let canRetry = false;
   let cartCleared = false;
   let pollingActive = true;
@@ -131,6 +134,9 @@
     txid = $page.url.searchParams.get('txid') ?? txid;
   });
 
+  $: confirmationEmail =
+    $auth.user?.email?.trim() || checkoutContactEmail || null;
+
   $: if (browser && finalizedState === 'success' && !cartCleared) {
     cart.clear();
     clearCheckoutDraftStorage();
@@ -141,6 +147,7 @@
     const draft = loadCheckoutDraftState();
     checkoutSessionKey = draft?.checkoutSessionKey ?? null;
     orderId = orderId ?? draft?.orderId ?? null;
+    checkoutContactEmail = draft?.email?.trim().toLowerCase() ?? null;
 
     if (!checkoutSessionKey && !orderId) {
       await goto('/checkout');
@@ -220,7 +227,7 @@
 
           {#if finalizedState === 'success'}
             <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
-              Your payment was confirmed and your order is now being processed.
+              Your payment was confirmed and your order is now being processed. Orders are usually delivered within 24 hours, but in rare cases it may take up to 72 hours. We will email you as soon as your order has been delivered.
             </div>
           {/if}
 
@@ -233,6 +240,12 @@
           {#if actionError && finalizedState === 'pending'}
             <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
               {actionError}
+            </div>
+          {/if}
+
+          {#if finalizedState === 'success' && confirmationEmail}
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
+              We’ve sent your order and payment confirmation to <span class="font-semibold text-slate-900">{confirmationEmail}</span>.
             </div>
           {/if}
 
