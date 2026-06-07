@@ -3753,12 +3753,26 @@ export class PaymentService {
       params.order.metadata && typeof params.order.metadata === 'object'
         ? { ...(params.order.metadata as Record<string, unknown>) }
         : {};
+    const displayCurrency =
+      normalizeCurrencyCode(
+        typeof metadata['display_currency'] === 'string'
+          ? metadata['display_currency']
+          : null
+      ) ||
+      normalizeCurrencyCode(params.order.currency) ||
+      'USD';
 
     metadata['payment_country'] = params.selectedCountry;
     metadata['detected_country'] = params.detectedCountry;
     metadata['payop_method_id'] = params.selectedQuote.methodId;
     metadata['payop_method_title'] = params.selectedQuote.title;
     metadata['payop_method_type'] = params.selectedQuote.type;
+    metadata['payop_display_currency'] = displayCurrency;
+    metadata['payop_display_subtotal_cents'] =
+      params.selectedQuote.displaySubtotalCents;
+    metadata['payop_display_fee_cents'] = params.selectedQuote.displayFeeCents;
+    metadata['payop_display_total_cents'] =
+      params.selectedQuote.displayTotalCents;
     metadata['payop_processing_currency'] =
       params.selectedQuote.processingCurrency;
     metadata['payop_processing_subtotal_cents'] =
@@ -6174,6 +6188,14 @@ export class PaymentService {
       const processingAmount = payopProvider.formatAmountFromCents(
         selectedQuote.processingTotalCents
       );
+      const displayCurrency =
+        normalizeCurrencyCode(
+          typeof orderMetadata['display_currency'] === 'string'
+            ? orderMetadata['display_currency']
+            : null
+        ) ||
+        normalizeCurrencyCode(order.currency) ||
+        'USD';
       const description = this.buildPay4bitOrderDescription(
         order as OrderWithItems
       );
@@ -6197,6 +6219,14 @@ export class PaymentService {
         displayTotalCents:
           parseNonNegativeInt(orderMetadata['display_total_cents']) ??
           parseNonNegativeInt(order.total_cents),
+        payopDisplayCurrency: displayCurrency,
+        payop_display_currency: displayCurrency,
+        payopDisplaySubtotalCents: selectedQuote.displaySubtotalCents,
+        payop_display_subtotal_cents: selectedQuote.displaySubtotalCents,
+        payopDisplayFeeCents: selectedQuote.displayFeeCents,
+        payop_display_fee_cents: selectedQuote.displayFeeCents,
+        payopDisplayTotalCents: selectedQuote.displayTotalCents,
+        payop_display_total_cents: selectedQuote.displayTotalCents,
         paymentCountry: selectedCountry,
         payment_country: selectedCountry,
         detectedCountry,
@@ -6268,6 +6298,10 @@ export class PaymentService {
           payop_method_id: selectedQuote.methodId,
           payop_method_title: selectedQuote.title,
           payop_method_type: selectedQuote.type,
+          payop_display_currency: displayCurrency,
+          payop_display_subtotal_cents: selectedQuote.displaySubtotalCents,
+          payop_display_fee_cents: selectedQuote.displayFeeCents,
+          payop_display_total_cents: selectedQuote.displayTotalCents,
           payop_processing_currency: selectedQuote.processingCurrency,
           payop_processing_subtotal_cents:
             selectedQuote.processingSubtotalCents,

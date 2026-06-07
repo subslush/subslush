@@ -89,7 +89,7 @@ class EmailService {
                         SubSlush
                       </div>
                       <div style="font-size:12px;line-height:1.4;opacity:0.92;margin-top:5px;text-align:center;">
-                        Premium subscriptions for less
+                        Premium For Less
                       </div>
                     </td>
                   </tr>

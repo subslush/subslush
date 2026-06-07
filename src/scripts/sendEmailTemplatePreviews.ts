@@ -76,13 +76,13 @@ const buildPreviewBatch = (): PreviewEmail[] => {
     },
     {
       subject: '[Preview] Order - Payment received',
-      text: `We received your payment for order 3f8a91c2.\nOrder delivery is usually completed within 24 hours during business days.\nIn some cases, delivery can take up to 72 hours.\n\nOrder items:\n- Netflix Premium · 12 months\n- Spotify Family · 6 months`,
+      text: `We received your payment for order 3f8a91c2.\nOrder delivery is usually completed within 24 hours during business days.\nIn some cases, delivery can take up to 72 hours.\n\nOrder items:\n- Netflix Premium · 12 months\n- Spotify Family · 6 months\n\nOrder confirmation summary:\n- Order ID: 3f8a91c2-0000-4000-8000-preview0001\n- Customer email: hello@example.com\n- Total price: SEK 50.69\n- VAT/tax: Final checkout price includes applicable taxes/fees where required\n- Delivery method: Digital delivery through dashboard and/or email, depending on product type\n- Date/time (UTC): 2026-06-07T12:00:00.000Z`,
       html: emailService.buildBrandedEmail({
         title: 'Payment received',
         intro:
           'We received your payment for order 3f8a91c2. Delivery is usually completed within 24 hours on business days, and can take up to 72 hours in some cases.',
         bodyHtml: `
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 16px;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
             <tr>
               <td style="padding:14px 16px;font-size:13px;color:#334155;">
                 <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Order items</div>
@@ -93,10 +93,22 @@ const buildPreviewBatch = (): PreviewEmail[] => {
               </td>
             </tr>
           </table>
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+            <tr>
+              <td style="padding:14px 16px;font-size:13px;color:#334155;">
+                <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Order confirmation summary</div>
+                <div>Order ID: 3f8a91c2-0000-4000-8000-preview0001</div>
+                <div>Customer email: hello@example.com</div>
+                <div>Total price: SEK 50.69</div>
+                <div>VAT/tax: Final checkout price includes applicable taxes/fees where required</div>
+                <div>Delivery method: Digital delivery through dashboard and/or email, depending on product type</div>
+                <div>Date/time (UTC): 2026-06-07T12:00:00.000Z</div>
+              </td>
+            </tr>
+          </table>
         `.trim(),
         ctaLabel: 'View My Orders',
         ctaUrl: dashboardLink,
-        note: `Need help? ${helpLink}`,
         previewText: 'Payment received for order 3f8a91c2',
       }),
     },

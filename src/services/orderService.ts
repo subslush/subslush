@@ -19,6 +19,7 @@ import { notificationService } from './notificationService';
 import { emailService } from './emailService';
 import { guestCheckoutService } from './guestCheckoutService';
 import { orderComplianceEvidenceService } from './orderComplianceEvidenceService';
+import { paymentRepository } from './paymentRepository';
 import { env } from '../config/environment';
 import { formatSubscriptionDisplayName } from '../utils/subscriptionHelpers';
 
@@ -206,6 +207,44 @@ const resolveOrderDisplayTotalCents = (order: Order): number | null => {
   return null;
 };
 
+const resolvePayopDisplayTotalFromMetadata = (
+  metadata: Record<string, any> | null | undefined
+): number | null => {
+  if (!metadata || typeof metadata !== 'object') {
+    return null;
+  }
+
+  const total =
+    metadata['payop_display_total_cents'] ??
+    metadata['payopDisplayTotalCents'] ??
+    null;
+  const parsedTotal = Number(total);
+  if (Number.isFinite(parsedTotal) && parsedTotal >= 0) {
+    return Math.round(parsedTotal);
+  }
+
+  const subtotal =
+    metadata['payop_display_subtotal_cents'] ??
+    metadata['payopDisplaySubtotalCents'] ??
+    null;
+  const fee =
+    metadata['payop_display_fee_cents'] ??
+    metadata['payopDisplayFeeCents'] ??
+    null;
+  const parsedSubtotal = Number(subtotal);
+  const parsedFee = Number(fee);
+  if (
+    Number.isFinite(parsedSubtotal) &&
+    parsedSubtotal >= 0 &&
+    Number.isFinite(parsedFee) &&
+    parsedFee >= 0
+  ) {
+    return Math.round(parsedSubtotal) + Math.round(parsedFee);
+  }
+
+  return null;
+};
+
 const resolveTermMonths = (item: OrderItem): number | null => {
   const termMonths =
     item.term_months ??
@@ -309,6 +348,53 @@ export class OrderService {
     }
   }
 
+  private async resolvePaymentConfirmationDisplayTotalCents(
+    order: Order
+  ): Promise<number | null> {
+    const orderMetadata =
+      order.metadata && typeof order.metadata === 'object'
+        ? (order.metadata as Record<string, any>)
+        : {};
+    const orderMetadataTotal =
+      resolvePayopDisplayTotalFromMetadata(orderMetadata);
+    if (orderMetadataTotal !== null) {
+      return orderMetadataTotal;
+    }
+
+    if (order.payment_provider === 'payop') {
+      const latestPayment = await paymentRepository.findLatestByOrderId(
+        'payop',
+        order.id,
+        'subscription'
+      );
+      const paymentMetadata =
+        latestPayment?.metadata && typeof latestPayment.metadata === 'object'
+          ? latestPayment.metadata
+          : null;
+      const paymentMetadataTotal =
+        resolvePayopDisplayTotalFromMetadata(paymentMetadata);
+      if (paymentMetadataTotal !== null) {
+        return paymentMetadataTotal;
+      }
+
+      const displayCurrency = resolveOrderDisplayCurrency(order);
+      const paymentCurrency =
+        typeof latestPayment?.currency === 'string'
+          ? latestPayment.currency.trim().toUpperCase()
+          : null;
+      if (
+        paymentCurrency === displayCurrency &&
+        typeof latestPayment?.amount === 'number' &&
+        Number.isFinite(latestPayment.amount) &&
+        latestPayment.amount >= 0
+      ) {
+        return Math.round(latestPayment.amount * 100);
+      }
+    }
+
+    return resolveOrderDisplayTotalCents(order);
+  }
+
   private async listOrderSubscriptions(orderId: string): Promise<
     Array<{
       id: string;
@@ -378,10 +464,7 @@ export class OrderService {
           servicePlan: subscription.service_plan as any,
           termMonths: subscription.term_months ?? null,
         });
-        const shortCode = subscription.id.slice(0, 8);
-        return label
-          ? `${label} - ${shortCode}`
-          : `Subscription - ${shortCode}`;
+        return label || 'Subscription';
       });
     }
 
@@ -843,21 +926,12 @@ export class OrderService {
       ? new Date().toISOString()
       : orderPlacedAt.toISOString();
     const displayCurrency = resolveOrderDisplayCurrency(order);
-    const displayTotalCents = resolveOrderDisplayTotalCents(order);
+    const displayTotalCents =
+      await this.resolvePaymentConfirmationDisplayTotalCents(order);
     const displayTotal = formatCurrencyCents(
       displayTotalCents,
       displayCurrency
     );
-    const customerNameRaw =
-      typeof order.metadata?.['customer_name'] === 'string'
-        ? order.metadata['customer_name']
-        : typeof order.metadata?.['customerName'] === 'string'
-          ? order.metadata['customerName']
-          : null;
-    const customerName =
-      typeof customerNameRaw === 'string' && customerNameRaw.trim().length > 0
-        ? customerNameRaw.trim()
-        : null;
     const shouldIssueClaimToken = await this.isGuestUser(order.user_id);
     const guestIdentityId =
       typeof order.metadata?.['guest_identity_id'] === 'string'
@@ -910,17 +984,16 @@ export class OrderService {
       'Order delivery is usually completed within 24 hours during business days.',
       'In some cases, delivery can take up to 72 hours.',
       '',
-      'Order confirmation summary:',
-      `- Order ID: ${order.id}`,
-      `- Date/time (UTC): ${orderPlacedAtIso}`,
-      `- Customer name: ${customerName || 'Not provided'}`,
-      `- Customer email: ${email}`,
-      `- Total price: ${displayTotal}`,
-      `- Delivery method: Digital delivery through dashboard and/or email, depending on product type`,
-      `- VAT/tax: Final checkout price includes applicable taxes/fees where required`,
-      '',
       'Order items:',
       subscriptionsText,
+      '',
+      'Order confirmation summary:',
+      `- Order ID: ${order.id}`,
+      `- Customer email: ${email}`,
+      `- Total price: ${displayTotal}`,
+      `- VAT/tax: Final checkout price includes applicable taxes/fees where required`,
+      `- Delivery method: Digital delivery through dashboard and/or email, depending on product type`,
+      `- Date/time (UTC): ${orderPlacedAtIso}`,
       '',
       claimText,
     ].join('\n');
@@ -931,22 +1004,21 @@ export class OrderService {
         <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 16px;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
           <tr>
             <td style="padding:14px 16px;font-size:13px;color:#334155;">
-              <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Order confirmation summary</div>
-              <div>Order ID: ${escapeHtml(order.id)}</div>
-              <div>Date/time (UTC): ${escapeHtml(orderPlacedAtIso)}</div>
-              <div>Customer name: ${escapeHtml(customerName || 'Not provided')}</div>
-              <div>Customer email: ${escapeHtml(email)}</div>
-              <div>Total price: ${escapeHtml(displayTotal)}</div>
-              <div>Delivery method: Digital delivery through dashboard and/or email, depending on product type</div>
-              <div>VAT/tax: Final checkout price includes applicable taxes/fees where required</div>
+              <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Order items</div>
+              <ul style="margin:0;padding-left:18px;">${subscriptionsHtml}</ul>
             </td>
           </tr>
         </table>
         <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
           <tr>
             <td style="padding:14px 16px;font-size:13px;color:#334155;">
-              <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Order items</div>
-              <ul style="margin:0;padding-left:18px;">${subscriptionsHtml}</ul>
+              <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Order confirmation summary</div>
+              <div>Order ID: ${escapeHtml(order.id)}</div>
+              <div>Customer email: ${escapeHtml(email)}</div>
+              <div>Total price: ${escapeHtml(displayTotal)}</div>
+              <div>VAT/tax: Final checkout price includes applicable taxes/fees where required</div>
+              <div>Delivery method: Digital delivery through dashboard and/or email, depending on product type</div>
+              <div>Date/time (UTC): ${escapeHtml(orderPlacedAtIso)}</div>
             </td>
           </tr>
         </table>

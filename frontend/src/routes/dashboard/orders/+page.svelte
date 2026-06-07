@@ -48,6 +48,27 @@
       .replace(/\b\w/g, char => char.toUpperCase());
   }
 
+  function humanizeOrderLabel(value: string): string {
+    const trimmed = stripOrderPrefix(value).replace(/\s+/g, ' ').trim();
+    if (!trimmed) return '';
+
+    const slugLike = /[_-]/.test(trimmed) || trimmed === trimmed.toLowerCase();
+    if (!slugLike) {
+      return trimmed;
+    }
+
+    return trimmed
+      .replace(/(?:[_-\s]+subscription)$/i, '')
+      .split(/[_-\s]+/)
+      .filter(part => part.length > 0)
+      .map(part =>
+        /^\d+$/.test(part)
+          ? part
+          : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+      )
+      .join(' ');
+  }
+
   function formatDurationLabel(termMonths?: number | null): string {
     const normalized =
       termMonths !== null && termMonths !== undefined ? Number(termMonths) : null;
@@ -64,8 +85,8 @@
   }
 
   function formatOrderItemLabel(item: OrderItem | undefined, serviceType?: string): string {
-    const productName = item?.product_name?.trim() || '';
-    const variantName = item?.variant_name?.trim() || '';
+    const productName = humanizeOrderLabel(item?.product_name?.trim() || '');
+    const variantName = humanizeOrderLabel(item?.variant_name?.trim() || '');
     if (productName || variantName) {
       const baseLabel =
         productName && variantName
@@ -74,15 +95,31 @@
             : `${productName} ${variantName}`
           : productName || variantName;
       const durationLabel = formatDurationLabel(item?.term_months ?? null);
-      return durationLabel ? `${baseLabel} ${durationLabel}` : baseLabel;
+      const durationText = durationLabel.replace(/[()]/g, '').toLowerCase();
+      return durationLabel && !baseLabel.toLowerCase().includes(durationText)
+        ? `${baseLabel} ${durationLabel}`
+        : baseLabel;
     }
 
-    const description = item?.description ? stripOrderPrefix(item.description) : '';
+    const description = item?.description
+      ? humanizeOrderLabel(item.description)
+      : '';
     if (description) {
       return description;
     }
 
     return serviceType ? formatServiceLabel(serviceType) : '';
+  }
+
+  function canRevealCredentials(order: OrderListItem): boolean {
+    return order.status === 'delivered';
+  }
+
+  function getCredentialsUnavailableMessage(order: OrderListItem): string {
+    if (['in_process', 'paid', 'pending_payment', 'cart'].includes(order.status)) {
+      return 'Your order is still being processed. Credentials will be available after delivery.';
+    }
+    return '';
   }
 
   function getOrderItemsSummary(order: OrderListItem): string[] {
@@ -287,7 +324,7 @@
             </div>
           </div>
           <div class="mt-4 border-t border-gray-100 pt-4">
-            {#if !revealedCredentialsByOrder[order.id]}
+            {#if !revealedCredentialsByOrder[order.id] && canRevealCredentials(order)}
               <button
                 class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                 disabled={revealLoadingByOrder[order.id]}
@@ -296,7 +333,7 @@
                 <Eye size={14} />
                 {revealLoadingByOrder[order.id] ? 'Revealing...' : 'Reveal credentials'}
               </button>
-            {:else}
+            {:else if revealedCredentialsByOrder[order.id]}
               <button
                 class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
                 on:click={() => clearRevealedCredentials(order.id)}
@@ -304,6 +341,10 @@
                 <EyeOff size={14} />
                 Hide credentials
               </button>
+            {:else if getCredentialsUnavailableMessage(order)}
+              <p class="text-xs text-gray-500">
+                {getCredentialsUnavailableMessage(order)}
+              </p>
             {/if}
             {#if revealErrorByOrder[order.id]}
               <p class="mt-2 text-xs text-red-600">{revealErrorByOrder[order.id]}</p>
