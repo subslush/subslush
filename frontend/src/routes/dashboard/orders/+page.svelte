@@ -48,17 +48,8 @@
       .replace(/\b\w/g, char => char.toUpperCase());
   }
 
-  function humanizeOrderLabel(value: string): string {
-    const trimmed = stripOrderPrefix(value).replace(/\s+/g, ' ').trim();
-    if (!trimmed) return '';
-
-    const slugLike = /[_-]/.test(trimmed) || trimmed === trimmed.toLowerCase();
-    if (!slugLike) {
-      return trimmed;
-    }
-
-    return trimmed
-      .replace(/(?:[_-\s]+subscription)$/i, '')
+  function humanizeSlugWords(value: string): string {
+    return value
       .split(/[_-\s]+/)
       .filter(part => part.length > 0)
       .map(part =>
@@ -67,6 +58,63 @@
           : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
       )
       .join(' ');
+  }
+
+  function humanizeOrderLabel(value: string): string {
+    const trimmed = stripOrderPrefix(value).replace(/\s+/g, ' ').trim();
+    if (!trimmed) return '';
+
+    const durationMatch = trimmed.match(/\((\d+\s+month(?:s)?)\)$/i);
+    const durationText = durationMatch ? durationMatch[1].toLowerCase() : '';
+    const core = durationMatch
+      ? trimmed.slice(0, durationMatch.index).trim()
+      : trimmed;
+
+    const normalizeCore = (input: string): string => {
+      const normalized = input.trim().replace(/\s+/g, ' ');
+      if (!normalized) return '';
+
+      const segments = normalized.split(' ').filter(Boolean);
+      if (segments.length > 1) {
+        const [firstSegment, ...restSegments] = segments;
+        const rest = restSegments.join(' ').trim();
+        if (
+          firstSegment &&
+          rest &&
+          (/[_-]/.test(firstSegment) || firstSegment === firstSegment.toLowerCase())
+        ) {
+          const firstLabel = humanizeSlugWords(firstSegment)
+            .replace(/\s+subscription$/i, '')
+            .trim();
+          const restLabel = normalizeCore(rest);
+          if (
+            firstLabel &&
+            restLabel &&
+            restLabel.toLowerCase().startsWith(firstLabel.toLowerCase())
+          ) {
+            return restLabel;
+          }
+        }
+      }
+
+      const slugLike = /[_-]/.test(normalized) || normalized === normalized.toLowerCase();
+      if (!slugLike) {
+        return normalized.replace(/\s+subscription$/i, '').trim();
+      }
+
+      return humanizeSlugWords(normalized)
+        .replace(/\s+subscription$/i, '')
+        .trim();
+    };
+
+    const normalizedCore = normalizeCore(core);
+    if (!durationText) {
+      return normalizedCore;
+    }
+
+    return normalizedCore.toLowerCase().includes(durationText)
+      ? normalizedCore
+      : `${normalizedCore} (${durationText})`;
   }
 
   function formatDurationLabel(termMonths?: number | null): string {
