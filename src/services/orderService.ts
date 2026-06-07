@@ -837,11 +837,7 @@ export class OrderService {
             .join('')
         : '<li style="margin:0 0 6px 0;">Subscription</li>';
 
-    const helpLink = buildAppLink('/help');
     const dashboardLink = buildAppLink('/dashboard/orders');
-    const termsLink = buildAppLink('/terms');
-    const refundLink = buildAppLink('/returns');
-    const privacyLink = buildAppLink('/privacy');
     const orderPlacedAt = new Date(order.created_at);
     const orderPlacedAtIso = Number.isNaN(orderPlacedAt.getTime())
       ? new Date().toISOString()
@@ -852,9 +848,6 @@ export class OrderService {
       displayTotalCents,
       displayCurrency
     );
-    const paymentProvider = (order.payment_provider || '').toLowerCase();
-    const isCardMorTransaction =
-      paymentProvider === 'paypal' || paymentProvider === 'stripe';
     const customerNameRaw =
       typeof order.metadata?.['customer_name'] === 'string'
         ? order.metadata['customer_name']
@@ -865,66 +858,6 @@ export class OrderService {
       typeof customerNameRaw === 'string' && customerNameRaw.trim().length > 0
         ? customerNameRaw.trim()
         : null;
-    const sellerLabel = isCardMorTransaction
-      ? '2Sneaks AB'
-      : 'SubSlush selling entity shown at checkout';
-    const sellerDetailsHtml = isCardMorTransaction
-      ? `
-          <div><strong>Seller / merchant of record:</strong> 2Sneaks AB</div>
-          <div>Company registration no: 559265-0963</div>
-          <div>Address: Madängsvägen 5 b, 556 28 Jönköping, Sweden</div>
-          <div>VAT no: SE559265096301</div>
-          <div style="margin-top:6px;">Fulfilled by SubSlush / 3NITY DIGITAL LIMITED.</div>
-        `.trim()
-      : `
-          <div><strong>Seller:</strong> SubSlush selling entity shown at checkout</div>
-          <div>For applicable card and regulated payment transactions, seller/MoR is 2Sneaks AB.</div>
-          <div style="margin-top:6px;">Fulfilled by SubSlush / 3NITY DIGITAL LIMITED.</div>
-        `.trim();
-    const legalConsentRaw =
-      order.metadata &&
-      typeof order.metadata === 'object' &&
-      order.metadata['checkout_legal_consent'] &&
-      typeof order.metadata['checkout_legal_consent'] === 'object'
-        ? (order.metadata['checkout_legal_consent'] as Record<string, any>)
-        : null;
-    const consentTimestamp =
-      typeof legalConsentRaw?.['consent_timestamp'] === 'string'
-        ? legalConsentRaw['consent_timestamp']
-        : null;
-    const consentIp =
-      typeof legalConsentRaw?.['ip_address'] === 'string'
-        ? legalConsentRaw['ip_address']
-        : null;
-    const consentSessionSnapshot =
-      typeof legalConsentRaw?.['checkout_session_key_snapshot'] === 'string'
-        ? legalConsentRaw['checkout_session_key_snapshot']
-        : null;
-    const consentEvidenceText =
-      consentTimestamp || consentIp || consentSessionSnapshot
-        ? [
-            '',
-            'Digital performance consent evidence:',
-            `- Consent timestamp: ${consentTimestamp || 'not captured'}`,
-            `- Consent IP: ${consentIp || 'not captured'}`,
-            `- Session snapshot: ${consentSessionSnapshot || 'not captured'}`,
-          ].join('\n')
-        : '';
-    const consentEvidenceHtml =
-      consentTimestamp || consentIp || consentSessionSnapshot
-        ? `
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
-            <tr>
-              <td style="padding:14px 16px;font-size:13px;color:#334155;">
-                <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Digital performance consent evidence</div>
-                <div>Consent timestamp: ${escapeHtml(consentTimestamp || 'not captured')}</div>
-                <div>Consent IP: ${escapeHtml(consentIp || 'not captured')}</div>
-                <div>Session snapshot: ${escapeHtml(consentSessionSnapshot || 'not captured')}</div>
-              </td>
-            </tr>
-          </table>
-        `.trim()
-        : '';
     const shouldIssueClaimToken = await this.isGuestUser(order.user_id);
     const guestIdentityId =
       typeof order.metadata?.['guest_identity_id'] === 'string'
@@ -984,16 +917,11 @@ export class OrderService {
       `- Customer email: ${email}`,
       `- Total price: ${displayTotal}`,
       `- Delivery method: Digital delivery through dashboard and/or email, depending on product type`,
-      `- VAT/tax treatment: Final checkout price includes applicable taxes/fees where required`,
-      `- Seller/MoR: ${sellerLabel}`,
+      `- VAT/tax: Final checkout price includes applicable taxes/fees where required`,
       '',
       'Order items:',
       subscriptionsText,
       '',
-      `Policy links: Terms ${termsLink} | Refund ${refundLink} | Privacy ${privacyLink}`,
-      `Need help? ${helpLink}`,
-      'Legal/payment enquiries: compliance@subslush.com',
-      consentEvidenceText,
       claimText,
     ].join('\n');
     const html = emailService.buildBrandedEmail({
@@ -1010,7 +938,7 @@ export class OrderService {
               <div>Customer email: ${escapeHtml(email)}</div>
               <div>Total price: ${escapeHtml(displayTotal)}</div>
               <div>Delivery method: Digital delivery through dashboard and/or email, depending on product type</div>
-              <div>VAT/tax treatment: Final checkout price includes applicable taxes/fees where required</div>
+              <div>VAT/tax: Final checkout price includes applicable taxes/fees where required</div>
             </td>
           </tr>
         </table>
@@ -1022,29 +950,10 @@ export class OrderService {
             </td>
           </tr>
         </table>
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
-          <tr>
-            <td style="padding:14px 16px;font-size:13px;color:#334155;">
-              ${sellerDetailsHtml}
-            </td>
-          </tr>
-        </table>
-        ${consentEvidenceHtml}
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:16px 0;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
-          <tr>
-            <td style="padding:14px 16px;font-size:13px;color:#334155;">
-              <div><strong>Policy links</strong></div>
-              <div><a href="${termsLink}" style="color:#7e22ce;text-decoration:underline;">Terms and Conditions</a></div>
-              <div><a href="${refundLink}" style="color:#7e22ce;text-decoration:underline;">Refund Policy</a></div>
-              <div><a href="${privacyLink}" style="color:#7e22ce;text-decoration:underline;">Privacy Policy</a></div>
-            </td>
-          </tr>
-        </table>
         ${claimHtml}
       `.trim(),
       ctaLabel: 'View My Orders',
       ctaUrl: dashboardLink,
-      note: `Need help? ${helpLink} · Legal/payment enquiries: compliance@subslush.com`,
       previewText: `Payment received for order ${orderShort}`,
     });
 
