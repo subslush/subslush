@@ -62,6 +62,7 @@
   let summarySubtotalCents = 0;
   let summaryFeeCents: number | null = null;
   let summaryTotalCents = 0;
+  let displayReferenceTotalCents: number | null = null;
   let showDisplayTotalReference = false;
   let requestCounter = 0;
   let consentNeedsAttention = false;
@@ -381,8 +382,12 @@
   $: summaryTotalCents =
     selectedMethod?.processing_total_cents ?? displayTotalCents;
 
+  $: displayReferenceTotalCents =
+    selectedMethod?.display_total_cents ?? null;
+
   $: showDisplayTotalReference =
     Boolean(selectedMethod?.converted_from_display_currency) &&
+    displayReferenceTotalCents !== null &&
     Boolean(normalizeCurrencyCode(displayCurrency)) &&
     normalizeCurrencyCode(displayCurrency) !==
       normalizeCurrencyCode(summaryCurrency);
@@ -626,7 +631,7 @@
               </p>
               {#if showDisplayTotalReference}
                 <p class="mt-2 text-sm font-medium text-slate-500">
-                  ({formatCents(displayTotalCents, displayCurrency)})
+                  ({formatCents(displayReferenceTotalCents ?? 0, displayCurrency)})
                 </p>
               {/if}
             </div>

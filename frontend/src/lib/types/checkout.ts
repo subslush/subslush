@@ -195,6 +195,9 @@ export interface CheckoutPayopMethodQuote {
   logo_url?: string | null;
   supported_countries: string[];
   supported_currencies: string[];
+  display_subtotal_cents: number | null;
+  display_fee_cents: number | null;
+  display_total_cents: number | null;
   processing_currency: string;
   processing_subtotal_cents: number;
   processing_fee_cents: number;

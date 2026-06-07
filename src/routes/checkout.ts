@@ -238,6 +238,9 @@ const serializePayopMethodQuote = (
   logo_url: string | null | undefined;
   supported_countries: string[];
   supported_currencies: string[];
+  display_subtotal_cents: number | null;
+  display_fee_cents: number | null;
+  display_total_cents: number | null;
   processing_currency: string;
   processing_subtotal_cents: number;
   processing_fee_cents: number | null;
@@ -257,6 +260,9 @@ const serializePayopMethodQuote = (
   logo_url: quote.logoUrl,
   supported_countries: quote.supportedCountries,
   supported_currencies: quote.supportedCurrencies,
+  display_subtotal_cents: quote.displaySubtotalCents,
+  display_fee_cents: quote.displayFeeCents,
+  display_total_cents: quote.displayTotalCents,
   processing_currency: quote.processingCurrency,
   processing_subtotal_cents: quote.processingSubtotalCents,
   processing_fee_cents: quote.processingFeeCents,

@@ -38,6 +38,9 @@ export type PayopMethodQuote = {
   logoUrl: string | null;
   supportedCountries: string[];
   supportedCurrencies: string[];
+  displaySubtotalCents: number | null;
+  displayFeeCents: number | null;
+  displayTotalCents: number | null;
   processingCurrency: string;
   processingSubtotalCents: number;
   processingFeeCents: number;
@@ -98,6 +101,15 @@ const parsePositiveInt = (value: unknown): number | null => {
   return normalized > 0 ? normalized : null;
 };
 
+const parseNonNegativeInt = (value: unknown): number | null => {
+  const parsed = parseNumber(value);
+  if (parsed === null) {
+    return null;
+  }
+  const normalized = Math.floor(parsed);
+  return normalized >= 0 ? normalized : null;
+};
+
 const parsePercent = (value: unknown): number | null => {
   const parsed = parseNumber(value);
   if (parsed === null) {
@@ -137,6 +149,20 @@ const resolveOrderDisplayCurrency = (order: OrderWithItems): string => {
     normalizeCurrency(metadata['display_currency']) ||
     normalizeCurrency(order.currency) ||
     'USD'
+  );
+};
+
+const resolveOrderDisplayTotalCents = (
+  order: OrderWithItems
+): number | null => {
+  const metadata =
+    order.metadata && typeof order.metadata === 'object'
+      ? (order.metadata as Record<string, unknown>)
+      : {};
+
+  return (
+    parseNonNegativeInt(metadata['display_total_cents']) ??
+    parseNonNegativeInt(order.total_cents)
   );
 };
 
@@ -472,11 +498,16 @@ export const buildPayopMethodQuotes = async (params: {
   liveMethods: PayopAvailableMethod[];
 }): Promise<PayopMethodQuote[]> => {
   const displayCurrency = resolveOrderDisplayCurrency(params.order);
+  const displaySubtotalCents = resolveOrderDisplayTotalCents(params.order);
   const country =
     normalizeString(
       params.selectedCountry || params.detectedCountry
     )?.toUpperCase() || null;
   const methodQuotes: PayopMethodQuote[] = [];
+  const displayOrderQuote = await quoteOrderInCurrency({
+    order: params.order,
+    currency: displayCurrency,
+  });
 
   const sortedLiveMethods = [...params.liveMethods].sort((left, right) => {
     const leftConfig = getPayopMethodConfig(left.identifier);
@@ -527,6 +558,19 @@ export const buildPayopMethodQuotes = async (params: {
       continue;
     }
 
+    const resolvedDisplaySubtotalCents =
+      displaySubtotalCents ?? displayOrderQuote?.subtotalCents ?? null;
+    const displayFeeCents = displayOrderQuote
+      ? await computeProcessingFeeCents({
+          order: params.order,
+          subtotalCents:
+            resolvedDisplaySubtotalCents ?? displayOrderQuote.subtotalCents,
+          currency: displayCurrency,
+          fee: methodConfig.fee,
+          quotedItems: displayOrderQuote.items,
+        })
+      : null;
+
     methodQuotes.push({
       methodId: methodConfig.identifier,
       title: methodConfig.title,
@@ -538,6 +582,12 @@ export const buildPayopMethodQuotes = async (params: {
         liveMethod.currencies.length > 0
           ? liveMethod.currencies
           : [...methodConfig.processingCurrencies],
+      displaySubtotalCents: resolvedDisplaySubtotalCents,
+      displayFeeCents,
+      displayTotalCents:
+        resolvedDisplaySubtotalCents !== null && displayFeeCents !== null
+          ? resolvedDisplaySubtotalCents + displayFeeCents
+          : null,
       processingCurrency,
       processingSubtotalCents: orderQuote.subtotalCents,
       processingFeeCents: feeCents,

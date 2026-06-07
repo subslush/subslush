@@ -184,6 +184,9 @@ export interface CheckoutPayopMethodQuoteResult {
   logoUrl?: string | null;
   supportedCountries: string[];
   supportedCurrencies: string[];
+  displaySubtotalCents: number | null;
+  displayFeeCents: number | null;
+  displayTotalCents: number | null;
   processingCurrency: string;
   processingSubtotalCents: number;
   processingFeeCents: number;
