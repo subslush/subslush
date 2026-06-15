@@ -136,6 +136,9 @@ class EmailService {
                         You can also visit our
                         <a href="${helpUrl}" style="color:#7e22ce;font-weight:600;text-decoration:underline;">help center</a>.
                       </span>
+                      <span style="display:block;margin-top:8px;">
+                        Sold by 3NITY Digital Limited, trading as SubSlush. 3NITY Digital Limited is the contracting seller and merchant of record.
+                      </span>
                     </td>
                   </tr>
                   <tr>

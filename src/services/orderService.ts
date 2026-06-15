@@ -993,6 +993,9 @@ export class OrderService {
       `- Total price: ${displayTotal}`,
       `- VAT/tax: Final checkout price includes applicable taxes/fees where required`,
       `- Delivery method: Digital delivery through dashboard and/or email, depending on product type`,
+      `- Seller: 3NITY Digital Limited, trading as SubSlush`,
+      `- Billing: One-time prepaid digital access entitlement; no recurring billing unless expressly stated on the product page`,
+      `- Statement descriptor: May show 3NITY Digital Limited, SubSlush, or our payment processor descriptor`,
       `- Date/time (UTC): ${orderPlacedAtIso}`,
       '',
       claimText,
@@ -1018,6 +1021,9 @@ export class OrderService {
               <div>Total price: ${escapeHtml(displayTotal)}</div>
               <div>VAT/tax: Final checkout price includes applicable taxes/fees where required</div>
               <div>Delivery method: Digital delivery through dashboard and/or email, depending on product type</div>
+              <div>Seller: 3NITY Digital Limited, trading as SubSlush</div>
+              <div>Billing: One-time prepaid digital access entitlement; no recurring billing unless expressly stated on the product page</div>
+              <div>Statement descriptor: May show 3NITY Digital Limited, SubSlush, or our payment processor descriptor</div>
               <div>Date/time (UTC): ${escapeHtml(orderPlacedAtIso)}</div>
             </td>
           </tr>
