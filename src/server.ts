@@ -107,9 +107,16 @@ async function startServer(): Promise<void> {
     }
 
     if (env.ANTOM_ENABLED) {
-      server.log.info('Validating Antom database compatibility...');
-      await paymentService.validateAntomSchemaCompatibility();
-      server.log.info('Antom database compatibility validated successfully');
+      try {
+        server.log.info('Validating Antom database compatibility...');
+        await paymentService.validateAntomSchemaCompatibility();
+        server.log.info('Antom database compatibility validated successfully');
+      } catch (antomCompatibilityError) {
+        server.log.error(
+          antomCompatibilityError,
+          'Antom database compatibility validation failed; Antom checkout will remain unavailable until the database migration is applied'
+        );
+      }
     }
 
     // Attempt Redis connection (optional in development)

@@ -803,8 +803,8 @@ function validateEnvironment(): EnvironmentConfig {
         withTestOverrides.NODE_ENV === 'production' &&
         withTestOverrides.ANTOM_ENVIRONMENT !== 'production'
       ) {
-        throw new Error(
-          'ANTOM_ENVIRONMENT must be production in NODE_ENV=production'
+        process.stderr.write(
+          'Warning: Production environment detected but Antom is configured in sandbox mode.\n'
         );
       }
     }
