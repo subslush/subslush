@@ -68,6 +68,8 @@
   const resolveSubscriptions = () => fulfillment?.subscriptions || [];
   const resolveTasks = () => fulfillment?.tasks || [];
   const resolveCreditSummary = () => fulfillment?.credit?.summary || null;
+  const resolveDeliveryEmail = (): string =>
+    (pickValue(resolveOrder()?.contactEmail, resolveOrder()?.contact_email) as string | null) || '--';
   const resolveOrderCurrency = (): string =>
     (pickValue(resolveOrder()?.currency) as string | null) || 'USD';
   const resolveOrderCouponCode = (): string =>
@@ -268,6 +270,7 @@
         <h2 class="text-lg font-semibold text-gray-900">Customer</h2>
         <p class="text-sm text-gray-600">{resolveUser()?.email || '--'}</p>
         <p class="text-xs text-gray-500">User ID: {resolveUser()?.id || '--'}</p>
+        <p class="text-xs text-gray-500">Delivery email: {resolveDeliveryEmail()}</p>
         <p class="text-xs text-gray-500">Status: {resolveUser()?.status || '--'}</p>
         <p class="text-xs text-gray-500">Last login: {formatOptionalDate(resolveUser()?.last_login || null)}</p>
       </div>

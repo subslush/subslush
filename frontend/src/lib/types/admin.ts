@@ -278,6 +278,8 @@ export interface AdminOrder {
   paymentProvider?: string | null;
   payment_reference?: string | null;
   paymentReference?: string | null;
+  contact_email?: string | null;
+  contactEmail?: string | null;
   created_at?: string;
   createdAt?: string;
   updated_at?: string;
