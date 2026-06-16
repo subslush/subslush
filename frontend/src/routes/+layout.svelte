@@ -16,7 +16,7 @@
 	import androidChrome512 from '$lib/assets/android-chrome-512x512.png';
 	import siteWebmanifest from '$lib/assets/site.webmanifest';
 	import CookieConsentBanner from '$lib/components/consent/CookieConsentBanner.svelte';
-	import { initConsentSideEffects } from '$lib/consent/thirdParty.js';
+	import { initThirdPartyTracking } from '$lib/consent/thirdParty.js';
 	import { initConsent } from '$lib/stores/consent.js';
 	import { identifyTikTokUser, trackPageView } from '$lib/utils/analytics.js';
 	import { startCartPricingSync } from '$lib/utils/cartPricingSync.js';
@@ -71,7 +71,7 @@
 
 	onMount(() => {
 		initConsent();
-		initConsentSideEffects();
+		initThirdPartyTracking();
 		const stopCartPricingSync = startCartPricingSync();
 		document.documentElement.style.setProperty('--promo-banner-height', '0px');
 		document.body.setAttribute('data-theme', 'skeleton');

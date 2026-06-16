@@ -1,52 +1,15 @@
 import { browser } from '$app/environment';
+import { env } from '$env/dynamic/public';
 import { trackPageView } from '$lib/utils/analytics.js';
-import { consentStore, type ConsentState } from '$lib/stores/consent.js';
 
 const ANALYTICS_ID = 'G-VQ0N792RNT';
-const TIKTOK_PIXEL_ID = 'D62CLGJC77U8OPSUBNLG';
+const TIKTOK_PIXEL_ID = env.PUBLIC_TIKTOK_PIXEL_ID || 'D62CLGJC77U8OPSUBNLG';
 const CRISP_WEBSITE_ID = '68cb8ad9-b3c8-43e9-9bac-0634574c7a83';
 
 let analyticsLoaded = false;
 let marketingLoaded = false;
 let supportLoaded = false;
-let analyticsScheduled = false;
-let marketingScheduled = false;
-let consentWatcherBound = false;
-
-const deferAfterLoad = (fn: () => void): void => {
-  if (!browser) return;
-  const schedule = () => {
-    if ('requestIdleCallback' in window) {
-      window.requestIdleCallback(() => fn(), { timeout: 3000 });
-    } else {
-      setTimeout(fn, 1500);
-    }
-  };
-
-  if (document.readyState === 'complete') {
-    schedule();
-  } else {
-    window.addEventListener('load', schedule, { once: true });
-  }
-};
-
-const scheduleAnalytics = (): void => {
-  if (analyticsLoaded || analyticsScheduled) return;
-  analyticsScheduled = true;
-  deferAfterLoad(() => {
-    analyticsScheduled = false;
-    initAnalytics();
-  });
-};
-
-const scheduleMarketing = (): void => {
-  if (marketingLoaded || marketingScheduled) return;
-  marketingScheduled = true;
-  deferAfterLoad(() => {
-    marketingScheduled = false;
-    initTikTokPixel();
-  });
-};
+let thirdPartyTrackingBound = false;
 
 const loadScript = (src: string, id: string): void => {
   if (!browser) return;
@@ -159,17 +122,11 @@ export const openCrispChat = (): void => {
   crisp.push(['do', 'chat:open']);
 };
 
-export const initConsentSideEffects = (): void => {
+export const initThirdPartyTracking = (): void => {
   if (!browser) return;
-  if (consentWatcherBound) return;
-  consentWatcherBound = true;
+  if (thirdPartyTrackingBound) return;
+  thirdPartyTrackingBound = true;
 
-  consentStore.subscribe((state: ConsentState | null) => {
-    if (state?.preferences.analytics) {
-      scheduleAnalytics();
-    }
-    if (state?.preferences.marketing) {
-      scheduleMarketing();
-    }
-  });
+  initAnalytics();
+  initTikTokPixel();
 };
