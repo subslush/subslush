@@ -70,7 +70,6 @@
   let redirectingToPayment = false;
   let returnFailureSignal = false;
   let hostedCheckoutReturn = false;
-  let resolvingHostedReturn = false;
 
   const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -213,7 +212,6 @@
       return;
     }
 
-    resolvingHostedReturn = true;
     loading = true;
     pollComplete = false;
     actionError = '';
@@ -229,7 +227,6 @@
         updateResolvedState(response.order_status);
         loading = false;
         pollComplete = true;
-        resolvingHostedReturn = false;
         return;
       }
     } catch {
@@ -350,8 +347,7 @@
     $auth.user?.email?.trim() || checkoutContactEmail || null;
 
   $: returningToPayment =
-    finalizedState === 'pending' &&
-    (redirectingToPayment || resolvingHostedReturn || hostedCheckoutReturn);
+    finalizedState === 'pending' && redirectingToPayment;
 
   $: if (browser && finalizedState === 'success' && !cartCleared) {
     cart.clear();
