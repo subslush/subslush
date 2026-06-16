@@ -65,7 +65,12 @@ const resolveEventId = (
 };
 
 const resolveOrderCurrency = (order: OrderWithItems): string => {
+  const metadata =
+    order.metadata && typeof order.metadata === 'object'
+      ? order.metadata
+      : null;
   const rawCurrency =
+    resolveMetadataValue(metadata, 'display_currency') ||
     order.display_currency ||
     order.currency ||
     order.items.find(item => item.currency)?.currency ||
@@ -73,20 +78,27 @@ const resolveOrderCurrency = (order: OrderWithItems): string => {
   return rawCurrency.toUpperCase();
 };
 
+const resolveOrderTotalCents = (order: OrderWithItems): number => {
+  const metadata =
+    order.metadata && typeof order.metadata === 'object'
+      ? order.metadata
+      : null;
+  return (
+    resolveMetadataNumber(metadata, 'display_total_cents') ??
+    resolveMetadataNumber(metadata, 'displayTotalCents') ??
+    order.display_total_cents ??
+    order.total_cents ??
+    order.items.reduce(
+      (sum, item) =>
+        sum +
+        (Number.isFinite(item.total_price_cents) ? item.total_price_cents : 0),
+      0
+    )
+  );
+};
+
 const resolveOrderValue = (order: OrderWithItems): number => {
-  const totalCents =
-    typeof order.display_total_cents === 'number'
-      ? order.display_total_cents
-      : typeof order.total_cents === 'number'
-        ? order.total_cents
-        : order.items.reduce(
-            (sum, item) =>
-              sum +
-              (Number.isFinite(item.total_price_cents)
-                ? item.total_price_cents
-                : 0),
-            0
-          );
+  const totalCents = resolveOrderTotalCents(order);
   return centsToAmount(totalCents) ?? 0;
 };
 
@@ -240,6 +252,92 @@ const buildOrderTikTokProperties = (
         : (primary?.content_name as string | undefined) || `Order ${order.id}`,
     contents,
   };
+};
+
+type CheckoutPurchaseTrackingPayload = {
+  transaction_id: string;
+  event_id: string;
+  currency: string;
+  value: number;
+  items: Array<{
+    item_id: string;
+    item_name: string;
+    item_category?: string;
+    item_variant?: string;
+    price: number;
+    currency: string;
+    quantity: number;
+    index: number;
+  }>;
+};
+
+const isSuccessfulOrderStatus = (status?: string | null): boolean =>
+  Boolean(status && ['in_process', 'paid', 'delivered'].includes(status));
+
+const buildOrderPurchaseTrackingPayload = (
+  order: OrderWithItems
+): CheckoutPurchaseTrackingPayload => {
+  const currency = resolveOrderCurrency(order);
+  const value = resolveOrderValue(order);
+  const items = order.items.length
+    ? order.items.map((item, index) => {
+        const metadata =
+          item.metadata && typeof item.metadata === 'object'
+            ? item.metadata
+            : null;
+        const itemName =
+          item.product_name ||
+          item.variant_name ||
+          resolveMetadataValue(metadata, 'service_name') ||
+          resolveMetadataValue(metadata, 'service_type') ||
+          item.product_variant_id ||
+          item.id;
+        const itemCategory =
+          resolveMetadataValue(metadata, 'category') ||
+          resolveMetadataValue(metadata, 'service_type');
+        return {
+          item_id: item.product_variant_id || item.id,
+          item_name: itemName,
+          ...(itemCategory ? { item_category: itemCategory } : {}),
+          ...(item.variant_name ? { item_variant: item.variant_name } : {}),
+          price: centsToAmount(item.unit_price_cents) ?? 0,
+          currency,
+          quantity: item.quantity,
+          index,
+        };
+      })
+    : [
+        {
+          item_id: `order_${order.id}`,
+          item_name: `Order ${order.id}`,
+          price: value,
+          currency,
+          quantity: 1,
+          index: 0,
+        },
+      ];
+
+  return {
+    transaction_id: order.id,
+    event_id: `order_${order.id}_purchase`,
+    currency,
+    value,
+    items,
+  };
+};
+
+const resolvePurchaseTrackingPayload = async (
+  orderId: string,
+  orderStatus?: string | null
+): Promise<CheckoutPurchaseTrackingPayload | null> => {
+  if (!isSuccessfulOrderStatus(orderStatus)) {
+    return null;
+  }
+
+  const orderForTracking = await orderService.getOrderWithItems(orderId);
+  return orderForTracking
+    ? buildOrderPurchaseTrackingPayload(orderForTracking)
+    : null;
 };
 
 const serializePayopMethodQuote = (
@@ -1943,6 +2041,11 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
+        const purchaseTracking = await resolvePurchaseTrackingPayload(
+          statusResult.orderId,
+          statusResult.orderStatus
+        );
+
         return SuccessResponses.ok(reply, {
           order_id: statusResult.orderId,
           order_created_at: serializeOptionalIsoDate(
@@ -1963,6 +2066,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           tax_residence_id: statusResult.taxResidenceId,
           tax_residence_label: statusResult.taxResidenceLabel,
           can_retry: statusResult.canRetry,
+          ...(purchaseTracking ? { purchase_tracking: purchaseTracking } : {}),
         });
       } catch (error) {
         Logger.error('Antom status lookup failed:', error);
@@ -2312,6 +2416,11 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
+        const purchaseTracking = await resolvePurchaseTrackingPayload(
+          statusResult.orderId,
+          statusResult.orderStatus
+        );
+
         return SuccessResponses.ok(reply, {
           order_id: statusResult.orderId,
           order_status: statusResult.orderStatus,
@@ -2325,6 +2434,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           processing_fee_cents: statusResult.processingFeeCents,
           processing_total_cents: statusResult.processingTotalCents,
           can_retry: statusResult.canRetry,
+          ...(purchaseTracking ? { purchase_tracking: purchaseTracking } : {}),
         });
       } catch (error) {
         Logger.error('Payop status lookup failed:', error);

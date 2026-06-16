@@ -3668,6 +3668,117 @@ export class PaymentService {
     };
   }
 
+  private resolveOrderPurchaseCurrency(order: OrderWithItems): string {
+    const metadata =
+      order.metadata && typeof order.metadata === 'object'
+        ? order.metadata
+        : {};
+    return (
+      normalizeCurrencyCode(normalizeString(metadata['display_currency'])) ||
+      normalizeCurrencyCode(order.display_currency) ||
+      normalizeCurrencyCode(order.currency) ||
+      normalizeCurrencyCode(
+        order.items.find(item => item.currency)?.currency
+      ) ||
+      'USD'
+    );
+  }
+
+  private resolveOrderPurchaseTotalCents(order: OrderWithItems): number {
+    const metadata =
+      order.metadata && typeof order.metadata === 'object'
+        ? order.metadata
+        : {};
+    return (
+      parseNonNegativeInt(metadata['display_total_cents']) ??
+      parseNonNegativeInt(metadata['displayTotalCents']) ??
+      parseNonNegativeInt(order.display_total_cents) ??
+      parseNonNegativeInt(order.total_cents) ??
+      order.items.reduce(
+        (sum, item) => sum + (parseNonNegativeInt(item.total_price_cents) ?? 0),
+        0
+      )
+    );
+  }
+
+  private buildOrderPurchaseTikTokProperties(
+    order: OrderWithItems,
+    extraProperties?: Record<string, unknown>
+  ): Record<string, unknown> {
+    const currency = this.resolveOrderPurchaseCurrency(order);
+    const value = Number(
+      (this.resolveOrderPurchaseTotalCents(order) / 100).toFixed(2)
+    );
+    const contents = order.items.length
+      ? order.items.map(item => {
+          const metadata = this.resolveOrderItemMetadata(item);
+          return {
+            content_id: item.product_variant_id || item.id,
+            content_type: 'product',
+            content_name: this.resolveOrderItemDisplayName(item),
+            content_category:
+              normalizeString(metadata['category']) ||
+              normalizeString(metadata['service_type']) ||
+              null,
+            quantity: item.quantity,
+            price: Number((item.unit_price_cents / 100).toFixed(2)),
+          };
+        })
+      : [
+          {
+            content_id: `order_${order.id}`,
+            content_type: 'product',
+            content_name: `Order ${order.id}`,
+            quantity: 1,
+            price: value,
+          },
+        ];
+    const primary = contents[0];
+
+    return {
+      value,
+      currency,
+      content_id: `order_${order.id}`,
+      content_type: contents.length > 1 ? 'product_group' : 'product',
+      content_name:
+        contents.length > 1
+          ? `Order ${order.id}`
+          : (primary?.content_name as string | undefined) ||
+            `Order ${order.id}`,
+      contents,
+      ...(extraProperties ?? {}),
+    };
+  }
+
+  private async trackOrderPurchaseEvent(params: {
+    order: OrderWithItems;
+    paymentProvider: 'antom' | 'payop';
+    paymentMethodTitle?: string | null;
+    paymentMethodType?: string | null;
+  }): Promise<void> {
+    const userId = normalizeString(params.order.user_id);
+    const email = normalizeEmail(params.order.contact_email);
+    if (!userId && !email) {
+      Logger.warn('TikTok Purchase skipped for order without user identity', {
+        orderId: params.order.id,
+        paymentProvider: params.paymentProvider,
+      });
+      return;
+    }
+
+    await tiktokEventsService.trackPurchase({
+      userId,
+      email,
+      eventId: `order_${params.order.id}_purchase`,
+      properties: this.buildOrderPurchaseTikTokProperties(params.order, {
+        payment_type: params.paymentProvider,
+        payment_provider: params.paymentProvider,
+        payment_method_title: params.paymentMethodTitle ?? undefined,
+        payment_method_type: params.paymentMethodType ?? undefined,
+      }),
+    });
+  }
+
   private normalizePayopCountryCode(value?: string | null): string | null {
     if (typeof value !== 'string') {
       return null;
@@ -5928,6 +6039,21 @@ export class PaymentService {
 
       await couponService.finalizeRedemptionForOrder(params.orderId);
 
+      const paymentMetadata =
+        params.payment.metadata && typeof params.payment.metadata === 'object'
+          ? params.payment.metadata
+          : {};
+      await this.trackOrderPurchaseEvent({
+        order,
+        paymentProvider: 'payop',
+        paymentMethodTitle: normalizeString(
+          paymentMetadata['payop_method_title']
+        ),
+        paymentMethodType: normalizeString(
+          paymentMetadata['payop_method_type']
+        ),
+      });
+
       try {
         const confirmationResult =
           await orderService.sendOrderPaymentConfirmationEmail(params.orderId);
@@ -6141,6 +6267,18 @@ export class PaymentService {
       });
 
       await couponService.finalizeRedemptionForOrder(params.orderId);
+
+      await this.trackOrderPurchaseEvent({
+        order,
+        paymentProvider: 'antom',
+        paymentMethodTitle: this.normalizeAntomMethodTitle(
+          successMetadata['antom_method_title']
+        ),
+        paymentMethodType: normalizeString(
+          successMetadata['antom_option_id'] ||
+            successMetadata['antom_payment_method_type']
+        ),
+      });
 
       try {
         const confirmationResult =

@@ -328,6 +328,32 @@ describe('Checkout Payop route contract', () => {
       payment_provider: 'payop',
       payment_reference: 'payop-invoice-guest',
     } as any);
+    mockOrderService.getOrderWithItems.mockResolvedValue({
+      id: orderId,
+      user_id: null,
+      contact_email: 'guest@example.com',
+      currency: 'SEK',
+      total_cents: 29900,
+      metadata: {
+        display_currency: 'SEK',
+        display_total_cents: 30961,
+      },
+      items: [
+        {
+          id: 'item-1',
+          product_variant_id: 'variant-1',
+          product_name: 'Netflix Premium',
+          variant_name: '12 Months',
+          quantity: 1,
+          unit_price_cents: 29900,
+          total_price_cents: 29900,
+          currency: 'SEK',
+          metadata: {
+            service_type: 'streaming',
+          },
+        },
+      ],
+    } as any);
     mockPaymentService.getPayopCheckoutStatus.mockResolvedValue({
       success: true,
       orderId,
@@ -360,10 +386,29 @@ describe('Checkout Payop route contract', () => {
     await app.close();
 
     expect(response.statusCode).toBe(200);
+    expect(response.json().data.purchase_tracking).toEqual({
+      transaction_id: orderId,
+      event_id: `order_${orderId}_purchase`,
+      currency: 'SEK',
+      value: 309.61,
+      items: [
+        {
+          item_id: 'variant-1',
+          item_name: 'Netflix Premium',
+          item_category: 'streaming',
+          item_variant: '12 Months',
+          price: 299,
+          currency: 'SEK',
+          quantity: 1,
+          index: 0,
+        },
+      ],
+    });
     expect(mockPaymentService.getPayopCheckoutStatus).toHaveBeenCalledWith({
       orderId,
       invoiceId: 'payop-invoice-guest',
       txid: 'tx-guest',
     });
+    expect(mockOrderService.getOrderWithItems).toHaveBeenCalledWith(orderId);
   });
 });

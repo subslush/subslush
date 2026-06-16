@@ -251,6 +251,25 @@ export interface CheckoutPayopStatusRequest {
   txid?: string | null;
 }
 
+export interface CheckoutPurchaseTrackingItem {
+  item_id: string;
+  item_name: string;
+  item_category?: string;
+  item_variant?: string;
+  price: number;
+  currency: string;
+  quantity: number;
+  index: number;
+}
+
+export interface CheckoutPurchaseTrackingPayload {
+  transaction_id: string;
+  event_id: string;
+  currency: string;
+  value: number;
+  items: CheckoutPurchaseTrackingItem[];
+}
+
 export interface CheckoutPayopStatusResponse {
   order_id: string;
   order_status: string;
@@ -264,6 +283,7 @@ export interface CheckoutPayopStatusResponse {
   processing_fee_cents?: number | null;
   processing_total_cents?: number | null;
   can_retry: boolean;
+  purchase_tracking?: CheckoutPurchaseTrackingPayload | null;
 }
 
 export interface CheckoutAntomResidence {
@@ -351,6 +371,7 @@ export interface CheckoutAntomStatusResponse {
   tax_residence_id?: string | null;
   tax_residence_label?: string | null;
   can_retry: boolean;
+  purchase_tracking?: CheckoutPurchaseTrackingPayload | null;
 }
 
 export interface CheckoutClaimResponse {

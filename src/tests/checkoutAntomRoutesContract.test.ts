@@ -100,4 +100,91 @@ describe('Checkout Antom route contract', () => {
       can_retry: true,
     });
   });
+
+  it('returns purchase tracking data on successful /checkout/antom/status', async () => {
+    mockOrderService.getOrderById.mockResolvedValue({
+      id: orderId,
+      payment_provider: 'antom',
+      payment_reference: paymentRequestId,
+      metadata: {},
+    } as any);
+    mockPaymentService.getAntomCheckoutStatus.mockResolvedValue({
+      success: true,
+      orderId,
+      orderStatus: 'in_process',
+      paymentStatus: 'succeeded',
+      providerStatus: 'capture_success',
+      paymentRequestId,
+      antomPaymentId: 'antom_payment_123',
+      methodTitle: 'Card',
+      processingCurrency: 'USD',
+      processingSubtotalCents: 3091,
+      processingFeeCents: 160,
+      processingTaxCents: 276,
+      processingTotalCents: 3527,
+      taxResidenceId: 'se',
+      taxResidenceLabel: 'Sweden',
+      canRetry: false,
+    });
+    mockOrderService.getOrderWithItems.mockResolvedValue({
+      id: orderId,
+      user_id: null,
+      contact_email: 'guest@example.com',
+      display_currency: 'USD',
+      total_cents: 3091,
+      metadata: {
+        display_total_cents: 3527,
+      },
+      items: [
+        {
+          id: 'item-1',
+          product_variant_id: 'variant-1',
+          product_name: 'Netflix Premium',
+          variant_name: '12 Months',
+          quantity: 1,
+          unit_price_cents: 3091,
+          total_price_cents: 3091,
+          currency: 'USD',
+          metadata: {
+            service_type: 'streaming',
+          },
+        },
+      ],
+    } as any);
+
+    const app = Fastify();
+    await app.register(checkoutRoutes, { prefix: '/checkout' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/checkout/antom/status',
+      payload: {
+        order_id: orderId,
+        payment_request_id: paymentRequestId,
+      },
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(mockOrderService.getOrderWithItems).toHaveBeenCalledWith(orderId);
+    expect(response.json().data.purchase_tracking).toEqual({
+      transaction_id: orderId,
+      event_id: `order_${orderId}_purchase`,
+      currency: 'USD',
+      value: 35.27,
+      items: [
+        {
+          item_id: 'variant-1',
+          item_name: 'Netflix Premium',
+          item_category: 'streaming',
+          item_variant: '12 Months',
+          price: 30.91,
+          currency: 'USD',
+          quantity: 1,
+          index: 0,
+        },
+      ],
+    });
+  });
 });

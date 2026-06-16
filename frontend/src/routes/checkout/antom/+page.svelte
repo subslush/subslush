@@ -14,17 +14,13 @@
     saveCheckoutDraftState,
   } from '$lib/utils/checkoutDraftState.js';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
+  import { trackPurchase, type AnalyticsItem } from '$lib/utils/analytics.js';
   import type { CheckoutAntomStatusResponse } from '$lib/types/checkout.js';
-  import {
-    CheckCircle2,
-    Clock3,
-    Loader2,
-    ShieldCheck,
-    XCircle,
-  } from 'lucide-svelte';
+  import { CheckCircle2, Clock3, Loader2, ShieldCheck, XCircle } from 'lucide-svelte';
 
   const POLL_INTERVAL_MS = 8000;
   const POLL_TIMEOUT_MS = 120000;
+  const PURCHASE_TRACKED_STORAGE_KEY = 'tiktok:checkout_purchase';
   const RETRYABLE_FAILURE_STATUSES = new Set([
     'f',
     'fail',
@@ -71,7 +67,28 @@
   let returnFailureSignal = false;
   let hostedCheckoutReturn = false;
 
-  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const isSuccessfulOrderStatus = (value: string | null | undefined): boolean =>
+    Boolean(value && ['in_process', 'paid', 'delivered'].includes(value));
+
+  const hasTrackedPurchase = (eventId: string): boolean => {
+    if (!browser) return false;
+    try {
+      return sessionStorage.getItem(`${PURCHASE_TRACKED_STORAGE_KEY}:${eventId}`) === '1';
+    } catch {
+      return false;
+    }
+  };
+
+  const markPurchaseTracked = (eventId: string): void => {
+    if (!browser) return;
+    try {
+      sessionStorage.setItem(`${PURCHASE_TRACKED_STORAGE_KEY}:${eventId}`, '1');
+    } catch {
+      // Ignore storage failures; tracking should not block the checkout status UI.
+    }
+  };
 
   const formatDateOnly = (value: string | null | undefined): string | null => {
     if (!value) return null;
@@ -91,7 +108,10 @@
   };
 
   const normalizeStatusValue = (value: string | null | undefined): string =>
-    (value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    (value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_');
 
   const isRetryableFailureStatus = (value: string | null | undefined): boolean => {
     const normalized = normalizeStatusValue(value);
@@ -107,16 +127,16 @@
 
   const hasFailureReturnSignal = (params: URLSearchParams): boolean => {
     for (const [key, value] of params.entries()) {
-      const normalizedKey = key.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+      const normalizedKey = key
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_');
       const isRelevantKey =
         normalizedKey === 'status' ||
         normalizedKey.includes('payment') ||
         normalizedKey.includes('result') ||
         normalizedKey.includes('error');
-      if (
-        isRelevantKey &&
-        isRetryableFailureStatus(value)
-      ) {
+      if (isRelevantKey && isRetryableFailureStatus(value)) {
         return true;
       }
     }
@@ -134,8 +154,7 @@
   }): boolean => {
     return (
       isRetryableFailureStatus(params.paymentStatus ?? null) ||
-      (params.canRetry === true &&
-        isRetryableFailureStatus(params.providerStatus ?? null))
+      (params.canRetry === true && isRetryableFailureStatus(params.providerStatus ?? null))
     );
   };
 
@@ -175,20 +194,45 @@
   };
 
   const updateResolvedState = (orderStatus: string | null | undefined) => {
-    if (orderStatus && ['in_process', 'paid', 'delivered'].includes(orderStatus)) {
+    if (isSuccessfulOrderStatus(orderStatus)) {
       finalizedState = 'success';
       return;
     }
 
-    if (
-      paymentStatus &&
-      ['failed', 'expired', 'canceled'].includes(paymentStatus)
-    ) {
+    if (paymentStatus && ['failed', 'expired', 'canceled'].includes(paymentStatus)) {
       finalizedState = 'failed';
       return;
     }
 
     finalizedState = 'pending';
+  };
+
+  const trackPurchaseFromStatus = (response: CheckoutAntomStatusResponse): void => {
+    const tracking = response.purchase_tracking;
+    if (
+      !browser ||
+      !isSuccessfulOrderStatus(response.order_status) ||
+      !tracking ||
+      !tracking.event_id ||
+      !Array.isArray(tracking.items) ||
+      hasTrackedPurchase(tracking.event_id)
+    ) {
+      return;
+    }
+
+    const items: AnalyticsItem[] = tracking.items.map((item) => ({ ...item }));
+    if (items.length === 0) {
+      return;
+    }
+
+    trackPurchase(
+      tracking.transaction_id || response.order_id,
+      tracking.currency || 'USD',
+      tracking.value,
+      items,
+      tracking.event_id
+    );
+    markPurchaseTracked(tracking.event_id);
   };
 
   const applyStatusResponse = (response: CheckoutAntomStatusResponse): void => {
@@ -203,6 +247,7 @@
     processingTaxCents = response.processing_tax_cents ?? null;
     taxResidenceLabel = response.tax_residence_label ?? null;
     canRetry = response.can_retry === true;
+    trackPurchaseFromStatus(response);
   };
 
   const resolveHostedCheckoutReturn = async () => {
@@ -220,10 +265,7 @@
       const response = await checkoutService.getAntomStatus(statusPayload);
       applyStatusResponse(response);
 
-      if (
-        response.order_status &&
-        ['in_process', 'paid', 'delivered'].includes(response.order_status)
-      ) {
+      if (isSuccessfulOrderStatus(response.order_status)) {
         updateResolvedState(response.order_status);
         loading = false;
         pollComplete = true;
@@ -293,9 +335,7 @@
           }
         } catch (error) {
           actionError =
-            error instanceof Error
-              ? error.message
-              : 'Unable to confirm payment status.';
+            error instanceof Error ? error.message : 'Unable to confirm payment status.';
           loading = false;
           pollComplete = true;
           return;
@@ -334,20 +374,17 @@
     await goto('/checkout/payment', { replaceState: true });
   };
 
-  const unsubscribe = page.subscribe($page => {
+  const unsubscribe = page.subscribe(($page) => {
     orderId = $page.url.searchParams.get('order_id') ?? orderId;
-    paymentRequestId =
-      $page.url.searchParams.get('payment_request_id') ?? paymentRequestId;
+    paymentRequestId = $page.url.searchParams.get('payment_request_id') ?? paymentRequestId;
     antomPaymentId = $page.url.searchParams.get('payment_id') ?? antomPaymentId;
     returnFailureSignal = hasFailureReturnSignal($page.url.searchParams);
     hostedCheckoutReturn = isHostedCheckoutReturn($page.url.searchParams);
   });
 
-  $: confirmationEmail =
-    $auth.user?.email?.trim() || checkoutContactEmail || null;
+  $: confirmationEmail = $auth.user?.email?.trim() || checkoutContactEmail || null;
 
-  $: returningToPayment =
-    finalizedState === 'pending' && redirectingToPayment;
+  $: returningToPayment = finalizedState === 'pending' && redirectingToPayment;
 
   $: if (browser && finalizedState === 'success' && !cartCleared) {
     cart.clear();
@@ -392,19 +429,25 @@
   <HomeNav />
 
   <main class="relative overflow-hidden">
-    <div class="pointer-events-none absolute inset-x-0 top-0 h-60 bg-gradient-to-br from-purple-100/70 via-purple-100/30 to-pink-100/70"></div>
+    <div
+      class="pointer-events-none absolute inset-x-0 top-0 h-60 bg-gradient-to-br from-purple-100/70 via-purple-100/30 to-pink-100/70"
+    ></div>
 
     <section class="relative mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
       <div class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
-        <div class="border-b border-slate-100 bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-6 sm:px-8">
+        <div
+          class="border-b border-slate-100 bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-6 sm:px-8"
+        >
           <div class="flex items-center gap-4">
-            <div class={`flex h-12 w-12 items-center justify-center rounded-full ${
-              finalizedState === 'success'
-                ? 'bg-emerald-500/15 text-emerald-300'
-                : finalizedState === 'failed'
-                  ? 'bg-rose-500/15 text-rose-300'
-                  : 'bg-white/10 text-white'
-            }`}>
+            <div
+              class={`flex h-12 w-12 items-center justify-center rounded-full ${
+                finalizedState === 'success'
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : finalizedState === 'failed'
+                    ? 'bg-rose-500/15 text-rose-300'
+                    : 'bg-white/10 text-white'
+              }`}
+            >
               {#if finalizedState === 'success'}
                 <CheckCircle2 class="h-7 w-7" />
               {:else if finalizedState === 'failed'}
@@ -431,44 +474,61 @@
 
         <div class="space-y-5 px-6 py-6 sm:px-8">
           {#if returningToPayment}
-            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
+            <div
+              class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700"
+            >
               <div class="flex items-center gap-3">
                 <Loader2 class="h-5 w-5 animate-spin text-fuchsia-600" />
                 <p>Returning you to checkout so you can try again.</p>
               </div>
             </div>
           {:else if finalizedState === 'pending'}
-            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
+            <div
+              class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700"
+            >
               <div class="flex items-center gap-3">
                 <Loader2 class="h-5 w-5 animate-spin text-fuchsia-600" />
                 <p>
-                  We are waiting for the final payment confirmation from the provider. This page updates automatically.
+                  We are waiting for the final payment confirmation from the provider. This page
+                  updates automatically.
                 </p>
               </div>
             </div>
           {/if}
 
           {#if finalizedState === 'success'}
-            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
-              {paymentSuccessLabel} Your order is now being processed. Orders are usually delivered within 24 hours, but in rare cases it may take up to 72 hours. We will email you as soon as your order has been delivered.
+            <div
+              class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800"
+            >
+              {paymentSuccessLabel} Your order is now being processed. Orders are usually delivered within
+              24 hours, but in rare cases it may take up to 72 hours. We will email you as soon as your
+              order has been delivered.
             </div>
           {/if}
 
           {#if finalizedState === 'failed'}
-            <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+            <div
+              class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700"
+            >
               The payment was not completed. You can return and choose another payment method.
             </div>
           {/if}
 
           {#if actionError && finalizedState === 'pending' && !returningToPayment}
-            <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+            <div
+              class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700"
+            >
               {actionError}
             </div>
           {/if}
 
           {#if finalizedState === 'success' && confirmationEmail}
-            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-              We’ve sent your order and payment confirmation to <span class="font-semibold text-slate-900">{confirmationEmail}</span>.
+            <div
+              class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700"
+            >
+              We’ve sent your order and payment confirmation to <span
+                class="font-semibold text-slate-900">{confirmationEmail}</span
+              >.
             </div>
           {/if}
 
@@ -521,10 +581,13 @@
                     </p>
                   {/if}
                 </div>
-                <div class="mt-3 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 text-xs text-slate-600">
+                <div
+                  class="mt-3 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 text-xs text-slate-600"
+                >
                   <ShieldCheck class="mt-0.5 h-4 w-4 shrink-0 text-cyan-600" />
                   <p>
-                    Final order fulfillment is only completed after secure server-to-server payment confirmation.
+                    Final order fulfillment is only completed after secure server-to-server payment
+                    confirmation.
                   </p>
                 </div>
               </div>

@@ -361,7 +361,7 @@ class TikTokEventsService {
   }
 
   async trackPurchase(params: {
-    userId: string;
+    userId?: string | null;
     email?: string | null;
     eventId?: string | null;
     properties?: Record<string, unknown>;
@@ -372,7 +372,7 @@ class TikTokEventsService {
       event: 'Purchase',
       user: this.buildUserPayload({
         email: params.email ?? null,
-        externalId: params.userId,
+        externalId: params.userId ?? null,
         ip: params.context?.ip ?? null,
         userAgent: params.context?.userAgent ?? null,
         ttclid: params.context?.ttclid ?? null,
