@@ -3,7 +3,7 @@ import { env } from '$env/dynamic/public';
 import { trackPageView } from '$lib/utils/analytics.js';
 
 const ANALYTICS_ID = 'G-VQ0N792RNT';
-const TIKTOK_PIXEL_ID = env.PUBLIC_TIKTOK_PIXEL_ID || 'D62CLGJC77U8OPSUBNLG';
+const TIKTOK_PIXEL_ID = env.PUBLIC_TIKTOK_PIXEL_ID?.trim();
 const CRISP_WEBSITE_ID = '68cb8ad9-b3c8-43e9-9bac-0634574c7a83';
 
 let analyticsLoaded = false;
@@ -45,6 +45,10 @@ const initAnalytics = (): void => {
 
 const initTikTokPixel = (): void => {
   if (marketingLoaded) return;
+  if (!TIKTOK_PIXEL_ID) {
+    console.warn('TikTok Pixel is not configured: PUBLIC_TIKTOK_PIXEL_ID is missing.');
+    return;
+  }
   marketingLoaded = true;
 
   const w = window as typeof window & { ttq?: any; TiktokAnalyticsObject?: string };

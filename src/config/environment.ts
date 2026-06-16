@@ -466,13 +466,11 @@ const environmentSchema = z.object({
       typeof value === 'string' && value.trim() === '' ? undefined : value,
     z.string().optional()
   ),
-  TIKTOK_PIXEL_ID: z
-    .preprocess(
-      value =>
-        typeof value === 'string' && value.trim() === '' ? undefined : value,
-      z.string().optional()
-    )
-    .default('D62CLGJC77U8OPSUBNLG'),
+  TIKTOK_PIXEL_ID: z.preprocess(
+    value =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.string().optional()
+  ),
   EMAIL_PROVIDER: z.enum(['smtp', 'console', 'resend']).default('console'),
   EMAIL_FROM: z.preprocess(
     value =>

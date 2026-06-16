@@ -103,7 +103,7 @@ export interface EnvironmentConfig {
   APP_BASE_URL?: string | undefined;
   TIKTOK_EVENTS_ACCESS_TOKEN?: string | undefined;
   TIKTOK_EVENTS_TEST_CODE?: string | undefined;
-  TIKTOK_PIXEL_ID: string;
+  TIKTOK_PIXEL_ID?: string | undefined;
   EMAIL_PROVIDER: 'smtp' | 'console' | 'resend';
   EMAIL_FROM?: string | undefined;
   EMAIL_REPLY_TO?: string | undefined;
