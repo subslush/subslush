@@ -3,7 +3,6 @@ import { defineConfig } from 'vite';
 import { imagetools } from 'vite-imagetools';
 
 export default defineConfig({
-	envPrefix: ['VITE_', 'PUBLIC_'],
 	plugins: [
 		imagetools({
 			defaultDirectives: (url) => {

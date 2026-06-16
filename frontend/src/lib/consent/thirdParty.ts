@@ -2,14 +2,9 @@ import { browser } from '$app/environment';
 import { trackPageView } from '$lib/utils/analytics.js';
 
 const ANALYTICS_ID = 'G-VQ0N792RNT';
-const BUILD_TIKTOK_PIXEL_ID =
-  typeof import.meta.env.PUBLIC_TIKTOK_PIXEL_ID === 'string'
-    ? import.meta.env.PUBLIC_TIKTOK_PIXEL_ID.trim()
-    : '';
 const CRISP_WEBSITE_ID = '68cb8ad9-b3c8-43e9-9bac-0634574c7a83';
 
 let analyticsLoaded = false;
-let marketingLoaded = false;
 let supportLoaded = false;
 let thirdPartyTrackingBound = false;
 
@@ -45,80 +40,6 @@ const initAnalytics = (): void => {
   trackPageView(window.location.pathname + window.location.search, document.title);
 };
 
-const resolveTikTokPixelId = (runtimePixelId?: string | null): string => {
-  const runtimeValue = runtimePixelId?.trim();
-  return runtimeValue || BUILD_TIKTOK_PIXEL_ID;
-};
-
-const initTikTokPixel = (runtimePixelId?: string | null): void => {
-  if (marketingLoaded) return;
-  const pixelId = resolveTikTokPixelId(runtimePixelId);
-  if (!pixelId) {
-    console.warn(
-      'TikTok Pixel is not configured: PUBLIC_TIKTOK_PIXEL_ID is missing from the frontend build/runtime.'
-    );
-    return;
-  }
-  marketingLoaded = true;
-
-  const w = window as typeof window & { ttq?: any; TiktokAnalyticsObject?: string };
-  const t = 'ttq';
-  w.TiktokAnalyticsObject = t;
-  const ttq = (w.ttq = w.ttq || []);
-  ttq.methods = [
-    'page',
-    'track',
-    'identify',
-    'instances',
-    'debug',
-    'on',
-    'off',
-    'once',
-    'ready',
-    'alias',
-    'group',
-    'enableCookie',
-    'disableCookie',
-    'holdConsent',
-    'revokeConsent',
-    'grantConsent'
-  ];
-  ttq.setAndDefer = function (t: any, e: string) {
-    t[e] = function () {
-      t.push([e].concat(Array.prototype.slice.call(arguments, 0)));
-    };
-  };
-  for (let i = 0; i < ttq.methods.length; i++) {
-    ttq.setAndDefer(ttq, ttq.methods[i]);
-  }
-  ttq.instance = function (t: string) {
-    const e = ttq._i[t] || [];
-    for (let n = 0; n < ttq.methods.length; n++) {
-      ttq.setAndDefer(e, ttq.methods[n]);
-    }
-    return e;
-  };
-  ttq.load = function (e: string, n?: Record<string, unknown>) {
-    const r = 'https://analytics.tiktok.com/i18n/pixel/events.js';
-    ttq._i = ttq._i || {};
-    ttq._i[e] = [];
-    ttq._i[e]._u = r;
-    ttq._t = ttq._t || {};
-    ttq._t[e] = +new Date();
-    ttq._o = ttq._o || {};
-    ttq._o[e] = n || {};
-    const s = document.createElement('script');
-    s.type = 'text/javascript';
-    s.async = true;
-    s.src = `${r}?sdkid=${e}&lib=${t}`;
-    const f = document.getElementsByTagName('script')[0];
-    f.parentNode?.insertBefore(s, f);
-  };
-
-  ttq.load(pixelId);
-  ttq.page();
-};
-
 const initCrisp = (): void => {
   if (supportLoaded) return;
   supportLoaded = true;
@@ -136,11 +57,10 @@ export const openCrispChat = (): void => {
   crisp.push(['do', 'chat:open']);
 };
 
-export const initThirdPartyTracking = (tiktokPixelId?: string | null): void => {
+export const initThirdPartyTracking = (): void => {
   if (!browser) return;
   if (thirdPartyTrackingBound) return;
   thirdPartyTrackingBound = true;
 
   initAnalytics();
-  initTikTokPixel(tiktokPixelId);
 };
