@@ -23,6 +23,13 @@ const resolveClientIpFromRequest = (request: Request): string | null => {
   );
 };
 
+const resolveTikTokPixelId = (): string | null => {
+  const pixelId =
+    process.env['PUBLIC_TIKTOK_PIXEL_ID'] || process.env['TIKTOK_PIXEL_ID'];
+  const trimmed = pixelId?.trim();
+  return trimmed || null;
+};
+
 export const load: LayoutServerLoad = async ({ fetch, cookies, request }) => {
   const cookieCurrency = normalizeCurrencyCode(cookies.get('preferred_currency'));
   let preferredCurrency = cookieCurrency;
@@ -66,11 +73,15 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, request }) => {
     });
   }
 
+  const tracking = {
+    tiktokPixelId: resolveTikTokPixelId()
+  };
+
   try {
     const authToken = cookies.get('auth_token');
 
     if (!authToken) {
-      return { user: null, currency: preferredCurrency };
+      return { user: null, currency: preferredCurrency, tracking };
     }
 
     const cookieHeader = cookies
@@ -84,17 +95,18 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, request }) => {
     });
 
     if (!response.ok) {
-      return { user: null, currency: preferredCurrency };
+      return { user: null, currency: preferredCurrency, tracking };
     }
 
     const data = await response.json();
 
     return {
       user: data.user || null,
-      currency: preferredCurrency
+      currency: preferredCurrency,
+      tracking
     };
   } catch (error) {
     console.error('Layout: failed to load session:', error);
-    return { user: null, currency: preferredCurrency };
+    return { user: null, currency: preferredCurrency, tracking };
   }
 };

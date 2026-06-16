@@ -2,7 +2,7 @@ import { browser } from '$app/environment';
 import { trackPageView } from '$lib/utils/analytics.js';
 
 const ANALYTICS_ID = 'G-VQ0N792RNT';
-const TIKTOK_PIXEL_ID =
+const BUILD_TIKTOK_PIXEL_ID =
   typeof import.meta.env.PUBLIC_TIKTOK_PIXEL_ID === 'string'
     ? import.meta.env.PUBLIC_TIKTOK_PIXEL_ID.trim()
     : '';
@@ -45,10 +45,18 @@ const initAnalytics = (): void => {
   trackPageView(window.location.pathname + window.location.search, document.title);
 };
 
-const initTikTokPixel = (): void => {
+const resolveTikTokPixelId = (runtimePixelId?: string | null): string => {
+  const runtimeValue = runtimePixelId?.trim();
+  return runtimeValue || BUILD_TIKTOK_PIXEL_ID;
+};
+
+const initTikTokPixel = (runtimePixelId?: string | null): void => {
   if (marketingLoaded) return;
-  if (!TIKTOK_PIXEL_ID) {
-    console.warn('TikTok Pixel is not configured: PUBLIC_TIKTOK_PIXEL_ID is missing.');
+  const pixelId = resolveTikTokPixelId(runtimePixelId);
+  if (!pixelId) {
+    console.warn(
+      'TikTok Pixel is not configured: PUBLIC_TIKTOK_PIXEL_ID is missing from the frontend build/runtime.'
+    );
     return;
   }
   marketingLoaded = true;
@@ -107,7 +115,7 @@ const initTikTokPixel = (): void => {
     f.parentNode?.insertBefore(s, f);
   };
 
-  ttq.load(TIKTOK_PIXEL_ID);
+  ttq.load(pixelId);
   ttq.page();
 };
 
@@ -128,11 +136,11 @@ export const openCrispChat = (): void => {
   crisp.push(['do', 'chat:open']);
 };
 
-export const initThirdPartyTracking = (): void => {
+export const initThirdPartyTracking = (tiktokPixelId?: string | null): void => {
   if (!browser) return;
   if (thirdPartyTrackingBound) return;
   thirdPartyTrackingBound = true;
 
   initAnalytics();
-  initTikTokPixel();
+  initTikTokPixel(tiktokPixelId);
 };

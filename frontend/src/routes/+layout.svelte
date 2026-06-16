@@ -71,7 +71,7 @@
 
 	onMount(() => {
 		initConsent();
-		initThirdPartyTracking();
+		initThirdPartyTracking(data.tracking?.tiktokPixelId);
 		const stopCartPricingSync = startCartPricingSync();
 		document.documentElement.style.setProperty('--promo-banner-height', '0px');
 		document.body.setAttribute('data-theme', 'skeleton');
