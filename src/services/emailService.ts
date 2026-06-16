@@ -25,6 +25,8 @@ type BrandedEmailOptions = {
   previewText?: string;
 };
 
+type EmailConfirmationFlow = 'standard' | 'claim_order';
+
 class EmailService {
   private readonly provider: 'smtp' | 'console' | 'resend';
   private readonly fromAddress: string | null;
@@ -269,6 +271,71 @@ class EmailService {
       return `SubSlush <${address}>`;
     }
     return address;
+  }
+
+  async sendEmailConfirmationEmail(params: {
+    to: string;
+    confirmationLink: string;
+    flow?: EmailConfirmationFlow;
+  }): Promise<EmailSendResult> {
+    const isClaimOrderFlow = params.flow === 'claim_order';
+    const subject = 'Confirm your SubSlush email';
+    const text = [
+      isClaimOrderFlow
+        ? 'Confirm your email to finish creating your SubSlush account and claim your order.'
+        : 'Confirm your email to finish creating your SubSlush account.',
+      '',
+      `Confirm email: ${params.confirmationLink}`,
+      '',
+      isClaimOrderFlow
+        ? 'After confirmation, we will sign you in and return you to the order claim page automatically.'
+        : 'After confirmation, you will be signed in to your SubSlush account.',
+      '',
+      'If you did not create this account, you can safely ignore this email.',
+    ].join('\n');
+
+    const safeConfirmationLink = this.escapeHtml(params.confirmationLink);
+    const html = this.buildBrandedEmail({
+      title: isClaimOrderFlow
+        ? 'Confirm your email to claim your order'
+        : 'Confirm your SubSlush email',
+      intro: isClaimOrderFlow
+        ? 'Finish creating your account so we can securely attach your guest order to it.'
+        : 'Finish creating your account and start using SubSlush.',
+      bodyHtml: `
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <tr>
+            <td style="padding:14px 16px;font-size:13px;line-height:1.6;color:#334155;">
+              <div style="font-weight:700;color:#0f172a;margin-bottom:8px;">What happens next</div>
+              ${
+                isClaimOrderFlow
+                  ? 'After you confirm your email, we will sign you in and return you to the order claim page automatically.'
+                  : 'After you confirm your email, your account will be activated and you will be signed in.'
+              }
+            </td>
+          </tr>
+        </table>
+        <p style="margin:16px 0 0;font-size:12px;line-height:1.55;color:#64748b;">
+          If the button does not work, copy and paste this secure link into your browser:<br />
+          <a href="${safeConfirmationLink}" style="color:#7e22ce;font-weight:600;text-decoration:underline;word-break:break-all;">${safeConfirmationLink}</a>
+        </p>
+      `.trim(),
+      ctaLabel: isClaimOrderFlow
+        ? 'Confirm email and claim order'
+        : 'Confirm email',
+      ctaUrl: params.confirmationLink,
+      note: 'If you did not create this account, you can safely ignore this email.',
+      previewText: isClaimOrderFlow
+        ? 'Confirm your email to claim your SubSlush order'
+        : 'Confirm your SubSlush email',
+    });
+
+    return this.send({
+      to: params.to,
+      subject,
+      text,
+      html,
+    });
   }
 
   async sendPasswordResetEmail(params: {

@@ -24,11 +24,13 @@
   let emailInput: HTMLInputElement;
   let passwordRequirements: string[] = [];
   let redirectTarget = '';
+  let registrationFlow: 'standard' | 'claim_order' = 'standard';
   const EMAIL_VERIFY_REDIRECT_STORAGE_KEY = 'auth:post_verify_redirect';
 
   $: passwordStrength = formData.password ? getPasswordStrength(formData.password) : null;
   $: passwordRequirements = validatePasswordRequirements(formData.password);
   $: redirectTarget = $page.url.searchParams.get('redirect') ?? '';
+  $: registrationFlow = resolveClaimOrderFlow();
 
   onMount(() => {
     // Auto-focus email input
@@ -76,6 +78,7 @@
         firstName: apiData.firstName || '',
         lastName: apiData.lastName || '',
         ...(safeRedirect ? { redirect: safeRedirect } : {}),
+        ...(registrationFlow === 'claim_order' ? { flow: registrationFlow } : {}),
       };
 
       console.log('🔄 [REGISTER] Starting registration process...');
@@ -92,6 +95,9 @@
         if (safeRedirect) {
           persistPostVerifyRedirect(safeRedirect);
           params.set('redirect', safeRedirect);
+          if (registrationFlow === 'claim_order') {
+            params.set('flow', registrationFlow);
+          }
         } else {
           clearPostVerifyRedirect();
         }
@@ -142,6 +148,14 @@
     return normalized;
   }
 
+  function resolveClaimOrderFlow(): 'standard' | 'claim_order' {
+    if ($page.url.searchParams.get('flow') !== 'claim_order') {
+      return 'standard';
+    }
+    const safeRedirect = resolveSafeRedirect();
+    return safeRedirect?.startsWith('/checkout/claim') ? 'claim_order' : 'standard';
+  }
+
   function persistPostVerifyRedirect(path: string): void {
     if (typeof window === 'undefined') return;
     try {
@@ -163,7 +177,12 @@
   function navigateToLogin() {
     const safeRedirect = resolveSafeRedirect();
     if (safeRedirect) {
-      goto(`${ROUTES.AUTH.LOGIN}?redirect=${encodeURIComponent(safeRedirect)}`);
+      const params = new URLSearchParams();
+      params.set('redirect', safeRedirect);
+      if (registrationFlow === 'claim_order') {
+        params.set('flow', registrationFlow);
+      }
+      goto(`${ROUTES.AUTH.LOGIN}?${params.toString()}`);
       return;
     }
     goto(ROUTES.AUTH.LOGIN);
@@ -206,10 +225,12 @@
   <!-- Header -->
   <div class="text-center space-y-3">
     <h2 class="text-2xl font-bold text-surface-900 dark:text-surface-100">
-      Create an account
+      {registrationFlow === 'claim_order' ? 'Create account to claim order' : 'Create an account'}
     </h2>
     <p class="text-sm text-surface-600 dark:text-surface-400">
-      See order history, claim rewards and check out faster!
+      {registrationFlow === 'claim_order'
+        ? 'After email confirmation, we will bring you back to finish claiming your order automatically.'
+        : 'See order history, claim rewards and check out faster!'}
     </p>
   </div>
 

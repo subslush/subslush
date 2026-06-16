@@ -6,6 +6,7 @@ import { SessionCreateOptions } from '../types/session';
 import { JWTTokens } from '../types/jwt';
 import { Logger } from '../utils/logger';
 import { getDatabasePool } from '../config/database';
+import { emailService } from './emailService';
 
 const resolveAppBaseUrl = (): string | null => {
   const base = env.APP_BASE_URL?.replace(/\/$/, '');
@@ -29,16 +30,44 @@ const sanitizeRedirectPath = (value?: string | null): string | null => {
 };
 
 const resolveEmailRedirectUrl = (
-  redirectPath?: string | null
+  redirectPath?: string | null,
+  flow: 'standard' | 'claim_order' = 'standard'
 ): string | null => {
   const base = resolveAppBaseUrl();
   if (!base) return null;
   const baseConfirmUrl = `${base}/auth/confirm`;
+  const confirmationUrl = new globalThis.URL(baseConfirmUrl);
   const safeRedirectPath = sanitizeRedirectPath(redirectPath);
   if (safeRedirectPath) {
-    return `${baseConfirmUrl}?redirect=${encodeURIComponent(safeRedirectPath)}`;
+    confirmationUrl.searchParams.set('redirect', safeRedirectPath);
   }
-  return baseConfirmUrl;
+  if (flow === 'claim_order') {
+    confirmationUrl.searchParams.set('flow', flow);
+  }
+  return confirmationUrl.toString();
+};
+
+const resolveRegistrationFlow = (
+  requestedFlow?: string | null,
+  redirectPath?: string | null
+): 'standard' | 'claim_order' => {
+  const safeRedirectPath = sanitizeRedirectPath(redirectPath);
+  if (
+    requestedFlow === 'claim_order' &&
+    safeRedirectPath?.startsWith('/checkout/claim')
+  ) {
+    return 'claim_order';
+  }
+  return 'standard';
+};
+
+const isDuplicateAuthError = (error: AuthError): boolean => {
+  const message = error.message.toLowerCase();
+  return (
+    message === 'user already registered' ||
+    message.includes('already registered') ||
+    message.includes('already exists')
+  );
 };
 
 const resolveLoginUrl = (): string => {
@@ -76,6 +105,7 @@ export interface RegisterData {
   firstName?: string | undefined;
   lastName?: string | undefined;
   redirect?: string | undefined;
+  flow?: 'standard' | 'claim_order' | undefined;
 }
 
 export interface LoginData {
@@ -122,10 +152,10 @@ class AuthService {
 
   async register(
     data: RegisterData,
-    sessionOptions: SessionCreateOptions
+    _sessionOptions: SessionCreateOptions
   ): Promise<AuthResult> {
     try {
-      const { email, password, firstName, lastName, redirect } = data;
+      const { email, password, firstName, lastName, redirect, flow } = data;
       const trimmedEmail = email.trim();
 
       // Guard against duplicate user registrations before creating Supabase auth record
@@ -139,7 +169,18 @@ class AuthService {
         };
       }
 
-      const emailRedirectTo = resolveEmailRedirectUrl(redirect);
+      const registrationFlow = resolveRegistrationFlow(flow, redirect);
+      const emailRedirectTo = resolveEmailRedirectUrl(
+        redirect,
+        registrationFlow
+      );
+      if (!emailRedirectTo) {
+        return {
+          success: false,
+          error: 'Email confirmation is not configured',
+        };
+      }
+
       const profileData: { first_name?: string; last_name?: string } = {};
       if (firstName) {
         profileData.first_name = firstName;
@@ -148,48 +189,37 @@ class AuthService {
         profileData.last_name = lastName;
       }
 
-      const signUpOptions: {
-        data: { first_name?: string; last_name?: string };
-        emailRedirectTo?: string;
-      } = {
-        data: profileData,
-      };
-      if (emailRedirectTo) {
-        signUpOptions.emailRedirectTo = emailRedirectTo;
-      }
-
       const { data: authData, error: authError } =
-        await this.supabase.auth.signUp({
+        await this.supabaseAdmin.auth.admin.generateLink({
+          type: 'signup',
           email: trimmedEmail,
           password,
-          options: signUpOptions,
+          options: {
+            data: profileData,
+            redirectTo: emailRedirectTo,
+          },
         });
 
       if (authError) {
-        const isDuplicate = authError.message === 'User already registered';
+        const isDuplicate = isDuplicateAuthError(authError);
         return {
           success: false,
-          error: this.mapSupabaseError(authError),
+          error: isDuplicate
+            ? 'An account with this email already exists'
+            : this.mapSupabaseError(authError),
           code: isDuplicate ? 'EMAIL_ALREADY_EXISTS' : undefined,
           login: isDuplicate ? this.resolveLoginAction() : undefined,
         };
       }
 
-      if (!authData.user) {
+      if (!authData.user || !authData.properties?.action_link) {
         return {
           success: false,
           error: 'User registration failed',
         };
       }
 
-      const emailConfirmedAt =
-        (authData.user as { email_confirmed_at?: string | null })
-          .email_confirmed_at ||
-        (authData.user as { confirmed_at?: string | null }).confirmed_at ||
-        null;
-      const hasSupabaseSession = Boolean(authData.session);
-      const requiresEmailVerification =
-        !hasSupabaseSession && !emailConfirmedAt;
+      const registeredEmail = authData.user.email || trimmedEmail;
 
       // Create corresponding user record in PostgreSQL with first/last names
       try {
@@ -197,7 +227,7 @@ class AuthService {
           'INSERT INTO users (id, email, first_name, last_name, created_at, status, email_verified_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
           [
             authData.user.id,
-            authData.user.email,
+            registeredEmail,
             firstName || null,
             lastName || null,
             new Date(authData.user.created_at),
@@ -205,9 +235,7 @@ class AuthService {
             null,
           ]
         );
-        Logger.info(
-          `PostgreSQL user record created for: ${authData.user.email}`
-        );
+        Logger.info(`PostgreSQL user record created for: ${registeredEmail}`);
       } catch (dbError) {
         Logger.error('Failed to create PostgreSQL user record:', dbError);
         const isDuplicate =
@@ -236,39 +264,58 @@ class AuthService {
 
       const user: User = {
         id: authData.user.id,
-        email: authData.user.email!,
+        email: registeredEmail,
         role: 'user',
         firstName: firstName,
         lastName: lastName,
         createdAt: authData.user.created_at,
       };
 
-      if (requiresEmailVerification) {
+      const sendResult = await emailService.sendEmailConfirmationEmail({
+        to: user.email,
+        confirmationLink: authData.properties.action_link,
+        flow: registrationFlow,
+      });
+
+      if (!sendResult.success) {
+        Logger.error('Failed to send account confirmation email', {
+          userId: user.id,
+          email: user.email,
+          error: sendResult.error,
+        });
+
+        try {
+          await this.pool.query(
+            'DELETE FROM users WHERE id = $1 AND email_verified_at IS NULL',
+            [user.id]
+          );
+        } catch (cleanupError) {
+          Logger.error(
+            'Failed to cleanup PostgreSQL user after confirmation email failure:',
+            cleanupError
+          );
+        }
+
+        try {
+          await this.supabaseAdmin.auth.admin.deleteUser(user.id);
+        } catch (cleanupError) {
+          Logger.error(
+            'Failed to cleanup Supabase user after confirmation email failure:',
+            cleanupError
+          );
+        }
+
         return {
-          success: true,
-          user,
-          requiresEmailVerification: true,
+          success: false,
+          error: 'We could not send the confirmation email. Please try again.',
+          code: 'EMAIL_SEND_FAILED',
         };
       }
-
-      const sessionId = await sessionService.createSession(user.id, {
-        email: user.email,
-        role: user.role || undefined,
-        ...sessionOptions,
-      });
-
-      const tokens = jwtService.generateTokens({
-        userId: user.id,
-        email: user.email,
-        role: user.role || undefined,
-        sessionId,
-      });
 
       return {
         success: true,
         user,
-        tokens,
-        sessionId,
+        requiresEmailVerification: true,
       };
     } catch (error) {
       Logger.error('Registration error:', error);

@@ -25,6 +25,7 @@ export interface RegisterRequest {
   firstName?: string;
   lastName?: string;
   redirect?: string;
+  flow?: 'standard' | 'claim_order';
 }
 
 export interface LoginRequest {

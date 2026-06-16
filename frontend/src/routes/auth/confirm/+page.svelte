@@ -41,6 +41,11 @@
     const queryParams = new URLSearchParams(window.location.search);
     const redirectFromQuery = sanitizeRedirectPath(queryParams.get('redirect'));
     const redirectPath = redirectFromQuery || readStoredRedirect();
+    const flow =
+      queryParams.get('flow') === 'claim_order' &&
+      redirectPath?.startsWith('/checkout/claim')
+        ? 'claim_order'
+        : 'standard';
 
     return {
       accessToken:
@@ -48,11 +53,12 @@
       refreshToken:
         hashParams.get('refresh_token') || queryParams.get('refresh_token') || '',
       redirectPath,
+      flow,
     };
   };
 
   onMount(async () => {
-    const { accessToken, refreshToken, redirectPath } = extractTokens();
+    const { accessToken, refreshToken, redirectPath, flow } = extractTokens();
     if (window.history && (window.location.hash || window.location.search)) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -72,7 +78,10 @@
       auth.setUser(response.user);
       status = 'success';
       message = 'Email verified.';
-      detail = 'Redirecting you now...';
+      detail =
+        flow === 'claim_order'
+          ? 'Returning you to claim your order...'
+          : 'Redirecting you now...';
       clearStoredRedirect();
       if (redirectPath) {
         window.location.href = redirectPath;

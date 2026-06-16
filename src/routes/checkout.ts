@@ -2486,16 +2486,40 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (!result.success) {
           const error = result.error || 'claim_failed';
+          if (error === 'already_claimed') {
+            return sendError(
+              reply,
+              409,
+              'Order Already Claimed',
+              'This order has already been claimed, or this claim link has expired.',
+              'CLAIM_ALREADY_CLAIMED'
+            );
+          }
+          if (error === 'claim_link_expired') {
+            return sendError(
+              reply,
+              410,
+              'Claim Link Expired',
+              'This claim link has expired. Please contact support if you still need help accessing this order.',
+              'CLAIM_LINK_EXPIRED'
+            );
+          }
           if (
             [
-              'token_invalid_or_expired',
+              'claim_link_unavailable',
+              'claim_link_used',
               'guest_identity_not_found',
               'guest_user_not_found',
-              'already_claimed',
               'user_not_found',
             ].includes(error)
           ) {
-            return ErrorResponses.badRequest(reply, error.replace(/_/g, ' '));
+            return sendError(
+              reply,
+              410,
+              'Claim Link Unavailable',
+              'This order has already been claimed, or this claim link has expired.',
+              'CLAIM_LINK_UNAVAILABLE'
+            );
           }
           return ErrorResponses.internalError(reply, 'Failed to claim guest');
         }

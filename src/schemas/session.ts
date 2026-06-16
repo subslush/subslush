@@ -52,6 +52,7 @@ export const registerRequestSchema = z
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirmPassword: z.string().min(1, 'Password confirmation is required'),
     redirect: z.string().max(500, 'Redirect path is too long').optional(),
+    flow: z.enum(['standard', 'claim_order']).optional(),
     firstName: z
       .string()
       .min(2, 'Username must be at least 2 characters')

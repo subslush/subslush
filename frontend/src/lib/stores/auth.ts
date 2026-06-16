@@ -224,6 +224,7 @@ function createAuthStore(initialUser: User | null = null) {
       firstName?: string;
       lastName?: string;
       redirect?: string;
+      flow?: 'standard' | 'claim_order';
     }) => {
       if (!browser) return;
 

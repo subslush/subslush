@@ -215,4 +215,93 @@ describe('GuestCheckoutService', () => {
     );
     expect(secondConsume.success).toBe(false);
   });
+
+  it('reports already claimed when a used claim link belongs to a real user', async () => {
+    const guestIdentityId = '9e20b4b1-72a9-4a1b-9f24-2e8a0c7d7d22';
+    const mockClient = {
+      query: jest.fn(async (sql: string) => {
+        if (sql === 'BEGIN' || sql === 'ROLLBACK') {
+          return { rows: [] };
+        }
+        if (
+          sql.includes('FROM guest_claim_tokens') &&
+          sql.includes('FOR UPDATE')
+        ) {
+          return {
+            rows: [
+              {
+                id: 'claim-token-id',
+                guest_identity_id: guestIdentityId,
+                used_at: new Date(),
+                is_expired: false,
+              },
+            ],
+          };
+        }
+        if (sql.includes('FROM guest_identities gi')) {
+          return {
+            rows: [{ user_id: 'claimed-user-id', is_guest: false }],
+          };
+        }
+        return { rows: [] };
+      }),
+      release: jest.fn(),
+    };
+
+    mockGetDatabasePool.mockReturnValue({
+      connect: jest.fn().mockResolvedValue(mockClient),
+    } as any);
+
+    const service = new GuestCheckoutService();
+    const result = await service.claimGuestIdentity({
+      token: 'used-token',
+      userId: 'different-user-id',
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error).toBe('already_claimed');
+  });
+
+  it('reports expired when an unused claim link is past its expiry window', async () => {
+    const guestIdentityId = '9e20b4b1-72a9-4a1b-9f24-2e8a0c7d7d22';
+    const mockClient = {
+      query: jest.fn(async (sql: string) => {
+        if (sql === 'BEGIN' || sql === 'ROLLBACK') {
+          return { rows: [] };
+        }
+        if (
+          sql.includes('FROM guest_claim_tokens') &&
+          sql.includes('FOR UPDATE')
+        ) {
+          return {
+            rows: [
+              {
+                id: 'claim-token-id',
+                guest_identity_id: guestIdentityId,
+                used_at: null,
+                is_expired: true,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+      release: jest.fn(),
+    };
+
+    mockGetDatabasePool.mockReturnValue({
+      connect: jest.fn().mockResolvedValue(mockClient),
+    } as any);
+
+    const service = new GuestCheckoutService();
+    const result = await service.claimGuestIdentity({
+      token: 'expired-token',
+      userId: 'user-id',
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error).toBe('claim_link_expired');
+  });
 });

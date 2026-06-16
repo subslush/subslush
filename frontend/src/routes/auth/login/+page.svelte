@@ -13,15 +13,14 @@
   let verificationEmail = '';
   let verificationPending = false;
   let redirectTarget = '';
+  let registrationFlow: 'standard' | 'claim_order' = 'standard';
   const EMAIL_VERIFY_REDIRECT_STORAGE_KEY = 'auth:post_verify_redirect';
   $: forgotPasswordHref = email
     ? `${ROUTES.AUTH.FORGOT_PASSWORD}?email=${encodeURIComponent(email)}`
     : ROUTES.AUTH.FORGOT_PASSWORD;
   $: redirectTarget = $page.url.searchParams.get('redirect') ?? '';
-  $: signUpHref =
-    redirectTarget && redirectTarget.startsWith('/') && !redirectTarget.startsWith('//')
-      ? `/auth/register?redirect=${encodeURIComponent(redirectTarget)}`
-      : '/auth/register';
+  $: registrationFlow = resolveClaimOrderFlow();
+  $: signUpHref = buildSignUpHref();
   $: sessionExpired = $page.url.searchParams.get('reason') === 'session-expired';
   $: verificationPending = $page.url.searchParams.get('verify') === 'pending';
 
@@ -51,6 +50,33 @@
 
   function togglePasswordVisibility() {
     showPassword = !showPassword;
+  }
+
+  function resolveSafeRedirect(): string | null {
+    if (!redirectTarget || !redirectTarget.startsWith('/') || redirectTarget.startsWith('//')) {
+      return null;
+    }
+    return redirectTarget;
+  }
+
+  function resolveClaimOrderFlow(): 'standard' | 'claim_order' {
+    if ($page.url.searchParams.get('flow') !== 'claim_order') {
+      return 'standard';
+    }
+    return resolveSafeRedirect()?.startsWith('/checkout/claim') ? 'claim_order' : 'standard';
+  }
+
+  function buildSignUpHref(): string {
+    const safeRedirect = resolveSafeRedirect();
+    if (!safeRedirect) {
+      return '/auth/register';
+    }
+    const params = new URLSearchParams();
+    params.set('redirect', safeRedirect);
+    if (registrationFlow === 'claim_order') {
+      params.set('flow', registrationFlow);
+    }
+    return `/auth/register?${params.toString()}`;
   }
 
   async function handleSubmit(event: Event) {
@@ -134,7 +160,9 @@
           We sent a confirmation link{verificationEmail ? ` to ${verificationEmail}` : ''}.
         </p>
         <p class="text-xs text-slate-500 dark:text-slate-400">
-          If you don’t see it, check your spam or promotions folder.
+          {registrationFlow === 'claim_order'
+            ? 'After confirmation, you will return to claim your order automatically.'
+            : 'If you don’t see it, check your spam or promotions folder.'}
         </p>
       </div>
     </div>

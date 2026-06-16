@@ -298,7 +298,7 @@ export class GuestCheckoutService {
       );
 
       if (result.rows.length === 0) {
-        return createErrorResult('Token invalid or expired');
+        return createErrorResult('claim_link_unavailable');
       }
 
       return createSuccessResult({
@@ -306,7 +306,7 @@ export class GuestCheckoutService {
       });
     } catch (error) {
       Logger.error('Failed to consume guest claim token:', error);
-      return createErrorResult('Failed to verify token');
+      return createErrorResult('claim_link_verification_failed');
     }
   }
 
@@ -324,22 +324,49 @@ export class GuestCheckoutService {
 
       const tokenHash = hashToken(params.token);
       const tokenResult = await client.query(
-        `UPDATE guest_claim_tokens
-         SET used_at = NOW()
+        `SELECT id,
+                guest_identity_id,
+                used_at,
+                expires_at,
+                expires_at <= NOW() AS is_expired
+         FROM guest_claim_tokens
          WHERE token_hash = $1
-           AND used_at IS NULL
-           AND expires_at > NOW()
-         RETURNING guest_identity_id`,
+         FOR UPDATE`,
         [tokenHash]
       );
 
       if (tokenResult.rows.length === 0) {
         await client.query('ROLLBACK');
         transactionOpen = false;
-        return createErrorResult('token_invalid_or_expired');
+        return createErrorResult('claim_link_unavailable');
       }
 
-      const guestIdentityId = tokenResult.rows[0].guest_identity_id as string;
+      const tokenRow = tokenResult.rows[0];
+      const guestIdentityId = tokenRow.guest_identity_id as string;
+
+      if (tokenRow.used_at) {
+        const claimedStateResult = await client.query(
+          `SELECT gi.user_id, u.is_guest
+           FROM guest_identities gi
+           LEFT JOIN users u ON u.id = gi.user_id
+           WHERE gi.id = $1`,
+          [guestIdentityId]
+        );
+        const claimedState = claimedStateResult.rows[0];
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        if (claimedState?.user_id && claimedState.is_guest === false) {
+          return createErrorResult('already_claimed');
+        }
+        return createErrorResult('claim_link_used');
+      }
+
+      if (tokenRow.is_expired) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult('claim_link_expired');
+      }
+
       const identityResult = await client.query(
         `SELECT id, email, user_id
          FROM guest_identities
@@ -560,6 +587,14 @@ export class GuestCheckoutService {
          SET user_id = $1, last_used_at = NOW()
          WHERE id = $2`,
         [params.userId, guestIdentityId]
+      );
+
+      await client.query(
+        `UPDATE guest_claim_tokens
+         SET used_at = NOW()
+         WHERE id = $1
+           AND used_at IS NULL`,
+        [tokenRow.id]
       );
 
       await client.query(

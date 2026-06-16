@@ -12,10 +12,30 @@
   let status: 'idle' | 'loading' | 'success' | 'error' = 'idle';
   let message = '';
 
+  const resolveClaimErrorMessage = (error: unknown): string => {
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? String((error as { code?: unknown }).code || '')
+        : '';
+
+    switch (code) {
+      case 'CLAIM_ALREADY_CLAIMED':
+        return 'This order has already been claimed. Sign in to the account that claimed it and open My Orders, or contact support if you need help.';
+      case 'CLAIM_LINK_EXPIRED':
+        return 'This claim link has expired. Contact support if you still need help attaching the order to your account.';
+      case 'CLAIM_LINK_UNAVAILABLE':
+        return 'This order has already been claimed, or this claim link has expired. Contact support if the order is not visible in your account.';
+      default:
+        return error instanceof Error
+          ? error.message
+          : 'Unable to claim this checkout.';
+    }
+  };
+
   const claimOrder = async () => {
     if (!token) {
       status = 'error';
-      message = 'Claim token missing or invalid.';
+      message = 'This claim link is missing or incomplete. Please use the claim button from your order email.';
       return;
     }
     status = 'loading';
@@ -25,10 +45,7 @@
       status = 'success';
     } catch (error) {
       status = 'error';
-      message =
-        error instanceof Error
-          ? error.message
-          : 'Unable to claim this checkout.';
+      message = resolveClaimErrorMessage(error);
     }
   };
 
@@ -46,7 +63,7 @@
 
   $: if (!token && $user?.id && status === 'idle') {
     status = 'error';
-    message = 'Claim token missing or invalid.';
+    message = 'This claim link is missing or incomplete. Please use the claim button from your order email.';
   }
 
   const buildClaimRedirectPath = (): string => {
@@ -59,12 +76,14 @@
   const handleLogin = () => {
     const params = new URLSearchParams();
     params.set('redirect', buildClaimRedirectPath());
+    params.set('flow', 'claim_order');
     void goto(`/auth/login?${params.toString()}`);
   };
 
   const handleRegister = () => {
     const params = new URLSearchParams();
     params.set('redirect', buildClaimRedirectPath());
+    params.set('flow', 'claim_order');
     void goto(`/auth/register?${params.toString()}`);
   };
 </script>
@@ -100,7 +119,7 @@
               </p>
               {#if !token}
                 <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                  Claim token missing or invalid. Please use the claim link from your order email.
+                  This claim link is missing or incomplete. Please use the claim button from your order email.
                 </div>
               {/if}
               <div class="flex flex-wrap gap-3 pt-2">
@@ -158,7 +177,7 @@
                 <h2 class="text-xl font-semibold text-slate-900">Unable to claim this order</h2>
               </div>
               <p class="text-sm leading-6 text-slate-700">
-                {message || 'The claim token is invalid or has expired.'}
+                {message || 'This order has already been claimed, or this claim link has expired.'}
               </p>
               <div class="flex flex-wrap gap-3 pt-2">
                 <a
@@ -181,7 +200,7 @@
             </div>
             <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 2</p>
-              <p class="mt-1 text-sm text-slate-700">We securely attach this guest checkout to your account using this one-time claim token.</p>
+              <p class="mt-1 text-sm text-slate-700">We securely attach this guest checkout to your account using this one-time claim link.</p>
             </div>
             <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 3</p>
@@ -191,7 +210,7 @@
 
           <div class="mt-5 flex items-start gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
             <ShieldCheck class="mt-0.5 h-4 w-4" />
-            <span>This claim token is one-time use and expires for your security.</span>
+            <span>This claim link is one-time use and expires for your security.</span>
           </div>
         </aside>
       </div>
