@@ -1,9 +1,11 @@
 import { browser } from '$app/environment';
-import { env } from '$env/dynamic/public';
 import { trackPageView } from '$lib/utils/analytics.js';
 
 const ANALYTICS_ID = 'G-VQ0N792RNT';
-const TIKTOK_PIXEL_ID = env.PUBLIC_TIKTOK_PIXEL_ID?.trim();
+const TIKTOK_PIXEL_ID =
+  typeof import.meta.env.PUBLIC_TIKTOK_PIXEL_ID === 'string'
+    ? import.meta.env.PUBLIC_TIKTOK_PIXEL_ID.trim()
+    : '';
 const CRISP_WEBSITE_ID = '68cb8ad9-b3c8-43e9-9bac-0634574c7a83';
 
 let analyticsLoaded = false;
