@@ -43,6 +43,7 @@ export interface OrderItem {
   product_variant_id?: string | null;
   product_name?: string | null;
   variant_name?: string | null;
+  product_logo_key?: string | null;
   quantity: number;
   unit_price_cents: number;
   base_price_cents?: number | null;

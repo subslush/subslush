@@ -27,6 +27,7 @@ type OrderItemMetadata = Record<string, unknown>;
 export type PayopQuoteItem = {
   orderItemId: string;
   label: string;
+  logoKey: string | null;
   totalCents: number;
 };
 
@@ -53,6 +54,7 @@ export type PayopMethodQuote = {
 type QuotedSnapshotItem = {
   orderItemId: string;
   label: string;
+  logoKey: string | null;
   totalBeforeCouponCents: number;
   couponEligible: boolean;
   catalogMode: CatalogMode;
@@ -234,6 +236,19 @@ const resolveItemLabel = (item: OrderItem): string =>
   normalizeString(resolveItemMetadata(item)['service_plan']) ||
   'Subscription';
 
+const resolveItemLogoKey = (item: OrderItem): string | null => {
+  const metadata = resolveItemMetadata(item);
+  return (
+    normalizeString(item.product_logo_key) ||
+    normalizeString(metadata['product_logo_key']) ||
+    normalizeString(metadata['logo_key']) ||
+    normalizeString(metadata['logoKey']) ||
+    normalizeString(metadata['service_type']) ||
+    normalizeString(item.product_name) ||
+    null
+  );
+};
+
 const resolveQuotedPriceFxRate = (
   price: PriceHistory | FixedProductPriceHistory | null
 ): number | null => {
@@ -374,6 +389,7 @@ const quoteOrderInCurrency = async (params: {
     quotedItems.push({
       orderItemId: item.id,
       label: resolveItemLabel(item),
+      logoKey: resolveItemLogoKey(item),
       totalBeforeCouponCents: pricingSnapshot.totalPriceCents * quantity,
       couponEligible: resolveItemCouponEligibility(item, metadata),
       catalogMode,
@@ -597,6 +613,7 @@ export const buildPayopMethodQuotes = async (params: {
       items: orderQuote.items.map(item => ({
         orderItemId: item.orderItemId,
         label: item.label,
+        logoKey: item.logoKey,
         totalCents: item.totalBeforeCouponCents,
       })),
     });

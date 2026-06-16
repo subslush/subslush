@@ -14,6 +14,10 @@ export interface CheckoutDraftState {
   orderId?: string | null;
   appliedCouponCode?: string | null;
   selectedPaymentCountry?: string | null;
+  selectedTaxResidence?: string | null;
+  selectedPaymentProvider?: 'antom' | 'payop' | null;
+  selectedAntomOptionId?: 'cards' | 'apple_pay' | 'google_pay' | null;
+  selectedPayopMethodId?: number | null;
   legalConsent?: CheckoutDraftLegalConsentState | null;
 }
 
@@ -23,6 +27,28 @@ const normalizeString = (value: unknown): string | null => {
   }
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+};
+
+const normalizePaymentProvider = (
+  value: unknown
+): CheckoutDraftState['selectedPaymentProvider'] => {
+  return value === 'antom' || value === 'payop' ? value : null;
+};
+
+const normalizeAntomOptionId = (
+  value: unknown
+): CheckoutDraftState['selectedAntomOptionId'] => {
+  return value === 'cards' || value === 'apple_pay' || value === 'google_pay'
+    ? value
+    : null;
+};
+
+const normalizePositiveInt = (value: unknown): number | null => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
 };
 
 export const loadCheckoutDraftState = (): CheckoutDraftState | null => {
@@ -63,6 +89,16 @@ export const loadCheckoutDraftState = (): CheckoutDraftState | null => {
       orderId: normalizeString(parsed.orderId),
       appliedCouponCode: normalizeString(parsed.appliedCouponCode),
       selectedPaymentCountry: normalizeString(parsed.selectedPaymentCountry),
+      selectedTaxResidence: normalizeString(parsed.selectedTaxResidence),
+      selectedPaymentProvider: normalizePaymentProvider(
+        parsed.selectedPaymentProvider
+      ),
+      selectedAntomOptionId: normalizeAntomOptionId(
+        parsed.selectedAntomOptionId
+      ),
+      selectedPayopMethodId: normalizePositiveInt(
+        parsed.selectedPayopMethodId
+      ),
       legalConsent,
     };
   } catch (error) {
@@ -89,6 +125,12 @@ export const saveCheckoutDraftState = (state: CheckoutDraftState): void => {
     orderId: normalizeString(state.orderId),
     appliedCouponCode: normalizeString(state.appliedCouponCode),
     selectedPaymentCountry: normalizeString(state.selectedPaymentCountry),
+    selectedTaxResidence: normalizeString(state.selectedTaxResidence),
+    selectedPaymentProvider: normalizePaymentProvider(
+      state.selectedPaymentProvider
+    ),
+    selectedAntomOptionId: normalizeAntomOptionId(state.selectedAntomOptionId),
+    selectedPayopMethodId: normalizePositiveInt(state.selectedPayopMethodId),
     legalConsent: state.legalConsent
       ? {
           immediateFulfillmentConsent:

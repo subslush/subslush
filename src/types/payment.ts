@@ -16,6 +16,7 @@ export type PaymentProvider =
   | 'pay4bit'
   | 'paypal'
   | 'payop'
+  | 'antom'
   | 'manual'
   | 'admin';
 

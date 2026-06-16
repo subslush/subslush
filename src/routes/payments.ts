@@ -1433,6 +1433,69 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  fastify.post(
+    '/antom/webhook',
+    {
+      config: {
+        rawBody: true,
+      },
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: true,
+        },
+      },
+      preHandler: [webhookRateLimit],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const rawBody =
+          ((request as any).rawBody as Buffer | string | undefined) ??
+          JSON.stringify(request.body ?? {});
+        const requestUri =
+          (request.raw.url || request.url).split('?')[0] || request.url;
+        const userAgentHeader = request.headers['user-agent'];
+        const userAgent =
+          Array.isArray(userAgentHeader) && userAgentHeader.length > 0
+            ? userAgentHeader[0]
+            : typeof userAgentHeader === 'string'
+              ? userAgentHeader
+              : null;
+
+        const result = await paymentService.handleAntomWebhook({
+          rawBody,
+          payload:
+            request.body && typeof request.body === 'object'
+              ? (request.body as Record<string, unknown>)
+              : {},
+          requestUri,
+          clientId: readSingleHeader(
+            request.headers['client-id'] as string | string[] | undefined
+          ),
+          requestTime: readSingleHeader(
+            request.headers['request-time'] as string | string[] | undefined
+          ),
+          signature: readSingleHeader(
+            request.headers['signature'] as string | string[] | undefined
+          ),
+          ipAddress: getRequestIp(request),
+          userAgent,
+        });
+
+        return reply.code(result.statusCode).send(result.body);
+      } catch (error) {
+        Logger.error('Antom webhook error:', error);
+        return reply.code(500).send({
+          result: {
+            resultCode: 'FAIL',
+            resultStatus: 'F',
+            resultMessage: 'internal error',
+          },
+        });
+      }
+    }
+  );
+
   // Stripe webhook (no auth, feature-flagged)
   fastify.post(
     '/stripe/webhook',

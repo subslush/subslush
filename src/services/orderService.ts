@@ -73,6 +73,7 @@ function mapOrderItem(row: any): OrderItem {
     product_variant_id: row.product_variant_id,
     product_name: row.product_name ?? null,
     variant_name: row.variant_name ?? null,
+    product_logo_key: row.product_logo_key ?? null,
     quantity: row.quantity,
     unit_price_cents: row.unit_price_cents,
     base_price_cents: row.base_price_cents ?? null,
@@ -245,6 +246,56 @@ const resolvePayopDisplayTotalFromMetadata = (
   return null;
 };
 
+const parseNonNegativeCents = (value: unknown): number | null => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+  return Math.round(parsed);
+};
+
+const parsePositiveCents = (value: unknown): number | null => {
+  const parsed = parseNonNegativeCents(value);
+  return parsed !== null && parsed > 0 ? parsed : null;
+};
+
+const resolveAntomDisplayTotalFromMetadata = (
+  metadata: Record<string, any> | null | undefined
+): number | null => {
+  if (!metadata || typeof metadata !== 'object') {
+    return null;
+  }
+
+  const explicitTotal = parsePositiveCents(
+    metadata['antom_processing_total_cents']
+  );
+  if (explicitTotal !== null) {
+    return explicitTotal;
+  }
+
+  const subtotal = parsePositiveCents(
+    metadata['antom_processing_subtotal_cents']
+  );
+  if (subtotal === null) {
+    return null;
+  }
+
+  const fee =
+    parseNonNegativeCents(metadata['antom_processing_fee_cents']) ?? 0;
+  const tax =
+    parseNonNegativeCents(metadata['antom_processing_tax_cents']) ?? 0;
+  const calculatedTotal = subtotal + fee + tax;
+  return calculatedTotal > 0 ? calculatedTotal : null;
+};
+
+const normalizeMetadataString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
 const resolveTermMonths = (item: OrderItem): number | null => {
   const termMonths =
     item.term_months ??
@@ -256,10 +307,14 @@ const resolveTermMonths = (item: OrderItem): number | null => {
   return Math.floor(parsed);
 };
 
-const formatOrderItemLabel = (item: OrderItem): string => {
+const formatOrderItemDisplayName = (
+  item: OrderItem,
+  options?: { includeDuration?: boolean }
+): string => {
   const productName = item.product_name ?? null;
   const variantName = item.variant_name ?? null;
-  const termMonths = resolveTermMonths(item);
+  const termMonths =
+    options?.includeDuration === false ? null : resolveTermMonths(item);
   const serviceType = item.metadata?.['service_type'] ?? null;
   const servicePlan = item.metadata?.['service_plan'] ?? null;
   const label = formatSubscriptionDisplayName({
@@ -271,6 +326,12 @@ const formatOrderItemLabel = (item: OrderItem): string => {
   });
   return label || item.description || 'Subscription';
 };
+
+const formatOrderItemLabel = (item: OrderItem): string =>
+  formatOrderItemDisplayName(item);
+
+const formatOrderItemTitle = (item: OrderItem): string =>
+  formatOrderItemDisplayName(item, { includeDuration: false });
 
 const isRenewalOrder = (order: Order): boolean => {
   const metadata = order.metadata || {};
@@ -355,13 +416,63 @@ export class OrderService {
       order.metadata && typeof order.metadata === 'object'
         ? (order.metadata as Record<string, any>)
         : {};
-    const orderMetadataTotal =
-      resolvePayopDisplayTotalFromMetadata(orderMetadata);
-    if (orderMetadataTotal !== null) {
-      return orderMetadataTotal;
+    const antomOrderTotal = resolveAntomDisplayTotalFromMetadata(orderMetadata);
+    const hasAntomMetadata =
+      order.payment_provider === 'antom' ||
+      antomOrderTotal !== null ||
+      parseNonNegativeCents(orderMetadata['antom_processing_total_cents']) !==
+        null ||
+      normalizeMetadataString(orderMetadata['antom_processing_currency']) !==
+        null;
+    if (hasAntomMetadata) {
+      if (antomOrderTotal !== null) {
+        return antomOrderTotal;
+      }
+
+      const latestPayment = await paymentRepository.findLatestByOrderId(
+        'antom',
+        order.id,
+        'subscription'
+      );
+      const paymentMetadata =
+        latestPayment?.metadata && typeof latestPayment.metadata === 'object'
+          ? latestPayment.metadata
+          : {};
+      const antomPaymentTotal =
+        resolveAntomDisplayTotalFromMetadata(paymentMetadata);
+      if (antomPaymentTotal !== null) {
+        return antomPaymentTotal;
+      }
+      if (
+        typeof latestPayment?.amount === 'number' &&
+        Number.isFinite(latestPayment.amount) &&
+        latestPayment.amount > 0
+      ) {
+        return Math.round(latestPayment.amount * 100);
+      }
+
+      const settlementTotal = parsePositiveCents(order.settlement_total_cents);
+      if (settlementTotal !== null) {
+        return settlementTotal;
+      }
+
+      const orderTotal =
+        parsePositiveCents(order.display_total_cents) ??
+        parsePositiveCents(order.total_cents);
+      if (orderTotal !== null) {
+        return orderTotal;
+      }
+
+      return null;
     }
 
     if (order.payment_provider === 'payop') {
+      const orderMetadataTotal =
+        resolvePayopDisplayTotalFromMetadata(orderMetadata);
+      if (orderMetadataTotal !== null) {
+        return orderMetadataTotal;
+      }
+
       const latestPayment = await paymentRepository.findLatestByOrderId(
         'payop',
         order.id,
@@ -393,6 +504,40 @@ export class OrderService {
     }
 
     return resolveOrderDisplayTotalCents(order);
+  }
+
+  private resolvePaymentConfirmationCurrency(order: Order): string {
+    const metadata =
+      order.metadata && typeof order.metadata === 'object'
+        ? (order.metadata as Record<string, any>)
+        : {};
+    const antomCurrency = normalizeMetadataString(
+      metadata['antom_processing_currency']
+    );
+    if (antomCurrency) {
+      return antomCurrency.toUpperCase();
+    }
+    return resolveOrderDisplayCurrency(order);
+  }
+
+  private resolvePaymentConfirmationTaxSummary(
+    order: Order,
+    currency: string
+  ): string {
+    const metadata =
+      order.metadata && typeof order.metadata === 'object'
+        ? (order.metadata as Record<string, any>)
+        : {};
+    const antomTaxCents = parseNonNegativeCents(
+      metadata['antom_processing_tax_cents']
+    );
+    const taxCents = antomTaxCents ?? 0;
+    const residenceLabel = normalizeMetadataString(
+      metadata['antom_tax_residence_label']
+    );
+    return `${formatCurrencyCents(taxCents, currency)}${
+      residenceLabel ? ` (${residenceLabel})` : ''
+    }`;
   }
 
   private async listOrderSubscriptions(orderId: string): Promise<
@@ -453,7 +598,8 @@ export class OrderService {
       service_type: string | null;
       service_plan: string | null;
       term_months: number | null;
-    }>
+    }>,
+    options?: { includeDuration?: boolean }
   ): string[] {
     if (subscriptions.length > 0) {
       return subscriptions.map(subscription => {
@@ -462,13 +608,22 @@ export class OrderService {
           variantName: subscription.variant_name ?? null,
           serviceType: subscription.service_type as any,
           servicePlan: subscription.service_plan as any,
-          termMonths: subscription.term_months ?? null,
+          termMonths:
+            options?.includeDuration === false
+              ? null
+              : (subscription.term_months ?? null),
         });
         return label || 'Subscription';
       });
     }
 
-    const labels = items.map(formatOrderItemLabel).filter(Boolean);
+    const labels = items
+      .map(item =>
+        options?.includeDuration === false
+          ? formatOrderItemTitle(item)
+          : formatOrderItemLabel(item)
+      )
+      .filter(Boolean);
     if (labels.length > 0) {
       return labels;
     }
@@ -480,10 +635,12 @@ export class OrderService {
       serviceType: metadata['service_type'] ?? null,
       servicePlan: metadata['service_plan'] ?? null,
       termMonths:
-        metadata['duration_months'] ??
-        metadata['term_months'] ??
-        order.term_months ??
-        null,
+        options?.includeDuration === false
+          ? null
+          : (metadata['duration_months'] ??
+            metadata['term_months'] ??
+            order.term_months ??
+            null),
     });
 
     return fallbackLabel ? [fallbackLabel] : [];
@@ -905,7 +1062,9 @@ export class OrderService {
       this.listOrderItems(order.id),
       this.listOrderSubscriptions(order.id),
     ]);
-    const labels = this.resolveSubscriptionLabels(order, items, subscriptions);
+    const labels = this.resolveSubscriptionLabels(order, items, subscriptions, {
+      includeDuration: false,
+    });
     const orderShort = order.id.slice(0, 8);
     const subscriptionsText =
       labels.length > 0
@@ -922,14 +1081,19 @@ export class OrderService {
 
     const dashboardLink = buildAppLink('/dashboard/orders');
     const orderPlacedAt = new Date(order.created_at);
-    const orderPlacedAtIso = Number.isNaN(orderPlacedAt.getTime())
+    const orderPlacedAtDate = Number.isNaN(orderPlacedAt.getTime())
       ? new Date().toISOString()
       : orderPlacedAt.toISOString();
-    const displayCurrency = resolveOrderDisplayCurrency(order);
+    const orderPlacedDate = orderPlacedAtDate.slice(0, 10);
+    const displayCurrency = this.resolvePaymentConfirmationCurrency(order);
     const displayTotalCents =
       await this.resolvePaymentConfirmationDisplayTotalCents(order);
     const displayTotal = formatCurrencyCents(
       displayTotalCents,
+      displayCurrency
+    );
+    const taxSummary = this.resolvePaymentConfirmationTaxSummary(
+      order,
       displayCurrency
     );
     const shouldIssueClaimToken = await this.isGuestUser(order.user_id);
@@ -978,6 +1142,9 @@ export class OrderService {
       }
     }
 
+    const dashboardText = shouldIssueClaimToken
+      ? ''
+      : ['', `View My Orders: ${dashboardLink}`].join('\n');
     const subject = 'Your SubSlush order is confirmed';
     const text = [
       `We received your payment for order ${orderShort}.`,
@@ -988,16 +1155,13 @@ export class OrderService {
       subscriptionsText,
       '',
       'Order confirmation summary:',
-      `- Order ID: ${order.id}`,
+      `- Order ID: ${orderShort}`,
       `- Customer email: ${email}`,
       `- Total price: ${displayTotal}`,
-      `- VAT/tax: Final checkout price includes applicable taxes/fees where required`,
-      `- Delivery method: Digital delivery through dashboard and/or email, depending on product type`,
-      `- Seller: 3NITY Digital Limited, trading as SubSlush`,
-      `- Billing: One-time prepaid digital access entitlement; no recurring billing unless expressly stated on the product page`,
-      `- Statement descriptor: May show 3NITY Digital Limited, SubSlush, or our payment processor descriptor`,
-      `- Date/time (UTC): ${orderPlacedAtIso}`,
+      `- Tax included: ${taxSummary}`,
+      `- Date/time (UTC): ${orderPlacedDate}`,
       '',
+      dashboardText,
       claimText,
     ].join('\n');
     const html = emailService.buildBrandedEmail({
@@ -1016,22 +1180,22 @@ export class OrderService {
           <tr>
             <td style="padding:14px 16px;font-size:13px;color:#334155;">
               <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Order confirmation summary</div>
-              <div>Order ID: ${escapeHtml(order.id)}</div>
+              <div>Order ID: ${escapeHtml(orderShort)}</div>
               <div>Customer email: ${escapeHtml(email)}</div>
               <div>Total price: ${escapeHtml(displayTotal)}</div>
-              <div>VAT/tax: Final checkout price includes applicable taxes/fees where required</div>
-              <div>Delivery method: Digital delivery through dashboard and/or email, depending on product type</div>
-              <div>Seller: 3NITY Digital Limited, trading as SubSlush</div>
-              <div>Billing: One-time prepaid digital access entitlement; no recurring billing unless expressly stated on the product page</div>
-              <div>Statement descriptor: May show 3NITY Digital Limited, SubSlush, or our payment processor descriptor</div>
-              <div>Date/time (UTC): ${escapeHtml(orderPlacedAtIso)}</div>
+              <div>Tax included: ${escapeHtml(taxSummary)}</div>
+              <div>Date/time (UTC): ${escapeHtml(orderPlacedDate)}</div>
             </td>
           </tr>
         </table>
         ${claimHtml}
       `.trim(),
-      ctaLabel: 'View My Orders',
-      ctaUrl: dashboardLink,
+      ...(!shouldIssueClaimToken
+        ? {
+            ctaLabel: 'View My Orders',
+            ctaUrl: dashboardLink,
+          }
+        : {}),
       previewText: `Payment received for order ${orderShort}`,
     });
 
@@ -2034,7 +2198,17 @@ export class OrderService {
       }
 
       const itemsResult = await pool.query(
-        'SELECT * FROM order_items WHERE order_id = $1 ORDER BY created_at ASC',
+        `
+        SELECT oi.*,
+               COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
+               COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+               p.logo_key AS product_logo_key
+        FROM order_items oi
+        LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
+        LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+        WHERE oi.order_id = $1
+        ORDER BY oi.created_at ASC
+        `,
         [orderId]
       );
 

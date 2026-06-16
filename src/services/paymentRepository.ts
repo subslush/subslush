@@ -276,6 +276,28 @@ export const paymentRepository = {
     );
   },
 
+  async findById(
+    paymentId: string,
+    client?: PoolClient
+  ): Promise<UnifiedPayment | null> {
+    try {
+      const db = getClient(client);
+      const result = await db.query(
+        `SELECT * FROM payments WHERE id = $1 LIMIT 1`,
+        [paymentId]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return mapRowToUnifiedPayment(result.rows[0]);
+    } catch (error) {
+      Logger.error('Failed to fetch payment by id:', error);
+      throw error;
+    }
+  },
+
   async findByProviderPaymentId(
     provider: PaymentProvider,
     providerPaymentId: string

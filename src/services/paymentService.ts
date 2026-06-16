@@ -19,6 +19,11 @@ import {
   PayopProviderError,
   type PayopAvailableMethod,
 } from './payments/payopProvider';
+import {
+  antomProvider,
+  AntomProviderError,
+  type AntomPaymentInquiryResponse,
+} from './payments/antomProvider';
 import { PayPalProviderError, paypalProvider } from './payments/paypalProvider';
 import { Logger } from '../utils/logger';
 import { paymentMonitoringService } from './paymentMonitoringService';
@@ -74,6 +79,14 @@ import {
   resolvePayopCountryOptions,
   type PayopMethodQuote,
 } from './payments/payopQuoteService';
+import {
+  ANTOM_RESIDENCES,
+  buildAntomCheckoutOptionQuotes,
+  findAntomPaymentOption,
+  type AntomCheckoutBreakdown,
+  type AntomCheckoutOptionQuote,
+  type AntomPaymentOptionId,
+} from './payments/antomQuoteService';
 
 interface StripeOrderContext {
   orderId?: string;
@@ -155,6 +168,45 @@ type PayopCheckoutIpnPayload = {
   } | null;
 };
 
+type AntomNotifyPayload = {
+  notifyType?: string;
+  paymentRequestId?: string;
+  paymentId?: string;
+  paymentAmount?: {
+    currency?: string;
+    value?: string;
+  };
+  actualPaymentAmount?: {
+    currency?: string;
+    value?: string;
+  };
+  captureAmount?: {
+    currency?: string;
+    value?: string;
+  };
+  paymentMethodType?: string;
+  paymentStatus?: string;
+  captureId?: string;
+  captureRequestId?: string;
+  paymentTime?: string;
+  captureTime?: string;
+  paymentCreateTime?: string;
+  result?: {
+    resultCode?: string;
+    resultStatus?: string;
+    resultMessage?: string;
+  };
+  [key: string]: unknown;
+};
+
+type AntomWebhookAck = {
+  result: {
+    resultCode: string;
+    resultStatus: string;
+    resultMessage: string;
+  };
+};
+
 type PayopMethodCacheEntry = {
   methods: PayopAvailableMethod[];
   fetchedAt: number;
@@ -182,6 +234,8 @@ const PAYOP_PROVIDER_CONSTRAINTS = [
   },
 ] as const;
 
+const PAYMENT_PROVIDER_CONSTRAINTS = PAYOP_PROVIDER_CONSTRAINTS;
+
 const constraintDefinitionSupportsProvider = (
   definition: string | null | undefined,
   provider: string
@@ -208,6 +262,24 @@ const isPayopProviderConstraintFailure = (error: unknown): boolean => {
   );
 };
 
+const isProviderConstraintFailure = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as {
+    code?: string;
+    constraint?: string;
+  };
+
+  return (
+    candidate.code === '23514' &&
+    PAYMENT_PROVIDER_CONSTRAINTS.some(
+      ({ name }) => candidate.constraint === name
+    )
+  );
+};
+
 class PayopSchemaCompatibilityError extends Error {
   readonly missingTargets: string[];
 
@@ -216,6 +288,18 @@ class PayopSchemaCompatibilityError extends Error {
       `Payop database constraints are missing support for: ${missingTargets.join(', ')}. Apply database/migrations/20260604_120000_add_payop_provider_constraints.sql before enabling Payop.`
     );
     this.name = 'PayopSchemaCompatibilityError';
+    this.missingTargets = missingTargets;
+  }
+}
+
+class AntomSchemaCompatibilityError extends Error {
+  readonly missingTargets: string[];
+
+  constructor(missingTargets: string[]) {
+    super(
+      `Antom database constraints are missing support for: ${missingTargets.join(', ')}. Apply database/migrations/20260615_120000_add_antom_provider_constraints.sql before enabling Antom.`
+    );
+    this.name = 'AntomSchemaCompatibilityError';
     this.missingTargets = missingTargets;
   }
 }
@@ -317,6 +401,7 @@ export class PaymentService {
   ]);
   private payopMethodCache: PayopMethodCacheEntry | null = null;
   private payopSchemaCompatibilityValidated = false;
+  private antomSchemaCompatibilityValidated = false;
 
   private mapNowPaymentsStatus(status: PaymentStatus): UnifiedPaymentStatus {
     switch (status) {
@@ -3655,6 +3740,48 @@ export class PaymentService {
     this.payopSchemaCompatibilityValidated = true;
   }
 
+  async validateAntomSchemaCompatibility(options?: {
+    force?: boolean;
+  }): Promise<void> {
+    if (!env.ANTOM_ENABLED) {
+      return;
+    }
+
+    if (this.antomSchemaCompatibilityValidated && !options?.force) {
+      return;
+    }
+
+    const pool = getDatabasePool();
+    const result = await pool.query<ConstraintDefinitionRow>(
+      `
+        SELECT
+          conname,
+          pg_get_constraintdef(oid) AS definition
+        FROM pg_constraint
+        WHERE conname = ANY($1::text[])
+      `,
+      [PAYMENT_PROVIDER_CONSTRAINTS.map(constraint => constraint.name)]
+    );
+
+    const definitions = new Map<string, string>(
+      result.rows.map(row => [row.conname, row.definition])
+    );
+    const missingTargets = PAYMENT_PROVIDER_CONSTRAINTS.filter(
+      constraint =>
+        !constraintDefinitionSupportsProvider(
+          definitions.get(constraint.name),
+          'antom'
+        )
+    ).map(constraint => constraint.label);
+
+    if (missingTargets.length > 0) {
+      this.antomSchemaCompatibilityValidated = false;
+      throw new AntomSchemaCompatibilityError(missingTargets);
+    }
+
+    this.antomSchemaCompatibilityValidated = true;
+  }
+
   private mapPayopTransactionState(state: number | null | undefined): {
     status: UnifiedPaymentStatus;
     providerStatus: string;
@@ -3783,6 +3910,536 @@ export class PaymentService {
       params.selectedQuote.processingTotalCents;
 
     return metadata;
+  }
+
+  private buildAntomPaymentRequestId(orderId: string): string {
+    const compactOrderId = orderId.replace(/-/g, '').slice(0, 24);
+    const timestamp = Date.now().toString(36);
+    const suffix = uuidv4().replace(/-/g, '').slice(0, 8);
+    return `antom_${compactOrderId}_${timestamp}_${suffix}`;
+  }
+
+  private buildAntomReturnUrl(params: {
+    orderId: string;
+    paymentRequestId: string;
+    preferredBaseUrl?: string | null;
+  }): { baseUrl: string; redirectUrl: string } | null {
+    const baseUrl = this.resolvePayopReturnBaseUrl(params.preferredBaseUrl);
+    if (!baseUrl) {
+      return null;
+    }
+
+    const query = new globalThis.URLSearchParams({
+      status: 'return',
+      order_id: params.orderId,
+      payment_request_id: params.paymentRequestId,
+    });
+    return {
+      baseUrl,
+      redirectUrl: `${baseUrl}/checkout/antom?${query.toString()}`,
+    };
+  }
+
+  private buildAntomWebhookEventId(payload: AntomNotifyPayload): string {
+    return [
+      normalizeString(payload.notifyType) || 'UNKNOWN',
+      normalizeString(payload.paymentRequestId) || 'no_request',
+      normalizeString(payload.paymentId) || 'no_payment',
+      normalizeString(payload.captureId) ||
+        normalizeString(payload.captureRequestId) ||
+        normalizeString(payload.paymentTime) ||
+        normalizeString(payload.captureTime) ||
+        normalizeString(payload.result?.resultCode) ||
+        'no_event_marker',
+    ].join(':');
+  }
+
+  private buildAntomOrderMetadata(params: {
+    order: OrderWithItems;
+    option: AntomCheckoutOptionQuote;
+    paymentRequestId: string;
+    sessionId?: string | null;
+    sessionExpiryTime?: string | null;
+    normalUrl?: string | null;
+    returnBaseUrl?: string | null;
+    redirectUrl?: string | null;
+  }): Record<string, unknown> {
+    const metadata =
+      params.order.metadata && typeof params.order.metadata === 'object'
+        ? { ...(params.order.metadata as Record<string, unknown>) }
+        : {};
+
+    metadata['antom_option_id'] = params.option.id;
+    metadata['antom_method_title'] = params.option.title;
+    metadata['antom_method_types'] = params.option.methodTypes;
+    metadata['antom_payment_request_id'] = params.paymentRequestId;
+    metadata['antom_payment_session_id'] = params.sessionId ?? null;
+    metadata['antom_payment_session_expiry_time'] =
+      params.sessionExpiryTime ?? null;
+    metadata['antom_checkout_url'] = params.normalUrl ?? null;
+    metadata['antom_return_base_url'] = params.returnBaseUrl ?? null;
+    metadata['antom_redirect_url'] = params.redirectUrl ?? null;
+    metadata['antom_processing_currency'] = params.option.currency;
+    metadata['antom_processing_subtotal_cents'] = params.option.subtotalCents;
+    metadata['antom_processing_fee_cents'] = params.option.serviceFeeCents;
+    metadata['antom_processing_tax_cents'] = params.option.taxCents;
+    metadata['antom_processing_total_cents'] = params.option.totalCents;
+    metadata['antom_tax_residence_id'] = params.option.taxResidenceId;
+    metadata['antom_tax_residence_label'] = params.option.taxResidenceLabel;
+    metadata['antom_tax_rate_bps'] = params.option.taxRateBps;
+    metadata['antom_service_fee_bps'] = params.option.serviceFeePercentBps;
+    metadata['antom_service_fee_fixed_cents'] =
+      params.option.serviceFeeFixedCents;
+    metadata['antom_service_fee_fixed_usd_cents'] =
+      params.option.serviceFeeFixedUsdCents;
+    metadata['antom_service_fee_fx_rate'] = params.option.serviceFeeFxRate;
+
+    return metadata;
+  }
+
+  private normalizeAntomMethodTitle(value: unknown): string | null {
+    const title = normalizeString(value);
+    if (!title) {
+      return null;
+    }
+    return title.toLowerCase() === 'cards' ? 'Card' : title;
+  }
+
+  private resolveAntomMetadataTotalCents(
+    metadata: Record<string, unknown>
+  ): number | null {
+    const explicitTotal = parsePositiveInt(
+      metadata['antom_processing_total_cents']
+    );
+    if (explicitTotal !== null) {
+      return explicitTotal;
+    }
+
+    const subtotal = parsePositiveInt(
+      metadata['antom_processing_subtotal_cents']
+    );
+    if (subtotal === null) {
+      return null;
+    }
+
+    const fee =
+      parseNonNegativeInt(metadata['antom_processing_fee_cents']) ?? 0;
+    const tax =
+      parseNonNegativeInt(metadata['antom_processing_tax_cents']) ?? 0;
+    const calculatedTotal = subtotal + fee + tax;
+    return calculatedTotal > 0 ? calculatedTotal : null;
+  }
+
+  private buildAntomGoods(params: {
+    order: OrderWithItems;
+    breakdown: AntomCheckoutBreakdown;
+  }): Array<{
+    referenceGoodsId: string;
+    goodsName: string;
+    goodsCategory: string;
+    goodsQuantity: string;
+    goodsUnitAmount: { currency: string; value: string };
+  }> {
+    const goods: Array<{
+      referenceGoodsId: string;
+      goodsName: string;
+      goodsCategory: string;
+      goodsQuantity: string;
+      goodsUnitAmount: { currency: string; value: string };
+    }> = [...this.buildAntomProductGoods(params.order, params.breakdown)];
+
+    if (goods.length === 0 && params.breakdown.subtotalCents > 0) {
+      goods.push({
+        referenceGoodsId: `order-${params.order.id}`.slice(0, 64),
+        goodsName: 'SubSlush order',
+        goodsCategory: 'digital services',
+        goodsQuantity: '1',
+        goodsUnitAmount: {
+          currency: params.breakdown.currency,
+          value: params.breakdown.subtotalCents.toString(),
+        },
+      });
+    }
+
+    if (params.breakdown.serviceFeeCents > 0) {
+      goods.push({
+        referenceGoodsId: `service-fee-${params.order.id}`.slice(0, 64),
+        goodsName: 'Service fee',
+        goodsCategory: 'payment services',
+        goodsQuantity: '1',
+        goodsUnitAmount: {
+          currency: params.breakdown.currency,
+          value: params.breakdown.serviceFeeCents.toString(),
+        },
+      });
+    }
+
+    if (params.breakdown.taxCents > 0) {
+      goods.push({
+        referenceGoodsId: `tax-${params.order.id}`.slice(0, 64),
+        goodsName: 'Local tax',
+        goodsCategory: 'tax',
+        goodsQuantity: '1',
+        goodsUnitAmount: {
+          currency: params.breakdown.currency,
+          value: params.breakdown.taxCents.toString(),
+        },
+      });
+    }
+
+    return goods;
+  }
+
+  private buildAntomProductGoods(
+    order: OrderWithItems,
+    breakdown: AntomCheckoutBreakdown
+  ): Array<{
+    referenceGoodsId: string;
+    goodsName: string;
+    goodsCategory: string;
+    goodsQuantity: string;
+    goodsUnitAmount: { currency: string; value: string };
+  }> {
+    if (breakdown.subtotalCents <= 0) {
+      return [];
+    }
+
+    const rawItems = order.items
+      .map(item => ({
+        id: item.id,
+        name: this.resolveOrderItemDisplayName(item).slice(0, 128),
+        totalCents: parseNonNegativeInt(item.total_price_cents) ?? 0,
+      }))
+      .filter(item => item.totalCents > 0);
+    const rawTotalCents = rawItems.reduce(
+      (sum, item) => sum + item.totalCents,
+      0
+    );
+    if (rawItems.length === 0 || rawTotalCents <= 0) {
+      return [];
+    }
+
+    let remainingSubtotalCents = breakdown.subtotalCents;
+    return rawItems
+      .map((item, index) => {
+        const allocatedCents =
+          index === rawItems.length - 1
+            ? remainingSubtotalCents
+            : Math.round(
+                (item.totalCents / rawTotalCents) * breakdown.subtotalCents
+              );
+        remainingSubtotalCents -= allocatedCents;
+        return {
+          referenceGoodsId: `item-${item.id}`.slice(0, 64),
+          goodsName: item.name || `Item ${index + 1}`,
+          goodsCategory: 'digital services',
+          goodsQuantity: '1',
+          goodsUnitAmount: {
+            currency: breakdown.currency,
+            value: Math.max(0, allocatedCents).toString(),
+          },
+        };
+      })
+      .filter(item => item.goodsUnitAmount.value !== '0');
+  }
+
+  private mapAntomInquiryStatus(response: AntomPaymentInquiryResponse): {
+    status: UnifiedPaymentStatus;
+    providerStatus: string;
+  } {
+    const paymentStatus = normalizeString(
+      response.paymentStatus
+    )?.toUpperCase();
+    switch (paymentStatus) {
+      case 'SUCCESS':
+      case 'SUCCEEDED':
+      case 'PAYMENT_SUCCESS':
+        return { status: 'succeeded', providerStatus: 'success' };
+      case 'FAIL':
+      case 'FAILED':
+      case 'FAILURE':
+      case 'PAYMENT_FAILED':
+        return { status: 'failed', providerStatus: 'fail' };
+      case 'CANCEL':
+      case 'CANCELLED':
+      case 'CANCELED':
+        return { status: 'canceled', providerStatus: 'cancelled' };
+      case 'EXPIRE':
+      case 'EXPIRED':
+      case 'TIMEOUT':
+      case 'TIMED_OUT':
+        return { status: 'expired', providerStatus: 'expired' };
+      case 'PROCESSING':
+        return { status: 'processing', providerStatus: 'processing' };
+      case 'PENDING':
+        return { status: 'pending', providerStatus: 'pending' };
+      default:
+        return {
+          status: 'pending',
+          providerStatus:
+            paymentStatus ||
+            normalizeString(response.result?.resultCode) ||
+            'unknown',
+        };
+    }
+  }
+
+  private mapAntomNotifyStatus(payload: AntomNotifyPayload): {
+    status: UnifiedPaymentStatus;
+    providerStatus: string;
+  } {
+    const notifyType = normalizeString(payload.notifyType)?.toUpperCase();
+    const resultStatus = normalizeString(
+      payload.result?.resultStatus
+    )?.toUpperCase();
+    const paymentStatus = normalizeString(payload.paymentStatus)?.toUpperCase();
+
+    if (notifyType === 'CAPTURE_RESULT') {
+      if (resultStatus === 'S') {
+        return { status: 'succeeded', providerStatus: 'capture_success' };
+      }
+      if (resultStatus === 'F') {
+        return { status: 'failed', providerStatus: 'capture_failed' };
+      }
+      return { status: 'processing', providerStatus: 'capture_unknown' };
+    }
+
+    if (resultStatus === 'F' || paymentStatus === 'FAIL') {
+      return { status: 'failed', providerStatus: 'payment_failed' };
+    }
+    if (paymentStatus === 'CANCELLED' || paymentStatus === 'CANCELED') {
+      return { status: 'canceled', providerStatus: 'cancelled' };
+    }
+    if (resultStatus === 'S' || paymentStatus === 'SUCCESS') {
+      return { status: 'processing', providerStatus: 'payment_authorized' };
+    }
+
+    return {
+      status: 'processing',
+      providerStatus:
+        paymentStatus ||
+        normalizeString(payload.result?.resultCode) ||
+        'payment_processing',
+    };
+  }
+
+  private resolveAntomAmount(payload: AntomNotifyPayload): {
+    currency: string | null;
+    totalCents: number | null;
+  } {
+    const amount =
+      payload.captureAmount ||
+      payload.actualPaymentAmount ||
+      payload.paymentAmount ||
+      null;
+    return {
+      currency: normalizeCurrencyCode(amount?.currency) || null,
+      totalCents: parseNonNegativeInt(amount?.value),
+    };
+  }
+
+  private async releaseAntomOrderForRetry(params: {
+    orderId: string;
+    paymentRequestId: string;
+    paymentStatus: UnifiedPaymentStatus;
+    providerStatus: string;
+  }): Promise<void> {
+    try {
+      const retryMetadata = {
+        antom_last_failed_payment_request_id: params.paymentRequestId,
+        antom_last_failed_payment_status: params.paymentStatus,
+        antom_last_failed_provider_status: params.providerStatus,
+        antom_last_failed_at: new Date().toISOString(),
+      };
+
+      await getDatabasePool().query(
+        `UPDATE orders
+         SET payment_provider = NULL,
+             payment_reference = NULL,
+             checkout_mode = NULL,
+             status_reason = $3,
+             metadata = COALESCE(metadata, '{}'::jsonb) || $4::jsonb,
+             updated_at = NOW()
+         WHERE id = $1
+           AND payment_provider = 'antom'
+           AND payment_reference = $2
+           AND status IN ('cart', 'pending_payment')`,
+        [
+          params.orderId,
+          params.paymentRequestId,
+          params.paymentStatus === 'canceled'
+            ? 'payment_canceled'
+            : 'payment_failed',
+          JSON.stringify(retryMetadata),
+        ]
+      );
+    } catch (error) {
+      Logger.warn('Failed to release Antom order for retry', {
+        orderId: params.orderId,
+        paymentRequestId: params.paymentRequestId,
+        paymentStatus: params.paymentStatus,
+        providerStatus: params.providerStatus,
+        error,
+      });
+    }
+  }
+
+  private async reconcileAntomCheckoutStatus(params: {
+    orderId: string;
+    paymentRequestId?: string | null;
+    paymentId?: string | null;
+  }): Promise<void> {
+    const order = await orderService.getOrderById(params.orderId);
+    if (!order || !['cart', 'pending_payment'].includes(order.status)) {
+      return;
+    }
+
+    const resolvedPaymentRequestId =
+      normalizeString(params.paymentRequestId) ||
+      normalizeString(order.payment_reference) ||
+      null;
+    const payment =
+      (resolvedPaymentRequestId
+        ? await paymentRepository.findByProviderPaymentId(
+            'antom',
+            resolvedPaymentRequestId
+          )
+        : null) ??
+      (await paymentRepository.findLatestByOrderId(
+        'antom',
+        params.orderId,
+        'subscription'
+      ));
+
+    if (!payment) {
+      return;
+    }
+
+    const metadata =
+      payment.metadata && typeof payment.metadata === 'object'
+        ? payment.metadata
+        : {};
+    const paymentRequestId =
+      resolvedPaymentRequestId ||
+      normalizeString(payment.providerPaymentId) ||
+      normalizeString(
+        metadata['antom_payment_request_id'] as string | undefined
+      ) ||
+      null;
+    const paymentId =
+      normalizeString(params.paymentId) ||
+      normalizeString(metadata['antom_payment_id'] as string | undefined) ||
+      null;
+    if (!paymentRequestId && !paymentId) {
+      return;
+    }
+
+    const expectedCurrency =
+      normalizeCurrencyCode(
+        metadata['antom_processing_currency'] as string | undefined
+      ) || null;
+    const expectedTotalCents =
+      parseNonNegativeInt(metadata['antom_processing_total_cents']) ?? null;
+
+    let inquiry: AntomPaymentInquiryResponse;
+    try {
+      inquiry = await antomProvider.inquiryPayment({
+        paymentRequestId,
+        paymentId,
+      });
+    } catch (error) {
+      Logger.warn('Antom inquiry failed during checkout status reconcile', {
+        orderId: params.orderId,
+        paymentRequestId,
+        paymentId,
+        error,
+      });
+      return;
+    }
+
+    const inquiryAmount = {
+      currency:
+        normalizeCurrencyCode(inquiry.actualPaymentAmount?.currency) ||
+        normalizeCurrencyCode(inquiry.paymentAmount?.currency) ||
+        null,
+      totalCents:
+        parseNonNegativeInt(inquiry.actualPaymentAmount?.value) ??
+        parseNonNegativeInt(inquiry.paymentAmount?.value),
+    };
+    if (
+      expectedCurrency &&
+      expectedTotalCents !== null &&
+      inquiryAmount.currency &&
+      inquiryAmount.totalCents !== null &&
+      (inquiryAmount.currency !== expectedCurrency ||
+        inquiryAmount.totalCents !== expectedTotalCents)
+    ) {
+      Logger.error('Antom inquiry amount mismatch', {
+        orderId: params.orderId,
+        paymentRequestId,
+        paymentId,
+        expectedCurrency,
+        expectedTotalCents,
+        inquiryCurrency: inquiryAmount.currency,
+        inquiryTotalCents: inquiryAmount.totalCents,
+      });
+      return;
+    }
+
+    const statusMapping = this.mapAntomInquiryStatus(inquiry);
+    if (
+      payment.status === 'succeeded' &&
+      statusMapping.status !== 'succeeded'
+    ) {
+      Logger.warn('Ignoring Antom status regression after success', {
+        orderId: params.orderId,
+        paymentRequestId,
+        existingStatus: payment.status,
+        nextStatus: statusMapping.status,
+      });
+      return;
+    }
+
+    const mergedMetadata = {
+      ...(payment.metadata || {}),
+      antom_payment_request_id: paymentRequestId,
+      antom_payment_id:
+        normalizeString(inquiry.paymentId) ||
+        paymentId ||
+        metadata['antom_payment_id'] ||
+        null,
+      antom_payment_status: inquiry.paymentStatus ?? null,
+      antom_payment_method_type: inquiry.paymentMethodType ?? null,
+      antom_last_inquiry_at: new Date().toISOString(),
+      antom_last_inquiry_payload: inquiry,
+    };
+
+    const updatedPayment =
+      await paymentRepository.updateStatusByProviderPaymentId(
+        'antom',
+        payment.providerPaymentId,
+        statusMapping.status,
+        statusMapping.providerStatus,
+        mergedMetadata
+      );
+
+    if (updatedPayment && statusMapping.status === 'succeeded') {
+      await this.processAntomOrderPayment({
+        orderId: params.orderId,
+        paymentRequestId: updatedPayment.providerPaymentId,
+        payment: updatedPayment,
+      });
+    } else if (
+      updatedPayment &&
+      ['failed', 'canceled', 'expired'].includes(statusMapping.status)
+    ) {
+      await this.releaseAntomOrderForRetry({
+        orderId: params.orderId,
+        paymentRequestId: updatedPayment.providerPaymentId,
+        paymentStatus: statusMapping.status,
+        providerStatus: statusMapping.providerStatus,
+      });
+    }
   }
 
   private async reconcilePayopCheckoutStatus(params: {
@@ -5303,6 +5960,220 @@ export class PaymentService {
     }
   }
 
+  private async processAntomOrderPayment(params: {
+    orderId: string;
+    paymentRequestId: string;
+    payment: UnifiedPayment;
+  }): Promise<boolean> {
+    const captureRecordedAt = new Date().toISOString();
+    const paymentMetadata: Record<string, unknown> =
+      params.payment.metadata && typeof params.payment.metadata === 'object'
+        ? params.payment.metadata
+        : {};
+    const successMetadata: Record<string, unknown> = {
+      ...paymentMetadata,
+      antom_payment_request_id: params.paymentRequestId,
+      antom_last_capture_at: captureRecordedAt,
+    };
+
+    await paymentRepository.updateStatusByProviderPaymentId(
+      'antom',
+      params.paymentRequestId,
+      'succeeded',
+      'capture_success',
+      successMetadata
+    );
+
+    const lockClient = await getDatabasePool().connect();
+    let lockAcquired = false;
+    try {
+      await lockClient.query('SELECT pg_advisory_lock(hashtext($1))', [
+        params.orderId,
+      ]);
+      lockAcquired = true;
+    } catch (error) {
+      Logger.error('Antom capture lock acquisition failed', {
+        orderId: params.orderId,
+        paymentRequestId: params.paymentRequestId,
+        error,
+      });
+      lockClient.release();
+      return false;
+    }
+
+    try {
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        Logger.error('Antom order not found while processing payment', {
+          orderId: params.orderId,
+          paymentRequestId: params.paymentRequestId,
+        });
+        return false;
+      }
+
+      if (['in_process', 'paid', 'delivered'].includes(order.status)) {
+        return true;
+      }
+
+      if (!['pending_payment', 'cart'].includes(order.status)) {
+        Logger.warn('Antom success ignored for non-payable order', {
+          orderId: params.orderId,
+          paymentRequestId: params.paymentRequestId,
+          status: order.status,
+        });
+        return false;
+      }
+
+      const paymentAmountTotalCents =
+        typeof params.payment.amount === 'number' &&
+        Number.isFinite(params.payment.amount) &&
+        params.payment.amount >= 0
+          ? Math.round(params.payment.amount * 100)
+          : null;
+      const nonZeroPaymentAmountTotalCents =
+        paymentAmountTotalCents !== null && paymentAmountTotalCents > 0
+          ? paymentAmountTotalCents
+          : null;
+      const resolvedProcessingCurrency =
+        normalizeCurrencyCode(
+          successMetadata['antom_processing_currency'] as string | undefined
+        ) ||
+        normalizeCurrencyCode(params.payment.currency) ||
+        normalizeCurrencyCode(order.settlement_currency) ||
+        normalizeCurrencyCode(order.display_currency) ||
+        normalizeCurrencyCode(order.currency) ||
+        null;
+      const resolvedProcessingTotalCents =
+        this.resolveAntomMetadataTotalCents(successMetadata) ??
+        nonZeroPaymentAmountTotalCents ??
+        parsePositiveInt(order.settlement_total_cents) ??
+        parsePositiveInt(order.display_total_cents) ??
+        parsePositiveInt(order.total_cents);
+      const orderMetadataPatch: Record<string, unknown> = {
+        antom_payment_request_id: params.paymentRequestId,
+        antom_last_capture_at: captureRecordedAt,
+      };
+      [
+        'antom_option_id',
+        'antom_method_title',
+        'antom_method_types',
+        'antom_payment_session_id',
+        'antom_payment_session_expiry_time',
+        'antom_checkout_url',
+        'antom_return_base_url',
+        'antom_redirect_url',
+        'antom_processing_currency',
+        'antom_processing_subtotal_cents',
+        'antom_processing_fee_cents',
+        'antom_processing_tax_cents',
+        'antom_tax_residence_id',
+        'antom_tax_residence_label',
+        'antom_tax_rate_bps',
+        'antom_service_fee_bps',
+        'antom_service_fee_fixed_cents',
+        'antom_service_fee_fixed_usd_cents',
+        'antom_service_fee_fx_rate',
+        'antom_payment_id',
+        'antom_payment_method_type',
+      ].forEach(key => {
+        if (successMetadata[key] !== undefined) {
+          orderMetadataPatch[key] = successMetadata[key];
+        }
+      });
+      if (resolvedProcessingCurrency) {
+        orderMetadataPatch['antom_processing_currency'] =
+          resolvedProcessingCurrency;
+      }
+      if (resolvedProcessingTotalCents !== null) {
+        orderMetadataPatch['antom_processing_total_cents'] =
+          resolvedProcessingTotalCents;
+      }
+
+      const updateResult = await getDatabasePool().query(
+        `UPDATE orders
+         SET status = 'in_process',
+             status_reason = 'payment_succeeded',
+             payment_provider = 'antom',
+             payment_reference = $1,
+             checkout_mode = 'session',
+             settlement_currency = COALESCE($3, settlement_currency),
+             settlement_total_cents = COALESCE($4, settlement_total_cents),
+             metadata = COALESCE(metadata, '{}'::jsonb) || $5::jsonb,
+             updated_at = NOW()
+         WHERE id = $2
+           AND status IN ('pending_payment', 'cart')
+         RETURNING id`,
+        [
+          params.paymentRequestId,
+          params.orderId,
+          resolvedProcessingCurrency,
+          resolvedProcessingTotalCents,
+          JSON.stringify(orderMetadataPatch),
+        ]
+      );
+
+      if (updateResult.rows.length === 0) {
+        return true;
+      }
+
+      if (order.items.length === 1) {
+        const singleItem = order.items[0]?.id ?? null;
+        if (singleItem) {
+          await getDatabasePool().query(
+            `UPDATE payments
+             SET order_item_id = COALESCE(order_item_id, $2),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [params.payment.id, singleItem]
+          );
+        }
+      }
+
+      await this.createPaymentItemAllocations({
+        paymentRecordId: params.payment.id,
+        orderItems: order.items,
+      });
+
+      await this.createSubscriptionsForOrder({
+        order,
+        orderItems: order.items,
+        renewalMethod: null,
+      });
+
+      await couponService.finalizeRedemptionForOrder(params.orderId);
+
+      try {
+        const confirmationResult =
+          await orderService.sendOrderPaymentConfirmationEmail(params.orderId);
+        if (
+          !confirmationResult.success &&
+          !['already_sent', 'renewal_order'].includes(
+            confirmationResult.reason ?? ''
+          )
+        ) {
+          Logger.warn('Failed to send order payment confirmation email', {
+            orderId: params.orderId,
+            reason: confirmationResult.reason,
+          });
+        }
+      } catch (error) {
+        Logger.warn('Order payment confirmation email call failed', {
+          orderId: params.orderId,
+          error,
+        });
+      }
+
+      return true;
+    } finally {
+      if (lockAcquired) {
+        await lockClient.query('SELECT pg_advisory_unlock(hashtext($1))', [
+          params.orderId,
+        ]);
+      }
+      lockClient.release();
+    }
+  }
+
   async createPayPalCheckoutSession(params: {
     orderId: string;
     successUrl?: string | null;
@@ -5956,6 +6827,809 @@ export class PaymentService {
         error: 'paypal_session_confirm_failed',
         ...(walletFailureDetails ? { details: walletFailureDetails } : {}),
       };
+    }
+  }
+
+  async getAntomCheckoutOptions(params: {
+    orderId: string;
+    residenceId?: string | null;
+  }): Promise<
+    | {
+        success: true;
+        enabled: boolean;
+        orderId: string;
+        orderStatus: string;
+        displayCurrency: string;
+        displayTotalCents: number;
+        selectedResidenceId: string;
+        residences: typeof ANTOM_RESIDENCES;
+        options: AntomCheckoutOptionQuote[];
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      if (!['cart', 'pending_payment'].includes(order.status)) {
+        return { success: false, error: 'order_not_pending' };
+      }
+
+      if (order.payment_provider && order.payment_provider !== 'antom') {
+        return { success: false, error: 'payment_provider_mismatch' };
+      }
+
+      if (!order.items || order.items.length === 0) {
+        return { success: false, error: 'order_missing_items' };
+      }
+
+      const metadata =
+        order.metadata && typeof order.metadata === 'object'
+          ? order.metadata
+          : {};
+      const selectedResidenceId =
+        normalizeString(params.residenceId) ||
+        normalizeString(
+          metadata['antom_tax_residence_id'] as string | undefined
+        ) ||
+        'outside_eu';
+
+      if (!env.ANTOM_ENABLED) {
+        return {
+          success: true,
+          enabled: false,
+          orderId: order.id,
+          orderStatus: order.status,
+          displayCurrency:
+            normalizeCurrencyCode(order.display_currency) ||
+            normalizeCurrencyCode(order.currency) ||
+            'USD',
+          displayTotalCents:
+            parseNonNegativeInt(order.display_total_cents) ??
+            parseNonNegativeInt(order.total_cents) ??
+            0,
+          selectedResidenceId,
+          residences: ANTOM_RESIDENCES,
+          options: [],
+        };
+      }
+
+      await this.validateAntomSchemaCompatibility();
+
+      const options = await buildAntomCheckoutOptionQuotes({
+        order: order as OrderWithItems,
+        residenceId: selectedResidenceId,
+      });
+      if (!options) {
+        return { success: false, error: 'invalid_settlement' };
+      }
+      const firstOption = options[0];
+
+      return {
+        success: true,
+        enabled: true,
+        orderId: order.id,
+        orderStatus: order.status,
+        displayCurrency: firstOption?.currency ?? 'USD',
+        displayTotalCents: firstOption?.subtotalCents ?? 0,
+        selectedResidenceId: firstOption?.taxResidenceId ?? selectedResidenceId,
+        residences: ANTOM_RESIDENCES,
+        options,
+      };
+    } catch (error) {
+      Logger.error('Failed to resolve Antom checkout options', {
+        orderId: params.orderId,
+        error,
+      });
+      if (
+        error instanceof AntomSchemaCompatibilityError ||
+        isProviderConstraintFailure(error)
+      ) {
+        return { success: false, error: 'payment_provider_misconfigured' };
+      }
+      return { success: false, error: 'antom_options_failed' };
+    }
+  }
+
+  async createAntomCheckoutSession(params: {
+    orderId: string;
+    optionId: AntomPaymentOptionId;
+    residenceId?: string | null;
+    returnBaseUrl?: string | null;
+    buyerEmail?: string | null;
+  }): Promise<
+    | {
+        success: true;
+        orderId: string;
+        sessionId: string;
+        sessionUrl: string;
+        paymentId: string;
+        paymentProvider: 'antom';
+        optionQuote: AntomCheckoutOptionQuote;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      if (!env.ANTOM_ENABLED) {
+        return { success: false, error: 'payment_provider_unavailable' };
+      }
+
+      await this.validateAntomSchemaCompatibility();
+
+      const order = await orderService.getOrderWithItems(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      if (!['cart', 'pending_payment'].includes(order.status)) {
+        return { success: false, error: 'order_not_pending' };
+      }
+
+      if (order.payment_provider && order.payment_provider !== 'antom') {
+        return { success: false, error: 'payment_provider_mismatch' };
+      }
+
+      if (!order.items || order.items.length === 0) {
+        return { success: false, error: 'order_missing_items' };
+      }
+
+      const ownAccountValidation = await this.validateOwnAccountSelectionData(
+        order as OrderWithItems
+      );
+      if (!ownAccountValidation.valid) {
+        Logger.warn(
+          'Missing own-account credentials while creating Antom checkout session',
+          {
+            orderId: order.id,
+            item: ownAccountValidation.missingItemLabel,
+          }
+        );
+        return { success: false, error: 'own_account_credentials_required' };
+      }
+
+      const configuredOption = findAntomPaymentOption(params.optionId);
+      if (!configuredOption) {
+        return { success: false, error: 'invalid_payment_method' };
+      }
+
+      const optionQuotes = await buildAntomCheckoutOptionQuotes({
+        order: order as OrderWithItems,
+        residenceId: params.residenceId ?? null,
+      });
+      const selectedQuote =
+        optionQuotes?.find(option => option.id === configuredOption.id) ?? null;
+      if (!selectedQuote) {
+        return { success: false, error: 'invalid_settlement' };
+      }
+
+      const paymentRequestId = this.buildAntomPaymentRequestId(order.id);
+      const returnUrl = this.buildAntomReturnUrl({
+        orderId: order.id,
+        paymentRequestId,
+        preferredBaseUrl: params.returnBaseUrl ?? null,
+      });
+      if (!returnUrl) {
+        return { success: false, error: 'missing_app_base_url' };
+      }
+
+      const amount = {
+        currency: selectedQuote.currency,
+        value: selectedQuote.totalCents.toString(),
+      };
+      const buyerEmail =
+        normalizeEmail(params.buyerEmail) ??
+        normalizeEmail(order.contact_email ?? null);
+      const description = this.buildPay4bitOrderDescription(
+        order as OrderWithItems
+      ).slice(0, 256);
+      const goods = this.buildAntomGoods({
+        order: order as OrderWithItems,
+        breakdown: selectedQuote,
+      });
+
+      const session = await antomProvider.createPaymentSession({
+        productCode: 'CASHIER_PAYMENT',
+        productScene: 'CHECKOUT_PAYMENT',
+        paymentRequestId,
+        paymentAmount: amount,
+        paymentRedirectUrl: returnUrl.redirectUrl,
+        paymentNotifyUrl: env.ANTOM_WEBHOOK_URL,
+        locale: 'en_US',
+        env: {
+          terminalType: 'WEB',
+        },
+        paymentFactor: {
+          captureMode: 'AUTOMATIC',
+        },
+        availablePaymentMethod: {
+          allowedPaymentMethodRegions: ['GLOBAL'],
+          paymentMethodTypeList: selectedQuote.methodTypes.map(
+            (paymentMethodType, index) => ({
+              paymentMethodType,
+              paymentMethodOrder: index.toString(),
+              expressCheckout: selectedQuote.id === 'cards' ? 'false' : 'true',
+            })
+          ),
+        },
+        metadata: JSON.stringify({
+          order_id: order.id,
+          option_id: selectedQuote.id,
+          tax_residence_id: selectedQuote.taxResidenceId,
+        }),
+        order: {
+          referenceOrderId: order.id,
+          orderDescription: description,
+          orderAmount: amount,
+          buyer: {
+            referenceBuyerId: order.user_id,
+            ...(buyerEmail ? { buyerEmail } : {}),
+          },
+          goods,
+        },
+        merchantRegion: env.ANTOM_MERCHANT_REGION,
+      });
+
+      if (
+        session.result?.resultStatus !== 'S' ||
+        !normalizeString(session.normalUrl)
+      ) {
+        Logger.warn('Antom payment session creation returned non-success', {
+          orderId: order.id,
+          paymentRequestId,
+          result: session.result,
+        });
+        return { success: false, error: 'payment_provider_declined' };
+      }
+
+      const paymentMetadata = this.buildAntomOrderMetadata({
+        order: order as OrderWithItems,
+        option: selectedQuote,
+        paymentRequestId,
+        sessionId: session.paymentSessionId ?? null,
+        sessionExpiryTime: session.paymentSessionExpiryTime ?? null,
+        normalUrl: session.normalUrl ?? null,
+        returnBaseUrl: returnUrl.baseUrl,
+        redirectUrl: returnUrl.redirectUrl,
+      });
+      paymentMetadata['antom_create_session_result'] = session.result ?? null;
+
+      const createdPaymentInput: CreateUnifiedPaymentInput = {
+        userId: order.user_id,
+        provider: 'antom',
+        providerPaymentId: paymentRequestId,
+        status: 'pending',
+        providerStatus: 'session_created',
+        purpose: 'subscription',
+        amount: selectedQuote.totalCents / 100,
+        currency: selectedQuote.currency.toLowerCase(),
+        paymentMethodType:
+          selectedQuote.id === 'cards' ? 'card' : selectedQuote.id,
+        orderId: order.id,
+        checkoutMode: 'session',
+        metadata: paymentMetadata,
+      };
+
+      const singleItemId = order.items.length === 1 ? order.items[0]?.id : null;
+      if (singleItemId) {
+        createdPaymentInput.orderItemId = singleItemId;
+      }
+
+      const createdPayment =
+        await paymentRepository.create(createdPaymentInput);
+
+      await orderService.updateOrderPayment(order.id, {
+        payment_provider: 'antom',
+        payment_reference: paymentRequestId,
+        checkout_mode: 'session',
+        settlement_currency: selectedQuote.currency,
+        settlement_total_cents: selectedQuote.totalCents,
+        status: order.status === 'cart' ? 'pending_payment' : order.status,
+        status_reason:
+          order.status === 'cart'
+            ? 'awaiting_payment'
+            : (order.status_reason ?? null),
+        metadata: paymentMetadata,
+      });
+
+      Logger.info('Antom checkout session created', {
+        orderId: order.id,
+        paymentRequestId,
+        paymentSessionId: session.paymentSessionId ?? null,
+        optionId: selectedQuote.id,
+        currency: selectedQuote.currency,
+        totalCents: selectedQuote.totalCents,
+      });
+
+      return {
+        success: true,
+        orderId: order.id,
+        sessionId: session.paymentSessionId || paymentRequestId,
+        sessionUrl: session.normalUrl as string,
+        paymentId: createdPayment.providerPaymentId,
+        paymentProvider: 'antom',
+        optionQuote: selectedQuote,
+      };
+    } catch (error) {
+      Logger.error('Failed to create Antom checkout session', {
+        orderId: params.orderId,
+        optionId: params.optionId,
+        error,
+      });
+
+      if (error instanceof AntomProviderError) {
+        if (error.statusCode === 429) {
+          return { success: false, error: 'payment_provider_rate_limited' };
+        }
+        if ([400, 401, 403].includes(error.statusCode)) {
+          return { success: false, error: 'payment_provider_misconfigured' };
+        }
+      }
+
+      if (
+        error instanceof AntomSchemaCompatibilityError ||
+        isProviderConstraintFailure(error)
+      ) {
+        return { success: false, error: 'payment_provider_misconfigured' };
+      }
+
+      return { success: false, error: 'antom_session_failed' };
+    }
+  }
+
+  async getAntomCheckoutStatus(params: {
+    orderId: string;
+    paymentRequestId?: string | null;
+    paymentId?: string | null;
+  }): Promise<
+    | {
+        success: true;
+        orderId: string;
+        orderCreatedAt: Date;
+        orderStatus: string;
+        paymentStatus: UnifiedPaymentStatus | null;
+        providerStatus: string | null;
+        paymentRequestId: string | null;
+        antomPaymentId: string | null;
+        methodTitle: string | null;
+        processingCurrency: string | null;
+        processingSubtotalCents: number | null;
+        processingFeeCents: number | null;
+        processingTaxCents: number | null;
+        processingTotalCents: number | null;
+        taxResidenceId: string | null;
+        taxResidenceLabel: string | null;
+        canRetry: boolean;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      if (env.ANTOM_ENABLED) {
+        await this.reconcileAntomCheckoutStatus({
+          orderId: params.orderId,
+          paymentRequestId: params.paymentRequestId ?? null,
+          paymentId: params.paymentId ?? null,
+        });
+      }
+
+      const order = await orderService.getOrderById(params.orderId);
+      if (!order) {
+        return { success: false, error: 'order_not_found' };
+      }
+
+      const payment = await paymentRepository.findLatestByOrderId(
+        'antom',
+        order.id,
+        'subscription'
+      );
+      const metadata =
+        payment?.metadata && typeof payment.metadata === 'object'
+          ? payment.metadata
+          : {};
+      const canRetry =
+        ['cart', 'pending_payment'].includes(order.status) &&
+        (!payment ||
+          payment.status === 'failed' ||
+          payment.status === 'expired' ||
+          payment.status === 'canceled');
+
+      return {
+        success: true,
+        orderId: order.id,
+        orderCreatedAt: order.created_at,
+        orderStatus: order.status,
+        paymentStatus: payment?.status ?? null,
+        providerStatus:
+          typeof payment?.providerStatus === 'string'
+            ? payment.providerStatus
+            : null,
+        paymentRequestId:
+          payment?.providerPaymentId ??
+          normalizeString(
+            metadata['antom_payment_request_id'] as string | undefined
+          ),
+        antomPaymentId:
+          normalizeString(metadata['antom_payment_id'] as string | undefined) ||
+          null,
+        methodTitle: this.normalizeAntomMethodTitle(
+          metadata['antom_method_title']
+        ),
+        processingCurrency:
+          normalizeString(
+            metadata['antom_processing_currency'] as string | undefined
+          ) || null,
+        processingSubtotalCents:
+          parseNonNegativeInt(metadata['antom_processing_subtotal_cents']) ??
+          null,
+        processingFeeCents:
+          parseNonNegativeInt(metadata['antom_processing_fee_cents']) ?? null,
+        processingTaxCents:
+          parseNonNegativeInt(metadata['antom_processing_tax_cents']) ?? null,
+        processingTotalCents:
+          parseNonNegativeInt(metadata['antom_processing_total_cents']) ?? null,
+        taxResidenceId:
+          normalizeString(
+            metadata['antom_tax_residence_id'] as string | undefined
+          ) || null,
+        taxResidenceLabel:
+          normalizeString(
+            metadata['antom_tax_residence_label'] as string | undefined
+          ) || null,
+        canRetry,
+      };
+    } catch (error) {
+      Logger.error('Failed to resolve Antom checkout status', {
+        orderId: params.orderId,
+        error,
+      });
+      return { success: false, error: 'antom_status_failed' };
+    }
+  }
+
+  async handleAntomWebhook(params: {
+    rawBody: Buffer | string;
+    payload: AntomNotifyPayload;
+    requestUri: string;
+    clientId?: string | null;
+    requestTime?: string | null;
+    signature?: string | null;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  }): Promise<{
+    statusCode: number;
+    body: AntomWebhookAck;
+  }> {
+    const successAck = antomProvider.buildReceiptAck();
+    try {
+      const rawBody =
+        typeof params.rawBody === 'string'
+          ? params.rawBody
+          : params.rawBody.toString('utf8');
+      if (!env.ANTOM_ENABLED) {
+        return {
+          statusCode: 404,
+          body: antomProvider.buildFailureAck('Antom webhook disabled'),
+        };
+      }
+
+      const requestTime = normalizeString(params.requestTime);
+      const signature = normalizeString(params.signature);
+      if (!requestTime || !signature) {
+        Logger.warn('Rejected Antom webhook with missing signature headers', {
+          ipAddress: params.ipAddress ?? null,
+        });
+        return {
+          statusCode: 401,
+          body: antomProvider.buildFailureAck('missing signature headers'),
+        };
+      }
+
+      const signatureValid = antomProvider.verifySignature({
+        uri: params.requestUri,
+        clientId: params.clientId ?? null,
+        requestTime,
+        body: rawBody,
+        signatureHeader: signature,
+        enforceFreshness: true,
+      });
+      if (!signatureValid) {
+        Logger.warn('Rejected Antom webhook with invalid signature', {
+          ipAddress: params.ipAddress ?? null,
+          requestUri: params.requestUri,
+        });
+        return {
+          statusCode: 401,
+          body: antomProvider.buildFailureAck('invalid signature'),
+        };
+      }
+
+      const paymentRequestId = normalizeString(params.payload.paymentRequestId);
+      if (!paymentRequestId) {
+        Logger.warn(
+          'Antom webhook ignored because paymentRequestId is missing'
+        );
+        return { statusCode: 200, body: successAck };
+      }
+
+      const payment = await paymentRepository.findByProviderPaymentId(
+        'antom',
+        paymentRequestId
+      );
+      if (!payment) {
+        Logger.warn('Antom webhook ignored because payment was not found', {
+          paymentRequestId,
+        });
+        return { statusCode: 200, body: successAck };
+      }
+
+      const metadata =
+        payment.metadata && typeof payment.metadata === 'object'
+          ? payment.metadata
+          : {};
+      const expectedCurrency =
+        normalizeCurrencyCode(
+          metadata['antom_processing_currency'] as string | undefined
+        ) || null;
+      const expectedTotalCents =
+        parseNonNegativeInt(metadata['antom_processing_total_cents']) ?? null;
+      const actualAmount = this.resolveAntomAmount(params.payload);
+      if (
+        expectedCurrency &&
+        expectedTotalCents !== null &&
+        actualAmount.currency &&
+        actualAmount.totalCents !== null &&
+        (actualAmount.currency !== expectedCurrency ||
+          actualAmount.totalCents !== expectedTotalCents)
+      ) {
+        Logger.error('Antom webhook amount mismatch', {
+          paymentRequestId,
+          expectedCurrency,
+          expectedTotalCents,
+          actualCurrency: actualAmount.currency,
+          actualTotalCents: actualAmount.totalCents,
+        });
+        return { statusCode: 200, body: successAck };
+      }
+
+      const eventId = this.buildAntomWebhookEventId(params.payload);
+      const recorded = await this.recordPaymentEvent({
+        provider: 'antom',
+        eventId,
+        eventType:
+          normalizeString(params.payload.notifyType) || 'antom_webhook',
+        orderId: payment.orderId ?? null,
+        paymentId: payment.id,
+      });
+      if (!recorded) {
+        return { statusCode: 200, body: successAck };
+      }
+
+      const statusMapping = this.mapAntomNotifyStatus(params.payload);
+      if (
+        payment.status === 'succeeded' &&
+        statusMapping.status !== 'succeeded'
+      ) {
+        Logger.warn('Ignoring Antom webhook status regression after success', {
+          paymentRequestId,
+          existingStatus: payment.status,
+          nextStatus: statusMapping.status,
+        });
+        return { statusCode: 200, body: successAck };
+      }
+
+      const mergedMetadata = {
+        ...(payment.metadata || {}),
+        antom_payment_request_id: paymentRequestId,
+        antom_payment_id:
+          normalizeString(params.payload.paymentId) ||
+          metadata['antom_payment_id'] ||
+          null,
+        antom_payment_method_type:
+          normalizeString(params.payload.paymentMethodType) ||
+          metadata['antom_payment_method_type'] ||
+          null,
+        antom_last_notify_type: params.payload.notifyType ?? null,
+        antom_last_result_status: params.payload.result?.resultStatus ?? null,
+        antom_last_result_code: params.payload.result?.resultCode ?? null,
+        antom_last_webhook_at: new Date().toISOString(),
+        antom_last_webhook_payload: params.payload,
+        antom_last_webhook_ip:
+          this.normalizeIpAddress(params.ipAddress) ?? null,
+        antom_last_webhook_user_agent: params.userAgent ?? null,
+      };
+
+      const updatedPayment =
+        await paymentRepository.updateStatusByProviderPaymentId(
+          'antom',
+          paymentRequestId,
+          statusMapping.status,
+          statusMapping.providerStatus,
+          mergedMetadata
+        );
+      if (!updatedPayment) {
+        return { statusCode: 200, body: successAck };
+      }
+
+      if (statusMapping.status === 'succeeded' && payment.orderId) {
+        const processed = await this.processAntomOrderPayment({
+          orderId: payment.orderId,
+          paymentRequestId,
+          payment: updatedPayment,
+        });
+        return {
+          statusCode: processed ? 200 : 500,
+          body: processed
+            ? successAck
+            : antomProvider.buildFailureAck('fulfillment failed'),
+        };
+      }
+
+      if (
+        payment.orderId &&
+        ['failed', 'canceled', 'expired'].includes(statusMapping.status)
+      ) {
+        await this.releaseAntomOrderForRetry({
+          orderId: payment.orderId,
+          paymentRequestId,
+          paymentStatus: statusMapping.status,
+          providerStatus: statusMapping.providerStatus,
+        });
+      }
+
+      return { statusCode: 200, body: successAck };
+    } catch (error) {
+      Logger.error('Unhandled Antom webhook failure', { error });
+      return {
+        statusCode: 500,
+        body: antomProvider.buildFailureAck('internal error'),
+      };
+    }
+  }
+
+  async cancelAntomPayment(params: { paymentId: string }): Promise<
+    | {
+        success: true;
+        providerStatus: string;
+        paymentRequestId: string;
+        antomPaymentId: string | null;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      if (!env.ANTOM_ENABLED) {
+        return { success: false, error: 'payment_provider_unavailable' };
+      }
+
+      const directPayment = await paymentRepository.findByProviderPaymentId(
+        'antom',
+        params.paymentId
+      );
+      const payment =
+        directPayment ?? (await paymentRepository.findById(params.paymentId));
+      if (!payment || payment.provider !== 'antom') {
+        return { success: false, error: 'payment_not_found' };
+      }
+
+      const metadata =
+        payment.metadata && typeof payment.metadata === 'object'
+          ? payment.metadata
+          : {};
+      const antomPaymentId =
+        normalizeString(metadata['antom_payment_id'] as string | undefined) ||
+        null;
+      const response = await antomProvider.cancelPayment({
+        paymentRequestId: payment.providerPaymentId,
+        paymentId: antomPaymentId,
+      });
+      const resultStatus = response.result?.resultStatus ?? 'U';
+      if (!['S', 'U'].includes(resultStatus)) {
+        return { success: false, error: 'cancel_failed' };
+      }
+
+      await paymentRepository.updateStatusByProviderPaymentId(
+        'antom',
+        payment.providerPaymentId,
+        'canceled',
+        resultStatus === 'S' ? 'cancelled' : 'cancel_pending',
+        {
+          ...(payment.metadata || {}),
+          antom_cancel_result: response,
+          antom_cancelled_at: new Date().toISOString(),
+        }
+      );
+
+      return {
+        success: true,
+        providerStatus: resultStatus === 'S' ? 'cancelled' : 'cancel_pending',
+        paymentRequestId: payment.providerPaymentId,
+        antomPaymentId,
+      };
+    } catch (error) {
+      Logger.error('Antom payment cancellation failed', {
+        paymentId: params.paymentId,
+        error,
+      });
+      return { success: false, error: 'cancel_failed' };
+    }
+  }
+
+  async refundAntomPayment(params: {
+    paymentRequestId?: string | null;
+    antomPaymentId: string;
+    amountCents: number;
+    currency: string;
+    refundRequestId: string;
+    reason?: string | null;
+  }): Promise<
+    | {
+        success: true;
+        refundRequestId: string;
+        refundId: string | null;
+        providerStatus: string;
+      }
+    | { success: false; error: string }
+  > {
+    try {
+      if (!env.ANTOM_ENABLED) {
+        return { success: false, error: 'payment_provider_unavailable' };
+      }
+      const currency = normalizeCurrencyCode(params.currency);
+      if (!currency || params.amountCents <= 0) {
+        return { success: false, error: 'invalid_refund_amount' };
+      }
+
+      const response = await antomProvider.refundPayment({
+        refundRequestId: params.refundRequestId,
+        paymentId: params.antomPaymentId,
+        refundAmount: {
+          currency,
+          value: Math.round(params.amountCents).toString(),
+        },
+        refundReason: params.reason ?? null,
+      });
+
+      const resultStatus = response.result?.resultStatus ?? 'U';
+      if (!['S', 'U'].includes(resultStatus)) {
+        return { success: false, error: 'refund_failed' };
+      }
+
+      if (params.paymentRequestId) {
+        const payment = await paymentRepository.findByProviderPaymentId(
+          'antom',
+          params.paymentRequestId
+        );
+        if (payment) {
+          await paymentRepository.updateStatusByProviderPaymentId(
+            'antom',
+            params.paymentRequestId,
+            payment.status,
+            payment.providerStatus,
+            {
+              ...(payment.metadata || {}),
+              antom_last_refund_result: response,
+              antom_last_refund_request_id: params.refundRequestId,
+              antom_last_refund_at: new Date().toISOString(),
+            }
+          );
+        }
+      }
+
+      return {
+        success: true,
+        refundRequestId: params.refundRequestId,
+        refundId: response.refundId ?? null,
+        providerStatus:
+          resultStatus === 'S' ? 'refund_success' : 'refund_pending',
+      };
+    } catch (error) {
+      Logger.error('Antom refund failed', {
+        paymentRequestId: params.paymentRequestId ?? null,
+        antomPaymentId: params.antomPaymentId,
+        refundRequestId: params.refundRequestId,
+        error,
+      });
+      return { success: false, error: 'refund_failed' };
     }
   }
 

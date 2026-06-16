@@ -10,6 +10,7 @@ export type OrderStatus =
 
 export type PaymentMethodBadgeType =
   | 'credits'
+  | 'antom'
   | 'payop'
   | 'paypal'
   | 'stripe'

@@ -184,6 +184,7 @@ export interface CheckoutNowPaymentsMinimumResponse {
 export interface CheckoutPayopMethodQuoteItem {
   order_item_id: string;
   label: string;
+  logo_key?: string | null;
   total_cents: number;
 }
 
@@ -262,6 +263,93 @@ export interface CheckoutPayopStatusResponse {
   processing_subtotal_cents?: number | null;
   processing_fee_cents?: number | null;
   processing_total_cents?: number | null;
+  can_retry: boolean;
+}
+
+export interface CheckoutAntomResidence {
+  id: string;
+  label: string;
+  rate_bps: number;
+}
+
+export interface CheckoutAntomOptionQuote {
+  option_id: 'cards' | 'apple_pay' | 'google_pay';
+  title: string;
+  description: string;
+  method_types: string[];
+  brand_names: string[];
+  currency: string;
+  subtotal_cents: number;
+  service_fee_cents: number;
+  service_fee_percent_bps: number;
+  service_fee_fixed_cents: number;
+  tax_cents: number;
+  tax_residence_id: string;
+  tax_residence_label: string;
+  tax_rate_bps: number;
+  tax_base_cents: number;
+  total_cents: number;
+  items: CheckoutPayopMethodQuoteItem[];
+}
+
+export interface CheckoutAntomOptionsRequest {
+  checkout_session_key?: string | null;
+  order_id?: string | null;
+  residence_id?: string | null;
+}
+
+export interface CheckoutAntomOptionsResponse {
+  order_id: string;
+  order_status: string;
+  enabled: boolean;
+  display_currency: string;
+  display_total_cents: number;
+  selected_residence_id: string;
+  residences: CheckoutAntomResidence[];
+  options: CheckoutAntomOptionQuote[];
+}
+
+export interface CheckoutAntomSessionRequest {
+  checkout_session_key?: string | null;
+  order_id?: string | null;
+  option_id: 'cards' | 'apple_pay' | 'google_pay';
+  residence_id?: string | null;
+  add_payment_info_event_id?: string | null;
+  legal_consent?: CheckoutLegalConsentInput | null;
+}
+
+export interface CheckoutAntomSessionResponse {
+  order_id: string;
+  session_id: string;
+  session_url: string;
+  payment_id: string;
+  payment_provider: 'antom';
+  option_quote: CheckoutAntomOptionQuote;
+}
+
+export interface CheckoutAntomStatusRequest {
+  checkout_session_key?: string | null;
+  order_id?: string | null;
+  payment_request_id?: string | null;
+  payment_id?: string | null;
+}
+
+export interface CheckoutAntomStatusResponse {
+  order_id: string;
+  order_created_at?: string | null;
+  order_status: string;
+  payment_status?: string | null;
+  provider_status?: string | null;
+  payment_request_id?: string | null;
+  antom_payment_id?: string | null;
+  method_title?: string | null;
+  processing_currency?: string | null;
+  processing_subtotal_cents?: number | null;
+  processing_fee_cents?: number | null;
+  processing_tax_cents?: number | null;
+  processing_total_cents?: number | null;
+  tax_residence_id?: string | null;
+  tax_residence_label?: string | null;
   can_retry: boolean;
 }
 

@@ -254,6 +254,67 @@ export type CheckoutPayopStatusInput = z.infer<
   typeof checkoutPayopStatusSchema
 >;
 
+const antomOptionIdSchema = z.enum(['cards', 'apple_pay', 'google_pay']);
+const optionalTaxResidenceSchema = z.preprocess(value => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    return value;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}, z.string().max(32, 'Tax residence is too long').nullable().optional());
+
+const optionalAntomIdentifierSchema = (label: string) =>
+  z.preprocess(
+    value => {
+      if (value === null || value === undefined) {
+        return null;
+      }
+      if (typeof value !== 'string') {
+        return value;
+      }
+      const normalized = value.trim();
+      return normalized.length > 0 ? normalized : null;
+    },
+    z.string().max(255, `${label} is too long`).nullable().optional()
+  );
+
+export const checkoutAntomOptionsSchema = z.object({
+  checkout_session_key: checkoutSessionKeySchema,
+  order_id: uuidSchema.optional().nullable(),
+  residence_id: optionalTaxResidenceSchema,
+});
+
+export type CheckoutAntomOptionsInput = z.infer<
+  typeof checkoutAntomOptionsSchema
+>;
+
+export const checkoutAntomSessionSchema = z.object({
+  checkout_session_key: checkoutSessionKeySchema,
+  order_id: uuidSchema.optional().nullable(),
+  option_id: antomOptionIdSchema,
+  residence_id: optionalTaxResidenceSchema,
+  add_payment_info_event_id: optionalEventIdSchema,
+  legal_consent: optionalLegalConsentSchema,
+});
+
+export type CheckoutAntomSessionInput = z.infer<
+  typeof checkoutAntomSessionSchema
+>;
+
+export const checkoutAntomStatusSchema = z.object({
+  checkout_session_key: checkoutSessionKeySchema,
+  order_id: uuidSchema.optional().nullable(),
+  payment_request_id: optionalAntomIdentifierSchema('Payment request ID'),
+  payment_id: optionalAntomIdentifierSchema('Payment ID'),
+});
+
+export type CheckoutAntomStatusInput = z.infer<
+  typeof checkoutAntomStatusSchema
+>;
+
 export const checkoutPayPalConfirmSchema = z.object({
   order_id: uuidSchema,
   session_id: z
@@ -491,6 +552,75 @@ export function validateCheckoutPayopStatusInput(
   | { success: false; error: string; details?: string } {
   try {
     const validatedData = checkoutPayopStatusSchema.parse(data);
+    return { success: true, data: validatedData };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const firstError = error.issues[0];
+      if (firstError) {
+        return {
+          success: false,
+          error: firstError.message,
+          details: `Field: ${firstError.path.join('.')}`,
+        };
+      }
+    }
+    return { success: false, error: 'Invalid input data' };
+  }
+}
+
+export function validateCheckoutAntomOptionsInput(
+  data: unknown
+):
+  | { success: true; data: CheckoutAntomOptionsInput }
+  | { success: false; error: string; details?: string } {
+  try {
+    const validatedData = checkoutAntomOptionsSchema.parse(data);
+    return { success: true, data: validatedData };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const firstError = error.issues[0];
+      if (firstError) {
+        return {
+          success: false,
+          error: firstError.message,
+          details: `Field: ${firstError.path.join('.')}`,
+        };
+      }
+    }
+    return { success: false, error: 'Invalid input data' };
+  }
+}
+
+export function validateCheckoutAntomSessionInput(
+  data: unknown
+):
+  | { success: true; data: CheckoutAntomSessionInput }
+  | { success: false; error: string; details?: string } {
+  try {
+    const validatedData = checkoutAntomSessionSchema.parse(data);
+    return { success: true, data: validatedData };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const firstError = error.issues[0];
+      if (firstError) {
+        return {
+          success: false,
+          error: firstError.message,
+          details: `Field: ${firstError.path.join('.')}`,
+        };
+      }
+    }
+    return { success: false, error: 'Invalid input data' };
+  }
+}
+
+export function validateCheckoutAntomStatusInput(
+  data: unknown
+):
+  | { success: true; data: CheckoutAntomStatusInput }
+  | { success: false; error: string; details?: string } {
+  try {
+    const validatedData = checkoutAntomStatusSchema.parse(data);
     return { success: true, data: validatedData };
   } catch (error) {
     if (error instanceof z.ZodError) {

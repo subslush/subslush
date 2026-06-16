@@ -5,6 +5,7 @@ import { paymentMonitoringService } from '../../services/paymentMonitoringServic
 import { creditAllocationService } from '../../services/creditAllocationService';
 import { paymentFailureService } from '../../services/paymentFailureService';
 import { refundService } from '../../services/refundService';
+import { paymentService } from '../../services/paymentService';
 import { logAdminAction } from '../../services/auditLogService';
 import { SuccessResponses, ErrorResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
@@ -102,6 +103,58 @@ export async function adminPaymentRoutes(
       } catch (error) {
         Logger.error('Error listing payments:', error);
         return ErrorResponses.internalError(reply, 'Failed to list payments');
+      }
+    }
+  );
+
+  // Cancel an Antom payment session/payment (admin)
+  fastify.post(
+    '/antom/:paymentId/cancel',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['paymentId'],
+          properties: {
+            paymentId: { type: 'string' },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { paymentId } = request.params as { paymentId: string };
+        const result = await paymentService.cancelAntomPayment({ paymentId });
+
+        if (!result.success) {
+          if (result.error === 'payment_not_found') {
+            return ErrorResponses.notFound(reply, 'Payment not found');
+          }
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to cancel Antom payment'
+          );
+        }
+
+        await logAdminAction(request, {
+          action: 'payments.antom.cancel',
+          entityType: 'payment',
+          entityId: paymentId,
+          after: result,
+        });
+
+        return SuccessResponses.ok(
+          reply,
+          result,
+          'Antom payment cancellation requested'
+        );
+      } catch (error) {
+        Logger.error('Error cancelling Antom payment:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to cancel Antom payment'
+        );
       }
     }
   );
@@ -220,7 +273,10 @@ export async function adminPaymentRoutes(
         return SuccessResponses.ok(reply, diagnostics);
       } catch (error) {
         Logger.error('Error getting FX diagnostics:', error);
-        return ErrorResponses.internalError(reply, 'Failed to fetch FX diagnostics');
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to fetch FX diagnostics'
+        );
       }
     }
   );

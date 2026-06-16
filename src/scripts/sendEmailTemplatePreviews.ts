@@ -76,7 +76,7 @@ const buildPreviewBatch = (): PreviewEmail[] => {
     },
     {
       subject: '[Preview] Order - Payment received',
-      text: `We received your payment for order 3f8a91c2.\nOrder delivery is usually completed within 24 hours during business days.\nIn some cases, delivery can take up to 72 hours.\n\nOrder items:\n- Netflix Premium · 12 months\n- Spotify Family · 6 months\n\nOrder confirmation summary:\n- Order ID: 3f8a91c2-0000-4000-8000-preview0001\n- Customer email: hello@example.com\n- Total price: SEK 50.69\n- VAT/tax: Final checkout price includes applicable taxes/fees where required\n- Delivery method: Digital delivery through dashboard and/or email, depending on product type\n- Date/time (UTC): 2026-06-07T12:00:00.000Z`,
+      text: `We received your payment for order 3f8a91c2.\nOrder delivery is usually completed within 24 hours during business days.\nIn some cases, delivery can take up to 72 hours.\n\nOrder items:\n- Netflix Premium · 12 months\n- Spotify Family · 6 months\n\nOrder confirmation summary:\n- Order ID: 3f8a91c2\n- Customer email: hello@example.com\n- Total price: SEK 50.69\n- Tax included: SEK 0.00 (Outside the EU)\n- Date/time (UTC): 2026-06-07`,
       html: emailService.buildBrandedEmail({
         title: 'Payment received',
         intro:
@@ -97,12 +97,11 @@ const buildPreviewBatch = (): PreviewEmail[] => {
             <tr>
               <td style="padding:14px 16px;font-size:13px;color:#334155;">
                 <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Order confirmation summary</div>
-                <div>Order ID: 3f8a91c2-0000-4000-8000-preview0001</div>
+                <div>Order ID: 3f8a91c2</div>
                 <div>Customer email: hello@example.com</div>
                 <div>Total price: SEK 50.69</div>
-                <div>VAT/tax: Final checkout price includes applicable taxes/fees where required</div>
-                <div>Delivery method: Digital delivery through dashboard and/or email, depending on product type</div>
-                <div>Date/time (UTC): 2026-06-07T12:00:00.000Z</div>
+                <div>Tax included: SEK 0.00 (Outside the EU)</div>
+                <div>Date/time (UTC): 2026-06-07</div>
               </td>
             </tr>
           </table>

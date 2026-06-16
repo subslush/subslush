@@ -47,6 +47,7 @@ async function buildServer(): Promise<typeof fastify> {
     routes: [
       '/api/v1/payments/stripe/webhook',
       '/api/v1/payments/paypal/webhook',
+      '/api/v1/payments/antom/webhook',
       '/api/v1/payments/webhook',
     ],
   });
@@ -103,6 +104,12 @@ async function startServer(): Promise<void> {
       server.log.info('Validating Payop database compatibility...');
       await paymentService.validatePayopSchemaCompatibility();
       server.log.info('Payop database compatibility validated successfully');
+    }
+
+    if (env.ANTOM_ENABLED) {
+      server.log.info('Validating Antom database compatibility...');
+      await paymentService.validateAntomSchemaCompatibility();
+      server.log.info('Antom database compatibility validated successfully');
     }
 
     // Attempt Redis connection (optional in development)

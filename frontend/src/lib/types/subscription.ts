@@ -278,7 +278,7 @@ export interface AutoRenewDisableResponse {
 
 export interface RenewalCheckoutResponse {
   order_id: string;
-  payment_provider: 'paypal' | 'pay4bit' | 'payop' | 'stripe';
+  payment_provider: 'paypal' | 'pay4bit' | 'payop' | 'stripe' | 'antom';
   payment_id?: string | null;
   session_id: string;
   session_url: string;

@@ -8,6 +8,9 @@ import {
   validateCheckoutPayopOptionsInput,
   validateCheckoutPayopSessionInput,
   validateCheckoutPayopStatusInput,
+  validateCheckoutAntomOptionsInput,
+  validateCheckoutAntomSessionInput,
+  validateCheckoutAntomStatusInput,
   validateCheckoutNowPaymentsInvoiceInput,
   validateCheckoutNowPaymentsMinimumInput,
   validateCheckoutPayPalConfirmInput,
@@ -36,10 +39,21 @@ import {
 } from '../middleware/authMiddleware';
 import type { OrderWithItems } from '../types/order';
 import type { PayopMethodQuote } from '../services/payments/payopQuoteService';
+import type { AntomCheckoutOptionQuote } from '../services/payments/antomQuoteService';
 
 const centsToAmount = (value?: number | null): number | null => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   return Number((value / 100).toFixed(2));
+};
+
+const serializeOptionalIsoDate = (
+  value?: Date | string | null
+): string | null => {
+  if (!value) {
+    return null;
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
 const resolveEventId = (
@@ -250,6 +264,7 @@ const serializePayopMethodQuote = (
   items: Array<{
     order_item_id: string;
     label: string;
+    logo_key: string | null;
     total_cents: number;
   }>;
 } => ({
@@ -272,6 +287,57 @@ const serializePayopMethodQuote = (
   items: quote.items.map(item => ({
     order_item_id: item.orderItemId,
     label: item.label,
+    logo_key: item.logoKey,
+    total_cents: item.totalCents,
+  })),
+});
+
+const serializeAntomOptionQuote = (
+  quote: AntomCheckoutOptionQuote
+): {
+  option_id: AntomCheckoutOptionQuote['id'];
+  title: string;
+  description: string;
+  method_types: string[];
+  brand_names: string[];
+  currency: string;
+  subtotal_cents: number;
+  service_fee_cents: number;
+  service_fee_percent_bps: number;
+  service_fee_fixed_cents: number;
+  tax_cents: number;
+  tax_residence_id: string;
+  tax_residence_label: string;
+  tax_rate_bps: number;
+  tax_base_cents: number;
+  total_cents: number;
+  items: Array<{
+    order_item_id: string;
+    label: string;
+    logo_key: string | null;
+    total_cents: number;
+  }>;
+} => ({
+  option_id: quote.id,
+  title: quote.title,
+  description: quote.description,
+  method_types: quote.methodTypes,
+  brand_names: quote.brandNames,
+  currency: quote.currency,
+  subtotal_cents: quote.subtotalCents,
+  service_fee_cents: quote.serviceFeeCents,
+  service_fee_percent_bps: quote.serviceFeePercentBps,
+  service_fee_fixed_cents: quote.serviceFeeFixedCents,
+  tax_cents: quote.taxCents,
+  tax_residence_id: quote.taxResidenceId,
+  tax_residence_label: quote.taxResidenceLabel,
+  tax_rate_bps: quote.taxRateBps,
+  tax_base_cents: quote.taxBaseCents,
+  total_cents: quote.totalCents,
+  items: quote.items.map(item => ({
+    order_item_id: item.orderItemId,
+    label: item.label,
+    logo_key: item.logoKey,
     total_cents: item.totalCents,
   })),
 });
@@ -409,6 +475,63 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
     const payment = await paymentRepository.findByProviderPaymentId(
       'payop',
       params.invoiceId
+    );
+    if (!payment || payment.orderId !== order.id) {
+      await ErrorResponses.notFound(params.reply, 'Order not found');
+      return null;
+    }
+
+    return order.id;
+  };
+
+  const resolveAntomStatusOrderId = async (params: {
+    request: FastifyRequest;
+    reply: FastifyReply;
+    checkoutSessionKey?: string | null;
+    orderId?: string | null;
+    paymentRequestId?: string | null;
+  }): Promise<string | null> => {
+    if (params.checkoutSessionKey || params.request.user?.userId) {
+      return resolveCheckoutOrderId({
+        request: params.request,
+        reply: params.reply,
+        checkoutSessionKey: params.checkoutSessionKey ?? null,
+        orderId: params.orderId ?? null,
+      });
+    }
+
+    if (!params.orderId || !params.paymentRequestId) {
+      await ErrorResponses.unauthorized(
+        params.reply,
+        'Authentication required'
+      );
+      return null;
+    }
+
+    const order = await orderService.getOrderById(params.orderId);
+    if (!order || order.payment_provider !== 'antom') {
+      await ErrorResponses.notFound(params.reply, 'Order not found');
+      return null;
+    }
+
+    if (order.payment_reference === params.paymentRequestId) {
+      return order.id;
+    }
+
+    const metadata =
+      order.metadata && typeof order.metadata === 'object'
+        ? order.metadata
+        : {};
+    if (
+      resolveMetadataValue(metadata, 'antom_payment_request_id') ===
+      params.paymentRequestId
+    ) {
+      return order.id;
+    }
+
+    const payment = await paymentRepository.findByProviderPaymentId(
+      'antom',
+      params.paymentRequestId
     );
     if (!payment || payment.orderId !== order.id) {
       await ErrorResponses.notFound(params.reply, 'Order not found');
@@ -1490,6 +1613,362 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         return ErrorResponses.internalError(
           reply,
           'Failed to complete credits checkout'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/antom/options',
+    {
+      preHandler: [optionalAuthPreHandler, paymentQuoteRateLimit],
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            checkout_session_key: { type: 'string' },
+            order_id: { type: 'string' },
+            residence_id: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const validation = validateCheckoutAntomOptionsInput(request.body);
+        if (!validation.success) {
+          return sendError(
+            reply,
+            400,
+            'Invalid Input',
+            validation.error,
+            'INVALID_INPUT',
+            validation.details
+          );
+        }
+
+        const orderId = await resolveCheckoutOrderId({
+          request,
+          reply,
+          checkoutSessionKey: validation.data.checkout_session_key ?? null,
+          orderId: validation.data.order_id ?? null,
+        });
+        if (!orderId) {
+          return reply;
+        }
+
+        const optionsResult = await paymentService.getAntomCheckoutOptions({
+          orderId,
+          residenceId: validation.data.residence_id ?? null,
+        });
+
+        if (!optionsResult.success) {
+          const error = optionsResult.error || 'antom_options_failed';
+          if (error === 'order_not_found') {
+            return ErrorResponses.notFound(reply, 'Order not found');
+          }
+          if (
+            [
+              'order_not_pending',
+              'payment_provider_mismatch',
+              'order_missing_items',
+              'invalid_settlement',
+            ].includes(error)
+          ) {
+            return ErrorResponses.badRequest(reply, error.replace(/_/g, ' '));
+          }
+          if (
+            [
+              'payment_provider_unavailable',
+              'payment_provider_rate_limited',
+              'payment_provider_misconfigured',
+            ].includes(error)
+          ) {
+            return ErrorResponses.serviceUnavailable(
+              reply,
+              'Card payment methods are temporarily unavailable. Please try another method.'
+            );
+          }
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to load card payment methods'
+          );
+        }
+
+        return SuccessResponses.ok(reply, {
+          order_id: optionsResult.orderId,
+          order_status: optionsResult.orderStatus,
+          enabled: optionsResult.enabled,
+          display_currency: optionsResult.displayCurrency,
+          display_total_cents: optionsResult.displayTotalCents,
+          selected_residence_id: optionsResult.selectedResidenceId,
+          residences: optionsResult.residences.map(residence => ({
+            id: residence.id,
+            label: residence.label,
+            rate_bps: residence.rateBps,
+          })),
+          options: optionsResult.options.map(serializeAntomOptionQuote),
+        });
+      } catch (error) {
+        Logger.error('Antom options lookup failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to load card payment methods'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/antom/session',
+    {
+      preHandler: [optionalAuthPreHandler, paymentRateLimit],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['option_id'],
+          properties: {
+            checkout_session_key: { type: 'string' },
+            order_id: { type: 'string' },
+            option_id: { type: 'string' },
+            residence_id: { type: 'string' },
+            add_payment_info_event_id: { type: 'string' },
+            legal_consent: {
+              type: 'object',
+              properties: {
+                immediate_fulfillment_consent: { type: 'boolean' },
+                terms_policy_consent: { type: 'boolean' },
+                consent_timestamp: { type: 'string' },
+                checkout_session_key_snapshot: { type: 'string' },
+                consent_source: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const validation = validateCheckoutAntomSessionInput(request.body);
+        if (!validation.success) {
+          return sendError(
+            reply,
+            400,
+            'Invalid Input',
+            validation.error,
+            'INVALID_INPUT',
+            validation.details
+          );
+        }
+
+        const {
+          checkout_session_key,
+          order_id,
+          option_id,
+          residence_id,
+          add_payment_info_event_id,
+          legal_consent,
+        } = validation.data;
+
+        const orderId = await resolveCheckoutOrderId({
+          request,
+          reply,
+          checkoutSessionKey: checkout_session_key ?? null,
+          orderId: order_id ?? null,
+        });
+        if (!orderId) {
+          return reply;
+        }
+
+        if (!hasRequiredLegalConsent(legal_consent)) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Digital fulfillment consent and policy acceptance are required'
+          );
+        }
+
+        const consentSaved = await persistLegalConsentEvidence({
+          orderId,
+          legalConsent: legal_consent,
+          request,
+          checkoutSessionKey: checkout_session_key ?? null,
+          channel: 'card',
+        });
+        if (!consentSaved) {
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to record checkout consent evidence'
+          );
+        }
+
+        const sessionResult = await paymentService.createAntomCheckoutSession({
+          orderId,
+          optionId: option_id,
+          residenceId: residence_id ?? null,
+          returnBaseUrl: resolveCheckoutRequestBaseUrl(request),
+          buyerEmail: request.user?.email ?? null,
+        });
+
+        if (!sessionResult.success) {
+          const error = sessionResult.error || 'antom_session_failed';
+          if (error === 'order_not_found') {
+            return ErrorResponses.notFound(reply, 'Order not found');
+          }
+          if (
+            [
+              'order_not_pending',
+              'payment_provider_mismatch',
+              'order_missing_items',
+              'own_account_credentials_required',
+              'invalid_payment_method',
+              'invalid_settlement',
+              'missing_app_base_url',
+              'payment_provider_declined',
+            ].includes(error)
+          ) {
+            return ErrorResponses.badRequest(reply, error.replace(/_/g, ' '));
+          }
+          if (
+            [
+              'payment_provider_unavailable',
+              'payment_provider_rate_limited',
+              'payment_provider_misconfigured',
+            ].includes(error)
+          ) {
+            return ErrorResponses.serviceUnavailable(
+              reply,
+              'Card payment is temporarily unavailable. Please try another method.'
+            );
+          }
+          return ErrorResponses.internalError(reply, 'Failed to start payment');
+        }
+
+        const orderForTracking = await orderService.getOrderWithItems(
+          sessionResult.orderId
+        );
+        if (orderForTracking) {
+          const properties = buildOrderTikTokProperties(orderForTracking);
+          const trackingUserId =
+            orderForTracking.user_id || request.user?.userId || null;
+          if (trackingUserId) {
+            void tiktokEventsService.trackAddPaymentInfo({
+              userId: trackingUserId,
+              email:
+                request.user?.email ?? orderForTracking.contact_email ?? null,
+              eventId: resolveEventId(
+                add_payment_info_event_id,
+                `order_${sessionResult.orderId}_add_payment_info_antom`
+              ),
+              properties: {
+                ...properties,
+                payment_type: 'antom',
+                payment_provider: 'antom',
+                payment_method_title: sessionResult.optionQuote.title,
+                payment_method_type: sessionResult.optionQuote.id,
+              },
+              context: buildTikTokRequestContext(request),
+            });
+          }
+        }
+
+        return SuccessResponses.ok(reply, {
+          order_id: sessionResult.orderId,
+          session_id: sessionResult.sessionId,
+          session_url: sessionResult.sessionUrl,
+          payment_id: sessionResult.paymentId,
+          payment_provider: sessionResult.paymentProvider,
+          option_quote: serializeAntomOptionQuote(sessionResult.optionQuote),
+        });
+      } catch (error) {
+        Logger.error('Antom session creation failed:', error);
+        return ErrorResponses.internalError(reply, 'Failed to start payment');
+      }
+    }
+  );
+
+  fastify.post(
+    '/antom/status',
+    {
+      preHandler: [optionalAuthPreHandler, paymentRefreshRateLimit],
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            checkout_session_key: { type: ['string', 'null'] },
+            order_id: { type: ['string', 'null'] },
+            payment_request_id: { type: ['string', 'null'] },
+            payment_id: { type: ['string', 'null'] },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const validation = validateCheckoutAntomStatusInput(request.body);
+        if (!validation.success) {
+          return sendError(
+            reply,
+            400,
+            'Invalid Input',
+            validation.error,
+            'INVALID_INPUT',
+            validation.details
+          );
+        }
+
+        const orderId = await resolveAntomStatusOrderId({
+          request,
+          reply,
+          checkoutSessionKey: validation.data.checkout_session_key ?? null,
+          orderId: validation.data.order_id ?? null,
+          paymentRequestId: validation.data.payment_request_id ?? null,
+        });
+        if (!orderId) {
+          return reply;
+        }
+
+        const statusResult = await paymentService.getAntomCheckoutStatus({
+          orderId,
+          paymentRequestId: validation.data.payment_request_id ?? null,
+          paymentId: validation.data.payment_id ?? null,
+        });
+        if (!statusResult.success) {
+          const error = statusResult.error || 'antom_status_failed';
+          if (error === 'order_not_found') {
+            return ErrorResponses.notFound(reply, 'Order not found');
+          }
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to load payment status'
+          );
+        }
+
+        return SuccessResponses.ok(reply, {
+          order_id: statusResult.orderId,
+          order_created_at: serializeOptionalIsoDate(
+            (statusResult as { orderCreatedAt?: Date | string | null })
+              .orderCreatedAt
+          ),
+          order_status: statusResult.orderStatus,
+          payment_status: statusResult.paymentStatus,
+          provider_status: statusResult.providerStatus,
+          payment_request_id: statusResult.paymentRequestId,
+          antom_payment_id: statusResult.antomPaymentId,
+          method_title: statusResult.methodTitle,
+          processing_currency: statusResult.processingCurrency,
+          processing_subtotal_cents: statusResult.processingSubtotalCents,
+          processing_fee_cents: statusResult.processingFeeCents,
+          processing_tax_cents: statusResult.processingTaxCents,
+          processing_total_cents: statusResult.processingTotalCents,
+          tax_residence_id: statusResult.taxResidenceId,
+          tax_residence_label: statusResult.taxResidenceLabel,
+          can_retry: statusResult.canRetry,
+        });
+      } catch (error) {
+        Logger.error('Antom status lookup failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to load payment status'
         );
       }
     }

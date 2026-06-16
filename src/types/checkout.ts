@@ -250,3 +250,84 @@ export interface CheckoutPayopStatusResult {
   processingTotalCents?: number | null;
   canRetry: boolean;
 }
+
+export interface CheckoutAntomResidenceResult {
+  id: string;
+  label: string;
+  rateBps: number;
+}
+
+export interface CheckoutAntomOptionResult {
+  optionId: 'cards' | 'apple_pay' | 'google_pay';
+  title: string;
+  description: string;
+  methodTypes: string[];
+  brandNames: string[];
+  currency: string;
+  subtotalCents: number;
+  serviceFeeCents: number;
+  taxCents: number;
+  totalCents: number;
+  taxResidenceId: string;
+  taxResidenceLabel: string;
+  taxRateBps: number;
+}
+
+export interface CheckoutAntomOptionsInput {
+  checkout_session_key?: string | null | undefined;
+  order_id?: string | null | undefined;
+  residence_id?: string | null | undefined;
+}
+
+export interface CheckoutAntomOptionsResult {
+  orderId: string;
+  orderStatus: string;
+  enabled: boolean;
+  displayCurrency: string;
+  displayTotalCents: number;
+  selectedResidenceId: string;
+  residences: CheckoutAntomResidenceResult[];
+  options: CheckoutAntomOptionResult[];
+}
+
+export interface CheckoutAntomSessionInput {
+  checkout_session_key?: string | null | undefined;
+  order_id?: string | null | undefined;
+  option_id: 'cards' | 'apple_pay' | 'google_pay';
+  residence_id?: string | null | undefined;
+  add_payment_info_event_id?: string | null | undefined;
+}
+
+export interface CheckoutAntomSessionResult {
+  orderId: string;
+  sessionId: string;
+  sessionUrl: string;
+  paymentId: string;
+  paymentProvider: 'antom';
+  optionQuote: CheckoutAntomOptionResult;
+}
+
+export interface CheckoutAntomStatusInput {
+  checkout_session_key?: string | null | undefined;
+  order_id?: string | null | undefined;
+  payment_request_id?: string | null | undefined;
+  payment_id?: string | null | undefined;
+}
+
+export interface CheckoutAntomStatusResult {
+  orderId: string;
+  orderStatus: string;
+  paymentStatus?: string | null;
+  providerStatus?: string | null;
+  paymentRequestId?: string | null;
+  antomPaymentId?: string | null;
+  methodTitle?: string | null;
+  processingCurrency?: string | null;
+  processingSubtotalCents?: number | null;
+  processingFeeCents?: number | null;
+  processingTaxCents?: number | null;
+  processingTotalCents?: number | null;
+  taxResidenceId?: string | null;
+  taxResidenceLabel?: string | null;
+  canRetry: boolean;
+}

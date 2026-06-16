@@ -154,6 +154,77 @@ const environmentSchema = z.object({
     .default(''),
   PAYOP_METHOD_CACHE_TTL_SECONDS: z.coerce.number().default(300),
   PAYOP_METHOD_LKG_TTL_SECONDS: z.coerce.number().default(3600),
+  ANTOM_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(false)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return false;
+    }),
+  ANTOM_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
+  ANTOM_CLIENT_ID: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  ANTOM_PRIVATE_KEY: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  ANTOM_PUBLIC_KEY: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  ANTOM_API_DOMAIN: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default('https://open-sea-global.alipay.com'),
+  ANTOM_WEBHOOK_URL: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default(''),
+  ANTOM_KEY_VERSION: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim() : value),
+      z.string().optional()
+    )
+    .default('1'),
+  ANTOM_REQUEST_TIMEOUT_MS: z.coerce.number().default(15000),
+  ANTOM_WEBHOOK_MAX_SKEW_MS: z.coerce.number().default(300000),
+  ANTOM_SERVICE_FEE_BPS: z.coerce.number().default(450),
+  ANTOM_SERVICE_FEE_FIXED_USD_CENTS: z.coerce.number().default(25),
+  ANTOM_TAX_INCLUDES_SERVICE_FEE: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(true)
+    .transform(val => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+        if (val.toLowerCase() === 'true') return true;
+        if (val.toLowerCase() === 'false') return false;
+      }
+      return true;
+    }),
+  ANTOM_MERCHANT_REGION: z
+    .preprocess(
+      value => (typeof value === 'string' ? value.trim().toUpperCase() : value),
+      z.string().optional()
+    )
+    .default('GB'),
   PAYPAL_ENABLED: z
     .union([z.string(), z.boolean()])
     .optional()
@@ -685,6 +756,56 @@ function validateEnvironment(): EnvironmentConfig {
       }
       if (withTestOverrides.PAYOP_METHOD_LKG_TTL_SECONDS <= 0) {
         throw new Error('PAYOP_METHOD_LKG_TTL_SECONDS must be greater than 0');
+      }
+    }
+
+    if (withTestOverrides.ANTOM_ENABLED) {
+      const missing: string[] = [];
+      if (!withTestOverrides.ANTOM_CLIENT_ID) {
+        missing.push('ANTOM_CLIENT_ID');
+      }
+      if (!withTestOverrides.ANTOM_PRIVATE_KEY) {
+        missing.push('ANTOM_PRIVATE_KEY');
+      }
+      if (!withTestOverrides.ANTOM_PUBLIC_KEY) {
+        missing.push('ANTOM_PUBLIC_KEY');
+      }
+      if (!withTestOverrides.ANTOM_WEBHOOK_URL) {
+        missing.push('ANTOM_WEBHOOK_URL');
+      }
+      if (missing.length > 0) {
+        throw new Error(
+          `Antom configuration missing required fields: ${missing.join(', ')}`
+        );
+      }
+      if (!isValidAbsoluteUrl(withTestOverrides.ANTOM_API_DOMAIN)) {
+        throw new Error('ANTOM_API_DOMAIN must be a valid URL');
+      }
+      if (!isValidAbsoluteUrl(withTestOverrides.ANTOM_WEBHOOK_URL)) {
+        throw new Error('ANTOM_WEBHOOK_URL must be a valid URL');
+      }
+      if (withTestOverrides.ANTOM_REQUEST_TIMEOUT_MS <= 0) {
+        throw new Error('ANTOM_REQUEST_TIMEOUT_MS must be greater than 0');
+      }
+      if (withTestOverrides.ANTOM_WEBHOOK_MAX_SKEW_MS <= 0) {
+        throw new Error('ANTOM_WEBHOOK_MAX_SKEW_MS must be greater than 0');
+      }
+      if (withTestOverrides.ANTOM_SERVICE_FEE_BPS < 0) {
+        throw new Error('ANTOM_SERVICE_FEE_BPS cannot be negative');
+      }
+      if (withTestOverrides.ANTOM_SERVICE_FEE_FIXED_USD_CENTS < 0) {
+        throw new Error('ANTOM_SERVICE_FEE_FIXED_USD_CENTS cannot be negative');
+      }
+      if (!/^[A-Z]{2}$/.test(withTestOverrides.ANTOM_MERCHANT_REGION)) {
+        throw new Error('ANTOM_MERCHANT_REGION must be a 2-letter ISO code');
+      }
+      if (
+        withTestOverrides.NODE_ENV === 'production' &&
+        withTestOverrides.ANTOM_ENVIRONMENT !== 'production'
+      ) {
+        throw new Error(
+          'ANTOM_ENVIRONMENT must be production in NODE_ENV=production'
+        );
       }
     }
 

@@ -4,6 +4,7 @@ import { redisClient } from '../config/redis';
 import { creditService } from './creditService';
 import { Logger } from '../utils/logger';
 import { parseJsonValue } from '../utils/json';
+import { paymentService } from './paymentService';
 
 export type RefundStatus =
   | 'pending'
@@ -105,7 +106,32 @@ export class RefundService {
     );
 
     if (result.rows.length === 0) {
-      return null;
+      const paymentResult = await pool.query(
+        `SELECT provider, currency, amount, metadata, provider_payment_id
+         FROM payments
+         WHERE provider_payment_id = $1
+            OR id::text = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [paymentId]
+      );
+
+      if (paymentResult.rows.length === 0) {
+        return null;
+      }
+
+      const paymentRow = paymentResult.rows[0];
+      const metadata = parseJsonValue<Record<string, any>>(
+        paymentRow.metadata,
+        {}
+      );
+      metadata['provider_payment_id'] = paymentRow.provider_payment_id;
+      return {
+        provider: paymentRow.provider || null,
+        paymentCurrency: paymentRow.currency || null,
+        paymentAmount: paymentRow.amount ? parseFloat(paymentRow.amount) : null,
+        metadata,
+      };
     }
 
     const row = result.rows[0];
@@ -125,11 +151,60 @@ export class RefundService {
     reason: RefundReason;
   }): Promise<{
     success: boolean;
-    status: 'manual_required';
+    status: 'manual_required' | 'provider_processed' | 'provider_pending';
     taskId?: string;
     error?: string;
   }> {
     const context = await this.getPaymentRefundContext(params.paymentId);
+    if (context?.provider === 'antom') {
+      const antomPaymentId =
+        context.metadata?.['antom_payment_id'] ||
+        context.metadata?.['payment_id'] ||
+        null;
+      const paymentRequestId =
+        context.metadata?.['antom_payment_request_id'] ||
+        context.metadata?.['provider_payment_id'] ||
+        params.paymentId;
+      const currency =
+        context.metadata?.['antom_processing_currency'] ||
+        context.paymentCurrency ||
+        null;
+
+      if (!antomPaymentId || !currency) {
+        return {
+          success: false,
+          status: 'manual_required',
+          error: 'Antom payment ID or currency missing for provider refund',
+        };
+      }
+
+      const amountCents = Math.round(params.amount * 100);
+      const providerResult = await paymentService.refundAntomPayment({
+        paymentRequestId,
+        antomPaymentId,
+        amountCents,
+        currency,
+        refundRequestId: `refund_${params.refundId.replace(/-/g, '').slice(0, 48)}`,
+        reason: params.reason,
+      });
+
+      if (!providerResult.success) {
+        return {
+          success: false,
+          status: 'manual_required',
+          error: providerResult.error || 'Antom provider refund failed',
+        };
+      }
+
+      return {
+        success: true,
+        status:
+          providerResult.providerStatus === 'refund_success'
+            ? 'provider_processed'
+            : 'provider_pending',
+      };
+    }
+
     const payAddress =
       context?.metadata?.['payAddress'] ||
       context?.metadata?.['pay_address'] ||

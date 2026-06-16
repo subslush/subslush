@@ -84,6 +84,9 @@ export const API_ENDPOINTS = {
     PAYOP_OPTIONS: '/checkout/payop/options',
     PAYOP_SESSION: '/checkout/payop/session',
     PAYOP_STATUS: '/checkout/payop/status',
+    ANTOM_OPTIONS: '/checkout/antom/options',
+    ANTOM_SESSION: '/checkout/antom/session',
+    ANTOM_STATUS: '/checkout/antom/status',
     CLAIM: '/checkout/claim'
   },
   USERS: {

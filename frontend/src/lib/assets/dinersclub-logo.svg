@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 108" role="img" aria-labelledby="dinersclub-title">
+  <title id="dinersclub-title">Diners Club</title>
+  <path fill="#0079BE" d="M55.4 9.5h69.2c25 0 45.2 20 45.2 44.5s-20.2 44.5-45.2 44.5H55.4C30.4 98.5 10.2 78.5 10.2 54S30.4 9.5 55.4 9.5Z"/>
+  <circle cx="78" cy="54" r="39.8" fill="#fff"/>
+  <path fill="#0079BE" d="M69.3 30.4c-10 4-17 13.1-17 23.6s7 19.6 17 23.6V30.4Zm17.4 0v47.2c10-4 17-13.1 17-23.6s-7-19.6-17-23.6Z"/>
+</svg>

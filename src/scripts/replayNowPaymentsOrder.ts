@@ -10,10 +10,15 @@ import { paymentRepository } from '../services/paymentRepository';
 import { paymentService } from '../services/paymentService';
 import { subscriptionService } from '../services/subscriptionService';
 import type { OrderWithItems } from '../types/order';
-import type { UnifiedPayment, WebhookPayload } from '../types/payment';
+import type {
+  CreateUnifiedPaymentInput,
+  UnifiedPayment,
+  WebhookPayload,
+} from '../types/payment';
 import { Logger } from '../utils/logger';
 
 const SCRIPT_ACTOR = 'script:replay-nowpayments-order';
+const SYNTHETIC_NOWPAYMENTS_PREFIX = 'manual_np_';
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -164,6 +169,80 @@ async function resolveOrderPayment(
   return paymentRepository.findLatestByOrderId('nowpayments', order.id);
 }
 
+async function bootstrapSyntheticOrderPayment(
+  order: OrderWithItems
+): Promise<UnifiedPayment> {
+  if (!['cart', 'pending_payment'].includes(order.status)) {
+    throw new Error(
+      `Cannot bootstrap payment for order ${order.id} in status ${order.status}`
+    );
+  }
+
+  if (typeof order.total_cents !== 'number' || order.total_cents <= 0) {
+    throw new Error(
+      `Order ${order.id} is missing a valid total_cents value for payment bootstrap`
+    );
+  }
+
+  const providerPaymentId = `${SYNTHETIC_NOWPAYMENTS_PREFIX}${order.id}`;
+  const existingSynthetic = await paymentRepository.findByProviderPaymentId(
+    'nowpayments',
+    providerPaymentId
+  );
+  if (existingSynthetic) {
+    return existingSynthetic;
+  }
+
+  const normalizedCurrency =
+    typeof order.currency === 'string' && order.currency.trim().length > 0
+      ? order.currency.trim().toLowerCase()
+      : 'usd';
+  const amount = Number((order.total_cents / 100).toFixed(2));
+  const payCurrency = 'btc';
+  const singleItemId =
+    order.items.length === 1 ? (order.items[0]?.id ?? null) : null;
+  const paymentInput: CreateUnifiedPaymentInput = {
+    userId: order.user_id,
+    provider: 'nowpayments',
+    providerPaymentId,
+    status: 'pending',
+    providerStatus: 'waiting',
+    purpose: 'subscription',
+    amount,
+    currency: normalizedCurrency,
+    ...(normalizedCurrency === 'usd' ? { amountUsd: amount } : {}),
+    paymentMethodType: 'crypto',
+    orderId: order.id,
+    checkoutMode: 'invoice',
+    metadata: {
+      order_id: order.id,
+      invoice_url: `manual://nowpayments/${order.id}`,
+      pay_address: 'manual-demo-replay',
+      pay_amount: amount,
+      pay_currency: payCurrency,
+      price_amount: amount,
+      price_currency: normalizedCurrency,
+      order_description: buildFallbackDescription(order),
+      synthetic_manual_payment: true,
+      synthetic_manual_payment_created_at: new Date().toISOString(),
+    },
+  };
+
+  if (singleItemId) {
+    paymentInput.orderItemId = singleItemId;
+  }
+
+  const createdPayment = await paymentRepository.create(paymentInput);
+  Logger.info('Bootstrapped synthetic NOWPayments payment record', {
+    orderId: order.id,
+    paymentId: createdPayment.providerPaymentId,
+    amount,
+    currency: normalizedCurrency,
+  });
+
+  return createdPayment;
+}
+
 function buildSyntheticWebhookPayload(
   order: OrderWithItems,
   payment: UnifiedPayment
@@ -274,7 +353,7 @@ function logOrderState(prefix: string, order: OrderWithItems): void {
 
 async function replayPaymentIfNeeded(
   order: OrderWithItems,
-  payment: UnifiedPayment,
+  payment: UnifiedPayment | null,
   dryRun: boolean
 ): Promise<OrderWithItems> {
   if (['in_process', 'paid', 'delivered'].includes(order.status)) {
@@ -291,7 +370,22 @@ async function replayPaymentIfNeeded(
     );
   }
 
-  const payload = buildSyntheticWebhookPayload(order, payment);
+  let paymentRecord = payment;
+  if (!paymentRecord) {
+    if (dryRun) {
+      Logger.info(
+        'Dry run detected missing payment record; synthetic payment bootstrap would be required',
+        {
+          orderId: order.id,
+        }
+      );
+      return order;
+    }
+
+    paymentRecord = await bootstrapSyntheticOrderPayment(order);
+  }
+
+  const payload = buildSyntheticWebhookPayload(order, paymentRecord);
   Logger.info('Prepared synthetic NOWPayments webhook payload', {
     orderId: order.id,
     paymentId: payload.payment_id,
@@ -435,19 +529,23 @@ async function main(): Promise<void> {
     });
 
     const payment = await resolveOrderPayment(initialOrder);
-    if (!payment) {
-      throw new Error(
-        `No NOWPayments payment record found for order ${initialOrder.id}`
+    if (payment) {
+      Logger.info('Resolved NOWPayments payment record', {
+        orderId: initialOrder.id,
+        paymentId: payment.providerPaymentId,
+        paymentStatus: payment.status,
+        providerStatus: payment.providerStatus ?? null,
+        purpose: payment.purpose,
+      });
+    } else {
+      Logger.info(
+        'No NOWPayments payment record found; script will bootstrap one if needed',
+        {
+          orderId: initialOrder.id,
+          status: initialOrder.status,
+        }
       );
     }
-
-    Logger.info('Resolved NOWPayments payment record', {
-      orderId: initialOrder.id,
-      paymentId: payment.providerPaymentId,
-      paymentStatus: payment.status,
-      providerStatus: payment.providerStatus ?? null,
-      purpose: payment.purpose,
-    });
 
     const afterPayment = await replayPaymentIfNeeded(
       initialOrder,

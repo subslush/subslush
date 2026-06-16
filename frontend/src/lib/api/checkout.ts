@@ -22,6 +22,12 @@ import type {
   CheckoutPayopSessionResponse,
   CheckoutPayopStatusRequest,
   CheckoutPayopStatusResponse,
+  CheckoutAntomOptionsRequest,
+  CheckoutAntomOptionsResponse,
+  CheckoutAntomSessionRequest,
+  CheckoutAntomSessionResponse,
+  CheckoutAntomStatusRequest,
+  CheckoutAntomStatusResponse,
   CheckoutClaimResponse,
 } from '$lib/types/checkout.js';
 
@@ -124,6 +130,27 @@ export class CheckoutService {
   ): Promise<CheckoutPayopStatusResponse> {
     const response = await apiClient.post(API_ENDPOINTS.CHECKOUT.PAYOP_STATUS, input);
     return unwrapApiData<CheckoutPayopStatusResponse>(response);
+  }
+
+  async getAntomOptions(
+    input: CheckoutAntomOptionsRequest
+  ): Promise<CheckoutAntomOptionsResponse> {
+    const response = await apiClient.post(API_ENDPOINTS.CHECKOUT.ANTOM_OPTIONS, input);
+    return unwrapApiData<CheckoutAntomOptionsResponse>(response);
+  }
+
+  async createAntomSession(
+    input: CheckoutAntomSessionRequest
+  ): Promise<CheckoutAntomSessionResponse> {
+    const response = await apiClient.post(API_ENDPOINTS.CHECKOUT.ANTOM_SESSION, input);
+    return unwrapApiData<CheckoutAntomSessionResponse>(response);
+  }
+
+  async getAntomStatus(
+    input: CheckoutAntomStatusRequest
+  ): Promise<CheckoutAntomStatusResponse> {
+    const response = await apiClient.post(API_ENDPOINTS.CHECKOUT.ANTOM_STATUS, input);
+    return unwrapApiData<CheckoutAntomStatusResponse>(response);
   }
 
   async claimCheckout(token: string): Promise<CheckoutClaimResponse> {
