@@ -46,6 +46,7 @@ const initCrisp = (): void => {
 
   window.$crisp = window.$crisp || [];
   window.CRISP_WEBSITE_ID = CRISP_WEBSITE_ID;
+  window.$crisp.push(['do', 'chat:show']);
   loadScript('https://client.crisp.chat/l.js', 'crisp-chat');
 };
 
@@ -63,4 +64,5 @@ export const initThirdPartyTracking = (): void => {
   thirdPartyTrackingBound = true;
 
   initAnalytics();
+  initCrisp();
 };
