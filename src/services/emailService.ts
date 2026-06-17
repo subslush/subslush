@@ -19,10 +19,12 @@ type BrandedEmailOptions = {
   title: string;
   intro?: string;
   bodyHtml?: string;
+  postCtaHtml?: string;
   ctaLabel?: string;
   ctaUrl?: string;
   note?: string;
   previewText?: string;
+  contentAlign?: 'left' | 'center';
 };
 
 type EmailConfirmationFlow = 'standard' | 'claim_order';
@@ -65,6 +67,9 @@ class EmailService {
     const ctaLabel = options.ctaLabel ? this.escapeHtml(options.ctaLabel) : '';
     const ctaUrl = options.ctaUrl ? this.escapeHtml(options.ctaUrl) : '';
     const bodyHtml = options.bodyHtml || '';
+    const postCtaHtml = options.postCtaHtml || '';
+    const contentAlign = options.contentAlign === 'center' ? 'center' : 'left';
+    const ctaMargin = contentAlign === 'center' ? '22px auto 0' : '22px 0 0';
     const year = new Date().getFullYear();
     const appBase = env.APP_BASE_URL?.replace(/\/$/, '') || '';
     const helpUrl = appBase ? `${appBase}/help` : '/help';
@@ -97,17 +102,17 @@ class EmailService {
                   </tr>
                   <tr>
                     <td style="padding:26px 28px 20px;">
-                      <h1 style="margin:0 0 12px;font-size:22px;line-height:1.25;color:#0f172a;">${title}</h1>
+                      <h1 style="margin:0 0 12px;font-size:22px;line-height:1.25;color:#0f172a;text-align:${contentAlign};">${title}</h1>
                       ${
                         intro
-                          ? `<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#334155;">${intro}</p>`
+                          ? `<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#334155;text-align:${contentAlign};">${intro}</p>`
                           : ''
                       }
                       ${bodyHtml}
                       ${
                         ctaLabel && ctaUrl
                           ? `
-                            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 0;">
+                            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:${ctaMargin};">
                               <tr>
                                 <td>
                                   <a href="${ctaUrl}" style="display:inline-block;background:linear-gradient(90deg,#7e22ce 0%,#db2777 100%);color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:10px;font-size:14px;font-weight:700;">
@@ -119,9 +124,10 @@ class EmailService {
                           `
                           : ''
                       }
+                      ${postCtaHtml}
                       ${
                         note
-                          ? `<p style="margin:16px 0 0;font-size:12px;line-height:1.55;color:#64748b;">${note}</p>`
+                          ? `<p style="margin:16px 0 0;font-size:12px;line-height:1.55;color:#64748b;text-align:${contentAlign};">${note}</p>`
                           : ''
                       }
                     </td>
@@ -278,56 +284,31 @@ class EmailService {
     confirmationLink: string;
     flow?: EmailConfirmationFlow;
   }): Promise<EmailSendResult> {
-    const isClaimOrderFlow = params.flow === 'claim_order';
     const subject = 'Confirm your SubSlush email';
     const text = [
-      isClaimOrderFlow
-        ? 'Confirm your email to finish creating your SubSlush account and claim your order.'
-        : 'Confirm your email to finish creating your SubSlush account.',
+      'Confirm your SubSlush email',
+      'Finish creating your account and start using SubSlush.',
       '',
       `Confirm email: ${params.confirmationLink}`,
-      '',
-      isClaimOrderFlow
-        ? 'After confirmation, we will sign you in and return you to the order claim page automatically.'
-        : 'After confirmation, you will be signed in to your SubSlush account.',
       '',
       'If you did not create this account, you can safely ignore this email.',
     ].join('\n');
 
     const safeConfirmationLink = this.escapeHtml(params.confirmationLink);
     const html = this.buildBrandedEmail({
-      title: isClaimOrderFlow
-        ? 'Confirm your email to claim your order'
-        : 'Confirm your SubSlush email',
-      intro: isClaimOrderFlow
-        ? 'Finish creating your account so we can securely attach your guest order to it.'
-        : 'Finish creating your account and start using SubSlush.',
-      bodyHtml: `
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
-          <tr>
-            <td style="padding:14px 16px;font-size:13px;line-height:1.6;color:#334155;">
-              <div style="font-weight:700;color:#0f172a;margin-bottom:8px;">What happens next</div>
-              ${
-                isClaimOrderFlow
-                  ? 'After you confirm your email, we will sign you in and return you to the order claim page automatically.'
-                  : 'After you confirm your email, your account will be activated and you will be signed in.'
-              }
-            </td>
-          </tr>
-        </table>
-        <p style="margin:16px 0 0;font-size:12px;line-height:1.55;color:#64748b;">
+      title: 'Confirm your SubSlush email',
+      intro: 'Finish creating your account and start using SubSlush.',
+      postCtaHtml: `
+        <p style="margin:16px 0 0;font-size:12px;line-height:1.55;color:#64748b;text-align:center;">
           If the button does not work, copy and paste this secure link into your browser:<br />
           <a href="${safeConfirmationLink}" style="color:#7e22ce;font-weight:600;text-decoration:underline;word-break:break-all;">${safeConfirmationLink}</a>
         </p>
       `.trim(),
-      ctaLabel: isClaimOrderFlow
-        ? 'Confirm email and claim order'
-        : 'Confirm email',
+      ctaLabel: 'Confirm email',
       ctaUrl: params.confirmationLink,
       note: 'If you did not create this account, you can safely ignore this email.',
-      previewText: isClaimOrderFlow
-        ? 'Confirm your email to claim your SubSlush order'
-        : 'Confirm your SubSlush email',
+      previewText: 'Confirm your SubSlush email',
+      contentAlign: 'center',
     });
 
     return this.send({
