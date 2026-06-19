@@ -3,11 +3,12 @@
   import { resolveLogoKey, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
   import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
   import { Plus, ShoppingCart } from 'lucide-svelte';
+  import { subscriptionService } from '$lib/api/subscriptions.js';
   import { cart } from '$lib/stores/cart.js';
   import { cartSidebar } from '$lib/stores/cartSidebar.js';
   import type { Picture } from 'imagetools-core';
   import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
-  import { trackSelectItem, trackViewItemList } from '$lib/utils/analytics.js';
+  import { trackAddToCart, trackSelectItem, trackViewItemList } from '$lib/utils/analytics.js';
 
   import type { ProductListing } from '$lib/types/subscription.js';
 
@@ -164,6 +165,67 @@
     return 1;
   }
 
+  const getOrCreateGuestId = (): string => {
+    if (typeof window === 'undefined') return 'guest';
+    try {
+      const key = 'tiktok_guest_id';
+      const existing = localStorage.getItem(key);
+      if (existing) return existing;
+      const generated =
+        typeof crypto?.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `guest_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      localStorage.setItem(key, generated);
+      return generated;
+    } catch {
+      return 'guest';
+    }
+  };
+
+  const buildAddToCartEventId = (): string => {
+    const ownerId = getOrCreateGuestId();
+    const nonce = Math.random().toString(16).slice(2, 8);
+    return `cart_${ownerId}_${Date.now()}_${nonce}`;
+  };
+
+  function trackQuickAddToCart(
+    product: ProductListing,
+    price: number,
+    termMonths: number
+  ): void {
+    const itemId = product.product_id || product.slug || product.variant_id || product.name;
+    const itemName = product.name || product.slug || product.product_id;
+    if (!itemId && !itemName) return;
+
+    const currency = normalizeCurrencyCode(product.currency) || product.currency;
+    const eventId = buildAddToCartEventId();
+    const listLabel = resolveListName();
+    const planLabel = `${termMonths} month${termMonths === 1 ? '' : 's'}`;
+    const analyticsItem = {
+      item_id: itemId,
+      item_name: itemName,
+      item_category: product.category || product.service_type || undefined,
+      item_variant: planLabel,
+      item_list_name: listLabel,
+      price,
+      currency,
+      quantity: 1
+    };
+
+    trackAddToCart(currency, price, [analyticsItem], eventId);
+    void subscriptionService.trackAddToCart({
+      contentId: product.slug || product.product_id || product.variant_id || itemId,
+      contentName: itemName,
+      contentCategory: product.category || product.service_type || undefined,
+      price,
+      currency,
+      brand: product.service_type || undefined,
+      value: price,
+      externalId: getOrCreateGuestId(),
+      eventId
+    });
+  }
+
   function handleQuickAddToCart(event: MouseEvent, product: ProductListing): void {
     event.preventDefault();
     event.stopPropagation();
@@ -181,6 +243,7 @@
     const termMonths = resolveTermMonths(product);
     const planLabel = `${termMonths} month${termMonths === 1 ? '' : 's'}`;
 
+    trackQuickAddToCart(product, price, termMonths);
     cart.addItem({
       id: `${variantId}|${termMonths}|no-renew`,
       serviceType: product.service_type || product.slug || product.name,

@@ -33,7 +33,7 @@
 		normalizeCurrencyCode,
 		type SupportedCurrency
 	} from '$lib/utils/currency.js';
-	import { trackSearch } from '$lib/utils/analytics.js';
+	import { trackAddToCart, trackSearch } from '$lib/utils/analytics.js';
 	import { subscriptionService } from '$lib/api/subscriptions.js';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/stores';
@@ -920,6 +920,13 @@
 		const termMonths =
 			Number.isInteger(termMonthsRaw) && termMonthsRaw > 0 ? termMonthsRaw : 1;
 
+		trackMegaAddToCartIntent(
+			activeOfferProduct,
+			selectedLabel,
+			selectedCurrency,
+			termMonths,
+			activeMegaCategory.key
+		);
 		cart.addItem({
 			id: `${variantId}|${termMonths}|no-renew`,
 			serviceType: activeMegaCategory.key,
@@ -1046,6 +1053,54 @@
 		const ownerId = getOrCreateGuestId();
 		const normalizedQuery = query.trim().toLowerCase().replace(/\s+/g, '_');
 		return `search_${ownerId}_${normalizedQuery}_${Date.now()}`;
+	};
+
+	const buildAddToCartEventId = (): string => {
+		const ownerId = getOrCreateGuestId();
+		const nonce = Math.random().toString(16).slice(2, 8);
+		return `cart_${ownerId}_${Date.now()}_${nonce}`;
+	};
+
+	const trackMegaAddToCartIntent = (
+		product: ProductListing,
+		label: string,
+		currencyCode: SupportedCurrency,
+		termMonths: number,
+		categoryKey: string
+	): void => {
+		const price = Number(product.from_price);
+		if (!Number.isFinite(price) || price < 0) return;
+
+		const itemId = product.product_id || product.slug || product.variant_id || label;
+		const itemName = label || product.name || product.slug || product.product_id;
+		if (!itemId && !itemName) return;
+
+		const eventId = buildAddToCartEventId();
+		const planLabel = `${termMonths} month${termMonths === 1 ? '' : 's'}`;
+		const category = product.category || product.service_type || categoryKey || undefined;
+		const analyticsItem = {
+			item_id: itemId,
+			item_name: itemName,
+			item_category: category,
+			item_variant: planLabel,
+			item_list_name: 'Mega Menu',
+			price,
+			currency: currencyCode,
+			quantity: 1
+		};
+
+		trackAddToCart(currencyCode, price, [analyticsItem], eventId);
+		void subscriptionService.trackAddToCart({
+			contentId: product.slug || product.product_id || product.variant_id || itemId,
+			contentName: itemName,
+			contentCategory: category,
+			price,
+			currency: currencyCode,
+			brand: product.service_type || categoryKey || undefined,
+			value: price,
+			externalId: getOrCreateGuestId(),
+			eventId
+		});
 	};
 
 	function handleSearchKeydown(event: KeyboardEvent) {
