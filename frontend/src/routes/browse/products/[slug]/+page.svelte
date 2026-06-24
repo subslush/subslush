@@ -54,6 +54,7 @@
   let showFeaturesGuide = false;
   let showExtraFeaturesDetails = false;
   let descriptionExpanded = false;
+  let infoBoxExpanded = false;
   let isMobileViewport = false;
   let selectionError = '';
   let extraFeaturesEnabled = false;
@@ -214,6 +215,38 @@
     return { text, truncated: false };
   };
 
+  const buildSentencePreview = (
+    value: string,
+    maxSentences: number,
+    maxChars: number
+  ): { text: string; truncated: boolean } => {
+    const text = value.trim();
+    if (!text) return { text: '', truncated: false };
+
+    const sentenceMatches = Array.from(text.matchAll(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g));
+    if (sentenceMatches.length === 0) {
+      if (text.length <= maxChars) return { text, truncated: false };
+      return {
+        text: `${text.slice(0, maxChars).trimEnd()}...`,
+        truncated: true
+      };
+    }
+
+    const limitedBySentence = sentenceMatches
+      .slice(0, maxSentences)
+      .map(match => match[0].trim())
+      .join(' ');
+    const sentencePreview =
+      limitedBySentence.length > maxChars
+        ? `${limitedBySentence.slice(0, maxChars).trimEnd()}...`
+        : limitedBySentence;
+
+    return {
+      text: sentencePreview,
+      truncated: sentencePreview.length < text.length
+    };
+  };
+
   const normalizeFilterValue = (value?: string | null): string =>
     typeof value === 'string' ? value.trim().toLowerCase() : '';
 
@@ -245,6 +278,9 @@
   $: breadcrumbCategoryKey = normalizeFilterValue(
     $page.url.searchParams.get('category')
   );
+  $: infoBoxPreview = buildSentencePreview(infoBoxText, 2, 220);
+  $: infoBoxVisibleText =
+    infoBoxExpanded || !infoBoxPreview.truncated ? infoBoxText : infoBoxPreview.text;
   $: breadcrumbSubCategoryKey = normalizeFilterValue(
     $page.url.searchParams.get('sub_category')
   );
@@ -261,6 +297,7 @@
     breadcrumbSubCategoryKey
   );
   $: infoBoxHtml = renderTextWithBoldMarkers(infoBoxText);
+  $: infoBoxVisibleHtml = renderTextWithBoldMarkers(infoBoxVisibleText);
   $: platformLabel =
     readProductText(['platform', 'platform_name', 'platformName']) ||
     product.name ||
@@ -284,7 +321,6 @@
     product?.terms_conditions ?? product?.termsConditions
   );
   $: deliveryDisclosureText = `${infoBoxText}\n${activationGuideText}`.toLowerCase();
-  $: hasVpnNotice = /\bvpn\b/.test(deliveryDisclosureText);
   $: hasActivationLinkMention = deliveryDisclosureText.includes('activation link');
   $: hasActivationCodeMention =
     deliveryDisclosureText.includes('activation code') ||
@@ -318,7 +354,7 @@
       return 'Choose New account or Your account in checkout before payment.';
     }
     if (upgradeOptions?.allow_new_account && !upgradeOptions?.allow_own_account) {
-      return 'You receive account credentials after fulfillment.';
+      return 'This order will be fulfilled with a newly created private account and delivered with login credentials.';
     }
     if (!upgradeOptions?.allow_new_account && upgradeOptions?.allow_own_account) {
       return 'Fulfillment is completed on your existing account.';
@@ -344,6 +380,9 @@
   $: visibleDescriptionHtml = renderRichTextWithBullets(visibleDescription);
   $: if (!hasTruncatedDescription) {
     descriptionExpanded = false;
+  }
+  $: if (!infoBoxPreview.truncated) {
+    infoBoxExpanded = false;
   }
 
   onMount(() => {
@@ -627,6 +666,186 @@
   <meta name="description" content={product.description} />
 </svelte:head>
 
+{#snippet purchasePanel()}
+  <div class="purchase-panel">
+    <div class="mb-3 flex items-center justify-center gap-2 text-center">
+      <span class="live-dot" aria-hidden="true"></span>
+      <p class="text-xs font-medium text-slate-600">
+        <span class="font-semibold text-slate-900">{usersOnPage}</span> users on this page
+      </p>
+    </div>
+    <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_14px_28px_rgba(15,23,42,0.1)]">
+      <div>
+        <p class="text-5xl font-black tracking-tight text-slate-900">
+          {selectedTerm
+            ? formatCurrency(selectedTerm.total_price, selectedVariantCurrency)
+            : '--'}
+        </p>
+      </div>
+      <div class="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+        <span
+          class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-xs font-bold text-white"
+          aria-hidden="true"
+        >
+          !
+        </span>
+        <p class="text-xs font-medium text-slate-700">
+          Hurry up! Only <span class="font-semibold text-pink-500">{unitsLeft}</span> units left in this price.
+        </p>
+      </div>
+
+      {#if hasUpgradeSelection && upgradeOptions}
+        <section class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <h3 class="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">Upgrade option</h3>
+          {#if upgradeOptions.allow_new_account || upgradeOptions.allow_own_account}
+            <div class="mt-2 space-y-2">
+              {#if upgradeOptions.allow_new_account}
+                <button
+                  type="button"
+                  class={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
+                    upgradeSelectionType === 'upgrade_new_account'
+                      ? 'border-fuchsia-300 bg-white'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                  on:click={() => (upgradeSelectionType = 'upgrade_new_account')}
+                >
+                  <span class="flex items-center gap-2.5">
+                    <span class={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                      upgradeSelectionType === 'upgrade_new_account'
+                        ? 'border-fuchsia-500'
+                        : 'border-slate-300'
+                    }`}>
+                      {#if upgradeSelectionType === 'upgrade_new_account'}
+                        <span class="h-2 w-2 rounded-full bg-fuchsia-500"></span>
+                      {/if}
+                    </span>
+                    <span class="min-w-0">
+                      <span class="block text-sm font-semibold text-slate-900">New account</span>
+                      <span class="mt-0.5 block text-xs leading-relaxed text-slate-600">
+                        We create and deliver a ready-to-use account for this product.
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              {/if}
+              {#if upgradeOptions.allow_own_account}
+                <button
+                  type="button"
+                  class={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
+                    upgradeSelectionType === 'upgrade_own_account'
+                      ? 'border-fuchsia-300 bg-white'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                  on:click={() => (upgradeSelectionType = 'upgrade_own_account')}
+                >
+                  <span class="flex items-center gap-2.5">
+                    <span class={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                      upgradeSelectionType === 'upgrade_own_account'
+                        ? 'border-fuchsia-500'
+                        : 'border-slate-300'
+                    }`}>
+                      {#if upgradeSelectionType === 'upgrade_own_account'}
+                        <span class="h-2 w-2 rounded-full bg-fuchsia-500"></span>
+                      {/if}
+                    </span>
+                    <span class="min-w-0">
+                      <span class="block text-sm font-semibold text-slate-900">Your account</span>
+                      <span class="mt-0.5 block text-xs leading-relaxed text-slate-600">
+                        {resolveOwnAccountCredentialRequirement(upgradeOptions) === 'email_only'
+                          ? 'We only require your account email after checkout.'
+                          : 'We require account email and password after checkout.'}
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              {/if}
+            </div>
+          {:else}
+            <p class="mt-2 text-xs text-slate-600">
+              This plan requires a manual upgrade workflow after purchase.
+            </p>
+          {/if}
+          {#if selectionError}
+            <p class="mt-2 text-xs font-medium text-red-600">{selectionError}</p>
+          {/if}
+        </section>
+      {/if}
+
+      <div class="mt-4 space-y-2 border-t border-slate-200 pt-4">
+        <button
+          type="button"
+          class="w-full rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+          on:click={() => selectedVariant && handleCheckoutNow(selectedVariant)}
+          disabled={!selectedVariant || !selectedTerm}
+        >
+          BUY NOW
+        </button>
+        <button
+          type="button"
+          class="gradient-outline-btn w-full rounded-xl px-4 py-3.5 text-sm font-semibold transition hover:brightness-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+          on:click={() => selectedVariant && handleAddToCart(selectedVariant)}
+          disabled={!selectedVariant || !selectedTerm}
+        >
+          <span class="gradient-text">ADD TO CART</span>
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-2 border-t border-slate-200 pt-3">
+        <details class="group rounded-xl border border-slate-200 bg-white">
+          <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5">
+            <span class="flex items-center gap-2">
+              <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-white">
+                <Zap size={13} />
+              </span>
+              <span class="text-sm font-semibold text-slate-800">Delivery</span>
+            </span>
+            <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
+          </summary>
+          <p class="px-3 pb-3 text-xs text-slate-600">
+            Every order is manually fulfilled through a fair queue. Most orders are delivered
+            within 24 hours, and in rare cases delivery can take up to 72 hours. You can
+            request cancellation before fulfillment begins for a full refund.
+          </p>
+        </details>
+        <details class="group rounded-xl border border-slate-200 bg-white">
+          <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5">
+            <span class="flex items-center gap-2">
+              <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-white">
+                <Lock size={13} />
+              </span>
+              <span class="text-sm font-semibold text-slate-800">Money Back Guarantee</span>
+            </span>
+            <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
+          </summary>
+          <p class="px-3 pb-3 text-xs text-slate-600">
+            Shop with confidence. If an issue occurs with your purchase, our support team will
+            resolve it first, or provide a refund or replacement when eligible under our
+            <a href="/returns" class="underline underline-offset-2 text-slate-700 hover:text-slate-900">Refund Policy and Money Back Guarantee</a>
+            and
+            <a href="/terms" class="underline underline-offset-2 text-slate-700 hover:text-slate-900">Terms and Conditions</a>.
+          </p>
+        </details>
+        <details class="group rounded-xl border border-slate-200 bg-white">
+          <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5">
+            <span class="flex items-center gap-2">
+              <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-white">
+                <Shield size={13} />
+              </span>
+              <span class="text-sm font-semibold text-slate-800">Ultra Secure Checkout</span>
+            </span>
+            <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
+          </summary>
+          <p class="px-3 pb-3 text-xs text-slate-600">
+            Fast, seamless checkout secured with advanced encryption and continuous monitoring.
+            Backed by TrustGuard and anti-fraud partners, with extra verification for
+            PCI-DSS-secure payment methods.
+          </p>
+        </details>
+      </div>
+    </div>
+  </div>
+{/snippet}
+
 <div class="min-h-screen bg-white">
   <HomeNav />
 
@@ -679,8 +898,8 @@
                 {product.name}
               </h1>
 
-              <div class="mt-4 grid gap-3 sm:grid-cols-2 sm:gap-4">
-                <section class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div class="platform-region-grid mt-4 grid gap-3 sm:grid-cols-2 sm:gap-4">
+                <section class="platform-region-card rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                   <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
                     Platform
                   </p>
@@ -710,7 +929,7 @@
                   </button>
                 </section>
 
-                <section class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                <section class="platform-region-card rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                   <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
                     Region
                   </p>
@@ -744,11 +963,6 @@
                   </p>
                   <p class="mt-1 text-sm font-semibold text-slate-900">{selectedTermLabel}</p>
                   <p class="mt-1 text-xs text-slate-600">Starts on delivery, not first login.</p>
-                  {#if hasVpnNotice}
-                    <p class="mt-1 text-xs font-medium text-amber-700">
-                      VPN may be required for certain regions or first-month activation.
-                    </p>
-                  {/if}
                 </section>
               </div>
 
@@ -766,12 +980,16 @@
                   <span class="text-slate-700">24/7 Customer support</span>
                 </span>
               </div>
+
+              <div class="mt-4 sm:hidden">
+                {@render purchasePanel()}
+              </div>
             </div>
           </div>
         </article>
 
         {#if infoBoxText}
-          <section class="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+          <section class="hidden rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:block">
             <div class="flex items-center gap-3">
               <span class="info-leading-icon inline-flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true">
                 <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none">
@@ -836,6 +1054,45 @@
           {/if}
         </section>
 
+        {#if infoBoxText}
+          <section class="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:hidden">
+            <div class="flex items-start gap-3">
+              <span class="info-leading-icon inline-flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true">
+                <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none">
+                  <defs>
+                    <linearGradient id="product-info-icon-gradient-mobile" x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse">
+                      <stop offset="0%" stop-color="#7e22ce" />
+                      <stop offset="100%" stop-color="#db2777" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="12" cy="12" r="8.5" stroke="url(#product-info-icon-gradient-mobile)" stroke-width="1.75" />
+                  <path d="M12 11v4" stroke="url(#product-info-icon-gradient-mobile)" stroke-width="1.75" stroke-linecap="round" />
+                  <circle cx="12" cy="8" r="1.2" fill="url(#product-info-icon-gradient-mobile)" />
+                </svg>
+              </span>
+              <div class="min-w-0">
+                <p class="info-box-content text-xs leading-snug text-slate-700">
+                  {@html infoBoxVisibleHtml}
+                </p>
+                {#if infoBoxPreview.truncated}
+                  <button
+                    type="button"
+                    class="gradient-outline-darkbtn mt-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold"
+                    on:click={() => (infoBoxExpanded = !infoBoxExpanded)}
+                  >
+                    {infoBoxExpanded ? 'Show less' : 'Show more'}
+                    {#if infoBoxExpanded}
+                      <ChevronUp size={12} />
+                    {:else}
+                      <ChevronDown size={12} />
+                    {/if}
+                  </button>
+                {/if}
+              </div>
+            </div>
+          </section>
+        {/if}
+
         {#if productTerms.length > 0}
           <section class="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
             <h2 class="text-base font-semibold uppercase tracking-wide text-slate-900">Product terms</h2>
@@ -852,182 +1109,8 @@
 
       </section>
 
-      <aside class="lg:sticky lg:top-24">
-        <div class="mb-3 flex items-center justify-center gap-2 text-center">
-          <span class="live-dot" aria-hidden="true"></span>
-          <p class="text-xs font-medium text-slate-600">
-            <span class="font-semibold text-slate-900">{usersOnPage}</span> users on this page
-          </p>
-        </div>
-        <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_14px_28px_rgba(15,23,42,0.1)]">
-          <div>
-            <p class="text-5xl font-black tracking-tight text-slate-900">
-              {selectedTerm
-                ? formatCurrency(selectedTerm.total_price, selectedVariantCurrency)
-                : '--'}
-            </p>
-          </div>
-          <div class="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
-            <span
-              class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-xs font-bold text-white"
-              aria-hidden="true"
-            >
-              !
-            </span>
-            <p class="text-xs font-medium text-slate-700">
-              Hurry up! Only <span class="font-semibold text-pink-500">{unitsLeft}</span> units left in this price.
-            </p>
-          </div>
-
-          {#if hasUpgradeSelection && upgradeOptions}
-            <section class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <h3 class="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">Upgrade option</h3>
-              {#if upgradeOptions.allow_new_account || upgradeOptions.allow_own_account}
-                <div class="mt-2 space-y-2">
-                  {#if upgradeOptions.allow_new_account}
-                    <button
-                      type="button"
-                      class={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
-                        upgradeSelectionType === 'upgrade_new_account'
-                          ? 'border-fuchsia-300 bg-white'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                      on:click={() => (upgradeSelectionType = 'upgrade_new_account')}
-                    >
-                      <span class="flex items-center gap-2.5">
-                        <span class={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                          upgradeSelectionType === 'upgrade_new_account'
-                            ? 'border-fuchsia-500'
-                            : 'border-slate-300'
-                        }`}>
-                          {#if upgradeSelectionType === 'upgrade_new_account'}
-                            <span class="h-2 w-2 rounded-full bg-fuchsia-500"></span>
-                          {/if}
-                        </span>
-                        <span class="min-w-0">
-                          <span class="block text-sm font-semibold text-slate-900">New account</span>
-                          <span class="mt-0.5 block text-xs leading-relaxed text-slate-600">
-                            We create and deliver a ready-to-use account for this product.
-                          </span>
-                        </span>
-                      </span>
-                    </button>
-                  {/if}
-                  {#if upgradeOptions.allow_own_account}
-                    <button
-                      type="button"
-                      class={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
-                        upgradeSelectionType === 'upgrade_own_account'
-                          ? 'border-fuchsia-300 bg-white'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                      on:click={() => (upgradeSelectionType = 'upgrade_own_account')}
-                    >
-                      <span class="flex items-center gap-2.5">
-                        <span class={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                          upgradeSelectionType === 'upgrade_own_account'
-                            ? 'border-fuchsia-500'
-                            : 'border-slate-300'
-                        }`}>
-                          {#if upgradeSelectionType === 'upgrade_own_account'}
-                            <span class="h-2 w-2 rounded-full bg-fuchsia-500"></span>
-                          {/if}
-                        </span>
-                        <span class="min-w-0">
-                          <span class="block text-sm font-semibold text-slate-900">Your account</span>
-                          <span class="mt-0.5 block text-xs leading-relaxed text-slate-600">
-                            {resolveOwnAccountCredentialRequirement(upgradeOptions) === 'email_only'
-                              ? 'We only require your account email after checkout.'
-                              : 'We require account email and password after checkout.'}
-                          </span>
-                        </span>
-                      </span>
-                    </button>
-                  {/if}
-                </div>
-              {:else}
-                <p class="mt-2 text-xs text-slate-600">
-                  This plan requires a manual upgrade workflow after purchase.
-                </p>
-              {/if}
-              {#if selectionError}
-                <p class="mt-2 text-xs font-medium text-red-600">{selectionError}</p>
-              {/if}
-            </section>
-          {/if}
-
-          <div class="mt-4 space-y-2 border-t border-slate-200 pt-4">
-            <button
-              type="button"
-              class="w-full rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-              on:click={() => selectedVariant && handleCheckoutNow(selectedVariant)}
-              disabled={!selectedVariant || !selectedTerm}
-            >
-              BUY NOW
-            </button>
-            <button
-              type="button"
-              class="gradient-outline-btn w-full rounded-xl px-4 py-3.5 text-sm font-semibold transition hover:brightness-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-              on:click={() => selectedVariant && handleAddToCart(selectedVariant)}
-              disabled={!selectedVariant || !selectedTerm}
-            >
-              <span class="gradient-text">ADD TO CART</span>
-            </button>
-          </div>
-
-          <div class="mt-4 space-y-2 border-t border-slate-200 pt-3">
-            <details class="group rounded-xl border border-slate-200 bg-white">
-              <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5">
-                <span class="flex items-center gap-2">
-                  <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-white">
-                    <Zap size={13} />
-                  </span>
-                  <span class="text-sm font-semibold text-slate-800">Delivery</span>
-                </span>
-                <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
-              </summary>
-              <p class="px-3 pb-3 text-xs text-slate-600">
-                Every order is manually fulfilled through a fair queue. Most orders are delivered
-                within 24 hours, and in rare cases delivery can take up to 72 hours. You can
-                request cancellation before fulfillment begins for a full refund.
-              </p>
-            </details>
-            <details class="group rounded-xl border border-slate-200 bg-white">
-              <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5">
-                <span class="flex items-center gap-2">
-                  <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-white">
-                    <Lock size={13} />
-                  </span>
-                  <span class="text-sm font-semibold text-slate-800">Money Back Guarantee</span>
-                </span>
-                <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
-              </summary>
-              <p class="px-3 pb-3 text-xs text-slate-600">
-                Shop with confidence. If an issue occurs with your purchase, our support team will
-                resolve it first, or provide a refund or replacement when eligible under our
-                <a href="/returns" class="underline underline-offset-2 text-slate-700 hover:text-slate-900">Refund Policy and Money Back Guarantee</a>
-                and
-                <a href="/terms" class="underline underline-offset-2 text-slate-700 hover:text-slate-900">Terms and Conditions</a>.
-              </p>
-            </details>
-            <details class="group rounded-xl border border-slate-200 bg-white">
-              <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5">
-                <span class="flex items-center gap-2">
-                  <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-white">
-                    <Shield size={13} />
-                  </span>
-                  <span class="text-sm font-semibold text-slate-800">Ultra Secure Checkout</span>
-                </span>
-                <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
-              </summary>
-              <p class="px-3 pb-3 text-xs text-slate-600">
-                Fast, seamless checkout secured with advanced encryption and continuous monitoring.
-                Backed by TrustGuard and anti-fraud partners, with extra verification for
-                PCI-DSS-secure payment methods.
-              </p>
-            </details>
-          </div>
-        </div>
+      <aside class="hidden sm:block lg:sticky lg:top-24">
+        {@render purchasePanel()}
       </aside>
     </div>
   </main>
@@ -1312,6 +1395,27 @@
   }
 
   @media (max-width: 640px) {
+    .platform-region-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+      border-radius: 1rem;
+      background: #ffffff;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    }
+
+    .platform-region-card {
+      min-width: 0;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .platform-region-card + .platform-region-card {
+      border-left: 1px solid #e2e8f0;
+    }
+
     .product-trust-row {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
