@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { PUBLIC_GA_MEASUREMENT_ID } from '$env/static/public';
 import type { User as AuthUser } from '$lib/types/auth.js';
 
 export type AnalyticsItem = {
@@ -30,8 +31,51 @@ type TikTokPixel = {
   identify: (params: Record<string, string>) => void;
 };
 
+const FALLBACK_GA_MEASUREMENT_ID = 'G-VQ0N792RNT';
+const GA_MEASUREMENT_ID =
+  PUBLIC_GA_MEASUREMENT_ID?.trim() || FALLBACK_GA_MEASUREMENT_ID;
+const GTAG_SCRIPT_ID = 'gtag-js';
+
+let googleAnalyticsInitialized = false;
+
+const loadExternalScript = (src: string, id: string): void => {
+  if (!browser) return;
+  if (document.getElementById(id)) return;
+
+  const script = document.createElement('script');
+  script.id = id;
+  script.async = true;
+  script.src = src;
+  document.head.appendChild(script);
+};
+
+export const initGoogleAnalytics = (): void => {
+  if (!browser) return;
+  if (googleAnalyticsInitialized) return;
+  if (!GA_MEASUREMENT_ID) return;
+
+  googleAnalyticsInitialized = true;
+  window.dataLayer = window.dataLayer || [];
+  window.gtag =
+    window.gtag ||
+    function gtag(...args: unknown[]) {
+      window.dataLayer?.push(args);
+    };
+
+  window.gtag('js', new Date());
+  window.gtag('config', GA_MEASUREMENT_ID, {
+    send_page_view: false
+  });
+
+  loadExternalScript(
+    `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(GA_MEASUREMENT_ID)}`,
+    GTAG_SCRIPT_ID
+  );
+};
+
 const getGtag = (): GtagFunction | null => {
   if (!browser) return null;
+  initGoogleAnalytics();
   if (typeof window.gtag === 'function') return window.gtag;
   return null;
 };
@@ -135,7 +179,14 @@ const cleanItems = (items: AnalyticsItem[]): AnalyticsItem[] =>
 const trackEvent = (eventName: string, params?: AnalyticsParams): void => {
   const gtag = getGtag();
   if (!gtag) return;
-  gtag('event', eventName, params ? cleanParams(params) : {});
+  gtag(
+    'event',
+    eventName,
+    cleanParams({
+      send_to: GA_MEASUREMENT_ID,
+      ...(params || {})
+    })
+  );
 };
 
 const trackTikTokEvent = (eventName: string, params?: AnalyticsParams): void => {
@@ -291,6 +342,14 @@ export const trackAddToCart = (
 ): void => {
   const normalizedItems = cleanItems(items);
   if (!normalizedItems.length) return;
+  trackEvent(
+    'add_to_cart',
+    cleanParams({
+      currency,
+      value,
+      items: normalizedItems
+    })
+  );
   const contents = buildTikTokContents(normalizedItems, 'product');
   if (!contents.length) return;
   trackTikTokEvent('AddToCart', {

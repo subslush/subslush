@@ -1,13 +1,11 @@
 <script lang="ts">
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-	import { afterUpdate, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { browser } from '$app/environment';
-	import { base } from '$app/paths';
 	import { auth } from '$lib/stores/auth';
 	import { credits } from '$lib/stores/credits';
 	import { initializeCurrency } from '$lib/stores/currency';
-	import { page } from '$app/stores';
 	import faviconIco from '$lib/assets/favicon.ico';
 	import favicon16 from '$lib/assets/favicon-16x16.png';
 	import favicon32 from '$lib/assets/favicon-32x32.png';
@@ -18,7 +16,7 @@
 	import CookieConsentBanner from '$lib/components/consent/CookieConsentBanner.svelte';
 	import { initThirdPartyTracking } from '$lib/consent/thirdParty.js';
 	import { initConsent } from '$lib/stores/consent.js';
-	import { identifyTikTokUser, trackPageView } from '$lib/utils/analytics.js';
+	import { identifyTikTokUser, initGoogleAnalytics, trackPageView } from '$lib/utils/analytics.js';
 	import { startCartPricingSync } from '$lib/utils/cartPricingSync.js';
 	import type { LayoutData } from './$types';
 	import '../app.css';
@@ -71,6 +69,7 @@
 
 	onMount(() => {
 		initConsent();
+		initGoogleAnalytics();
 		initThirdPartyTracking();
 		const stopCartPricingSync = startCartPricingSync();
 		document.documentElement.style.setProperty('--promo-banner-height', '0px');

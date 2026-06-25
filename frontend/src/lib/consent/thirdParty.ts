@@ -1,10 +1,7 @@
 import { browser } from '$app/environment';
-import { trackPageView } from '$lib/utils/analytics.js';
 
-const ANALYTICS_ID = 'G-VQ0N792RNT';
 const CRISP_WEBSITE_ID = '68cb8ad9-b3c8-43e9-9bac-0634574c7a83';
 
-let analyticsLoaded = false;
 let supportLoaded = false;
 let thirdPartyTrackingBound = false;
 
@@ -16,28 +13,6 @@ const loadScript = (src: string, id: string): void => {
   script.async = true;
   script.src = src;
   document.head.appendChild(script);
-};
-
-const initAnalytics = (): void => {
-  if (analyticsLoaded) return;
-  analyticsLoaded = true;
-
-  window.dataLayer = window.dataLayer || [];
-  window.gtag =
-    window.gtag ||
-    function (...args: unknown[]) {
-      window.dataLayer?.push(args);
-    };
-
-  window.gtag('js', new Date());
-  window.gtag('config', ANALYTICS_ID, { send_page_view: false });
-
-  loadScript(
-    `https://www.googletagmanager.com/gtag/js?id=${ANALYTICS_ID}`,
-    'gtag-js'
-  );
-
-  trackPageView(window.location.pathname + window.location.search, document.title);
 };
 
 const initCrisp = (): void => {
@@ -63,6 +38,5 @@ export const initThirdPartyTracking = (): void => {
   if (thirdPartyTrackingBound) return;
   thirdPartyTrackingBound = true;
 
-  initAnalytics();
   initCrisp();
 };
