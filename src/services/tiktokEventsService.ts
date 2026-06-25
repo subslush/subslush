@@ -160,17 +160,38 @@ export const buildTikTokProductProperties = (params: {
   contentCategory?: string | null;
   price?: number | null;
   brand?: string | null;
-}): Record<string, unknown> =>
-  cleanObject({
+}): Record<string, unknown> => {
+  const contentId = normalizeStringValue(params.contentId);
+  const contentType = 'product';
+  const contentName = normalizeStringValue(params.contentName);
+  const contentCategory = normalizeStringValue(params.contentCategory);
+  const price = params.price ?? undefined;
+
+  const contents = contentId
+    ? [
+        cleanObject({
+          content_id: contentId,
+          content_type: contentType,
+          content_name: contentName,
+          content_category: contentCategory,
+          price,
+          quantity: 1,
+        }),
+      ]
+    : undefined;
+
+  return cleanObject({
     value: params.value ?? undefined,
     currency: normalizeStringValue(params.currency)?.toUpperCase(),
-    content_id: normalizeStringValue(params.contentId),
-    content_type: 'product',
-    content_name: normalizeStringValue(params.contentName),
-    content_category: normalizeStringValue(params.contentCategory),
-    price: params.price ?? undefined,
+    content_id: contentId,
+    content_type: contentType,
+    content_name: contentName,
+    content_category: contentCategory,
+    price,
     brand: normalizeStringValue(params.brand),
+    contents,
   });
+};
 
 class TikTokEventsService {
   private readonly accessToken: string | null;
