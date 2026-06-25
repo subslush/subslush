@@ -187,9 +187,13 @@
 			return `name:${normalizeText(product.name)}`;
 		};
 
+		const scopedProducts = normalizedFallbackCategory
+			? products.filter((product) => hasCategoryKey(product, normalizedFallbackCategory))
+			: products;
+
 		const uniqueBySubCategory = (() => {
 			const bestByGroup = new Map<string, ProductListing>();
-			for (const product of products) {
+			for (const product of scopedProducts) {
 				const groupKey = getGroupKey(product);
 				const existing = bestByGroup.get(groupKey);
 				if (!existing || getComparablePrice(product) < getComparablePrice(existing)) {
