@@ -49,12 +49,21 @@ const loadExternalScript = (src: string, id: string): void => {
   document.head.appendChild(script);
 };
 
+const hasGoogleAnalyticsHeadTag = (): boolean =>
+  browser &&
+  document.getElementById(GTAG_SCRIPT_ID) !== null &&
+  typeof window.gtag === 'function';
+
 export const initGoogleAnalytics = (): void => {
   if (!browser) return;
   if (googleAnalyticsInitialized) return;
   if (!GA_MEASUREMENT_ID) return;
 
   googleAnalyticsInitialized = true;
+  if (hasGoogleAnalyticsHeadTag()) {
+    return;
+  }
+
   window.dataLayer = window.dataLayer || [];
   window.gtag =
     window.gtag ||

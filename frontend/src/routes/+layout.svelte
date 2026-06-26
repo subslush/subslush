@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { browser } from '$app/environment';
+	import { PUBLIC_GA_MEASUREMENT_ID } from '$env/static/public';
 	import { auth } from '$lib/stores/auth';
 	import { credits } from '$lib/stores/credits';
 	import { initializeCurrency } from '$lib/stores/currency';
@@ -22,6 +23,20 @@
 	import '../app.css';
 
 	export let data: LayoutData;
+
+	const FALLBACK_GA_MEASUREMENT_ID = 'G-VQ0N792RNT';
+	const normalizeGoogleAnalyticsId = (value?: string): string => {
+		const normalized = value?.trim() || FALLBACK_GA_MEASUREMENT_ID;
+		return /^G-[A-Z0-9]+$/i.test(normalized) ? normalized : FALLBACK_GA_MEASUREMENT_ID;
+	};
+	const gaMeasurementId = normalizeGoogleAnalyticsId(PUBLIC_GA_MEASUREMENT_ID);
+	const gaScriptSrc = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaMeasurementId)}`;
+	const gaBootstrapScript = `
+		window.dataLayer = window.dataLayer || [];
+		window.gtag = window.gtag || function gtag(){window.dataLayer.push(arguments);}
+		window.gtag('js', new Date());
+		window.gtag('config', '${gaMeasurementId}', { send_page_view: false });
+	`;
 
 	const queryClient = new QueryClient({
 		defaultOptions: {
@@ -107,6 +122,8 @@
 	<meta name="theme-color" content="#0F172A" />
 	<meta name="application-name" content="SubSlush" />
 	<meta name="apple-mobile-web-app-title" content="SubSlush" />
+	<script async id="gtag-js" src={gaScriptSrc}></script>
+	{@html `<script>${gaBootstrapScript}</script>`}
 	<script>
 		!function (w, d, t) {
 			w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(
