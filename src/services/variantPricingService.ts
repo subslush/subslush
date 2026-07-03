@@ -1,5 +1,6 @@
 import { catalogService } from './catalogService';
 import { normalizeCurrencyCode } from '../utils/currency';
+import { fxDisplayPricingService } from './fx/fxDisplayPricingService';
 import {
   computeTermPricing,
   computeFixedTermPricing,
@@ -64,11 +65,42 @@ export async function resolveVariantPricing(params: {
       return { ok: false, error: 'term_unavailable' };
     }
 
-    const price = await catalogService.getCurrentPriceForCurrency({
+    let price = await catalogService.getCurrentPriceForCurrency({
       variantId: params.variantId,
       currency: normalizedCurrency,
       ...(params.atDate ? { atDate: params.atDate } : {}),
     });
+    if (!price && normalizedCurrency !== 'USD') {
+      const usdPrice = await catalogService.getCurrentPriceForCurrency({
+        variantId: params.variantId,
+        currency: 'USD',
+        ...(params.atDate ? { atDate: params.atDate } : {}),
+      });
+      const usdPriceCents = usdPrice
+        ? Number(usdPrice.price_cents)
+        : Number.NaN;
+      if (usdPrice && Number.isInteger(usdPriceCents) && usdPriceCents >= 0) {
+        const convertedPrice =
+          await fxDisplayPricingService.convertUsdCentsToDisplayCurrency({
+            usdCents: usdPriceCents,
+            currency: normalizedCurrency,
+          });
+        if (convertedPrice) {
+          price = {
+            ...usdPrice,
+            price_cents: convertedPrice.priceCents,
+            currency: convertedPrice.currency,
+            metadata: {
+              ...(usdPrice?.metadata || {}),
+              ...convertedPrice.metadata,
+              source: 'price_history_usd_fx_fallback',
+              base_currency: 'USD',
+              base_price_cents: usdPriceCents,
+            },
+          };
+        }
+      }
+    }
     if (!price) {
       return { ok: false, error: 'price_unavailable' };
     }
@@ -165,7 +197,29 @@ export async function resolveVariantPricing(params: {
       catalog_mode: 'fixed_product',
       product_id: product.id,
     };
+  } else if (fixedPriceCurrency === 'USD') {
+    const convertedPrice =
+      await fxDisplayPricingService.convertUsdCentsToDisplayCurrency({
+        usdCents: fixedPriceCents,
+        currency: normalizedCurrency,
+      });
+    if (convertedPrice) {
+      resolvedPriceCents = convertedPrice.priceCents;
+      resolvedCurrency = convertedPrice.currency;
+      resolvedPriceMetadata = {
+        ...convertedPrice.metadata,
+        source: 'products.fixed_price_fx_fallback',
+        catalog_mode: 'fixed_product',
+        product_id: product.id,
+        base_currency: fixedPriceCurrency,
+        base_price_cents: fixedPriceCents,
+      };
+    }
   } else {
+    return { ok: false, error: 'price_unavailable' };
+  }
+
+  if (!Number.isInteger(resolvedPriceCents) || !resolvedCurrency) {
     return { ok: false, error: 'price_unavailable' };
   }
 

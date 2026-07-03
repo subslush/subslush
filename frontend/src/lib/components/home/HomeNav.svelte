@@ -687,38 +687,34 @@
 			return staticFallbackLinks;
 		}
 
-		const bySlug = new Map<string, ProductListing>();
+		const bySubCategory = new Map<string, ProductListing>();
 		for (const product of effectiveCatalogProducts) {
 			if (!productBelongsToCategory(product, categoryKey)) continue;
-			const normalizedSlug = normalizeText(product.slug);
-			if (!normalizedSlug) continue;
-			const existing = bySlug.get(normalizedSlug);
+			const normalizedSubCategory = normalizeText(product.sub_category);
+			if (!normalizedSubCategory) continue;
+			const existing = bySubCategory.get(normalizedSubCategory);
 			if (!existing) {
-				bySlug.set(normalizedSlug, product);
+				bySubCategory.set(normalizedSubCategory, product);
 				continue;
 			}
 			const existingPrice = Number(existing.from_price);
 			const nextPrice = Number(product.from_price);
-			if (!Number.isFinite(existingPrice) || nextPrice < existingPrice) {
-				bySlug.set(normalizedSlug, product);
+			const existingTerm = Number(existing.from_term_months) || Number.POSITIVE_INFINITY;
+			const nextTerm = Number(product.from_term_months) || Number.POSITIVE_INFINITY;
+			if (
+				!Number.isFinite(existingPrice) ||
+				nextPrice < existingPrice ||
+				(nextPrice === existingPrice && nextTerm < existingTerm)
+			) {
+				bySubCategory.set(normalizedSubCategory, product);
 			}
 		}
 
-		const products = Array.from(bySlug.values()).sort((a, b) => {
-			const subCategoryCompare = normalizeText(a.sub_category).localeCompare(
-				normalizeText(b.sub_category)
-			);
-			if (subCategoryCompare !== 0) return subCategoryCompare;
-
-			const nameCompare = (a.name || '').localeCompare(b.name || '', undefined, {
+		const products = Array.from(bySubCategory.values()).sort((a, b) => {
+			const subCategoryCompare = (a.sub_category || '').localeCompare(b.sub_category || '', undefined, {
 				sensitivity: 'base'
 			});
-			if (nameCompare !== 0) return nameCompare;
-
-			const termCompare =
-				(Number(a.from_term_months) || Number.POSITIVE_INFINITY) -
-				(Number(b.from_term_months) || Number.POSITIVE_INFINITY);
-			if (termCompare !== 0) return termCompare;
+			if (subCategoryCompare !== 0) return subCategoryCompare;
 
 			return (a.slug || '').localeCompare(b.slug || '');
 		});
@@ -728,10 +724,9 @@
 		}
 
 		return products.map((product) => ({
-			label: product.name,
-			href: `/browse/products/${encodeURIComponent(product.slug)}`,
-			slug: product.slug,
-			force_product_slug: true
+			label: product.sub_category || product.name,
+			href: resolveSubCategoryHref(product, categoryKey) || staticCategory?.href || '/browse',
+			slug: product.slug
 		}));
 	};
 
@@ -803,11 +798,11 @@
 		activeOfferProduct,
 		activePopularLink?.href || activeMegaCategory?.featured.href,
 		activeMegaCategory?.key,
-		{ forceProductSlug: Boolean(activePopularLink?.force_product_slug || activePopularLink?.slug) }
+		{ forceProductSlug: Boolean(activePopularLink?.force_product_slug) }
 	);
 	$: activeOfferTitle =
-		activeOfferProduct?.name ||
 		activePopularLink?.label ||
+		activeOfferProduct?.name ||
 		activeMegaCategory?.featured.title ||
 		'Featured product';
 	$: activeOfferPriceLabel = resolveOfferPriceLabel(activeOfferProduct);
@@ -1489,14 +1484,18 @@
 													link,
 													activeMegaCategory?.key
 												)}
+												{@const linkOfferImage = resolveOfferImage(
+													linkProduct,
+													activeMegaCategory?.key
+												)}
+												{@const linkNeedsDarkTile = shouldContainOfferLogoInTile(linkProduct)}
+												{@const linkPriceLabel = resolveOfferPriceLabel(linkProduct)}
 												{@const linkHref = resolveOfferHref(
 													linkProduct,
 													link.href,
 													activeMegaCategory?.key,
 													{
-														forceProductSlug: Boolean(
-															link.force_product_slug || link.slug
-														)
+														forceProductSlug: Boolean(link.force_product_slug)
 													}
 												)}
 												<a
@@ -1506,7 +1505,36 @@
 													on:focus={() => setActivePopularItem(linkIndex)}
 													on:click={closeMegaMenuImmediately}
 												>
-													{link.label}
+													<span class={`mega-sub-thumb ${linkNeedsDarkTile ? 'is-dark' : ''}`}>
+														{#if linkOfferImage.kind === 'picture'}
+															<ResponsiveImage
+																image={linkOfferImage.value}
+																alt={link.label}
+																sizes="48px"
+																pictureClass="mega-sub-thumb-picture mega-sub-thumb-picture--contain"
+																imgClass="mega-sub-thumb-image mega-sub-thumb-image--contain"
+																loading="lazy"
+																decoding="async"
+															/>
+														{:else}
+															<img
+																src={linkOfferImage.value}
+																alt={link.label}
+																class="mega-sub-thumb-image"
+																loading="lazy"
+															/>
+														{/if}
+													</span>
+													<span class="mega-sub-copy">
+														<span class="mega-sub-title">{link.label}</span>
+														<span class="mega-sub-price">
+															{#if linkPriceLabel}
+																From {linkPriceLabel}/month
+															{:else}
+																View products
+															{/if}
+														</span>
+													</span>
 												</a>
 												{/each}
 											{:else}
@@ -2236,29 +2264,99 @@
 	}
 
 	.mega-sub-link {
-		display: block;
-		border-radius: 0.4rem;
-		padding: 0.5rem 0.14rem;
-		font-size: 0.98rem;
-		font-weight: 500;
+		display: flex;
+		align-items: center;
+		gap: 0.68rem;
+		min-height: 4rem;
+		border: 1px solid transparent;
+		border-radius: 0.72rem;
+		padding: 0.48rem 0.56rem;
 		color: #1f2937;
 		transition:
 			background-color 120ms ease,
-			color 120ms ease,
-			padding 120ms ease;
-		line-height: 1.25;
+			border-color 120ms ease,
+			box-shadow 120ms ease;
 	}
 
 	.mega-sub-link:hover {
-		color: #111827;
+		border-color: #e2e8f0;
+		background: #f8fafc;
 	}
 
 	.mega-sub-link.is-highlighted {
-		background: linear-gradient(90deg, #7e22ce 0%, #db2777 100%);
-		border-radius: 9999px;
-		color: #ffffff;
-		padding-left: 0.68rem;
-		padding-right: 0.68rem;
+		border-color: rgba(219, 39, 119, 0.24);
+		background: linear-gradient(90deg, rgba(126, 34, 206, 0.08), rgba(219, 39, 119, 0.08));
+		box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+	}
+
+	.mega-sub-thumb {
+		display: flex;
+		width: 3rem;
+		height: 3rem;
+		flex: 0 0 3rem;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+		border-radius: 0.68rem;
+		background: #ffffff;
+		box-shadow: inset 0 0 0 1px rgba(226, 232, 240, 0.9);
+	}
+
+	.mega-sub-thumb.is-dark {
+		background: #020617;
+	}
+
+	.mega-sub-thumb-picture {
+		display: block;
+		width: 100%;
+		height: 100%;
+	}
+
+	.mega-sub-thumb-picture--contain {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.42rem;
+	}
+
+	.mega-sub-thumb-image {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.mega-sub-thumb-image--contain {
+		width: auto;
+		height: auto;
+		max-width: 100%;
+		max-height: 100%;
+		object-fit: contain;
+	}
+
+	.mega-sub-copy {
+		display: grid;
+		min-width: 0;
+		gap: 0.16rem;
+	}
+
+	.mega-sub-title {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 0.96rem;
+		font-weight: 700;
+		line-height: 1.18;
+		color: #0f172a;
+	}
+
+	.mega-sub-price {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 0.78rem;
+		font-weight: 700;
+		line-height: 1.2;
+		color: #db2777;
 	}
 
 	.mega-sub-empty {

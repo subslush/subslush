@@ -1,5 +1,4 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { randomInt } from 'crypto';
 import { subscriptionService } from '../services/subscriptionService';
 import { serviceHandlerRegistry } from '../services/handlers';
 import { creditService } from '../services/creditService';
@@ -63,7 +62,7 @@ import {
   computeEffectiveMonthlyCents,
   computeTermPricing,
 } from '../utils/termPricing';
-import { redisClient } from '../config/redis';
+import { fxDisplayPricingService } from '../services/fx/fxDisplayPricingService';
 
 // Rate limiting handlers (fixes plugin encapsulation issues)
 const subscriptionQueryRateLimit = createRateLimitHandler({
@@ -456,15 +455,6 @@ const CATALOG_TERMS_UNAVAILABLE_TASK_TYPE = 'support';
 const CATALOG_TERMS_UNAVAILABLE_TASK_PRIORITY: AdminTaskPriority = 'high';
 const CATALOG_TERMS_UNAVAILABLE_DUE_HOURS = 2;
 const TERM_LOOKUP_RETRY_DELAY_MS = 150;
-const USERS_ON_PAGE_MIN = 12;
-const USERS_ON_PAGE_MAX = 39;
-const USERS_ON_PAGE_WINDOW_MS = 15 * 60 * 1000;
-const UNITS_LEFT_MIN = 6;
-const UNITS_LEFT_MAX = 18;
-const UNITS_LEFT_STEP = 3;
-const UNITS_LEFT_STEP_WINDOW_MS = 3 * 60 * 60 * 1000;
-const UNITS_LEFT_CYCLE_MS = 24 * 60 * 60 * 1000;
-const UNITS_LEFT_REDIS_PREFIX = 'browse:units_left:';
 
 function calculateEndDate(durationMonths: number): Date {
   const now = new Date();
@@ -563,6 +553,154 @@ function readMetadataInteger(
   return null;
 }
 
+function readComparisonPriceCurrency(
+  metadata: Record<string, unknown> | null | undefined
+): SupportedCurrency {
+  return (
+    normalizeCurrencyCode(
+      readMetadataString(metadata, [
+        'comparison_price_currency',
+        'comparisonPriceCurrency',
+        'compare_at_price_currency',
+        'compareAtPriceCurrency',
+      ])
+    ) || 'USD'
+  );
+}
+
+async function resolveDisplayComparisonPriceCents(params: {
+  metadata: Record<string, unknown> | null | undefined;
+  displayCurrency: string;
+}): Promise<number | null> {
+  const comparisonPriceCents = readMetadataInteger(params.metadata, [
+    'comparison_price_cents',
+    'comparisonPriceCents',
+    'compare_at_price_cents',
+    'compareAtPriceCents',
+  ]);
+  if (comparisonPriceCents === null) {
+    return null;
+  }
+
+  const displayCurrency = normalizeCurrencyCode(params.displayCurrency);
+  const comparisonCurrency = readComparisonPriceCurrency(params.metadata);
+  if (!displayCurrency) {
+    return null;
+  }
+  if (comparisonCurrency === displayCurrency) {
+    return comparisonPriceCents;
+  }
+  if (comparisonCurrency !== 'USD') {
+    return null;
+  }
+
+  const converted =
+    await fxDisplayPricingService.convertUsdCentsToDisplayCurrency({
+      usdCents: comparisonPriceCents,
+      currency: displayCurrency,
+    });
+  return converted?.priceCents ?? null;
+}
+
+async function resolveFixedProductDisplayPrice(params: {
+  fixedPriceCents: number;
+  fixedPriceCurrency: string | null;
+  currentFixedPriceCents: number;
+  currentFixedPriceCurrency: string | null;
+  preferredCurrency: SupportedCurrency;
+}): Promise<{ priceCents: number; currency: SupportedCurrency } | null> {
+  if (
+    Number.isInteger(params.currentFixedPriceCents) &&
+    params.currentFixedPriceCents >= 0 &&
+    params.currentFixedPriceCurrency === params.preferredCurrency
+  ) {
+    return {
+      priceCents: params.currentFixedPriceCents,
+      currency: params.currentFixedPriceCurrency,
+    };
+  }
+
+  if (params.fixedPriceCurrency === params.preferredCurrency) {
+    return {
+      priceCents: params.fixedPriceCents,
+      currency: params.fixedPriceCurrency,
+    };
+  }
+
+  if (params.fixedPriceCurrency !== 'USD') {
+    return null;
+  }
+
+  const converted =
+    await fxDisplayPricingService.convertUsdCentsToDisplayCurrency({
+      usdCents: params.fixedPriceCents,
+      currency: params.preferredCurrency,
+    });
+  if (!converted) {
+    return null;
+  }
+
+  return {
+    priceCents: converted.priceCents,
+    currency: converted.currency,
+  };
+}
+
+async function resolveVariantDisplayPrice(params: {
+  currentPrice: PriceHistory | null;
+  fallbackUsdPrice: PriceHistory | null;
+  preferredCurrency: SupportedCurrency;
+}): Promise<{ priceCents: number; currency: SupportedCurrency } | null> {
+  const currentPriceCents = params.currentPrice
+    ? Number(params.currentPrice.price_cents)
+    : Number.NaN;
+  const currentPriceCurrency = normalizeCurrencyCode(
+    params.currentPrice?.currency
+  );
+  if (
+    Number.isInteger(currentPriceCents) &&
+    currentPriceCents >= 0 &&
+    currentPriceCurrency === params.preferredCurrency
+  ) {
+    return {
+      priceCents: currentPriceCents,
+      currency: currentPriceCurrency,
+    };
+  }
+
+  if (params.preferredCurrency === 'USD') {
+    return null;
+  }
+
+  const usdPriceCents = params.fallbackUsdPrice
+    ? Number(params.fallbackUsdPrice.price_cents)
+    : Number.NaN;
+  const usdPriceCurrency = normalizeCurrencyCode(
+    params.fallbackUsdPrice?.currency
+  );
+  if (
+    !Number.isInteger(usdPriceCents) ||
+    usdPriceCents < 0 ||
+    usdPriceCurrency !== 'USD'
+  ) {
+    return null;
+  }
+
+  const converted =
+    await fxDisplayPricingService.convertUsdCentsToDisplayCurrency({
+      usdCents: usdPriceCents,
+      currency: params.preferredCurrency,
+    });
+  if (!converted) {
+    return null;
+  }
+
+  return {
+    priceCents: converted.priceCents,
+    currency: converted.currency,
+  };
+}
+
 function readMetadataList(
   metadata: Record<string, unknown> | null | undefined,
   keys: string[]
@@ -608,132 +746,6 @@ function readMetadataBoolean(
     }
   }
   return false;
-}
-
-function hashString(value: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function seededInt(seed: string, min: number, max: number): number {
-  const range = max - min + 1;
-  return min + (hashString(seed) % range);
-}
-
-function resolveUsersOnPage(productSeed: string, nowMs: number): number {
-  const window = Math.floor(nowMs / USERS_ON_PAGE_WINDOW_MS);
-  return seededInt(
-    `${productSeed}|users|${window}`,
-    USERS_ON_PAGE_MIN,
-    USERS_ON_PAGE_MAX
-  );
-}
-
-type UnitsLeftState = {
-  initialUnits: number;
-  cycleStartedAtMs: number;
-};
-
-function serializeUnitsLeftState(state: UnitsLeftState): string {
-  return `${state.initialUnits}:${state.cycleStartedAtMs}`;
-}
-
-function parseUnitsLeftState(raw: string | null): UnitsLeftState | null {
-  if (!raw) {
-    return null;
-  }
-
-  const [initialRaw, startedRaw] = raw.split(':');
-  const initialUnits = Number(initialRaw);
-  const cycleStartedAtMs = Number(startedRaw);
-  if (
-    !Number.isInteger(initialUnits) ||
-    initialUnits < UNITS_LEFT_MIN ||
-    initialUnits > UNITS_LEFT_MAX ||
-    !Number.isFinite(cycleStartedAtMs) ||
-    cycleStartedAtMs <= 0
-  ) {
-    return null;
-  }
-
-  return { initialUnits, cycleStartedAtMs };
-}
-
-function computeUnitsLeft(state: UnitsLeftState, nowMs: number): number {
-  const elapsedMs = Math.max(0, nowMs - state.cycleStartedAtMs);
-  const elapsedSteps = Math.floor(elapsedMs / UNITS_LEFT_STEP_WINDOW_MS);
-  const floorUnits = ((state.initialUnits - 1) % UNITS_LEFT_STEP) + 1;
-  return Math.max(
-    floorUnits,
-    state.initialUnits - elapsedSteps * UNITS_LEFT_STEP
-  );
-}
-
-function computeUnitsLeftDeterministicFallback(
-  productSeed: string,
-  nowMs: number
-): number {
-  const cycleWindow = Math.floor(nowMs / UNITS_LEFT_CYCLE_MS);
-  const cycleStartedAtMs = cycleWindow * UNITS_LEFT_CYCLE_MS;
-  const initialUnits = seededInt(
-    `${productSeed}|units|${cycleWindow}`,
-    UNITS_LEFT_MIN,
-    UNITS_LEFT_MAX
-  );
-  return computeUnitsLeft({ initialUnits, cycleStartedAtMs }, nowMs);
-}
-
-async function resolveUnitsLeft(
-  productSeed: string,
-  nowMs: number
-): Promise<number> {
-  if (!redisClient.isConnected()) {
-    return computeUnitsLeftDeterministicFallback(productSeed, nowMs);
-  }
-
-  try {
-    const client = redisClient.getClient();
-    const key = `${UNITS_LEFT_REDIS_PREFIX}${productSeed}`;
-    const existing = parseUnitsLeftState(await client.get(key));
-
-    if (existing) {
-      return computeUnitsLeft(existing, nowMs);
-    }
-
-    const nextState: UnitsLeftState = {
-      initialUnits: randomInt(UNITS_LEFT_MIN, UNITS_LEFT_MAX + 1),
-      cycleStartedAtMs: nowMs,
-    };
-    const ttlSeconds = Math.ceil(UNITS_LEFT_CYCLE_MS / 1000);
-    const setResult = await client.set(
-      key,
-      serializeUnitsLeftState(nextState),
-      'EX',
-      ttlSeconds,
-      'NX'
-    );
-
-    if (setResult === 'OK') {
-      return computeUnitsLeft(nextState, nowMs);
-    }
-
-    const latest = parseUnitsLeftState(await client.get(key));
-    if (latest) {
-      return computeUnitsLeft(latest, nowMs);
-    }
-
-    return computeUnitsLeft(nextState, nowMs);
-  } catch (error) {
-    Logger.warn('Failed to resolve units left from Redis; using fallback', {
-      productSeed,
-      error,
-    });
-    return computeUnitsLeftDeterministicFallback(productSeed, nowMs);
-  }
 }
 
 function resolveHandlerPlan(
@@ -1027,18 +1039,28 @@ export async function subscriptionRoutes(
         ]);
         const variantIds = listings.map(listing => listing.variant.id);
         const fixedProductIds = fixedProducts.map(product => product.id);
-        const [currentPriceMap, fixedCurrentPriceMap, termLookup] =
-          await Promise.all([
-            catalogService.listCurrentPricesForCurrency({
-              variantIds,
-              currency: preferredCurrency,
-            }),
-            catalogService.listCurrentFixedProductPricesForCurrency({
-              productIds: fixedProductIds,
-              currency: preferredCurrency,
-            }),
-            listVariantTermsWithRetry(variantIds, true),
-          ]);
+        const [
+          currentPriceMap,
+          fallbackUsdPriceMap,
+          fixedCurrentPriceMap,
+          termLookup,
+        ] = await Promise.all([
+          catalogService.listCurrentPricesForCurrency({
+            variantIds,
+            currency: preferredCurrency,
+          }),
+          preferredCurrency === 'USD'
+            ? Promise.resolve(new Map<string, PriceHistory>())
+            : catalogService.listCurrentPricesForCurrency({
+                variantIds,
+                currency: 'USD',
+              }),
+          catalogService.listCurrentFixedProductPricesForCurrency({
+            productIds: fixedProductIds,
+            currency: preferredCurrency,
+          }),
+          listVariantTermsWithRetry(variantIds, true),
+        ]);
         const { termMap, retried: termLookupRetried } = termLookup;
         if (variantIds.length > 0 && termMap.size === 0) {
           Logger.error('Catalog term lookup returned no terms for listings', {
@@ -1105,6 +1127,10 @@ export async function subscriptionRoutes(
 
         for (const listing of listings) {
           const currentPrice = currentPriceMap.get(listing.variant.id) ?? null;
+          const fallbackUsdPrice =
+            preferredCurrency === 'USD'
+              ? currentPrice
+              : (fallbackUsdPriceMap.get(listing.variant.id) ?? null);
           const product = listing.product;
           const variant = listing.variant;
           const serviceType = product.service_type?.toLowerCase();
@@ -1167,9 +1193,12 @@ export async function subscriptionRoutes(
                 ? productFeatures
                 : handlerPlan?.features || [];
 
-          const priceCents = currentPrice
-            ? Number(currentPrice.price_cents)
-            : Number.NaN;
+          const resolvedPrice = await resolveVariantDisplayPrice({
+            currentPrice,
+            fallbackUsdPrice,
+            preferredCurrency,
+          });
+          const priceCents = resolvedPrice?.priceCents ?? Number.NaN;
           if (!Number.isFinite(priceCents)) {
             missingPriceTasks.push(
               ensureMissingPriceTask({
@@ -1182,9 +1211,7 @@ export async function subscriptionRoutes(
             continue;
           }
           const price = priceCents / 100;
-          const resolvedCurrency = normalizeCurrencyCode(
-            currentPrice?.currency
-          );
+          const resolvedCurrency = resolvedPrice?.currency ?? null;
           if (!resolvedCurrency) {
             missingPriceTasks.push(
               ensureMissingPriceTask({
@@ -1281,19 +1308,15 @@ export async function subscriptionRoutes(
             continue;
           }
 
-          let resolvedPriceCents = Number.NaN;
-          let resolvedCurrency: string | null = null;
-          if (
-            Number.isInteger(currentFixedPriceCents) &&
-            currentFixedPriceCents >= 0 &&
-            currentFixedPriceCurrency === preferredCurrency
-          ) {
-            resolvedPriceCents = currentFixedPriceCents;
-            resolvedCurrency = currentFixedPriceCurrency;
-          } else if (fixedPriceCurrency === preferredCurrency) {
-            resolvedPriceCents = fixedPriceCents;
-            resolvedCurrency = fixedPriceCurrency;
-          }
+          const resolvedPrice = await resolveFixedProductDisplayPrice({
+            fixedPriceCents,
+            fixedPriceCurrency,
+            currentFixedPriceCents,
+            currentFixedPriceCurrency,
+            preferredCurrency,
+          });
+          const resolvedPriceCents = resolvedPrice?.priceCents ?? Number.NaN;
+          const resolvedCurrency = resolvedPrice?.currency ?? null;
 
           if (!Number.isInteger(resolvedPriceCents) || !resolvedCurrency) {
             missingPriceTasks.push(
@@ -1652,18 +1675,28 @@ export async function subscriptionRoutes(
         ]);
         const variantIds = listings.map(listing => listing.variant.id);
         const fixedProductIds = fixedProducts.map(product => product.id);
-        const [currentPriceMap, fixedCurrentPriceMap, termLookup] =
-          await Promise.all([
-            catalogService.listCurrentPricesForCurrency({
-              variantIds,
-              currency: preferredCurrency,
-            }),
-            catalogService.listCurrentFixedProductPricesForCurrency({
-              productIds: fixedProductIds,
-              currency: preferredCurrency,
-            }),
-            listVariantTermsWithRetry(variantIds, true),
-          ]);
+        const [
+          currentPriceMap,
+          fallbackUsdPriceMap,
+          fixedCurrentPriceMap,
+          termLookup,
+        ] = await Promise.all([
+          catalogService.listCurrentPricesForCurrency({
+            variantIds,
+            currency: preferredCurrency,
+          }),
+          preferredCurrency === 'USD'
+            ? Promise.resolve(new Map<string, PriceHistory>())
+            : catalogService.listCurrentPricesForCurrency({
+                variantIds,
+                currency: 'USD',
+              }),
+          catalogService.listCurrentFixedProductPricesForCurrency({
+            productIds: fixedProductIds,
+            currency: preferredCurrency,
+          }),
+          listVariantTermsWithRetry(variantIds, true),
+        ]);
         const { termMap, retried: termLookupRetried } = termLookup;
         if (variantIds.length > 0 && termMap.size === 0) {
           Logger.error(
@@ -1752,9 +1785,16 @@ export async function subscriptionRoutes(
           }
 
           const currentPrice = currentPriceMap.get(variant.id) ?? null;
-          const priceCents = currentPrice
-            ? Number(currentPrice.price_cents)
-            : Number.NaN;
+          const fallbackUsdPrice =
+            preferredCurrency === 'USD'
+              ? currentPrice
+              : (fallbackUsdPriceMap.get(variant.id) ?? null);
+          const resolvedPrice = await resolveVariantDisplayPrice({
+            currentPrice,
+            fallbackUsdPrice,
+            preferredCurrency,
+          });
+          const priceCents = resolvedPrice?.priceCents ?? Number.NaN;
           if (!Number.isFinite(priceCents)) {
             missingPriceTasks.push(
               ensureMissingPriceTask({
@@ -1767,7 +1807,7 @@ export async function subscriptionRoutes(
             continue;
           }
 
-          const currency = normalizeCurrencyCode(currentPrice?.currency);
+          const currency = resolvedPrice?.currency ?? null;
           if (!currency) {
             missingPriceTasks.push(
               ensureMissingPriceTask({
@@ -1830,12 +1870,12 @@ export async function subscriptionRoutes(
             'region_name',
             'regionName',
           ]);
-          const comparisonPriceCents = readMetadataInteger(product.metadata, [
-            'comparison_price_cents',
-            'comparisonPriceCents',
-            'compare_at_price_cents',
-            'compareAtPriceCents',
-          ]);
+          const comparisonPriceCents = await resolveDisplayComparisonPriceCents(
+            {
+              metadata: product.metadata,
+              displayCurrency: currency,
+            }
+          );
           if (
             comparisonPriceCents !== null &&
             comparisonPriceCents > actualPriceCents &&
@@ -1898,19 +1938,15 @@ export async function subscriptionRoutes(
             continue;
           }
 
-          let resolvedPriceCents = Number.NaN;
-          let resolvedCurrency: string | null = null;
-          if (
-            Number.isInteger(currentFixedPriceCents) &&
-            currentFixedPriceCents >= 0 &&
-            currentFixedPriceCurrency === preferredCurrency
-          ) {
-            resolvedPriceCents = currentFixedPriceCents;
-            resolvedCurrency = currentFixedPriceCurrency;
-          } else if (fixedPriceCurrency === preferredCurrency) {
-            resolvedPriceCents = fixedPriceCents;
-            resolvedCurrency = fixedPriceCurrency;
-          }
+          const resolvedPrice = await resolveFixedProductDisplayPrice({
+            fixedPriceCents,
+            fixedPriceCurrency,
+            currentFixedPriceCents,
+            currentFixedPriceCurrency,
+            preferredCurrency,
+          });
+          const resolvedPriceCents = resolvedPrice?.priceCents ?? Number.NaN;
+          const resolvedCurrency = resolvedPrice?.currency ?? null;
 
           if (!Number.isInteger(resolvedPriceCents) || !resolvedCurrency) {
             if (serviceType) {
@@ -1944,20 +1980,20 @@ export async function subscriptionRoutes(
             'region_name',
             'regionName',
           ]);
-          const comparisonPriceCents = readMetadataInteger(product.metadata, [
-            'comparison_price_cents',
-            'comparisonPriceCents',
-            'compare_at_price_cents',
-            'compareAtPriceCents',
-          ]);
+          const comparisonPriceCents = await resolveDisplayComparisonPriceCents(
+            {
+              metadata: product.metadata,
+              displayCurrency: resolvedCurrency,
+            }
+          );
           let maxDiscountPercent: number | null = null;
           if (
             comparisonPriceCents !== null &&
-            comparisonPriceCents > fixedPriceCents &&
-            fixedPriceCents > 0
+            comparisonPriceCents > resolvedPriceCents &&
+            resolvedPriceCents > 0
           ) {
             const metadataDiscountPercent = Math.round(
-              ((comparisonPriceCents - fixedPriceCents) /
+              ((comparisonPriceCents - resolvedPriceCents) /
                 comparisonPriceCents) *
                 100
             );
@@ -2076,11 +2112,6 @@ export async function subscriptionRoutes(
         if (!product || product.status !== 'active') {
           return ErrorResponses.notFound(reply, 'Product not found');
         }
-        const nowMs = Date.now();
-        const productSeed = product.id || product.slug || slug;
-        const usersOnPage = resolveUsersOnPage(productSeed, nowMs);
-        const unitsLeft = await resolveUnitsLeft(productSeed, nowMs);
-
         const variants = await catalogService.listVariants(product.id, true);
         const termsConditions = readMetadataList(product.metadata, [
           'terms_conditions',
@@ -2162,19 +2193,15 @@ export async function subscriptionRoutes(
             return ErrorResponses.notFound(reply, 'Product not available');
           }
 
-          let resolvedPriceCents = Number.NaN;
-          let resolvedCurrency: string | null = null;
-          if (
-            Number.isInteger(currentFixedPriceCents) &&
-            currentFixedPriceCents >= 0 &&
-            currentFixedPriceCurrency === preferredCurrency
-          ) {
-            resolvedPriceCents = currentFixedPriceCents;
-            resolvedCurrency = currentFixedPriceCurrency;
-          } else if (fixedPriceCurrency === preferredCurrency) {
-            resolvedPriceCents = fixedPriceCents;
-            resolvedCurrency = fixedPriceCurrency;
-          }
+          const resolvedPrice = await resolveFixedProductDisplayPrice({
+            fixedPriceCents,
+            fixedPriceCurrency,
+            currentFixedPriceCents,
+            currentFixedPriceCurrency,
+            preferredCurrency,
+          });
+          const resolvedPriceCents = resolvedPrice?.priceCents ?? Number.NaN;
+          const resolvedCurrency = resolvedPrice?.currency ?? null;
 
           if (!Number.isInteger(resolvedPriceCents) || !resolvedCurrency) {
             if (serviceType) {
@@ -2241,19 +2268,24 @@ export async function subscriptionRoutes(
               },
             ],
             country_code: requestCountryCode || null,
-            users_on_page: usersOnPage,
-            units_left: unitsLeft,
           });
         }
 
         const variantIds = variants.map(variant => variant.id);
-        const [currentPriceMap, termMap] = await Promise.all([
-          catalogService.listCurrentPricesForCurrency({
-            variantIds,
-            currency: preferredCurrency,
-          }),
-          catalogService.listVariantTermsForVariants(variantIds, true),
-        ]);
+        const [currentPriceMap, fallbackUsdPriceMap, termMap] =
+          await Promise.all([
+            catalogService.listCurrentPricesForCurrency({
+              variantIds,
+              currency: preferredCurrency,
+            }),
+            preferredCurrency === 'USD'
+              ? Promise.resolve(new Map<string, PriceHistory>())
+              : catalogService.listCurrentPricesForCurrency({
+                  variantIds,
+                  currency: 'USD',
+                }),
+            catalogService.listVariantTermsForVariants(variantIds, true),
+          ]);
 
         const variantResponses = [];
 
@@ -2269,14 +2301,21 @@ export async function subscriptionRoutes(
           }
 
           const currentPrice = currentPriceMap.get(variant.id) ?? null;
-          const priceCents = currentPrice
-            ? Number(currentPrice.price_cents)
-            : Number.NaN;
+          const fallbackUsdPrice =
+            preferredCurrency === 'USD'
+              ? currentPrice
+              : (fallbackUsdPriceMap.get(variant.id) ?? null);
+          const resolvedPrice = await resolveVariantDisplayPrice({
+            currentPrice,
+            fallbackUsdPrice,
+            preferredCurrency,
+          });
+          const priceCents = resolvedPrice?.priceCents ?? Number.NaN;
           if (!Number.isFinite(priceCents)) {
             continue;
           }
 
-          const currency = normalizeCurrencyCode(currentPrice?.currency);
+          const currency = resolvedPrice?.currency ?? null;
           if (!currency) {
             continue;
           }
@@ -2356,8 +2395,6 @@ export async function subscriptionRoutes(
           },
           variants: variantResponses,
           country_code: requestCountryCode || null,
-          users_on_page: usersOnPage,
-          units_left: unitsLeft,
         });
       } catch (error) {
         Logger.error('Failed to fetch product detail:', error);
