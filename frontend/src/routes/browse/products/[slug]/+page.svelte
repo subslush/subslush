@@ -411,8 +411,6 @@
   };
 
   $: visitorCountry = resolveCountryName(data.requestCountryCode);
-  $: usersOnPage = data.usersOnPage ?? 12;
-  $: unitsLeft = data.unitsLeft ?? 6;
 
   const resolveDefaultTerm = (variant: ProductVariantOption): ProductTermOption | null => {
     if (!Array.isArray(variant.term_options) || variant.term_options.length === 0) {
@@ -668,29 +666,12 @@
 
 {#snippet purchasePanel()}
   <div class="purchase-panel">
-    <div class="mb-3 flex items-center justify-center gap-2 text-center">
-      <span class="live-dot" aria-hidden="true"></span>
-      <p class="text-xs font-medium text-slate-600">
-        <span class="font-semibold text-slate-900">{usersOnPage}</span> users on this page
-      </p>
-    </div>
     <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_14px_28px_rgba(15,23,42,0.1)]">
       <div>
         <p class="text-5xl font-black tracking-tight text-slate-900">
           {selectedTerm
             ? formatCurrency(selectedTerm.total_price, selectedVariantCurrency)
             : '--'}
-        </p>
-      </div>
-      <div class="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
-        <span
-          class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-purple-600 to-pink-500 text-xs font-bold text-white"
-          aria-hidden="true"
-        >
-          !
-        </span>
-        <p class="text-xs font-medium text-slate-700">
-          Hurry up! Only <span class="font-semibold text-pink-500">{unitsLeft}</span> units left in this price.
         </p>
       </div>
 
@@ -836,9 +817,8 @@
             <span class="text-slate-400 transition group-open:rotate-180">⌄</span>
           </summary>
           <p class="px-3 pb-3 text-xs text-slate-600">
-            Fast, seamless checkout secured with advanced encryption and continuous monitoring.
-            Backed by TrustGuard and anti-fraud partners, with extra verification for
-            PCI-DSS-secure payment methods.
+            Payments are securely processed by our payment provider. Your card details never
+            touch our servers.
           </p>
         </details>
       </div>
@@ -868,7 +848,7 @@
     </div>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_23.5rem] lg:items-start">
-      <section class="space-y-6">
+      <section class="product-mobile-flow min-w-0 space-y-6">
         <article>
           <div class="grid gap-5 lg:grid-cols-[255px_minmax(0,1fr)] lg:items-center">
             <div class={`relative mx-auto flex aspect-square w-full max-w-[250px] items-center justify-center overflow-hidden rounded-3xl border border-slate-200 shadow-[0_20px_34px_rgba(15,23,42,0.12)] ${productLogoNeedsDarkTile ? 'bg-slate-950' : 'bg-white'}`}>
@@ -893,7 +873,7 @@
               {/if}
             </div>
 
-            <div>
+            <div class="min-w-0">
               <h1 class="text-3xl font-semibold tracking-tight text-slate-900 sm:text-[2.15rem]">
                 {product.name}
               </h1>
@@ -1012,7 +992,7 @@
         {/if}
 
         <section>
-          <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 class="text-2xl font-semibold tracking-tight text-slate-900">Description</h2>
             <button
               type="button"
@@ -1311,33 +1291,6 @@
 </div>
 
 <style>
-  .live-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 9999px;
-    background: #22c55e;
-    box-shadow: 0 0 0 rgba(34, 197, 94, 0.6);
-    animation: livePulse 1.8s ease-in-out infinite;
-  }
-
-  @keyframes livePulse {
-    0% {
-      opacity: 0.45;
-      transform: scale(0.95);
-      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
-    }
-    50% {
-      opacity: 1;
-      transform: scale(1);
-      box-shadow: 0 0 0 7px rgba(34, 197, 94, 0);
-    }
-    100% {
-      opacity: 0.45;
-      transform: scale(0.95);
-      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
-    }
-  }
-
   .gradient-outline-btn {
     border: 1px solid transparent;
     background:
@@ -1395,21 +1348,23 @@
   }
 
   @media (max-width: 640px) {
+    .product-mobile-flow {
+      width: min(100%, calc(100vw - 2rem), 22rem);
+      max-width: 100%;
+    }
+
+    .purchase-panel {
+      width: min(100%, calc(100vw - 2rem), 22rem);
+      max-width: 100%;
+    }
+
     .platform-region-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0;
-      overflow: hidden;
-      border: 1px solid #e2e8f0;
-      border-radius: 1rem;
-      background: #ffffff;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.75rem;
     }
 
     .platform-region-card {
       min-width: 0;
-      border: 0;
-      border-radius: 0;
-      box-shadow: none;
     }
 
     .platform-region-card + .platform-region-card {
@@ -1418,15 +1373,17 @@
 
     .product-trust-row {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 0.35rem;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      width: min(100%, calc(100vw - 2rem), 22rem);
+      max-width: 100%;
+      gap: 0.45rem;
     }
 
     .product-trust-pill {
       min-width: 0;
       justify-content: center;
-      padding: 0.22rem 0.28rem;
-      gap: 0.2rem;
+      padding: 0.35rem 0.5rem;
+      gap: 0.25rem;
       border-radius: 0.7rem;
     }
 
@@ -1437,9 +1394,14 @@
     }
 
     .product-trust-pill > span:last-child {
-      font-size: 0.56rem;
+      font-size: 0.62rem;
       line-height: 1.08;
       text-align: center;
+      overflow-wrap: anywhere;
+    }
+
+    .product-trust-pill:last-child {
+      grid-column: 1 / -1;
     }
   }
 </style>

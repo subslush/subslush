@@ -121,10 +121,6 @@ export interface BrowseEvents {
 export interface SavingsSpeedometerProps {
   currentSavings: number;
   maxSavings: number;
-  userSavingsData?: {
-    averageSavings: number;
-    comparisonCount: number;
-  };
 }
 
 export interface SubscriptionCardProps {

@@ -234,10 +234,6 @@ export interface ProductDetail {
   };
   variants: ProductVariantOption[];
   country_code?: string | null;
-  users_on_page?: number;
-  usersOnPage?: number;
-  units_left?: number;
-  unitsLeft?: number;
 }
 
 export interface SubscriptionsResponse {

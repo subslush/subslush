@@ -502,7 +502,7 @@
 	<title>SubSlush</title>
 	<meta
 		name="description"
-		content="Join 600+ users getting Spotify, Netflix, and 20+ products at a fraction of retail price. Money Back Guarantee. Verified accounts."
+		content="Premium digital subscriptions at lower prices with fast support and a money-back guarantee on every order."
 	/>
 </svelte:head>
 
@@ -564,31 +564,16 @@
 		</section>
 	{/each}
 
-	<!-- Explore banner -->
-	<section class="py-6 bg-white content-visibility-auto">
-		<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-			<div
-				class="rounded-2xl border border-gray-200 bg-gradient-to-r from-purple-50 via-white to-pink-50 p-6 sm:p-8 shadow-sm"
+	<!-- Catalog CTA -->
+	<section class="py-16 bg-white content-visibility-auto">
+		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+			<h2 class="text-base font-bold text-gray-900 sm:text-2xl">Explore the full catalog</h2>
+			<a
+				href="/browse"
+				class="mt-6 inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-700 focus-visible:ring-offset-2"
 			>
-				<div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-					<div>
-						<p class="text-xs font-semibold uppercase tracking-wide text-cyan-600">Discover more</p>
-						<h3 class="text-2xl font-bold text-gray-900 mt-2">
-							Explore all products &amp; categories
-						</h3>
-						<p class="text-sm text-gray-600 mt-1">
-							Browse streaming, AI, music, productivity, design, education, and fitness in one
-							place.
-						</p>
-					</div>
-					<a
-						href="/browse"
-						class="inline-flex items-center justify-center rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black"
-					>
-						Browse all products
-					</a>
-				</div>
-			</div>
+				Browse all products
+			</a>
 		</div>
 	</section>
 
@@ -597,17 +582,19 @@
 
 	<!-- Newsletter CTA -->
 	<div class="h-8 bg-white"></div>
-	<section class="py-8 bg-blue-100 content-visibility-auto">
+	<section class="py-8 bg-white content-visibility-auto">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center text-gray-900">
+			<div
+				class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 p-5 sm:p-6 text-white shadow-sm"
+			>
 				<div class="space-y-2 relative">
 					<h2 class="text-xl font-bold">Join our newsletter and enjoy 12% off</h2>
-					<p class="text-sm text-gray-700 max-w-2xl leading-snug">
+					<p class="text-sm text-white/90 max-w-2xl leading-snug">
 						Subscribe to get updates, confirm your subscription, and receive a discount code to use
 						instantly
 					</p>
 					<button
-						class="inline-flex items-center gap-2 text-sm font-semibold underline underline-offset-4 text-gray-800"
+						class="inline-flex items-center gap-2 text-sm font-semibold underline underline-offset-4 text-white/90 hover:text-white"
 						on:click={() => (showNewsletterDetails = !showNewsletterDetails)}
 						aria-expanded={showNewsletterDetails}
 					>
@@ -619,7 +606,7 @@
 					</button>
 					{#if showNewsletterDetails}
 						<div
-							class="absolute left-0 right-0 mt-2 text-xs text-gray-800 bg-white/90 border border-gray-200 rounded-lg p-3 leading-relaxed shadow"
+							class="absolute left-0 right-0 z-10 mt-2 text-xs text-gray-700 bg-white/95 border border-purple-100 rounded-lg p-3 leading-relaxed shadow"
 						>
 							By subscribing to the newsletter, you consent to SubSlush sending commercial
 							communications to your email, including personalized offers available on the platform.
@@ -631,17 +618,19 @@
 						</div>
 					{/if}
 				</div>
-				<div class="bg-white rounded-xl shadow-md p-4 flex flex-col gap-2">
+				<div
+					class="bg-white/95 rounded-lg border border-white/30 p-4 flex flex-col gap-2 shadow-sm"
+				>
 					<div class="flex flex-col sm:flex-row gap-3">
 						<div
-							class="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50"
+							class="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-white"
 						>
 							<Mail size={18} class="text-gray-500" />
 							<input
 								type="email"
 								id="newsletter-email"
 								placeholder="Enter your email"
-								class="flex-1 bg-transparent border-0 focus:outline-none text-sm text-gray-900"
+								class="flex-1 bg-transparent border-0 focus:outline-none text-sm text-gray-900 placeholder:text-gray-500"
 								bind:value={newsletterEmail}
 								on:keydown={handleNewsletterKeydown}
 								disabled={newsletterLoading}
@@ -649,7 +638,7 @@
 							/>
 						</div>
 						<button
-							class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm leading-tight font-semibold text-white bg-gradient-to-r from-purple-700 to-pink-600 shadow-sm hover:shadow-md transition min-h-0 sm:self-center"
+							class="inline-flex items-center justify-center h-9 px-4 rounded-md text-sm leading-tight font-semibold text-purple-700 bg-white shadow-sm transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-60 sm:self-center"
 							type="button"
 							on:click={handleNewsletterSubscribe}
 							disabled={newsletterLoading || !newsletterEmailValid}

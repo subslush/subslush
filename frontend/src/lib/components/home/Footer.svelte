@@ -1,6 +1,6 @@
 <script lang="ts">
 	import TrustBar from '$lib/components/TrustBar.svelte';
-	import { Instagram, Music2, Youtube, Twitter, MessageCircle, Twitch } from 'lucide-svelte';
+	import { Facebook, Instagram, Music2 } from 'lucide-svelte';
 	import { openCrispChat } from '$lib/consent/thirdParty.js';
 	import subslushLogoIcon from '$lib/assets/subslushlogos.webp';
 </script>
@@ -71,21 +71,6 @@
 						>
 					</li>
 					<li><a href="/returns" class="hover:text-white transition-colors">Refund policy</a></li>
-					<li>
-						<a href="/product-supplier-policy" class="hover:text-white transition-colors"
-							>Product and supplier policy</a
-						>
-					</li>
-					<li>
-						<a href="/acceptable-use" class="hover:text-white transition-colors"
-							>Acceptable use policy</a
-						>
-					</li>
-					<li>
-						<a href="/third-party-platform-disclaimer" class="hover:text-white transition-colors"
-							>Third-party platform disclaimer</a
-						>
-					</li>
 				</ul>
 				<button
 					type="button"
@@ -100,46 +85,31 @@
 				<h3 class="font-semibold text-white mb-4">Follow us</h3>
 				<div class="flex flex-wrap gap-3">
 					<a
-						href="https://instagram.com"
+						href="https://www.facebook.com/profile.php?id=61591376164147"
 						class="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
-						aria-label="Instagram"
+						target="_blank"
+						rel="noopener noreferrer"
+						aria-label="SubSlush on Facebook"
+					>
+						<Facebook size={18} />
+					</a>
+					<a
+						href="https://www.instagram.com/subslush_com"
+						class="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+						target="_blank"
+						rel="noopener noreferrer"
+						aria-label="SubSlush on Instagram"
 					>
 						<Instagram size={18} />
 					</a>
 					<a
-						href="https://tiktok.com"
+						href="https://www.tiktok.com/@subslush.com"
 						class="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
-						aria-label="TikTok"
+						target="_blank"
+						rel="noopener noreferrer"
+						aria-label="SubSlush on TikTok"
 					>
 						<Music2 size={18} />
-					</a>
-					<a
-						href="https://youtube.com"
-						class="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
-						aria-label="YouTube"
-					>
-						<Youtube size={18} />
-					</a>
-					<a
-						href="https://twitter.com"
-						class="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
-						aria-label="X"
-					>
-						<Twitter size={18} />
-					</a>
-					<a
-						href="https://reddit.com"
-						class="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
-						aria-label="Reddit"
-					>
-						<MessageCircle size={18} />
-					</a>
-					<a
-						href="https://twitch.tv"
-						class="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
-						aria-label="Twitch"
-					>
-						<Twitch size={18} />
 					</a>
 				</div>
 			</div>

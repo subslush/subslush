@@ -17,7 +17,7 @@
 	<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 font-serif">
 		<header class="border-b border-gray-300 pb-6 mb-8">
 			<h1 class="text-2xl font-semibold tracking-wide">Terms and Conditions</h1>
-			<p class="mt-1 text-xs text-gray-600">Last updated: June 13, 2026</p>
+			<p class="mt-1 text-xs text-gray-600">Last updated: July 3, 2026</p>
 		</header>
 
 		<div class="space-y-8 text-sm leading-relaxed">
@@ -314,6 +314,69 @@
 						class="underline underline-offset-2 text-gray-900 hover:text-gray-700"
 						>compliance@subslush.com</a
 					>
+				</p>
+			</section>
+
+			<section id="products-and-sourcing">
+				<h2 class="text-base font-semibold uppercase tracking-wide">17. Products and Sourcing</h2>
+				<p class="mt-2">
+					SubSlush is operated by 3NITY Digital Limited. Product sourcing, customer delivery,
+					refunds, payment disputes, and customer support are handled by or on behalf of 3NITY
+					Digital Limited.
+				</p>
+				<p class="mt-2">
+					Our current product categories include fixed-term premium or upgraded-plan digital access
+					for streaming, music, AI tools, design tools, productivity tools, and education tools.
+					Products are sourced from suppliers we review and vet before listing.
+				</p>
+				<p class="mt-2">
+					SubSlush does not sell counterfeit goods, illegal access of any kind, malware or tools
+					intended for unauthorized system access, financial accounts, identity documents, regulated
+					weapons, drugs, gambling access, or adult products or services, or any product prohibited
+					by our payment partners or applicable law.
+				</p>
+			</section>
+
+			<section id="acceptable-use">
+				<h2 class="text-base font-semibold uppercase tracking-wide">
+					18. Acceptable Use and Customer Conduct
+				</h2>
+				<p class="mt-2">
+					Customers must use SubSlush and purchased digital access products lawfully, honestly, and
+					according to applicable product, checkout, and third-party platform rules.
+				</p>
+				<p class="mt-2">
+					The following conduct is prohibited: fraud, payment abuse, use of stolen payment methods,
+					or chargeback misuse; unauthorized resale, credential sharing beyond permitted use, or
+					attempts to bypass product limits; harassment, threats, abusive support conduct, or
+					knowingly false claims; unauthorized access, security probing, scraping, malware,
+					phishing, or service disruption; any use that violates applicable law or third-party
+					platform terms.
+				</p>
+				<p class="mt-2">
+					Where we identify fraud, abuse, or policy violations, we may delay fulfilment, request
+					verification, refuse service, suspend access, decline refunds, or provide evidence in
+					payment disputes. Your mandatory legal rights remain unaffected.
+				</p>
+			</section>
+
+			<section id="third-party-platforms">
+				<h2 class="text-base font-semibold uppercase tracking-wide">
+					19. Third-Party Platforms and Trademarks
+				</h2>
+				<p class="mt-2">
+					SubSlush is not affiliated with, endorsed by, sponsored by, or officially partnered with
+					any third-party platform unless expressly stated.
+				</p>
+				<p class="mt-2">
+					All third-party names, logos, product names, and trademarks are the property of their
+					respective owners and are used only to identify the relevant product or platform.
+				</p>
+				<p class="mt-2">
+					Third-party platforms may have their own terms, account rules, access policies,
+					catalogues, technical requirements, and service restrictions. Customers are responsible
+					for using purchased products in accordance with applicable law and the relevant platform's
+					terms.
 				</p>
 			</section>
 		</div>

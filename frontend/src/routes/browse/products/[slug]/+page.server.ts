@@ -67,19 +67,6 @@ export const load: PageServerLoad = async ({
       throw error(500, 'Invalid product data received from server');
     }
 
-    const usersOnPage =
-      typeof detail.users_on_page === 'number'
-        ? detail.users_on_page
-        : typeof detail.usersOnPage === 'number'
-          ? detail.usersOnPage
-          : 12;
-    const unitsLeft =
-      typeof detail.units_left === 'number'
-        ? detail.units_left
-        : typeof detail.unitsLeft === 'number'
-          ? detail.unitsLeft
-          : 6;
-
     let userCredits = 0;
     if (user?.id) {
       try {
@@ -101,9 +88,7 @@ export const load: PageServerLoad = async ({
       product: detail.product,
       variants: detail.variants || [],
       userCredits,
-      requestCountryCode: detail.country_code || null,
-      usersOnPage,
-      unitsLeft
+      requestCountryCode: detail.country_code || null
     };
   } catch (err) {
     console.error('Error loading product details:', err);

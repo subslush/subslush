@@ -113,7 +113,7 @@
 				<h2 class="text-base font-semibold uppercase tracking-wide">5. Sharing and recipients</h2>
 				<p class="mt-2">We may share data with:</p>
 				<ul class="mt-2 list-disc pl-5 space-y-1">
-					<li>payment providers, payment processors, wallet providers, and anti-fraud services;</li>
+					<li>payment providers, payment processors, wallet providers, and fraud prevention services;</li>
 					<li>hosting, security, logging, analytics, and infrastructure providers;</li>
 					<li>email, live chat, customer support, and communications providers;</li>
 					<li>fulfilment providers and suppliers where needed to complete delivery;</li>

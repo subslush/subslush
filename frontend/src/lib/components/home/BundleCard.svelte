@@ -45,15 +45,6 @@
     return { text: 'FEATURED', color: 'bg-cyan-100 text-cyan-800 border border-cyan-200' };
   }
 
-  function getSocialProof(): string {
-    const proofVariants = [
-      '🔥 1,247 purchased this week',
-      '🔥 892 purchased this week',
-      '🔥 1,531 purchased this week'
-    ];
-    return proofVariants[Math.floor(Math.random() * proofVariants.length)];
-  }
-
   $: badgeInfo = getBadgeVariant(subtitle, badge.trim() || undefined);
   $: separatePrice = originalPrice;
   $: youSave = originalPrice - price;

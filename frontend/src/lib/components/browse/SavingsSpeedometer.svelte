@@ -2,15 +2,10 @@
   import { onMount } from 'svelte';
   import { tweened } from 'svelte/motion';
   import { cubicOut } from 'svelte/easing';
-  import { TrendingUp, ArrowRight, DollarSign } from 'lucide-svelte';
-  import type { SavingsSpeedometerProps } from '$lib/types/browse.js';
+  import { ArrowRight, DollarSign } from 'lucide-svelte';
 
   export let currentSavings = 0;
   export let maxSavings = 150;
-  export let userSavingsData: SavingsSpeedometerProps['userSavingsData'] = {
-    averageSavings: 94,
-    comparisonCount: 3
-  };
 
   // Animated values
   const animatedSavings = tweened(0, {
@@ -218,25 +213,12 @@
     <!-- Current comparison stats -->
     <div class="bg-gradient-to-br from-purple-50/60 to-pink-50/60 rounded-lg p-4 border border-purple-100">
       <div class="flex items-center justify-between mb-2">
-        <span class="text-sm font-medium text-gray-700">Current comparison:</span>
-        <span class="text-sm font-bold text-cyan-600">
-          {userSavingsData?.comparisonCount || 0} services
-        </span>
+        <span class="text-sm font-medium text-gray-700">Current savings estimate</span>
+        <span class="text-sm font-bold text-cyan-600">€{currentSavings}/month</span>
       </div>
       <div class="text-sm text-gray-600">
         {comparisonText}
       </div>
-    </div>
-
-    <!-- Social proof -->
-    <div class="flex items-center justify-between text-sm">
-      <div class="flex items-center space-x-2">
-        <TrendingUp size={16} class="text-green-500" />
-        <span class="text-gray-600">Users like you save an average of</span>
-      </div>
-      <span class="font-bold text-green-600">
-        €{userSavingsData?.averageSavings || 94}/month
-      </span>
     </div>
 
     <!-- CTA -->
