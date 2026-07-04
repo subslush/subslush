@@ -437,6 +437,17 @@
   );
   $: selectedVariantCurrency =
     normalizeCurrencyCode(selectedVariant?.currency) || 'USD';
+  $: selectedReferencePrice =
+    selectedTerm &&
+    typeof selectedTerm.comparison_price === 'number' &&
+    Number.isFinite(selectedTerm.comparison_price) &&
+    selectedTerm.comparison_price > selectedTerm.total_price
+      ? selectedTerm.comparison_price
+      : null;
+  $: selectedSavingsAmount =
+    selectedTerm && selectedReferencePrice !== null
+      ? selectedReferencePrice - selectedTerm.total_price
+      : 0;
 
   const buildCartItemId = (params: {
     variantId: string;
@@ -668,11 +679,23 @@
   <div class="purchase-panel">
     <div class="rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_14px_28px_rgba(15,23,42,0.1)]">
       <div>
-        <p class="text-5xl font-black tracking-tight text-slate-900">
-          {selectedTerm
-            ? formatCurrency(selectedTerm.total_price, selectedVariantCurrency)
-            : '--'}
-        </p>
+        {#if selectedTerm && selectedReferencePrice !== null}
+          <p class="text-sm font-medium leading-tight text-slate-500 line-through decoration-slate-500 decoration-[1.5px]">
+            {formatCurrency(selectedReferencePrice, selectedVariantCurrency)}
+          </p>
+        {/if}
+        <div class="mt-1 flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
+          <p class="text-4xl font-black tracking-tight text-slate-900 sm:text-5xl">
+            {selectedTerm
+              ? formatCurrency(selectedTerm.total_price, selectedVariantCurrency)
+              : '--'}
+          </p>
+          {#if selectedTerm && selectedReferencePrice !== null && selectedSavingsAmount > 0}
+            <p class="pb-1 text-sm font-semibold text-fuchsia-700">
+              You save {formatCurrency(selectedSavingsAmount, selectedVariantCurrency)}
+            </p>
+          {/if}
+        </div>
       </div>
 
       {#if hasUpgradeSelection && upgradeOptions}

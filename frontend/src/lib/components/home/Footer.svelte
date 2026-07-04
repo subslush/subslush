@@ -54,9 +54,7 @@
 					<li><a href="/about" class="hover:text-white transition-colors">About us</a></li>
 					<li><a href="/help" class="hover:text-white transition-colors">Help</a></li>
 					<li>
-						<a href="/how-delivery-works" class="hover:text-white transition-colors"
-							>How delivery works</a
-						>
+						<a href="/how-it-works" class="hover:text-white transition-colors">How it works</a>
 					</li>
 					<li>
 						<a href="/delivery-policy" class="hover:text-white transition-colors">Delivery policy</a

@@ -34,6 +34,7 @@
   import type { Currency } from '$lib/types/payment.js';
   import type { OwnAccountCredentialRequirement } from '$lib/types/subscription.js';
   import { SHOW_CRYPTO_CHECKOUT_OPTION } from '$lib/config/paymentBrandVisibility.js';
+  import { openCrispChat } from '$lib/consent/thirdParty.js';
   import {
     clearCheckoutDraftStorage,
     loadCheckoutDraftState,
@@ -44,6 +45,7 @@
     Eye,
     EyeOff,
     Loader2,
+    MessageSquare,
     ShieldCheck,
     Trash2
   } from 'lucide-svelte';
@@ -2754,11 +2756,23 @@
 
               <div class="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600">
                 <ShieldCheck size={14} class="text-cyan-600" />
-                <span class="whitespace-nowrap leading-none">
+                <span class="leading-none">
                   This order is backed by our
                   <span class="font-bold bg-gradient-to-r from-pink-500 to-purple-700 bg-clip-text text-transparent">Money-Back Guarantee</span>.
                 </span>
               </div>
+              <p class="mt-3 text-xs leading-5 text-slate-500">
+                A small service fee (varies by payment method) and applicable VAT are added at the next step.
+                The price you see before paying is the final price — no further costs after that.
+              </p>
+              <button
+                type="button"
+                class="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+                on:click={openCrispChat}
+              >
+                <MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
+                Questions? Chat with us — we're happy to help.
+              </button>
               <div class="mt-4 border-t border-slate-200 pt-3">
                 <button
                   type="button"

@@ -4,10 +4,12 @@
 	import { onMount } from 'svelte';
 	import amexLogo from '$lib/assets/amex-logo.svg';
 	import applePayLogo from '$lib/assets/apple-pay.svg';
+	import sslSecuredBadge from '$lib/assets/256bit-ssl.webp';
 	import dinersClubLogo from '$lib/assets/dinersclub-logo.svg';
 	import discoverLogo from '$lib/assets/discover.webp';
 	import googlePayLogo from '$lib/assets/google-pay.svg';
 	import jcbLogo from '$lib/assets/jcb-logo.webp';
+	import mastercardIdCheckBadge from '$lib/assets/mastercard-idcheck.svg';
 	import mastercardLogo from '$lib/assets/mastercard-logo.webp';
 	import monzoLogo from '$lib/assets/monzo-logo.webp';
 	import paydoLogo from '$lib/assets/paydo-logo.webp';
@@ -16,6 +18,7 @@
 	import sepaLogo from '$lib/assets/sepa-logo.webp';
 	import swiftLogo from '$lib/assets/swift-logo.webp';
 	import unionPayLogo from '$lib/assets/unionpay-logo.svg';
+	import visaSecureBadge from '$lib/assets/visa-secure.webp';
 	import visaLogo from '$lib/assets/visa.svg';
 	import { resolveLogoKey, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
 	import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
@@ -28,13 +31,14 @@
 		CheckoutDraftState
 	} from '$lib/utils/checkoutDraftState.js';
 	import { loadCheckoutDraftState, saveCheckoutDraftState } from '$lib/utils/checkoutDraftState.js';
+	import { openCrispChat } from '$lib/consent/thirdParty.js';
 	import type {
 		CheckoutAntomOptionQuote,
 		CheckoutAntomResidence,
 		CheckoutPayopMethodQuote
 	} from '$lib/types/checkout.js';
 	import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
-	import { ArrowLeft, CreditCard, Globe2, Landmark, Loader2, X } from 'lucide-svelte';
+	import { ArrowLeft, CreditCard, Globe2, Landmark, Loader2, MessageSquare, ShieldCheck, X } from 'lucide-svelte';
 
 	const countryNames =
 		browser && typeof Intl !== 'undefined' && 'DisplayNames' in Intl
@@ -256,6 +260,12 @@
 		},
 		{ src: sepaLogo, alt: 'SEPA', className: 'h-8 w-full object-contain' },
 		{ src: swiftLogo, alt: 'SWIFT', className: 'h-5 w-full object-contain' }
+	] as const;
+
+	const paymentTrustBadges = [
+		{ src: visaSecureBadge, alt: 'Visa Secure' },
+		{ src: mastercardIdCheckBadge, alt: 'Mastercard ID Check' },
+		{ src: sslSecuredBadge, alt: '256-bit SSL Secured' }
 	] as const;
 
 	const antomCardBrandLogos = [
@@ -1077,6 +1087,41 @@
 								{actionError}
 							</div>
 						{/if}
+
+						<div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+							<p class="text-xs leading-5 text-slate-500">
+								You'll complete payment on our payment provider's secure checkout. No further
+								charges are added after this step.
+							</p>
+							<div class="mt-3 grid grid-cols-2 gap-2 min-[420px]:grid-cols-4">
+								{#each paymentTrustBadges as badge}
+									<div
+										class="flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 py-1 opacity-70 grayscale"
+									>
+										<img
+											src={badge.src}
+											alt={badge.alt}
+											class="max-h-7 w-auto max-w-full object-contain"
+											loading="lazy"
+										/>
+									</div>
+								{/each}
+								<div
+									class="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-[10px] font-semibold uppercase leading-tight tracking-wide text-slate-500"
+								>
+									<ShieldCheck class="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
+									<span>SubSlush Money-Back Guarantee</span>
+								</div>
+							</div>
+							<button
+								type="button"
+								class="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+								on:click={openCrispChat}
+							>
+								<MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
+								Questions? Chat with us — we're happy to help.
+							</button>
+						</div>
 
 						<button
 							type="button"

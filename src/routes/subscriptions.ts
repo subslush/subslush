@@ -2219,6 +2219,11 @@ export async function subscriptionRoutes(
             1,
             Math.round(resolvedPriceCents / durationMonths)
           );
+          const fixedComparisonPriceCents =
+            await resolveDisplayComparisonPriceCents({
+              metadata: product.metadata,
+              displayCurrency: resolvedCurrency,
+            });
           const features = normalizeStringList(product.metadata?.['features']);
           const badges = normalizeStringList(product.metadata?.['badges']);
 
@@ -2261,6 +2266,11 @@ export async function subscriptionRoutes(
                   {
                     months: durationMonths,
                     total_price: resolvedPriceCents / 100,
+                    comparison_price:
+                      fixedComparisonPriceCents !== null &&
+                      fixedComparisonPriceCents > resolvedPriceCents
+                        ? fixedComparisonPriceCents / 100
+                        : null,
                     discount_percent: 0,
                     is_recommended: true,
                   },
@@ -2347,6 +2357,10 @@ export async function subscriptionRoutes(
             return {
               months: term.months,
               total_price: snapshot.totalPriceCents / 100,
+              comparison_price:
+                snapshot.termSubtotalCents > snapshot.totalPriceCents
+                  ? snapshot.termSubtotalCents / 100
+                  : null,
               discount_percent: term.discount_percent ?? null,
               is_recommended: term.is_recommended,
             };

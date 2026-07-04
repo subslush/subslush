@@ -23,6 +23,9 @@ import { paymentRepository } from './paymentRepository';
 import { env } from '../config/environment';
 import { formatSubscriptionDisplayName } from '../utils/subscriptionHelpers';
 
+const TRUSTPILOT_ORDER_DELIVERY_BCC =
+  'subslush.com+f9542772d6@invite.trustpilot.com';
+
 function parseMetadata(value: any): Record<string, any> | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'string') {
@@ -765,6 +768,7 @@ export class OrderService {
       subject: string;
       text: string;
       html: string;
+      bcc?: string;
       from?: string;
     };
     reason?: string;
@@ -894,6 +898,7 @@ export class OrderService {
         return {
           payload: {
             to: email,
+            bcc: TRUSTPILOT_ORDER_DELIVERY_BCC,
             subject,
             text,
             html,
@@ -1025,6 +1030,7 @@ export class OrderService {
     return {
       payload: {
         to: email,
+        bcc: TRUSTPILOT_ORDER_DELIVERY_BCC,
         subject,
         text,
         html,

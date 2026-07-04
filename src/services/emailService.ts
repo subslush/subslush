@@ -9,6 +9,7 @@ type EmailSendResult = {
 
 type EmailPayload = {
   to: string;
+  bcc?: string | string[];
   subject: string;
   text: string;
   html?: string;
@@ -168,6 +169,7 @@ class EmailService {
     if (this.provider === 'console') {
       Logger.info('Email dispatch (console mode)', {
         to: payload.to,
+        bcc: payload.bcc,
         subject: payload.subject,
         textPreview: payload.text.slice(0, 200),
       });
@@ -201,6 +203,7 @@ class EmailService {
             subject: payload.subject,
             text: payload.text,
             ...(payload.html ? { html: payload.html } : {}),
+            ...(payload.bcc ? { bcc: payload.bcc } : {}),
             ...(this.replyTo ? { reply_to: this.replyTo } : {}),
           }),
         });
@@ -248,6 +251,7 @@ class EmailService {
         subject: payload.subject,
         text: payload.text,
         html: payload.html,
+        bcc: payload.bcc,
         ...(this.replyTo ? { replyTo: this.replyTo } : {}),
       });
 

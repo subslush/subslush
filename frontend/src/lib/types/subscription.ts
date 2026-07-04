@@ -190,6 +190,7 @@ export interface AvailableProductsResponse {
 export interface ProductTermOption {
   months: number;
   total_price: number;
+  comparison_price?: number | null;
   discount_percent?: number | null;
   is_recommended?: boolean;
 }
