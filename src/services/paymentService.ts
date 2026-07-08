@@ -4116,6 +4116,141 @@ export class PaymentService {
     return title.toLowerCase() === 'cards' ? 'Card' : title;
   }
 
+  private isAntomCardMethod(value: unknown): boolean {
+    const normalized = normalizeString(value)
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_');
+    return normalized === 'card' || normalized === 'cards';
+  }
+
+  private isAntomCardPayment(payment: UnifiedPayment | null): boolean {
+    if (!payment) {
+      return false;
+    }
+    const metadata =
+      payment.metadata && typeof payment.metadata === 'object'
+        ? payment.metadata
+        : {};
+    return (
+      this.isAntomCardMethod(payment.paymentMethodType) ||
+      this.isAntomCardMethod(metadata['antom_option_id']) ||
+      this.isAntomCardMethod(metadata['antom_payment_method_type']) ||
+      this.isAntomCardMethod(metadata['antom_method_title'])
+    );
+  }
+
+  private resolveAntomResultCode(
+    payload: AntomPaymentInquiryResponse | AntomNotifyPayload
+  ): string | null {
+    return (
+      normalizeString(
+        (payload as AntomPaymentInquiryResponse).paymentResultCode
+      ) ||
+      normalizeString(payload.result?.resultCode) ||
+      null
+    );
+  }
+
+  private isAntomAbandonedCheckoutResultCode(value: string | null): boolean {
+    const normalized = value?.trim().toUpperCase();
+    return (
+      normalized === 'USER_NOT_SUBMITTED' ||
+      normalized === 'USER_AUTHENTICATION_NOT_FINISHED' ||
+      normalized === 'PAYMENT_IN_PROCESS'
+    );
+  }
+
+  private isAntomCardDecline(params: {
+    payment: UnifiedPayment | null;
+    status: UnifiedPaymentStatus | null;
+    resultCode?: string | null;
+  }): boolean {
+    return (
+      params.status === 'failed' &&
+      this.isAntomCardPayment(params.payment) &&
+      !this.isAntomAbandonedCheckoutResultCode(params.resultCode ?? null)
+    );
+  }
+
+  private resolveAntomCardBinFromPayload(value: unknown): string | null {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const resolved = this.resolveAntomCardBinFromPayload(item);
+        if (resolved) {
+          return resolved;
+        }
+      }
+      return null;
+    }
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+
+    for (const [key, entry] of Object.entries(value)) {
+      const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+      const isBinField =
+        normalizedKey === 'bin' ||
+        normalizedKey === 'iin' ||
+        normalizedKey === 'card_bin' ||
+        normalizedKey === 'card_iin' ||
+        normalizedKey === 'issuer_bin' ||
+        normalizedKey === 'issuer_iin' ||
+        normalizedKey === 'issuer_id_number';
+      if (isBinField && typeof entry === 'string') {
+        const digits = entry.replace(/\D/g, '');
+        if (digits.length >= 6 && digits.length <= 8) {
+          return digits;
+        }
+      }
+      if (entry && typeof entry === 'object') {
+        const resolved = this.resolveAntomCardBinFromPayload(entry);
+        if (resolved) {
+          return resolved;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private async logAntomCardDecline(params: {
+    orderId: string;
+    payment: UnifiedPayment;
+    payload: AntomPaymentInquiryResponse | AntomNotifyPayload;
+    providerStatus: string;
+    source: 'inquiry' | 'webhook';
+  }): Promise<Record<string, unknown>> {
+    const metadata =
+      params.payment.metadata && typeof params.payment.metadata === 'object'
+        ? { ...params.payment.metadata }
+        : {};
+    if (metadata['antom_card_decline_logged_at']) {
+      return metadata;
+    }
+
+    const resultCode =
+      this.resolveAntomResultCode(params.payload) || params.providerStatus;
+    const maskedCardBin = this.resolveAntomCardBinFromPayload(params.payload);
+    const loggedAt = new Date().toISOString();
+
+    Logger.warn('Antom card payment declined', {
+      timestamp: loggedAt,
+      orderId: params.orderId,
+      paymentRequestId: params.payment.providerPaymentId,
+      maskedCardBin,
+      antomResultCode: resultCode,
+      providerStatus: params.providerStatus,
+      source: params.source,
+    });
+
+    metadata['antom_card_decline_logged_at'] = loggedAt;
+    metadata['antom_card_decline_result_code'] = resultCode;
+    metadata['antom_card_decline_masked_bin'] = maskedCardBin;
+    metadata['antom_card_decline_source'] = params.source;
+
+    return metadata;
+  }
+
   private resolveAntomMetadataTotalCents(
     metadata: Record<string, unknown>
   ): number | null {
@@ -4521,9 +4656,30 @@ export class PaymentService {
         null,
       antom_payment_status: inquiry.paymentStatus ?? null,
       antom_payment_method_type: inquiry.paymentMethodType ?? null,
+      antom_payment_result_code: this.resolveAntomResultCode(inquiry) || null,
       antom_last_inquiry_at: new Date().toISOString(),
       antom_last_inquiry_payload: inquiry,
     };
+
+    const resultCode = this.resolveAntomResultCode(inquiry);
+    if (
+      this.isAntomCardDecline({
+        payment,
+        status: statusMapping.status,
+        resultCode,
+      })
+    ) {
+      Object.assign(
+        mergedMetadata,
+        await this.logAntomCardDecline({
+          orderId: params.orderId,
+          payment,
+          payload: inquiry,
+          providerStatus: statusMapping.providerStatus,
+          source: 'inquiry',
+        })
+      );
+    }
 
     const updatedPayment =
       await paymentRepository.updateStatusByProviderPaymentId(
@@ -7339,6 +7495,7 @@ export class PaymentService {
         taxResidenceId: string | null;
         taxResidenceLabel: string | null;
         canRetry: boolean;
+        isCardDecline: boolean;
       }
     | { success: false; error: string }
   > {
@@ -7371,6 +7528,21 @@ export class PaymentService {
           payment.status === 'failed' ||
           payment.status === 'expired' ||
           payment.status === 'canceled');
+      const isCardDecline = this.isAntomCardDecline({
+        payment,
+        status: payment?.status ?? null,
+        resultCode:
+          normalizeString(
+            metadata['antom_card_decline_result_code'] as string | undefined
+          ) ||
+          normalizeString(
+            metadata['antom_payment_result_code'] as string | undefined
+          ) ||
+          normalizeString(
+            metadata['antom_last_result_code'] as string | undefined
+          ) ||
+          null,
+      });
 
       return {
         success: true,
@@ -7415,6 +7587,7 @@ export class PaymentService {
             metadata['antom_tax_residence_label'] as string | undefined
           ) || null,
         canRetry,
+        isCardDecline,
       };
     } catch (error) {
       Logger.error('Failed to resolve Antom checkout status', {
@@ -7576,6 +7749,26 @@ export class PaymentService {
           this.normalizeIpAddress(params.ipAddress) ?? null,
         antom_last_webhook_user_agent: params.userAgent ?? null,
       };
+
+      const resultCode = this.resolveAntomResultCode(params.payload);
+      if (
+        this.isAntomCardDecline({
+          payment,
+          status: statusMapping.status,
+          resultCode,
+        })
+      ) {
+        Object.assign(
+          mergedMetadata,
+          await this.logAntomCardDecline({
+            orderId: payment.orderId ?? 'unknown',
+            payment,
+            payload: params.payload,
+            providerStatus: statusMapping.providerStatus,
+            source: 'webhook',
+          })
+        );
+      }
 
       const updatedPayment =
         await paymentRepository.updateStatusByProviderPaymentId(

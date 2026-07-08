@@ -2066,6 +2066,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           tax_residence_id: statusResult.taxResidenceId,
           tax_residence_label: statusResult.taxResidenceLabel,
           can_retry: statusResult.canRetry,
+          is_card_decline: statusResult.isCardDecline,
           ...(purchaseTracking ? { purchase_tracking: purchaseTracking } : {}),
         });
       } catch (error) {

@@ -60,6 +60,7 @@
   let checkoutContactEmail: string | null = null;
   let confirmationEmail: string | null = null;
   let canRetry = false;
+  let isCardDecline = false;
   let cartCleared = false;
   let pollingActive = true;
   let pollingInProgress = false;
@@ -247,6 +248,7 @@
     processingTaxCents = response.processing_tax_cents ?? null;
     taxResidenceLabel = response.tax_residence_label ?? null;
     canRetry = response.can_retry === true;
+    isCardDecline = response.is_card_decline === true;
     trackPurchaseFromStatus(response);
   };
 
@@ -269,6 +271,11 @@
         updateResolvedState(response.order_status);
         loading = false;
         pollComplete = true;
+        return;
+      }
+
+      if (response.is_card_decline === true) {
+        await redirectToPaymentDeclinedPage();
         return;
       }
     } catch {
@@ -317,13 +324,19 @@
           applyStatusResponse(response);
 
           if (
+            response.is_card_decline === true ||
+            isCardDecline ||
             shouldReturnToPaymentPage({
               paymentStatus,
               providerStatus: response.provider_status ?? null,
               canRetry,
             })
           ) {
-            await redirectToPaymentPage();
+            if (response.is_card_decline === true || isCardDecline) {
+              await redirectToPaymentDeclinedPage();
+            } else {
+              await redirectToPaymentPage();
+            }
             return;
           }
 
@@ -372,6 +385,17 @@
     }
 
     await goto('/checkout/payment', { replaceState: true });
+  };
+
+  const redirectToPaymentDeclinedPage = async () => {
+    if (redirectingToPayment) {
+      return;
+    }
+
+    redirectingToPayment = true;
+    pollingActive = false;
+    preserveCheckoutReturnState();
+    await goto('/payment-declined', { replaceState: true });
   };
 
   const unsubscribe = page.subscribe(($page) => {

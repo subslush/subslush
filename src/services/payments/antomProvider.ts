@@ -25,11 +25,15 @@ export type AntomPaymentInquiryResponse = {
   paymentRequestId?: string;
   paymentId?: string;
   paymentStatus?: string;
+  paymentResultCode?: string;
+  paymentResultMessage?: string;
   paymentAmount?: AntomAmount;
   actualPaymentAmount?: AntomAmount;
   paymentMethodType?: string;
+  paymentResultInfo?: Record<string, unknown>;
   paymentTime?: string;
   transactions?: unknown[];
+  [key: string]: unknown;
 };
 
 export type AntomCancelResponse = {

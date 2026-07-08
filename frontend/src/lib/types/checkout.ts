@@ -371,6 +371,7 @@ export interface CheckoutAntomStatusResponse {
   tax_residence_id?: string | null;
   tax_residence_label?: string | null;
   can_retry: boolean;
+  is_card_decline?: boolean;
   purchase_tracking?: CheckoutPurchaseTrackingPayload | null;
 }
 

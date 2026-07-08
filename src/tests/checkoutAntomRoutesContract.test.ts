@@ -70,6 +70,7 @@ describe('Checkout Antom route contract', () => {
       taxResidenceId: 'outside_eu',
       taxResidenceLabel: 'Outside the EU',
       canRetry: true,
+      isCardDecline: true,
     });
 
     const app = Fastify();
@@ -98,6 +99,7 @@ describe('Checkout Antom route contract', () => {
       payment_status: 'failed',
       provider_status: 'fail',
       can_retry: true,
+      is_card_decline: true,
     });
   });
 
@@ -125,6 +127,7 @@ describe('Checkout Antom route contract', () => {
       taxResidenceId: 'se',
       taxResidenceLabel: 'Sweden',
       canRetry: false,
+      isCardDecline: false,
     });
     mockOrderService.getOrderWithItems.mockResolvedValue({
       id: orderId,
