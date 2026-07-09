@@ -788,6 +788,9 @@ export class OrderService {
       this.listOrderItems(order.id),
       this.listOrderSubscriptions(order.id),
     ]);
+    if (items.length > 1) {
+      return { reason: 'multi_item_order' };
+    }
     const labels = this.resolveSubscriptionLabels(order, items, subscriptions);
     const orderShort = order.id.slice(0, 8);
     const subscriptionsText =
@@ -1037,6 +1040,137 @@ export class OrderService {
         from: 'no-reply@subslush.com',
       },
     };
+  }
+
+  async sendItemDeliveredEmail(params: {
+    orderId: string;
+    subscriptionId: string;
+    variant?: 'standard' | 'activation_link_ready' | 'activation_restart';
+  }): Promise<{ success: boolean; reason?: string }> {
+    const order = await this.getOrderById(params.orderId);
+    if (!order) {
+      return { success: false, reason: 'order_not_found' };
+    }
+
+    const pool = getDatabasePool();
+    const result = await pool.query(
+      `SELECT s.id,
+              s.delivery_email_sent_at,
+              s.activation_handshake_state,
+              oi.product_name,
+              oi.variant_name,
+              oi.term_months
+       FROM subscriptions s
+       LEFT JOIN order_items oi ON oi.id = s.order_item_id
+       WHERE s.order_id = $1
+         AND s.id = $2`,
+      [params.orderId, params.subscriptionId]
+    );
+
+    const item = result.rows[0] || null;
+    if (!item) {
+      return { success: false, reason: 'subscription_not_found' };
+    }
+
+    const variant = params.variant || 'standard';
+    if (variant === 'standard' && item.delivery_email_sent_at) {
+      return { success: false, reason: 'already_sent' };
+    }
+
+    const contactEmail =
+      typeof order.contact_email === 'string' ? order.contact_email.trim() : '';
+    const email = contactEmail || (await this.fetchUserEmail(order.user_id));
+    if (!email) {
+      return { success: false, reason: 'user_email_missing' };
+    }
+
+    const nameParts = [item.product_name, item.variant_name]
+      .map(value => (typeof value === 'string' ? value.trim() : ''))
+      .filter(Boolean);
+    const baseLabel =
+      nameParts.length > 0 ? nameParts.join(' ') : 'Subscription';
+    const termMonths = Number(item.term_months);
+    const label =
+      Number.isFinite(termMonths) && termMonths > 0
+        ? `${baseLabel} - ${Math.floor(termMonths)} month${Math.floor(termMonths) === 1 ? '' : 's'}`
+        : baseLabel;
+    const dashboardLink = buildAppLink('/dashboard/orders');
+    const helpLink = buildAppLink('/help');
+
+    const subject =
+      variant === 'activation_link_ready'
+        ? 'Your activation link is ready'
+        : variant === 'activation_restart'
+          ? 'Confirm when you are ready to activate'
+          : `Your ${label} is ready`;
+    const intro =
+      variant === 'activation_link_ready'
+        ? 'Your activation link is ready. Reveal it in your dashboard and use it within 2 hours.'
+        : variant === 'activation_restart'
+          ? 'Please confirm when you are ready so we can generate a fresh activation link.'
+          : `Your ${label} is ready.`;
+    const text = [
+      intro,
+      '',
+      `Item: ${label}`,
+      `Open My Orders: ${dashboardLink}`,
+      variant === 'activation_link_ready'
+        ? 'The activation link is not included in this email.'
+        : 'Open the order item and reveal credentials or follow the item instructions.',
+      '',
+      `Need help? ${helpLink}`,
+    ].join('\n');
+    const html = emailService.buildBrandedEmail({
+      title:
+        variant === 'activation_link_ready'
+          ? 'Activation link ready'
+          : variant === 'activation_restart'
+            ? 'Activation confirmation needed'
+            : 'Item delivered',
+      intro,
+      bodyHtml: `
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <tr>
+            <td style="padding:14px 16px;font-size:13px;color:#334155;">
+              <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Item</div>
+              <div>${escapeHtml(label)}</div>
+              ${
+                variant === 'activation_link_ready'
+                  ? '<div style="margin-top:8px;color:#7c2d12;">The link is not included in this email. Reveal it in your dashboard and use it within 2 hours.</div>'
+                  : ''
+              }
+            </td>
+          </tr>
+        </table>
+      `.trim(),
+      ctaLabel: 'View My Orders',
+      ctaUrl: dashboardLink,
+      note: `Need help? ${helpLink}`,
+      previewText: subject,
+    });
+
+    const sendResult = await emailService.send({
+      to: email,
+      bcc: TRUSTPILOT_ORDER_DELIVERY_BCC,
+      subject,
+      text,
+      html,
+      from: 'no-reply@subslush.com',
+    });
+    if (!sendResult.success) {
+      return { success: false, reason: sendResult.error || 'send_failed' };
+    }
+
+    if (variant === 'standard' || variant === 'activation_link_ready') {
+      await pool.query(
+        `UPDATE subscriptions
+         SET delivery_email_sent_at = COALESCE(delivery_email_sent_at, NOW())
+         WHERE id = $1`,
+        [params.subscriptionId]
+      );
+    }
+
+    return { success: true };
   }
 
   async sendOrderPaymentConfirmationEmail(

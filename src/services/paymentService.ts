@@ -3547,6 +3547,41 @@ export class PaymentService {
       `,
       [cutoff, ['stripe', 'nowpayments', 'paypal'], batchSize]
     );
+    const payopAntomTtlHours = env.PAYOP_ANTOM_PENDING_PAYMENT_TTL_HOURS;
+    const payopAntomCutoff =
+      payopAntomTtlHours > 0
+        ? new Date(Date.now() - payopAntomTtlHours * 60 * 60 * 1000)
+        : null;
+    const payopAntomResult = payopAntomCutoff
+      ? await pool.query(
+          `
+          SELECT
+            o.id AS order_id,
+            o.user_id,
+            o.payment_provider,
+            o.payment_reference,
+            p.id AS payment_row_id,
+            COALESCE(p.created_at, o.updated_at, o.created_at) AS started_at
+          FROM orders o
+          LEFT JOIN payments p
+            ON p.provider = o.payment_provider
+           AND p.provider_payment_id = o.payment_reference
+          WHERE o.status = 'pending_payment'
+            AND o.payment_provider = ANY($2::text[])
+            AND COALESCE(p.status, 'pending') IN ('pending', 'requires_action', 'processing')
+            AND COALESCE(p.created_at, o.updated_at, o.created_at) <= $1
+            AND NOT EXISTS (
+              SELECT 1
+              FROM payments succeeded
+              WHERE succeeded.order_id = o.id
+                AND succeeded.status = 'succeeded'
+            )
+          ORDER BY COALESCE(p.created_at, o.updated_at, o.created_at) ASC
+          LIMIT $3
+          `,
+          [payopAntomCutoff, ['payop', 'antom'], batchSize]
+        )
+      : { rows: [] };
 
     let cancelled = 0;
     let reconciled = 0;
@@ -3605,8 +3640,49 @@ export class PaymentService {
       }
     }
 
+    for (const row of payopAntomResult.rows) {
+      const orderId = row.order_id as string;
+      const paymentId = row.payment_reference as string | null;
+      const paymentProvider = row.payment_provider as string | null;
+      try {
+        await pool.query(
+          `UPDATE payments
+           SET status = 'expired',
+               provider_status = COALESCE(provider_status, 'expired'),
+               metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb,
+               updated_at = NOW()
+           WHERE provider = $2
+             AND provider_payment_id = $3
+             AND status <> 'succeeded'`,
+          [
+            JSON.stringify({
+              timeout_reason: 'checkout_timeout',
+              timeout_cancelled_at: new Date().toISOString(),
+              timeout_source: 'sweepStaleCheckoutSessions',
+            }),
+            paymentProvider,
+            paymentId,
+          ]
+        );
+        await orderService.updateOrderStatus(
+          orderId,
+          'cancelled',
+          'checkout_timeout'
+        );
+        cancelled += 1;
+      } catch (error) {
+        errors += 1;
+        Logger.warn('Failed to sweep stale Payop/Antom checkout', {
+          orderId,
+          paymentProvider,
+          paymentId,
+          error,
+        });
+      }
+    }
+
     return {
-      scanned: result.rows.length,
+      scanned: result.rows.length + payopAntomResult.rows.length,
       cancelled,
       reconciled,
       skipped,

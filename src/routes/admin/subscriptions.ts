@@ -416,6 +416,7 @@ export async function adminSubscriptionRoutes(
           entityType: 'subscription',
           entityId: subscriptionId,
           metadata: {
+            context: 'subscription_credentials_view',
             credentialPresent: Boolean(result.data.credentials_encrypted),
           },
         });

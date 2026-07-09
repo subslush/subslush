@@ -29,6 +29,22 @@ type RecordCredentialRevealEvidenceInput = {
   metadata?: Record<string, unknown> | null;
 };
 
+type RecordGenericEvidenceInput = {
+  orderId: string;
+  eventType:
+    | 'item_delivery'
+    | 'activation_customer_ready'
+    | 'activation_restart'
+    | 'strict_rules_acceptance';
+  userId?: string | null;
+  customerEmail?: string | null;
+  ipAddress?: string | null;
+  productDelivered?: unknown;
+  deliveryTimestamp?: Date | null;
+  accessEvidence?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
+};
+
 const normalizeEmail = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') return null;
   const normalized = value.trim().toLowerCase();
@@ -229,6 +245,58 @@ class OrderComplianceEvidenceService {
     } catch (error) {
       Logger.error('Failed to record credential reveal evidence', {
         orderId: input.orderId,
+        error,
+      });
+    }
+  }
+
+  async recordGenericEvidence(
+    input: RecordGenericEvidenceInput
+  ): Promise<void> {
+    try {
+      const pool = getDatabasePool();
+      const normalizedCustomerEmail = normalizeEmail(input.customerEmail);
+
+      await pool.query(
+        `INSERT INTO order_compliance_evidence_logs (
+           order_id,
+           user_id,
+           event_type,
+           customer_email,
+           ip_address,
+           product_delivered,
+           delivery_timestamp,
+           license_account_access_evidence,
+           metadata
+         )
+         SELECT
+           $1,
+           COALESCE($2, o.user_id),
+           $3,
+           COALESCE($4, o.contact_email),
+           $5,
+           $6::jsonb,
+           $7,
+           $8::jsonb,
+           $9::jsonb
+         FROM orders o
+         WHERE o.id = $1`,
+        [
+          input.orderId,
+          input.userId || null,
+          input.eventType,
+          normalizedCustomerEmail,
+          input.ipAddress || null,
+          toJson(input.productDelivered ?? null),
+          input.deliveryTimestamp ?? null,
+          toJson(input.accessEvidence ?? {}),
+          toJson(input.metadata ?? {}),
+        ]
+      );
+    } catch (error) {
+      Logger.error('Failed to record order compliance evidence', {
+        orderId: input.orderId,
+        eventType: input.eventType,
         error,
       });
     }

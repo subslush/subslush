@@ -101,4 +101,27 @@ describe('upgradeOptions utilities', () => {
       'invalid_manual_monthly_upgrade_interval_months'
     );
   });
+
+  it('normalizes activation handshake and strict rules flags', () => {
+    const options = normalizeUpgradeOptions({
+      upgrade_options: {
+        activation_link_handshake: true,
+        activation_instructions_template: 'Confirm readiness first.',
+        strict_rules: true,
+        strict_rules_text: '<p>No profile changes.</p>',
+        strict_rules_version: 2,
+      },
+    });
+
+    expect(options).toEqual({
+      allow_new_account: false,
+      allow_own_account: false,
+      manual_monthly_upgrade: false,
+      activation_link_handshake: true,
+      activation_instructions_template: 'Confirm readiness first.',
+      strict_rules: true,
+      strict_rules_text: '<p>No profile changes.</p>',
+      strict_rules_version: 2,
+    });
+  });
 });

@@ -544,6 +544,7 @@ const environmentSchema = z.object({
       typeof value === 'string' && value.trim() === '' ? undefined : value,
     z.coerce.number().optional()
   ),
+  PAYOP_ANTOM_PENDING_PAYMENT_TTL_HOURS: z.coerce.number().default(72),
   CHECKOUT_ABANDON_SWEEP_INTERVAL: z.coerce.number().default(300000),
   CHECKOUT_ABANDON_SWEEP_BATCH_SIZE: z.coerce.number().default(100),
 

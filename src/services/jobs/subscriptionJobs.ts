@@ -20,7 +20,11 @@ import {
   notifyCreditsRenewalSuccess,
   type SubscriptionReminderStage,
 } from '../renewalNotificationService';
-import { getMmuCycleInfo, shouldCreateMmuTask } from '../../utils/mmuSchedule';
+import {
+  getMmuCycleInfo,
+  shouldCreateMmuTask,
+  validateMmuTermDivisibility,
+} from '../../utils/mmuSchedule';
 
 interface RenewalCandidate {
   id: string;
@@ -1267,6 +1271,19 @@ export async function runManualMonthlyUpgradeSweep(): Promise<void> {
         1,
         Math.min(12, options.manual_monthly_upgrade_interval_months || 1)
       );
+      if (
+        !validateMmuTermDivisibility({
+          termMonths,
+          intervalMonths,
+        })
+      ) {
+        Logger.warn('Skipping MMU task for invalid term/interval pairing', {
+          subscriptionId: row.subscription_id,
+          termMonths,
+          intervalMonths,
+        });
+        continue;
+      }
       if (cycleInfo.cycleIndex % intervalMonths !== 0) {
         continue;
       }

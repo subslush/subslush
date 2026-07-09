@@ -13,6 +13,7 @@ import { credentialsEncryptionService } from '../utils/encryption';
 import { logCredentialRevealAttempt } from '../services/auditLogService';
 import { orderComplianceEvidenceService } from '../services/orderComplianceEvidenceService';
 import { getRequestIp } from '../utils/requestIp';
+import { normalizeUpgradeOptions } from '../utils/upgradeOptions';
 import type { OrderStatus } from '../types/order';
 import type { PriceHistory } from '../types/catalog';
 import type { OrderEntitlement } from '../types/orderEntitlement';
@@ -529,6 +530,333 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  fastify.post(
+    '/:orderId/items/:subscriptionId/reveal',
+    {
+      preHandler: [orderCredentialRevealRateLimit, authPreHandler],
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId', 'subscriptionId'],
+          properties: {
+            orderId: { type: 'string' },
+            subscriptionId: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const userId = request.user?.userId;
+      if (!userId) {
+        return ErrorResponses.unauthorized(reply, 'Authentication required');
+      }
+
+      const { orderId, subscriptionId } = request.params as {
+        orderId: string;
+        subscriptionId: string;
+      };
+      const pool = getDatabasePool();
+      const result = await pool.query(
+        `SELECT o.id AS order_id,
+                o.user_id,
+                o.contact_email,
+                s.id AS subscription_id,
+                s.order_item_id,
+                s.credentials_encrypted,
+                p.metadata AS product_metadata
+         FROM orders o
+         JOIN subscriptions s ON s.order_id = o.id
+         LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
+         LEFT JOIN products p ON p.id = pv.product_id
+         WHERE o.id = $1
+           AND o.user_id = $2
+           AND s.id = $3`,
+        [orderId, userId, subscriptionId]
+      );
+      const row = result.rows[0] || null;
+      if (!row) {
+        return ErrorResponses.notFound(reply, 'Order item not found');
+      }
+
+      const upgradeOptions = normalizeUpgradeOptions(row.product_metadata);
+      if (upgradeOptions?.strict_rules) {
+        const acceptedResult = await pool.query(
+          `SELECT created_at, ip_address, metadata
+           FROM order_compliance_evidence_logs
+           WHERE order_id = $1
+             AND user_id = $2
+             AND event_type = 'strict_rules_acceptance'
+             AND metadata->>'subscription_id' = $3
+             AND (metadata->>'rules_version')::int = $4
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [
+            orderId,
+            userId,
+            subscriptionId,
+            upgradeOptions.strict_rules_version || 1,
+          ]
+        );
+        if (acceptedResult.rows.length === 0) {
+          await logCredentialRevealAttempt(request, {
+            subscriptionId,
+            success: false,
+            failureReason: 'strict_rules_not_accepted',
+            metadata: {
+              order_id: orderId,
+              order_item_id: row.order_item_id ?? null,
+            },
+          });
+          return ErrorResponses.badRequest(
+            reply,
+            'Strict rules must be accepted before revealing credentials'
+          );
+        }
+      }
+
+      if (!row.credentials_encrypted) {
+        await logCredentialRevealAttempt(request, {
+          subscriptionId,
+          success: false,
+          failureReason: 'credentials_missing',
+          metadata: {
+            order_id: orderId,
+            order_item_id: row.order_item_id ?? null,
+            source: 'subscription_item',
+          },
+        });
+        await orderComplianceEvidenceService.recordCredentialRevealEvidence({
+          orderId,
+          userId,
+          customerEmail: row.contact_email ?? null,
+          ipAddress: getRequestIp(request),
+          success: false,
+          evidence: {
+            source: 'subscription_item',
+            subscription_id: subscriptionId,
+            order_item_id: row.order_item_id ?? null,
+            failure_reason: 'credentials_missing',
+          },
+        });
+        return ErrorResponses.notFound(
+          reply,
+          'Credentials are not available for this item'
+        );
+      }
+
+      const decrypted = credentialsEncryptionService.decryptFromString(
+        row.credentials_encrypted
+      );
+      if (!decrypted.wasEncrypted && decrypted.migratedPayload) {
+        await subscriptionService.updateSubscriptionCredentialsEncryptedValue({
+          subscriptionId,
+          encryptedValue: decrypted.migratedPayload,
+        });
+      }
+
+      await logCredentialRevealAttempt(request, {
+        subscriptionId,
+        success: true,
+        metadata: {
+          order_id: orderId,
+          order_item_id: row.order_item_id ?? null,
+          source: 'subscription_item',
+        },
+      });
+      await orderComplianceEvidenceService.recordCredentialRevealEvidence({
+        orderId,
+        userId,
+        customerEmail: row.contact_email ?? null,
+        ipAddress: getRequestIp(request),
+        success: true,
+        evidence: {
+          source: 'subscription_item',
+          subscription_id: subscriptionId,
+          order_item_id: row.order_item_id ?? null,
+        },
+      });
+
+      return SuccessResponses.ok(reply, {
+        order_id: orderId,
+        subscription_id: subscriptionId,
+        order_item_id: row.order_item_id ?? null,
+        credentials: decrypted.plaintext,
+      });
+    }
+  );
+
+  fastify.post(
+    '/:orderId/items/:subscriptionId/accept-rules',
+    {
+      preHandler: [authPreHandler],
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId', 'subscriptionId'],
+          properties: {
+            orderId: { type: 'string' },
+            subscriptionId: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const userId = request.user?.userId;
+      if (!userId) {
+        return ErrorResponses.unauthorized(reply, 'Authentication required');
+      }
+      const { orderId, subscriptionId } = request.params as {
+        orderId: string;
+        subscriptionId: string;
+      };
+      const pool = getDatabasePool();
+      const result = await pool.query(
+        `SELECT o.contact_email, s.order_item_id, p.metadata AS product_metadata
+         FROM orders o
+         JOIN subscriptions s ON s.order_id = o.id
+         LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
+         LEFT JOIN products p ON p.id = pv.product_id
+         WHERE o.id = $1
+           AND o.user_id = $2
+           AND s.id = $3`,
+        [orderId, userId, subscriptionId]
+      );
+      const row = result.rows[0] || null;
+      if (!row) {
+        return ErrorResponses.notFound(reply, 'Order item not found');
+      }
+      const upgradeOptions = normalizeUpgradeOptions(row.product_metadata);
+      if (!upgradeOptions?.strict_rules) {
+        return ErrorResponses.badRequest(
+          reply,
+          'Strict rules are not required for this item'
+        );
+      }
+      const rulesVersion = upgradeOptions.strict_rules_version || 1;
+      const existing = await pool.query(
+        `SELECT created_at, ip_address, metadata
+         FROM order_compliance_evidence_logs
+         WHERE order_id = $1
+           AND user_id = $2
+           AND event_type = 'strict_rules_acceptance'
+           AND metadata->>'subscription_id' = $3
+           AND (metadata->>'rules_version')::int = $4
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [orderId, userId, subscriptionId, rulesVersion]
+      );
+      if (existing.rows.length === 0) {
+        await orderComplianceEvidenceService.recordGenericEvidence({
+          orderId,
+          eventType: 'strict_rules_acceptance',
+          userId,
+          customerEmail: row.contact_email ?? null,
+          ipAddress: getRequestIp(request),
+          accessEvidence: {
+            accepted: true,
+            accepted_at: new Date().toISOString(),
+            user_agent: request.headers['user-agent'] ?? null,
+          },
+          metadata: {
+            subscription_id: subscriptionId,
+            order_item_id: row.order_item_id ?? null,
+            rules_version: rulesVersion,
+          },
+        });
+      }
+
+      return SuccessResponses.ok(reply, {
+        accepted: true,
+        subscription_id: subscriptionId,
+        rules_version: rulesVersion,
+      });
+    }
+  );
+
+  fastify.post(
+    '/:orderId/items/:subscriptionId/activation-ready',
+    {
+      preHandler: [authPreHandler],
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId', 'subscriptionId'],
+          properties: {
+            orderId: { type: 'string' },
+            subscriptionId: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['confirmed'],
+          properties: {
+            confirmed: { type: 'boolean' },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const userId = request.user?.userId;
+      if (!userId) {
+        return ErrorResponses.unauthorized(reply, 'Authentication required');
+      }
+      const { confirmed } = request.body as { confirmed: boolean };
+      if (confirmed !== true) {
+        return ErrorResponses.badRequest(
+          reply,
+          'Activation expiry acknowledgement is required'
+        );
+      }
+      const { orderId, subscriptionId } = request.params as {
+        orderId: string;
+        subscriptionId: string;
+      };
+      const pool = getDatabasePool();
+      const result = await pool.query(
+        `UPDATE subscriptions s
+         SET activation_handshake_state = 'customer_ready',
+             activation_customer_ready_at = NOW()
+         FROM orders o
+         WHERE o.id = s.order_id
+           AND o.id = $1
+           AND o.user_id = $2
+           AND s.id = $3
+           AND s.activation_handshake_state IN ('instructions_delivered', 'awaiting_customer')
+         RETURNING s.id, s.order_item_id, o.contact_email`,
+        [orderId, userId, subscriptionId]
+      );
+      const row = result.rows[0] || null;
+      if (!row) {
+        return ErrorResponses.badRequest(
+          reply,
+          'Activation instructions are not awaiting customer confirmation'
+        );
+      }
+
+      await orderComplianceEvidenceService.recordGenericEvidence({
+        orderId,
+        eventType: 'activation_customer_ready',
+        userId,
+        customerEmail: row.contact_email ?? null,
+        ipAddress: getRequestIp(request),
+        accessEvidence: {
+          confirmed: true,
+          confirmed_at: new Date().toISOString(),
+          user_agent: request.headers['user-agent'] ?? null,
+        },
+        metadata: {
+          subscription_id: subscriptionId,
+          order_item_id: row.order_item_id ?? null,
+        },
+      });
+
+      return SuccessResponses.ok(reply, {
+        subscription_id: subscriptionId,
+        activation_handshake_state: 'customer_ready',
+      });
+    }
+  );
+
   fastify.get(
     '/:orderId/subscription',
     {
@@ -720,7 +1048,12 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         const subscriptionResult = await pool.query(
-          'SELECT id FROM subscriptions WHERE order_id = $1 ORDER BY created_at ASC',
+          `SELECT s.id, p.metadata AS product_metadata
+           FROM subscriptions s
+           LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
+           LEFT JOIN products p ON p.id = pv.product_id
+           WHERE s.order_id = $1
+           ORDER BY s.created_at ASC`,
           [orderId]
         );
 
@@ -739,7 +1072,10 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           if (subscriptionData.success && subscriptionData.data) {
             const { credentials_encrypted: _credentials, ...safeSubscription } =
               subscriptionData.data;
-            subscriptions.push(safeSubscription);
+            subscriptions.push({
+              ...safeSubscription,
+              product_options: normalizeUpgradeOptions(row.product_metadata),
+            });
           }
         }
 

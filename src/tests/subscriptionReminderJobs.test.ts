@@ -306,8 +306,8 @@ describe('subscription reminder jobs', () => {
         service_type: 'netflix',
         service_plan: 'basic',
         term_start_at: new Date('2026-01-01T00:00:00.000Z'),
-        term_months: 5,
-        end_date: new Date('2026-06-01T00:00:00.000Z'),
+        term_months: 6,
+        end_date: new Date('2026-07-01T00:00:00.000Z'),
         upgrade_options_snapshot: {
           manual_monthly_upgrade: true,
           manual_monthly_upgrade_interval_months: 1,
@@ -320,8 +320,8 @@ describe('subscription reminder jobs', () => {
         service_type: 'chatgpt',
         service_plan: 'pro',
         term_start_at: new Date('2026-01-01T00:00:00.000Z'),
-        term_months: 5,
-        end_date: new Date('2026-06-01T00:00:00.000Z'),
+        term_months: 6,
+        end_date: new Date('2026-07-01T00:00:00.000Z'),
         upgrade_options_snapshot: {
           manual_monthly_upgrade: true,
           manual_monthly_upgrade_interval_months: 2,
@@ -334,8 +334,8 @@ describe('subscription reminder jobs', () => {
         service_type: 'spotify',
         service_plan: 'premium',
         term_start_at: new Date('2026-01-01T00:00:00.000Z'),
-        term_months: 5,
-        end_date: new Date('2026-06-01T00:00:00.000Z'),
+        term_months: 6,
+        end_date: new Date('2026-07-01T00:00:00.000Z'),
         upgrade_options_snapshot: {
           manual_monthly_upgrade: true,
           manual_monthly_upgrade_interval_months: 3,

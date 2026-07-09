@@ -5,6 +5,14 @@ export interface MmuCycleInfo {
   cycleEnd: Date;
 }
 
+export interface MmuCoverageLabel {
+  label: string;
+  coversMonthsFrom: number;
+  coversMonthsTo: number;
+  termMonths: number;
+  intervalMonths: number;
+}
+
 const normalizeMonths = (value: number): number =>
   Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 
@@ -71,4 +79,67 @@ export function shouldCreateMmuTask(
 ): boolean {
   const leadMs = leadDays * 24 * 60 * 60 * 1000;
   return now.getTime() >= cycleEnd.getTime() - leadMs;
+}
+
+export function getInitialMmuCoverage(params: {
+  termMonths: number;
+  intervalMonths?: number | null;
+}): { coversMonthsFrom: number; coversMonthsTo: number; termMonths: number } {
+  const termMonths = normalizeMonths(params.termMonths);
+  const intervalMonths = Math.max(
+    1,
+    normalizeMonths(params.intervalMonths ?? 1)
+  );
+  return {
+    coversMonthsFrom: 1,
+    coversMonthsTo: Math.min(termMonths, intervalMonths),
+    termMonths,
+  };
+}
+
+export function formatMmuCoverageLabel(params: {
+  termMonths: number;
+  intervalMonths?: number | null;
+  cycleIndex: number;
+}): MmuCoverageLabel | null {
+  const termMonths = normalizeMonths(params.termMonths);
+  const intervalMonths = Math.max(
+    1,
+    normalizeMonths(params.intervalMonths ?? 1)
+  );
+  const cycleIndex = normalizeMonths(params.cycleIndex);
+
+  if (termMonths <= 1 || cycleIndex <= 0) {
+    return null;
+  }
+
+  const coversMonthsFrom = cycleIndex + 1;
+  const coversMonthsTo = Math.min(termMonths, cycleIndex + intervalMonths);
+
+  if (coversMonthsFrom > termMonths || coversMonthsFrom > coversMonthsTo) {
+    return null;
+  }
+
+  return {
+    label:
+      intervalMonths === 1
+        ? `Month ${coversMonthsFrom} of ${termMonths}`
+        : `Months ${coversMonthsFrom}-${coversMonthsTo} of ${termMonths}`,
+    coversMonthsFrom,
+    coversMonthsTo,
+    termMonths,
+    intervalMonths,
+  };
+}
+
+export function validateMmuTermDivisibility(params: {
+  termMonths: number | null | undefined;
+  intervalMonths: number | null | undefined;
+}): boolean {
+  const termMonths = normalizeMonths(params.termMonths ?? 0);
+  const intervalMonths = normalizeMonths(params.intervalMonths ?? 0);
+  if (termMonths <= 0 || intervalMonths <= 0) {
+    return true;
+  }
+  return termMonths % intervalMonths === 0;
 }
