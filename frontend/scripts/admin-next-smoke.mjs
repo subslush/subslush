@@ -1,4 +1,8 @@
 import { chromium } from 'playwright-core';
+import { Client } from 'pg';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: '../.env', quiet: true });
 
 const baseUrl = process.env.SMOKE_ADMIN_NEXT_URL || 'http://127.0.0.1:3000';
 const adminToken = process.env.SMOKE_ADMIN_TOKEN;
@@ -39,6 +43,36 @@ try {
       throw new Error(`${requestPath} returned ${matched.status()}`);
     }
     await visible();
+  }
+
+  async function assertSucceededCurrentPriceSnapshot(variantId) {
+    const client = new Client({
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT || 5432),
+      database: process.env.DB_DATABASE,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+    });
+    await client.connect();
+    try {
+      const result = await client.query(
+        `SELECT ph.metadata->>'snapshot_id' AS snapshot_id, ppr.status
+           FROM price_history ph
+           JOIN pricing_publish_runs ppr
+             ON ppr.snapshot_id::text = ph.metadata->>'snapshot_id'
+          WHERE ph.product_variant_id = $1
+            AND ph.ends_at IS NULL
+          ORDER BY ph.starts_at DESC
+          LIMIT 1`,
+        [variantId]
+      );
+      const row = result.rows[0];
+      if (!row?.snapshot_id || row.status !== 'succeeded') {
+        throw new Error('Current price is missing a succeeded pricing snapshot.');
+      }
+    } finally {
+      await client.end();
+    }
   }
 
   const productsNavigationStartedAt = performance.now();
@@ -100,6 +134,9 @@ try {
     click: () => priceForm.getByRole('button', { name: 'Set current price' }).click(),
     visible: () => page.locator('.list p', { hasText: '$12.34' }).waitFor(),
   });
+  await assertSucceededCurrentPriceSnapshot(
+    await priceForm.getByLabel('Variant for price').inputValue()
+  );
 
   await page.getByRole('button', { name: 'Fulfillment settings' }).click();
   await page.getByText('Manual monthly upgrade (MMU)', { exact: true }).click();
