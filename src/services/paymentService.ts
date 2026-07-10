@@ -878,6 +878,7 @@ export class PaymentService {
     order: Order;
     orderItems: OrderItem[];
     renewalMethod: string | null;
+    client?: PoolClient;
   }): Promise<
     Array<{
       id: string;
@@ -889,7 +890,7 @@ export class PaymentService {
       return [];
     }
 
-    const pool = getDatabasePool();
+    const pool = params.client ?? getDatabasePool();
     const orderItemIds = params.orderItems.map(item => item.id);
     const existingResult = await pool.query(
       `SELECT id, order_item_id
@@ -910,7 +911,8 @@ export class PaymentService {
     );
     const selectionByItem =
       await orderItemUpgradeSelectionService.listSelectionsForOrder(
-        params.order.id
+        params.order.id,
+        params.client
       );
 
     const created: Array<{
@@ -1007,31 +1009,38 @@ export class PaymentService {
       renewalDate.setDate(renewalDate.getDate() - 7);
       const nextBillingAt = autoRenew ? renewalDate : null;
 
-      const subscriptionResult = await subscriptionService.createSubscription(
-        params.order.user_id,
-        {
-          service_type: serviceType as any,
-          service_plan: servicePlan as any,
-          start_date: startDate,
-          end_date: endDate,
-          renewal_date: renewalDate,
-          auto_renew: autoRenew,
-          order_id: params.order.id,
-          order_item_id: item.id,
-          product_variant_id: item.product_variant_id ?? null,
-          price_cents: termTotalCents,
-          base_price_cents: basePriceCents ?? null,
-          discount_percent: discountPercent ?? null,
-          term_months: termMonths,
-          currency: currency ?? null,
-          next_billing_at: nextBillingAt,
-          renewal_method: params.renewalMethod,
-          status_reason: 'payment_succeeded',
-          upgrade_options_snapshot: upgradeOptions ?? null,
-          selection_provided: selectionProvided,
-          manual_monthly_acknowledged: manualMonthlyAcknowledged,
-        }
-      );
+      const subscriptionInput = {
+        service_type: serviceType as any,
+        service_plan: servicePlan as any,
+        start_date: startDate,
+        end_date: endDate,
+        renewal_date: renewalDate,
+        auto_renew: autoRenew,
+        order_id: params.order.id,
+        order_item_id: item.id,
+        product_variant_id: item.product_variant_id ?? null,
+        price_cents: termTotalCents,
+        base_price_cents: basePriceCents ?? null,
+        discount_percent: discountPercent ?? null,
+        term_months: termMonths,
+        currency: currency ?? null,
+        next_billing_at: nextBillingAt,
+        renewal_method: params.renewalMethod,
+        status_reason: 'payment_succeeded',
+        upgrade_options_snapshot: upgradeOptions ?? null,
+        selection_provided: selectionProvided,
+        manual_monthly_acknowledged: manualMonthlyAcknowledged,
+      };
+      const subscriptionResult = params.client
+        ? await subscriptionService.createSubscription(
+            params.order.user_id,
+            subscriptionInput,
+            params.client
+          )
+        : await subscriptionService.createSubscription(
+            params.order.user_id,
+            subscriptionInput
+          );
 
       if (!subscriptionResult.success || !subscriptionResult.data) {
         const errorMessage = subscriptionResult.success
@@ -1056,23 +1065,26 @@ export class PaymentService {
         subscription.term_start_at || subscription.start_date;
       const mmuCycleTotal = termMonths > 1 ? termMonths : null;
       const mmuCycleIndex = mmuCycleTotal ? 1 : null;
-      const entitlement = await orderEntitlementService.upsertEntitlement({
-        order_id: params.order.id,
-        order_item_id: item.id,
-        user_id: params.order.user_id,
-        status: subscription.status,
-        starts_at: subscriptionStartAt,
-        ends_at: subscription.end_date,
-        duration_months_snapshot: termMonths,
-        credentials_encrypted: selectionRow?.credentials_encrypted ?? null,
-        mmu_cycle_index: mmuCycleIndex,
-        mmu_cycle_total: mmuCycleTotal,
-        source_subscription_id: subscription.id,
-        metadata: {
-          source: 'payment_service.createSubscriptionsForOrder',
-          renewal_method: params.renewalMethod,
+      const entitlement = await orderEntitlementService.upsertEntitlement(
+        {
+          order_id: params.order.id,
+          order_item_id: item.id,
+          user_id: params.order.user_id,
+          status: subscription.status,
+          starts_at: subscriptionStartAt,
+          ends_at: subscription.end_date,
+          duration_months_snapshot: termMonths,
+          credentials_encrypted: selectionRow?.credentials_encrypted ?? null,
+          mmu_cycle_index: mmuCycleIndex,
+          mmu_cycle_total: mmuCycleTotal,
+          source_subscription_id: subscription.id,
+          metadata: {
+            source: 'payment_service.createSubscriptionsForOrder',
+            renewal_method: params.renewalMethod,
+          },
         },
-      });
+        params.client
+      );
       if (!entitlement) {
         Logger.warn('Failed to upsert order entitlement for order item', {
           orderId: params.order.id,
@@ -1083,19 +1095,25 @@ export class PaymentService {
 
       if (selectionRow) {
         if (selectionRow.selection_type) {
-          await upgradeSelectionService.submitSelection({
-            subscriptionId: subscription.id,
-            selectionType: selectionRow.selection_type as any,
-            accountIdentifier: selectionRow.account_identifier ?? null,
-            credentials: selectionRow.credentials_encrypted ?? null,
-            manualMonthlyAcknowledgedAt:
-              selectionRow.manual_monthly_acknowledged_at ?? null,
-          });
+          await upgradeSelectionService.submitSelection(
+            {
+              subscriptionId: subscription.id,
+              selectionType: selectionRow.selection_type as any,
+              accountIdentifier: selectionRow.account_identifier ?? null,
+              credentials: selectionRow.credentials_encrypted ?? null,
+              manualMonthlyAcknowledgedAt:
+                selectionRow.manual_monthly_acknowledged_at ?? null,
+            },
+            params.client
+          );
         } else if (selectionRow.manual_monthly_acknowledged_at) {
-          await upgradeSelectionService.acknowledgeManualMonthly({
-            subscriptionId: subscription.id,
-            acknowledgedAt: selectionRow.manual_monthly_acknowledged_at,
-          });
+          await upgradeSelectionService.acknowledgeManualMonthly(
+            {
+              subscriptionId: subscription.id,
+              acknowledgedAt: selectionRow.manual_monthly_acknowledged_at,
+            },
+            params.client
+          );
         }
       }
     }
@@ -1107,6 +1125,11 @@ export class PaymentService {
     orderId: string;
     adminUserId: string;
     note: string;
+    audit?: {
+      ipAddress?: string | null;
+      userAgent?: string | null;
+      requestId?: string | null;
+    };
   }): Promise<{
     success: boolean;
     error?: string;
@@ -1141,96 +1164,160 @@ export class PaymentService {
     }
 
     const pool = getDatabasePool();
+    const client = await pool.connect();
     const manualPaymentId = `manual_${params.orderId}`;
-    let payment = await paymentRepository.findByProviderPaymentId(
-      'manual',
-      manualPaymentId
-    );
-    if (!payment) {
-      payment = await paymentRepository.create({
-        userId: order.user_id,
-        provider: 'manual',
-        providerPaymentId: manualPaymentId,
-        status: 'succeeded',
-        providerStatus: 'manual_confirmed',
-        purpose: 'subscription',
-        amount: (order.total_cents ?? 0) / 100,
-        currency: (order.currency || 'USD').toLowerCase(),
-        paymentMethodType: 'manual',
-        orderId: order.id,
-        metadata: {
-          order_id: order.id,
-          admin_user_id: params.adminUserId,
-          note,
-          confirmed_at: new Date().toISOString(),
-        },
-      });
-    }
 
-    const updateResult = await pool.query(
-      `UPDATE orders
-       SET status = 'in_process',
-           status_reason = 'manual_payment_confirmed',
-           payment_provider = 'manual',
-           payment_reference = $1,
-           updated_at = NOW()
-       WHERE id = $2
-         AND status = 'pending_payment'
-       RETURNING id`,
-      [manualPaymentId, order.id]
-    );
-    if (updateResult.rows.length === 0) {
-      const refreshed = await orderService.getOrderById(order.id);
-      return {
-        success: false,
-        error: 'order_not_pending_payment',
-        status: 'invalid_state',
-        ...(refreshed?.status ? { orderStatus: refreshed.status } : {}),
-      };
-    }
+    try {
+      await client.query('BEGIN');
 
-    if (payment) {
+      const lockedOrder = await client.query(
+        `SELECT status FROM orders WHERE id = $1 FOR UPDATE`,
+        [order.id]
+      );
+      if (lockedOrder.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return {
+          success: false,
+          error: 'order_not_found',
+          status: 'not_found',
+        };
+      }
+      if (lockedOrder.rows[0].status !== 'pending_payment') {
+        await client.query('ROLLBACK');
+        return {
+          success: false,
+          error: 'order_not_pending_payment',
+          status: 'invalid_state',
+          orderStatus: lockedOrder.rows[0].status,
+        };
+      }
+
+      let payment = await paymentRepository.findByProviderPaymentId(
+        'manual',
+        manualPaymentId,
+        client
+      );
+      if (!payment) {
+        payment = await paymentRepository.create(
+          {
+            userId: order.user_id,
+            provider: 'manual',
+            providerPaymentId: manualPaymentId,
+            status: 'succeeded',
+            providerStatus: 'manual_confirmed',
+            purpose: 'subscription',
+            amount: (order.total_cents ?? 0) / 100,
+            currency: (order.currency || 'USD').toLowerCase(),
+            paymentMethodType: 'manual',
+            orderId: order.id,
+            // The deferrable singleton trigger requires this denormalized
+            // reference whenever the allocation has exactly one item.
+            ...(order.items.length === 1 && order.items[0]?.id
+              ? { orderItemId: order.items[0].id }
+              : {}),
+            metadata: {
+              order_id: order.id,
+              admin_user_id: params.adminUserId,
+              note,
+              confirmed_at: new Date().toISOString(),
+            },
+          },
+          client
+        );
+      }
+
       await this.createPaymentItemAllocations({
         paymentRecordId: payment.id,
         orderItems: order.items,
+        client,
       });
-    }
 
-    const createdSubscriptions = await this.createSubscriptionsForOrder({
-      order,
-      orderItems: order.items,
-      renewalMethod: 'manual',
-    });
-    await couponService.finalizeRedemptionForOrder(order.id);
-    const confirmationResult =
-      await orderService.sendOrderPaymentConfirmationEmail(order.id);
-    if (
-      !confirmationResult.success &&
-      !['already_sent', 'renewal_order'].includes(
-        confirmationResult.reason ?? ''
-      )
-    ) {
-      Logger.warn('Manual mark-paid confirmation email failed', {
-        orderId: order.id,
-        reason: confirmationResult.reason,
+      const updateResult = await client.query(
+        `UPDATE orders
+         SET status = 'in_process',
+             status_reason = 'manual_payment_confirmed',
+             payment_provider = 'manual',
+             payment_reference = $1,
+             updated_at = NOW()
+         WHERE id = $2
+           AND status = 'pending_payment'
+         RETURNING id`,
+        [manualPaymentId, order.id]
+      );
+      if (updateResult.rows.length === 0) {
+        throw new Error('order_not_pending_payment');
+      }
+
+      const createdSubscriptions = await this.createSubscriptionsForOrder({
+        order,
+        orderItems: order.items,
+        renewalMethod: 'manual',
+        client,
       });
+      if (createdSubscriptions.length !== order.items.length) {
+        throw new Error('manual_subscription_creation_failed');
+      }
+
+      await couponService.finalizeRedemptionForOrder(order.id, client);
+      const taskResult = await client.query(
+        `SELECT COUNT(*)::int AS open_tasks
+         FROM admin_tasks
+         WHERE order_id = $1
+           AND completed_at IS NULL`,
+        [order.id]
+      );
+
+      await client.query(
+        `INSERT INTO admin_audit_logs
+          (user_id, action, entity_type, entity_id, metadata, ip_address, user_agent, request_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          params.adminUserId,
+          'orders.mark_paid.manual',
+          'order',
+          order.id,
+          JSON.stringify({
+            note,
+            subscriptions_created: createdSubscriptions.length,
+            open_tasks: Number(taskResult.rows[0]?.open_tasks ?? 0),
+          }),
+          params.audit?.ipAddress ?? null,
+          params.audit?.userAgent ?? null,
+          params.audit?.requestId ?? null,
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      // Email delivery is intentionally outside the transaction: it is an
+      // external side effect and must not be able to leave the order half-paid.
+      const confirmationResult =
+        await orderService.sendOrderPaymentConfirmationEmail(order.id);
+      if (
+        !confirmationResult.success &&
+        !['already_sent', 'renewal_order'].includes(
+          confirmationResult.reason ?? ''
+        )
+      ) {
+        Logger.warn('Manual mark-paid confirmation email failed', {
+          orderId: order.id,
+          reason: confirmationResult.reason,
+        });
+      }
+
+      return {
+        success: true,
+        status: 'confirmed',
+        orderStatus: 'in_process',
+        subscriptionsCreated: createdSubscriptions.length,
+        tasksOpen: Number(taskResult.rows[0]?.open_tasks ?? 0),
+      };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
     }
-
-    const taskResult = await pool.query(
-      `SELECT COUNT(*)::int AS open_tasks
-       FROM admin_tasks
-       WHERE order_id = $1
-         AND completed_at IS NULL`,
-      [order.id]
-    );
-
-    return {
-      success: true,
-      status: 'confirmed',
-      orderStatus: 'in_process',
-      subscriptionsCreated: createdSubscriptions.length,
-      tasksOpen: Number(taskResult.rows[0]?.open_tasks ?? 0),
-    };
   }
 
   private parseMetadataDate(value: unknown): Date | null {

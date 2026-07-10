@@ -82,12 +82,18 @@ describe('Manual mark-paid pipeline and stale Payop/Antom sweep', () => {
       if (sql.includes('UPDATE orders')) {
         return Promise.resolve({ rows: [{ id: 'order-1' }] });
       }
+      if (sql.includes('SELECT status FROM orders')) {
+        return Promise.resolve({ rows: [{ status: 'pending_payment' }] });
+      }
       if (sql.includes('COUNT(*)::int AS open_tasks')) {
         return Promise.resolve({ rows: [{ open_tasks: 1 }] });
       }
       return Promise.resolve({ rows: [] });
     });
-    mockGetDatabasePool.mockReturnValue({ query } as any);
+    const client = { query, release: jest.fn() };
+    mockGetDatabasePool.mockReturnValue({
+      connect: jest.fn().mockResolvedValue(client),
+    } as any);
     mockOrderService.getOrderWithItems.mockResolvedValue(order as any);
     mockPaymentRepository.findByProviderPaymentId.mockResolvedValue(null);
     mockPaymentRepository.create.mockResolvedValue({ id: 'payment-1' } as any);
@@ -114,12 +120,15 @@ describe('Manual mark-paid pipeline and stale Payop/Antom sweep', () => {
         provider: 'manual',
         providerPaymentId: 'manual_order-1',
         status: 'succeeded',
+        orderItemId: 'item-1',
         metadata: expect.objectContaining({ note: 'Verified manually' }),
-      })
+      }),
+      client
     );
     expect(mockSubscriptionService.createSubscription).toHaveBeenCalledTimes(1);
     expect(mockCouponService.finalizeRedemptionForOrder).toHaveBeenCalledWith(
-      'order-1'
+      'order-1',
+      client
     );
     expect(
       mockOrderService.sendOrderPaymentConfirmationEmail

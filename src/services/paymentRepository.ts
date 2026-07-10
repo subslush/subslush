@@ -300,10 +300,11 @@ export const paymentRepository = {
 
   async findByProviderPaymentId(
     provider: PaymentProvider,
-    providerPaymentId: string
+    providerPaymentId: string,
+    client?: PoolClient
   ): Promise<UnifiedPayment | null> {
     try {
-      const pool = getDatabasePool();
+      const pool = getClient(client);
       const result = await pool.query(
         `SELECT * FROM payments WHERE provider = $1 AND provider_payment_id = $2`,
         [provider, providerPaymentId]

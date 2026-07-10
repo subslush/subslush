@@ -114,19 +114,12 @@ describe('Admin order actions', () => {
       orderId: 'order-1',
       adminUserId: 'admin-1',
       note: 'Verified in provider dashboard',
+      audit: expect.objectContaining({
+        ipAddress: '127.0.0.1',
+        requestId: expect.any(String),
+      }),
     });
-    expect(mockLogAdminAction).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        action: 'orders.mark_paid.manual',
-        entityId: 'order-1',
-        metadata: expect.objectContaining({
-          note: 'Verified in provider dashboard',
-          subscriptions_created: 2,
-          open_tasks: 2,
-        }),
-      })
-    );
+    expect(mockLogAdminAction).not.toHaveBeenCalled();
   });
 
   it('rejects manual mark-paid outside pending_payment with no audit row', async () => {

@@ -88,6 +88,12 @@ type OrderItemContext = {
   variant_name?: string | null;
   term_months?: number | null;
   metadata?: ParsedMetadata | null;
+  product_metadata?: ParsedMetadata | null;
+};
+
+type SourceSubscriptionContext = {
+  id: string;
+  activation_handshake_state?: string | null;
 };
 
 const parseMetadata = (value: unknown): ParsedMetadata | null => {
@@ -124,8 +130,13 @@ const toLegacySubscriptionPayload = (params: {
   entitlement: OrderEntitlement;
   orderMetadata: ParsedMetadata | null;
   orderItem?: OrderItemContext | undefined;
+  sourceSubscription?: SourceSubscriptionContext | undefined;
 }): Record<string, unknown> => {
   const itemMetadata = parseMetadata(params.orderItem?.metadata);
+  const productOptions =
+    normalizeUpgradeOptions(itemMetadata) ??
+    normalizeUpgradeOptions(params.orderItem?.product_metadata) ??
+    normalizeUpgradeOptions(params.orderMetadata);
   const serviceType =
     readString(itemMetadata, 'service_type', 'serviceType') ??
     readString(params.orderMetadata, 'service_type', 'serviceType') ??
@@ -157,6 +168,9 @@ const toLegacySubscriptionPayload = (params: {
     variant_name: params.orderItem?.variant_name ?? null,
     order_id: params.entitlement.order_id,
     order_item_id: params.entitlement.order_item_id ?? null,
+    activation_handshake_state:
+      params.sourceSubscription?.activation_handshake_state ?? null,
+    product_options: productOptions ?? null,
     status_reason: 'order_entitlement',
     metadata: {
       ...(params.entitlement.metadata || {}),
@@ -900,7 +914,8 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
                     COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
                     COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                     oi.term_months,
-                    oi.metadata
+                    oi.metadata,
+                    p.metadata AS product_metadata
              FROM order_items oi
              LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
              LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
@@ -915,8 +930,33 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
               variant_name: row.variant_name ?? null,
               term_months: row.term_months ?? null,
               metadata: parseMetadata(row.metadata),
+              product_metadata: parseMetadata(row.product_metadata),
             });
           }
+
+          const sourceSubscriptions = await pool.query(
+            `SELECT id, activation_handshake_state
+               FROM subscriptions
+              WHERE id = ANY($1::uuid[])`,
+            [
+              entitlements
+                .map(entitlement => entitlement.source_subscription_id)
+                .filter((id): id is string => Boolean(id)),
+            ]
+          );
+          const sourceSubscriptionById = new Map<
+            string,
+            SourceSubscriptionContext
+          >(
+            sourceSubscriptions.rows.map(row => [
+              row.id as string,
+              {
+                id: row.id as string,
+                activation_handshake_state:
+                  (row.activation_handshake_state as string | null) ?? null,
+              },
+            ])
+          );
 
           const first = entitlements[0];
           if (!first) {
@@ -929,6 +969,14 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
             entitlement: first,
             orderMetadata,
             ...(orderItem ? { orderItem } : {}),
+            ...(first.source_subscription_id &&
+            sourceSubscriptionById.get(first.source_subscription_id)
+              ? {
+                  sourceSubscription: sourceSubscriptionById.get(
+                    first.source_subscription_id
+                  ) as SourceSubscriptionContext,
+                }
+              : {}),
           });
           return SuccessResponses.ok(reply, { subscription: mapped });
         }
@@ -1017,7 +1065,8 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
                     COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
                     COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                     oi.term_months,
-                    oi.metadata
+                    oi.metadata,
+                    p.metadata AS product_metadata
              FROM order_items oi
              LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
              LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
@@ -1032,8 +1081,33 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
               variant_name: row.variant_name ?? null,
               term_months: row.term_months ?? null,
               metadata: parseMetadata(row.metadata),
+              product_metadata: parseMetadata(row.product_metadata),
             });
           }
+
+          const sourceSubscriptions = await pool.query(
+            `SELECT id, activation_handshake_state
+               FROM subscriptions
+              WHERE id = ANY($1::uuid[])`,
+            [
+              entitlements
+                .map(entitlement => entitlement.source_subscription_id)
+                .filter((id): id is string => Boolean(id)),
+            ]
+          );
+          const sourceSubscriptionById = new Map<
+            string,
+            SourceSubscriptionContext
+          >(
+            sourceSubscriptions.rows.map(row => [
+              row.id as string,
+              {
+                id: row.id as string,
+                activation_handshake_state:
+                  (row.activation_handshake_state as string | null) ?? null,
+              },
+            ])
+          );
 
           const subscriptions = entitlements.map(entitlement =>
             toLegacySubscriptionPayload({
@@ -1045,6 +1119,14 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
                     orderItem: orderItemById.get(
                       entitlement.order_item_id
                     ) as OrderItemContext,
+                  }
+                : {}),
+              ...(entitlement.source_subscription_id &&
+              sourceSubscriptionById.get(entitlement.source_subscription_id)
+                ? {
+                    sourceSubscription: sourceSubscriptionById.get(
+                      entitlement.source_subscription_id
+                    ) as SourceSubscriptionContext,
                   }
                 : {}),
             })

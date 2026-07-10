@@ -874,6 +874,14 @@ export async function adminOrderRoutes(
           orderId,
           adminUserId: request.user?.userId || 'admin',
           note: normalizedNote,
+          audit: {
+            ipAddress: request.ip,
+            userAgent:
+              typeof request.headers['user-agent'] === 'string'
+                ? request.headers['user-agent']
+                : null,
+            requestId: request.id,
+          },
         });
 
         if (!result.success) {
@@ -894,17 +902,6 @@ export async function adminOrderRoutes(
             result.error || 'Failed to mark order paid'
           );
         }
-
-        await logAdminAction(request, {
-          action: 'orders.mark_paid.manual',
-          entityType: 'order',
-          entityId: orderId,
-          metadata: {
-            note: normalizedNote,
-            subscriptions_created: result.subscriptionsCreated ?? null,
-            open_tasks: result.tasksOpen ?? null,
-          },
-        });
 
         return SuccessResponses.ok(
           reply,

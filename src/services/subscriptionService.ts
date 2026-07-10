@@ -1,4 +1,5 @@
 import Ajv, { type ValidateFunction } from 'ajv';
+import type { PoolClient } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabasePool } from '../config/database';
 import { redisClient } from '../config/redis';
@@ -164,7 +165,8 @@ export class SubscriptionService {
 
   async createSubscription(
     userId: string,
-    input: CreateSubscriptionInput
+    input: CreateSubscriptionInput,
+    client?: PoolClient
   ): Promise<SubscriptionResult> {
     try {
       Logger.info('Creating subscription', {
@@ -201,7 +203,7 @@ export class SubscriptionService {
       }
 
       const subscriptionId = uuidv4();
-      const pool = getDatabasePool();
+      const pool = client ?? getDatabasePool();
 
       const requestedStatus = input.status ?? 'pending';
       const initialStatus =
@@ -317,11 +319,14 @@ export class SubscriptionService {
       await this.clearStatsCache();
 
       if (upgradeOptionsSnapshot) {
-        await upgradeSelectionService.ensureSelection({
-          subscriptionId,
-          orderId: input.order_id || null,
-          upgradeOptions: upgradeOptionsSnapshot,
-        });
+        await upgradeSelectionService.ensureSelection(
+          {
+            subscriptionId,
+            orderId: input.order_id || null,
+            upgradeOptions: upgradeOptionsSnapshot,
+          },
+          client
+        );
       }
 
       if (selectionRequired && upgradeOptionsSnapshot && !selectionProvided) {
@@ -332,12 +337,15 @@ export class SubscriptionService {
         if (input.order_id) {
           noteParts.push(`Order ${input.order_id}`);
         }
-        await this.createSelectionPendingTask({
-          subscriptionId,
-          userId,
-          orderId: input.order_id || null,
-          notes: noteParts.join(' '),
-        });
+        await this.createSelectionPendingTask(
+          {
+            subscriptionId,
+            userId,
+            orderId: input.order_id || null,
+            notes: noteParts.join(' '),
+          },
+          client
+        );
       } else {
         if (!manualMonthlyOnly && subscription.status === 'pending') {
           const noteParts = [
@@ -347,12 +355,15 @@ export class SubscriptionService {
           if (input.order_id) {
             noteParts.push(`Order ${input.order_id}`);
           }
-          await this.createCredentialProvisionTask({
-            subscriptionId,
-            userId,
-            orderId: input.order_id || null,
-            notes: noteParts.join(' '),
-          });
+          await this.createCredentialProvisionTask(
+            {
+              subscriptionId,
+              userId,
+              orderId: input.order_id || null,
+              notes: noteParts.join(' '),
+            },
+            client
+          );
         }
       }
 
@@ -367,14 +378,17 @@ export class SubscriptionService {
     }
   }
 
-  async createCredentialProvisionTask(params: {
-    subscriptionId: string;
-    userId: string;
-    orderId?: string | null;
-    notes?: string;
-  }): Promise<boolean> {
+  async createCredentialProvisionTask(
+    params: {
+      subscriptionId: string;
+      userId: string;
+      orderId?: string | null;
+      notes?: string;
+    },
+    client?: PoolClient
+  ): Promise<boolean> {
     try {
-      const pool = getDatabasePool();
+      const pool = client ?? getDatabasePool();
       const dueDate = new Date(
         Date.now() + CREDENTIAL_PROVISION_TASK_DUE_HOURS * 60 * 60 * 1000
       );
@@ -415,14 +429,17 @@ export class SubscriptionService {
     }
   }
 
-  async createSelectionPendingTask(params: {
-    subscriptionId: string;
-    userId: string;
-    orderId?: string | null;
-    notes?: string;
-  }): Promise<boolean> {
+  async createSelectionPendingTask(
+    params: {
+      subscriptionId: string;
+      userId: string;
+      orderId?: string | null;
+      notes?: string;
+    },
+    client?: PoolClient
+  ): Promise<boolean> {
     try {
-      const pool = getDatabasePool();
+      const pool = client ?? getDatabasePool();
       const dueDate = new Date(
         Date.now() + SELECTION_PENDING_TASK_DUE_HOURS * 60 * 60 * 1000
       );

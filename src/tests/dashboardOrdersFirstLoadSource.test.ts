@@ -34,4 +34,17 @@ describe('Dashboard orders first-load data flow', () => {
     expect(page).not.toContain('onMount(');
     expect(page).not.toContain('ordersService.listOrders(');
   });
+
+  it('keeps every subscription field consumed by dashboard gates in the SSR route payload', () => {
+    const ordersRoute = fs.readFileSync(
+      path.resolve(__dirname, '../routes/orders.ts'),
+      'utf8'
+    );
+    expect(ordersRoute).toContain('product_options: productOptions ?? null');
+    expect(ordersRoute).toContain('activation_handshake_state:');
+    expect(ordersRoute).toContain('mmu_cycle_index');
+    expect(page).toContain('subscription.product_options?.strict_rules');
+    expect(page).toContain('subscription.activation_handshake_state');
+    expect(page).toContain('subscription.status');
+  });
 });
