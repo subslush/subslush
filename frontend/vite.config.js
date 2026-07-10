@@ -2,6 +2,13 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import { imagetools } from 'vite-imagetools';
 
+const apiProxy = {
+	'/api': {
+		target: 'http://localhost:3001',
+		changeOrigin: true,
+	}
+};
+
 export default defineConfig({
 	plugins: [
 		imagetools({
@@ -35,11 +42,11 @@ export default defineConfig({
 	server: {
 		port: 3000,
 		host: true,
-		proxy: {
-			'/api': {
-				target: 'http://localhost:3001',
-				changeOrigin: true,
-			}
-		}
+		proxy: apiProxy
+	},
+	preview: {
+		port: 3000,
+		host: true,
+		proxy: apiProxy
 	}
 });

@@ -1,18 +1,20 @@
 # Admin-next smoke harness
 
-Start the local backend and frontend first. The backend must expose `/api/v1` to the frontend dev server, and provide a local admin JWT.
+The default target is a production Vite preview. Start the backend, build the frontend, then start preview; preview proxies `/api` to the local backend. Provide a local admin JWT.
 
 ```bash
 # terminal 1, repository root
 PORT=3001 npm run dev
 
 # terminal 2
-cd frontend && npm run dev
+cd frontend && npm run build && npm run preview
 
 # terminal 3
 cd frontend
 SMOKE_ADMIN_TOKEN='<local admin JWT>' npm run smoke:admin-next
 ```
+
+For local UI iteration, `npm run dev` remains supported as an optional target on the same port.
 
 The suite launches system Chromium headlessly and runs strictly sequentially. It creates `SMOKE-<timestamp>` product and variant fixtures through the real admin-next UI. Fixtures are intentionally retained with the `SMOKE-` prefix for local inspection/cleanup; no production cleanup is attempted by this harness.
 

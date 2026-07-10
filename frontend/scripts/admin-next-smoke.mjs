@@ -41,6 +41,7 @@ try {
     await visible();
   }
 
+  const productsNavigationStartedAt = performance.now();
   await page.goto(`${baseUrl}/admin-next/products`, {
     waitUntil: 'domcontentloaded',
     timeout: 60_000,
@@ -50,6 +51,9 @@ try {
   if (!(await newProductButton.isEnabled())) {
     throw new Error('New product control did not become enabled after hydration.');
   }
+  console.log(
+    `products-page-interactive-ms=${Math.round(performance.now() - productsNavigationStartedAt)}`
+  );
   await newProductButton.click();
   await page.getByLabel('Name').fill(productName);
   await page.getByLabel('Slug').fill(productSlug);
