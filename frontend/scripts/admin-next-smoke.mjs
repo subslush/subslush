@@ -71,7 +71,7 @@ try {
   await submitAndAssert({
     requestPath: '/api/v1/admin/product-variants',
     click: () => page.getByRole('button', { name: 'Add variant' }).click(),
-    visible: () => page.getByText(variantName, { exact: true }).waitFor(),
+    visible: () => page.locator('.list b', { hasText: variantName }).waitFor(),
   });
 
   console.log(`PASS admin-next smoke: ${productName} -> ${variantName}`);
