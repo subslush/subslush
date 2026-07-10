@@ -32,9 +32,9 @@ try {
   const page = await context.newPage();
   page.setDefaultTimeout(15_000);
 
-  async function submitAndAssert({ requestPath, click, visible }) {
+  async function submitAndAssert({ requestPath, requestMethod = 'POST', click, visible }) {
     const response = page.waitForResponse(response =>
-      response.request().method() === 'POST' &&
+      response.request().method() === requestMethod &&
       new URL(response.url()).pathname === requestPath
     );
     await click();
@@ -147,6 +147,7 @@ try {
   await page.getByLabel('Rules text').fill('SMOKE strict rules');
   await submitAndAssert({
     requestPath: `/api/v1/admin/products/${productId}`,
+    requestMethod: 'PATCH',
     click: () => page.getByRole('button', { name: 'Save fulfillment settings' }).click(),
     visible: () => page.getByText('Product saved.', { exact: true }).waitFor(),
   });
@@ -164,6 +165,7 @@ try {
   await page.getByLabel('Status').selectOption('active');
   await submitAndAssert({
     requestPath: `/api/v1/admin/products/${productId}`,
+    requestMethod: 'PATCH',
     click: () => page.getByRole('button', { name: 'Save basics' }).click(),
     visible: () => page.getByText('Active', { exact: true }).waitFor(),
   });
