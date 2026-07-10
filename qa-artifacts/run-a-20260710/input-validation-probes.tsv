@@ -1,0 +1,7 @@
+probe	status	body
+credentials	400	{"error":"Bad Request","message":"Validation failed","code":"INVALID_REQUEST","details":{"timestamp":"2026-07-10T15:00:32.384Z","path":"/api/v1/admin/subscriptions/00000000-0000-4000-8000-000000099902/credentials","errors":[{"field":"credentials","message":"must NOT have more than 4000 characters"}]}}
+activation	400	{"error":"Bad Request","message":"Validation failed","code":"INVALID_REQUEST","details":{"timestamp":"2026-07-10T15:00:32.439Z","path":"/api/v1/admin/orders/00000000-0000-4000-8000-000000099901/items/00000000-0000-4000-8000-000000099902/activation-instructions","errors":[{"field":"instructions","message":"must NOT have more than 4000 characters"}]}}
+note	400	{"error":"Bad Request","message":"Validation failed","code":"INVALID_REQUEST","details":{"timestamp":"2026-07-10T15:00:32.488Z","path":"/api/v1/admin/orders/00000000-0000-4000-8000-000000099901/mark-paid","errors":[{"field":"note","message":"must NOT have more than 1000 characters"}]}}
+rules	400	{"error":"Bad Request","message":"Validation failed","code":"INVALID_REQUEST","details":{"timestamp":"2026-07-10T15:00:32.541Z","path":"/api/v1/admin/products/00000000-0000-4000-8000-000000099903","errors":[{"field":"metadata.upgrade_options.strict_rules_text","message":"must NOT have more than 8000 characters"}]}}
+search:' OR 1=1 --	200?	{"data":{"results":[]}}
+search:<script>alert(1)</script>	200?	{"data":{"results":[]}}

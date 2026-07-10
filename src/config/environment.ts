@@ -471,38 +471,6 @@ const environmentSchema = z.object({
       typeof value === 'string' && value.trim() === '' ? undefined : value,
     z.string().optional()
   ),
-  TELEGRAM_ORDER_NOTIFICATIONS_ENABLED: z
-    .union([z.string(), z.boolean()])
-    .optional()
-    .default(false)
-    .transform(val => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        if (val.toLowerCase() === 'true') return true;
-        if (val.toLowerCase() === 'false') return false;
-      }
-      return false;
-    }),
-  TELEGRAM_BOT_TOKEN: z
-    .preprocess(
-      value => (typeof value === 'string' ? value.trim() : value),
-      z.string().optional()
-    )
-    .default(''),
-  TELEGRAM_ORDER_CHANNEL_ID: z
-    .preprocess(
-      value => (typeof value === 'string' ? value.trim() : value),
-      z.string().optional()
-    )
-    .default(''),
-  TELEGRAM_HTTP_TIMEOUT_MS: z.coerce.number().default(10000),
-  TELEGRAM_ORDER_NOTIFICATION_INTERVAL: z.coerce.number().default(60000),
-  TELEGRAM_ORDER_NOTIFICATION_BATCH_SIZE: z.coerce.number().default(20),
-  TELEGRAM_ORDER_NOTIFICATION_MAX_ATTEMPTS: z.coerce.number().default(10),
-  TELEGRAM_ORDER_NOTIFICATION_RETRY_BASE_SECONDS: z.coerce.number().default(60),
-  TELEGRAM_ORDER_NOTIFICATION_LOCK_TIMEOUT_SECONDS: z.coerce
-    .number()
-    .default(300),
   EMAIL_PROVIDER: z.enum(['smtp', 'console', 'resend']).default('console'),
   EMAIL_FROM: z.preprocess(
     value =>
@@ -959,53 +927,6 @@ function validateEnvironment(): EnvironmentConfig {
       throw new Error(
         'FX_RATE_MAX_STALE_MINUTES must be greater than or equal to FX_RATE_STALE_MINUTES'
       );
-    }
-
-    if (withTestOverrides.TELEGRAM_ORDER_NOTIFICATIONS_ENABLED) {
-      const missing: string[] = [];
-      if (!withTestOverrides.TELEGRAM_BOT_TOKEN) {
-        missing.push('TELEGRAM_BOT_TOKEN');
-      }
-      if (!withTestOverrides.TELEGRAM_ORDER_CHANNEL_ID) {
-        missing.push('TELEGRAM_ORDER_CHANNEL_ID');
-      }
-      if (missing.length > 0) {
-        throw new Error(
-          `Telegram order notification configuration missing required fields: ${missing.join(', ')}`
-        );
-      }
-      if (withTestOverrides.TELEGRAM_HTTP_TIMEOUT_MS <= 0) {
-        throw new Error('TELEGRAM_HTTP_TIMEOUT_MS must be greater than 0');
-      }
-      if (withTestOverrides.TELEGRAM_ORDER_NOTIFICATION_INTERVAL <= 0) {
-        throw new Error(
-          'TELEGRAM_ORDER_NOTIFICATION_INTERVAL must be greater than 0'
-        );
-      }
-      if (withTestOverrides.TELEGRAM_ORDER_NOTIFICATION_BATCH_SIZE <= 0) {
-        throw new Error(
-          'TELEGRAM_ORDER_NOTIFICATION_BATCH_SIZE must be greater than 0'
-        );
-      }
-      if (withTestOverrides.TELEGRAM_ORDER_NOTIFICATION_MAX_ATTEMPTS <= 0) {
-        throw new Error(
-          'TELEGRAM_ORDER_NOTIFICATION_MAX_ATTEMPTS must be greater than 0'
-        );
-      }
-      if (
-        withTestOverrides.TELEGRAM_ORDER_NOTIFICATION_RETRY_BASE_SECONDS <= 0
-      ) {
-        throw new Error(
-          'TELEGRAM_ORDER_NOTIFICATION_RETRY_BASE_SECONDS must be greater than 0'
-        );
-      }
-      if (
-        withTestOverrides.TELEGRAM_ORDER_NOTIFICATION_LOCK_TIMEOUT_SECONDS <= 0
-      ) {
-        throw new Error(
-          'TELEGRAM_ORDER_NOTIFICATION_LOCK_TIMEOUT_SECONDS must be greater than 0'
-        );
-      }
     }
 
     // Log critical configuration values for debugging in development only

@@ -78,21 +78,4 @@ describe('environment boot validation', () => {
       'Warning: Production environment detected but Antom is configured in sandbox mode.\n'
     );
   });
-
-  it('requires Telegram bot credentials only when order notifications are enabled', () => {
-    process.env['NODE_ENV'] = 'test';
-    process.env['PAYPAL_ENABLED'] = 'false';
-    process.env['TELEGRAM_ORDER_NOTIFICATIONS_ENABLED'] = 'true';
-    process.env['TELEGRAM_BOT_TOKEN'] = '';
-    process.env['TELEGRAM_ORDER_CHANNEL_ID'] = '';
-
-    jest.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('process.exit called');
-    }) as never);
-    jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
-
-    expect(() => {
-      require('../config/environment');
-    }).toThrow('process.exit called');
-  });
 });
