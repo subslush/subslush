@@ -38,7 +38,10 @@ try {
       new URL(response.url()).pathname === requestPath
     );
     await click();
-    const matched = await response;
+    const surfacedError = page.locator('.error-banner').waitFor().then(async () => {
+      throw new Error(`Visible admin error: ${await page.locator('.error-banner').innerText()}`);
+    });
+    const matched = await Promise.race([response, surfacedError]);
     if (!matched.ok()) {
       throw new Error(`${requestPath} returned ${matched.status()}`);
     }
