@@ -211,12 +211,91 @@ async function readOne(query, values) {
   }
 }
 
+async function cleanupSmokeFixtures() {
+  const client = new Client({
+    host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT || 5432),
+    database: process.env.DB_DATABASE,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+  });
+  await client.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`CREATE TEMP TABLE smoke_products ON COMMIT DROP AS
+      SELECT id FROM products WHERE name LIKE 'SMOKE-%'`);
+    await client.query(`CREATE TEMP TABLE smoke_orders ON COMMIT DROP AS
+      SELECT DISTINCT o.id, o.user_id
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.id
+        JOIN product_variants pv ON pv.id = oi.product_variant_id
+        JOIN smoke_products sp ON sp.id = pv.product_id`);
+    await client.query(`CREATE TEMP TABLE smoke_subscriptions ON COMMIT DROP AS
+      SELECT id FROM subscriptions WHERE order_id IN (SELECT id FROM smoke_orders)`);
+    await client.query(`CREATE TEMP TABLE smoke_items ON COMMIT DROP AS
+      SELECT id FROM order_items WHERE order_id IN (SELECT id FROM smoke_orders)`);
+    await client.query(`CREATE TEMP TABLE smoke_tasks ON COMMIT DROP AS
+      SELECT id FROM admin_tasks
+       WHERE order_id IN (SELECT id FROM smoke_orders)
+          OR subscription_id IN (SELECT id FROM smoke_subscriptions)`);
+    await client.query(`CREATE TEMP TABLE smoke_payments ON COMMIT DROP AS
+      SELECT id FROM payments WHERE order_id IN (SELECT id FROM smoke_orders)`);
+    await client.query(`CREATE TEMP TABLE smoke_snapshot_runs ON COMMIT DROP AS
+      SELECT DISTINCT (ph.metadata->>'snapshot_id')::uuid AS snapshot_id
+        FROM price_history ph
+        JOIN product_variants pv ON pv.id = ph.product_variant_id
+        JOIN smoke_products sp ON sp.id = pv.product_id
+       WHERE ph.metadata ? 'snapshot_id'`);
+    const counts = (await client.query(`SELECT
+      (SELECT count(*) FROM smoke_products)::int AS products,
+      (SELECT count(*) FROM smoke_orders)::int AS orders,
+      (SELECT count(*) FROM smoke_subscriptions)::int AS subscriptions,
+      (SELECT count(*) FROM smoke_tasks)::int AS tasks,
+      (SELECT count(*) FROM smoke_payments)::int AS payments,
+      (SELECT count(*) FROM smoke_snapshot_runs)::int AS pricing_runs`)).rows[0];
+    await client.query(`DELETE FROM notifications
+      WHERE title LIKE 'SMOKE-%' OR user_id IN (SELECT user_id FROM smoke_orders WHERE user_id IS NOT NULL)`);
+    await client.query(`DELETE FROM admin_audit_logs
+      WHERE entity_id IN (SELECT id FROM smoke_products)
+         OR entity_id IN (SELECT id FROM smoke_orders)
+         OR entity_id IN (SELECT id FROM smoke_subscriptions)
+         OR entity_id IN (SELECT id FROM smoke_items)
+         OR entity_id IN (SELECT id FROM smoke_tasks)
+         OR entity_id IN (SELECT id FROM smoke_payments)`);
+    await client.query(`DELETE FROM credential_reveal_audit_logs
+      WHERE subscription_id IN (SELECT id FROM smoke_subscriptions)`);
+    await client.query(`DELETE FROM guest_identities
+      WHERE user_id IN (SELECT user_id FROM smoke_orders WHERE user_id IS NOT NULL)`);
+    await client.query(`DELETE FROM coupon_redemptions
+      WHERE order_id IN (SELECT id FROM smoke_orders)`);
+    await client.query(`DELETE FROM payment_events
+      WHERE order_id IN (SELECT id FROM smoke_orders)
+         OR payment_id IN (SELECT id FROM smoke_payments)`);
+    await client.query(`DELETE FROM users
+      WHERE id IN (SELECT user_id FROM smoke_orders WHERE user_id IS NOT NULL)`);
+    await client.query(`DELETE FROM pricing_publish_runs
+      WHERE snapshot_id IN (SELECT snapshot_id FROM smoke_snapshot_runs)`);
+    await client.query(`DELETE FROM coupons WHERE code LIKE 'SMOKE-%'`);
+    await client.query(`DELETE FROM products WHERE id IN (SELECT id FROM smoke_products)`);
+    await client.query('COMMIT');
+    console.log(`SMOKE cleanup: ${JSON.stringify(counts)}`);
+    return counts;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    await client.end();
+  }
+}
+
 async function runMmuSweepAt(reference) {
   await runCommand('node', ['scripts/admin-next-smoke-mmu-sweep.cjs', reference.toISOString()], {
     cwd: process.cwd(),
     env: process.env,
   });
 }
+
+await cleanupSmokeFixtures();
 
 const browser = await chromium.launch({
   executablePath: chromePath,
@@ -633,4 +712,5 @@ try {
   console.log(`PASS admin-next smoke: ${productName} -> ${variantName} -> catalog/coupon/announcement`);
 } finally {
   await browser.close();
+  await cleanupSmokeFixtures();
 }

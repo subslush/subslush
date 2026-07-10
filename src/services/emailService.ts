@@ -171,7 +171,11 @@ class EmailService {
         to: payload.to,
         bcc: payload.bcc,
         subject: payload.subject,
-        textPreview: payload.text.slice(0, 200),
+        // Console transport is a local QA/development delivery mechanism. Keep
+        // its complete text so one-time URLs (including claim tokens) can be
+        // exercised without a direct database or service bypass.
+        text: payload.text,
+        ...(payload.html ? { html: payload.html } : {}),
       });
       return { success: true };
     }
