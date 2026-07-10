@@ -1,3 +1,6 @@
+/* global process, console, URL, performance */
+/* eslint-disable no-console, no-inner-declarations, svelte/no-inner-declarations */
+
 import { chromium } from 'playwright-core';
 import { Client } from 'pg';
 import dotenv from 'dotenv';
@@ -88,6 +91,7 @@ try {
   if (!(await newProductButton.isEnabled())) {
     throw new Error('New product control did not become enabled after hydration.');
   }
+  await page.getByRole('button', { name: 'Reject non-essential' }).click();
   console.log(
     `products-page-interactive-ms=${Math.round(performance.now() - productsNavigationStartedAt)}`
   );
@@ -112,9 +116,6 @@ try {
   });
 
   const productId = page.url().split('/').pop();
-  const variantsTab = page.locator('form').filter({
-    has: page.getByRole('button', { name: 'Add variant' }),
-  });
   const termsForm = page.locator('form').filter({
     has: page.getByRole('button', { name: 'Add term' }),
   });
@@ -163,6 +164,7 @@ try {
   await page.getByRole('button', { name: 'Save fulfillment settings' }).click();
   if ((await rejectedSave).ok()) throw new Error('MMU divisibility rejection unexpectedly saved.');
   await page.getByText('Term length must be divisible by the MMU interval.', { exact: true }).waitFor();
+  await page.getByLabel('Interval (months)').fill('1');
 
   await page.getByRole('button', { name: 'Basics' }).click();
   await page.getByLabel('Status').selectOption('active');
@@ -170,7 +172,7 @@ try {
     requestPath: `/api/v1/admin/products/${productId}`,
     requestMethod: 'PATCH',
     click: () => page.getByRole('button', { name: 'Save basics' }).click(),
-    visible: () => page.getByText('Active', { exact: true }).waitFor(),
+    visible: () => page.locator('header .status-chip', { hasText: 'Active' }).waitFor(),
   });
 
   const couponCode = `${runId}-COUPON`;
