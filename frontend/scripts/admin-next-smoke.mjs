@@ -155,6 +155,15 @@ try {
     click: () => page.getByRole('button', { name: 'Save fulfillment settings' }).click(),
     visible: () => page.getByText('Product saved.', { exact: true }).waitFor(),
   });
+  if ((await page.getByLabel('Interval (months)').inputValue()) !== '1') {
+    throw new Error('MMU interval did not persist after fulfillment save.');
+  }
+  if ((await page.getByLabel('Default instruction template').inputValue()) !== 'SMOKE handshake instructions') {
+    throw new Error('Activation-link handshake template did not persist after fulfillment save.');
+  }
+  if ((await page.getByLabel('Rules text').inputValue()) !== 'SMOKE strict rules') {
+    throw new Error('Strict-rules text did not persist after fulfillment save.');
+  }
 
   await page.getByLabel('Interval (months)').fill('4');
   const rejectedSave = page.waitForResponse(response =>
