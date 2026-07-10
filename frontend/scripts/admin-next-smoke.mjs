@@ -26,6 +26,7 @@ try {
     { name: 'csrf_token', value: 'smoke-csrf-token', url: `${baseUrl}/` },
   ]);
   const page = await context.newPage();
+  page.setDefaultTimeout(15_000);
 
   async function submitAndAssert({ requestPath, click, visible }) {
     const response = page.waitForResponse(response =>
@@ -40,12 +41,19 @@ try {
     await visible();
   }
 
-  await page.goto(`${baseUrl}/admin-next/products`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: '+ New product' }).click();
+  await page.goto(`${baseUrl}/admin-next/products`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 60_000,
+  });
+  const newProductButton = page.getByRole('button', { name: '+ New product' });
+  await newProductButton.waitFor({ state: 'visible' });
+  if (!(await newProductButton.isEnabled())) {
+    throw new Error('New product control did not become enabled after hydration.');
+  }
+  await newProductButton.click();
   await page.getByLabel('Name').fill(productName);
   await page.getByLabel('Slug').fill(productSlug);
   await page.getByLabel('Service type').fill('smoke');
-  await page.getByRole('button', { name: 'Create inactive product' }).click({ trial: true });
   await submitAndAssert({
     requestPath: '/api/v1/admin/products',
     click: () => page.getByRole('button', { name: 'Create inactive product' }).click(),
