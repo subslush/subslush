@@ -226,7 +226,7 @@ describe('GuestCheckoutService', () => {
     expect(secondConsume.success).toBe(false);
   });
 
-  it('reports already claimed when a used claim link belongs to a real user', async () => {
+  it('is idempotently successful when a used claim link belongs to the same real user', async () => {
     const guestIdentityId = '9e20b4b1-72a9-4a1b-9f24-2e8a0c7d7d22';
     const mockClient = {
       query: jest.fn(async (sql: string) => {
@@ -250,7 +250,13 @@ describe('GuestCheckoutService', () => {
         }
         if (sql.includes('FROM guest_identities gi')) {
           return {
-            rows: [{ user_id: 'claimed-user-id', is_guest: false }],
+            rows: [
+              {
+                user_id: 'claimed-user-id',
+                email: 'owner@example.com',
+                is_guest: false,
+              },
+            ],
           };
         }
         return { rows: [] };
@@ -265,12 +271,72 @@ describe('GuestCheckoutService', () => {
     const service = new GuestCheckoutService();
     const result = await service.claimGuestIdentity({
       token: 'used-token',
-      userId: 'different-user-id',
+      userId: 'claimed-user-id',
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.alreadyClaimed).toBe(true);
+  });
+
+  it('refuses a valid claim token when the signed-in email differs from the checkout email', async () => {
+    const mockClient = {
+      query: jest.fn(async (sql: string) => {
+        if (sql === 'BEGIN' || sql === 'ROLLBACK') return { rows: [] };
+        if (
+          sql.includes('FROM guest_claim_tokens') &&
+          sql.includes('FOR UPDATE')
+        ) {
+          return {
+            rows: [
+              {
+                id: 'claim-token-id',
+                guest_identity_id: 'guest-identity-id',
+                used_at: null,
+                is_expired: false,
+              },
+            ],
+          };
+        }
+        if (sql.includes('FROM guest_identities')) {
+          return {
+            rows: [
+              {
+                id: 'guest-identity-id',
+                email: 'owner@example.com',
+                user_id: 'guest-user-id',
+              },
+            ],
+          };
+        }
+        if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) {
+          return {
+            rows: [
+              {
+                id: 'other-user-id',
+                is_guest: false,
+                stripe_customer_id: null,
+                email: 'other@example.com',
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+      release: jest.fn(),
+    };
+    mockGetDatabasePool.mockReturnValue({
+      connect: jest.fn().mockResolvedValue(mockClient),
+    } as any);
+
+    const result = await new GuestCheckoutService().claimGuestIdentity({
+      token: 'valid-token',
+      userId: 'other-user-id',
     });
 
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.error).toBe('already_claimed');
+    expect(result.error).toBe('claim_email_mismatch');
   });
 
   it('reports expired when an unused claim link is past its expiry window', async () => {

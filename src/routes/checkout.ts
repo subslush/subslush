@@ -2505,6 +2505,12 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               'CLAIM_LINK_EXPIRED'
             );
           }
+          if (error === 'claim_email_mismatch') {
+            return ErrorResponses.forbidden(
+              reply,
+              'Sign in with the email address used for this checkout'
+            );
+          }
           if (
             [
               'claim_link_unavailable',
@@ -2528,6 +2534,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         return SuccessResponses.ok(reply, {
           guest_identity_id: result.data.guestIdentityId,
           reassigned: result.data.reassigned,
+          already_claimed: result.data.alreadyClaimed,
         });
       } catch (error) {
         Logger.error('Guest claim failed:', error);

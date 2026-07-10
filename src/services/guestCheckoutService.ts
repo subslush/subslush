@@ -311,10 +311,13 @@ export class GuestCheckoutService {
     }
   }
 
-  async claimGuestIdentity(params: {
-    token: string;
-    userId: string;
-  }): Promise<ServiceResult<{ guestIdentityId: string; reassigned: boolean }>> {
+  async claimGuestIdentity(params: { token: string; userId: string }): Promise<
+    ServiceResult<{
+      guestIdentityId: string;
+      reassigned: boolean;
+      alreadyClaimed: boolean;
+    }>
+  > {
     const pool = getDatabasePool();
     const client = await pool.connect();
     let transactionOpen = false;
@@ -347,7 +350,7 @@ export class GuestCheckoutService {
 
       if (tokenRow.used_at) {
         const claimedStateResult = await client.query(
-          `SELECT gi.user_id, u.is_guest
+          `SELECT gi.user_id, gi.email, u.is_guest
            FROM guest_identities gi
            LEFT JOIN users u ON u.id = gi.user_id
            WHERE gi.id = $1`,
@@ -356,8 +359,15 @@ export class GuestCheckoutService {
         const claimedState = claimedStateResult.rows[0];
         await client.query('ROLLBACK');
         transactionOpen = false;
-        if (claimedState?.user_id && claimedState.is_guest === false) {
-          return createErrorResult('already_claimed');
+        if (
+          claimedState?.user_id === params.userId &&
+          claimedState.is_guest === false
+        ) {
+          return createSuccessResult({
+            guestIdentityId,
+            reassigned: false,
+            alreadyClaimed: true,
+          });
         }
         return createErrorResult('claim_link_used');
       }
@@ -405,6 +415,12 @@ export class GuestCheckoutService {
       const identityEmail =
         typeof identityRow.email === 'string' ? identityRow.email.trim() : '';
       const notificationEmail = targetEmail || identityEmail;
+
+      if (!targetEmail || targetEmail !== identityEmail) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult('claim_email_mismatch');
+      }
 
       if (existingUserId && existingUserId !== params.userId) {
         const optionalUserTables = [
@@ -665,6 +681,7 @@ export class GuestCheckoutService {
       return createSuccessResult({
         guestIdentityId,
         reassigned: Boolean(existingUserId && existingUserId !== params.userId),
+        alreadyClaimed: false,
       });
     } catch (error) {
       if (transactionOpen) {
