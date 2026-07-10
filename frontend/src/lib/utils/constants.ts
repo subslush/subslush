@@ -91,11 +91,7 @@ export const API_ENDPOINTS = {
   },
   USERS: {
     PROFILE: '/users/profile',
-    PASSWORD: '/users/password',
-    PIN_STATUS: '/users/pin/status',
-    PIN_SET: '/users/pin/set',
-    PIN_VERIFY: '/users/pin/verify',
-    PIN_RESET: '/users/pin/reset-request'
+    PASSWORD: '/users/password'
   },
   ADMIN: {
     OVERVIEW: '/admin/overview',

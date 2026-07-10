@@ -1,6 +1,5 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
   import { Eye, EyeOff, Receipt } from 'lucide-svelte';
   import { ordersService } from '$lib/api/orders.js';
   import type { PageData } from './$types';
@@ -11,7 +10,8 @@
 
   let orders: OrderListItem[] = data.orders;
   let pagination = data.pagination;
-  let subscriptionsByOrder: Record<string, Subscription[]> = {};
+  let subscriptionsByOrder: Record<string, Subscription[]> = data.subscriptionsByOrder || {};
+  let subscriptionsData = data.subscriptionsByOrder;
   let revealedCredentialsByItem: Record<string, string> = {};
   let revealLoadingByItem: Record<string, boolean> = {};
   let revealErrorByItem: Record<string, string> = {};
@@ -24,6 +24,10 @@
 
   $: orders = data.orders;
   $: pagination = data.pagination;
+  $: if (data.subscriptionsByOrder !== subscriptionsData) {
+    subscriptionsData = data.subscriptionsByOrder;
+    subscriptionsByOrder = data.subscriptionsByOrder || {};
+  }
 
   function formatDate(value?: string | null): string {
     if (!value) return '-';
@@ -330,38 +334,6 @@
     }
   }
 
-  onMount(() => {
-    let isActive = true;
-
-    const refreshOrders = async () => {
-      try {
-        const currentPage = data.page || 1;
-        const limit = pagination.limit || 10;
-        const offset = (currentPage - 1) * limit;
-        const params = {
-          limit,
-          offset,
-          include_items: true,
-          status: data.filters.status || undefined,
-          payment_provider: data.filters.paymentProvider || undefined
-        };
-        const result = await ordersService.listOrders(params);
-        if (!isActive) return;
-        orders = result.orders || [];
-        pagination = result.pagination || pagination;
-        await Promise.all(orders.map(order => loadOrderSubscriptions(order.id)));
-      } catch (error) {
-        console.warn('Failed to refresh orders:', error);
-      }
-    };
-
-    void refreshOrders();
-    void Promise.all(orders.map(order => loadOrderSubscriptions(order.id)));
-
-    return () => {
-      isActive = false;
-    };
-  });
 </script>
 
 <svelte:head>
@@ -569,8 +541,8 @@
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
     <div class="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
       <h2 class="text-base font-semibold text-gray-900">Rules acknowledgement</h2>
-      <div class="mt-3 max-h-72 overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-        {@html rulesModal.subscription.product_options?.strict_rules_text || 'You must follow the rules for this item.'}
+      <div class="mt-3 max-h-72 overflow-auto whitespace-pre-line rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+        {rulesModal.subscription.product_options?.strict_rules_text || 'You must follow the rules for this item.'}
       </div>
       <label class="mt-4 flex items-start gap-2 text-sm text-gray-700">
         <input class="mt-1" type="checkbox" bind:checked={rulesModal.checked} />

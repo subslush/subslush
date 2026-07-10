@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { authPreHandler } from '../middleware/authMiddleware';
 import { createRateLimitHandler } from '../middleware/rateLimitMiddleware';
 import { orderService } from '../services/orderService';
@@ -49,6 +50,13 @@ const parseBoolean = (value: unknown): boolean | undefined => {
   return undefined;
 };
 
+const getRequestUserAgent = (request: FastifyRequest): string | null => {
+  const userAgent = request.headers['user-agent'];
+  return typeof userAgent === 'string' && userAgent.trim().length > 0
+    ? userAgent
+    : null;
+};
+
 const resolveRequestCurrency = (request: FastifyRequest): SupportedCurrency => {
   const queryCurrency = (request.query as { currency?: string })?.currency;
   const headerCurrency = request.headers['x-currency'];
@@ -67,6 +75,12 @@ const resolveRequestCurrency = (request: FastifyRequest): SupportedCurrency => {
 };
 
 type ParsedMetadata = Record<string, any>;
+
+const acceptRulesBodySchema = z
+  .object({
+    confirmed: z.literal(true),
+  })
+  .strict();
 
 type OrderItemContext = {
   id: string;
@@ -110,7 +124,7 @@ const toLegacySubscriptionPayload = (params: {
   entitlement: OrderEntitlement;
   orderMetadata: ParsedMetadata | null;
   orderItem?: OrderItemContext | undefined;
-}) => {
+}): Record<string, unknown> => {
   const itemMetadata = parseMetadata(params.orderItem?.metadata);
   const serviceType =
     readString(itemMetadata, 'service_type', 'serviceType') ??
@@ -156,13 +170,159 @@ const toLegacySubscriptionPayload = (params: {
   };
 };
 
-const sanitizeEntitlement = (entitlement: OrderEntitlement) => {
+const sanitizeEntitlement = (
+  entitlement: OrderEntitlement
+): Omit<OrderEntitlement, 'credentials_encrypted'> & {
+  has_credentials: boolean;
+} => {
   const { credentials_encrypted: _credentials, ...safe } = entitlement;
   return {
     ...safe,
     has_credentials: Boolean(entitlement.credentials_encrypted),
   };
 };
+
+async function revealOrderItemCredentials(params: {
+  request: FastifyRequest;
+  reply: FastifyReply;
+  orderId: string;
+  subscriptionId: string;
+}): Promise<FastifyReply> {
+  const userId = params.request.user?.userId;
+  if (!userId) {
+    return ErrorResponses.unauthorized(params.reply, 'Authentication required');
+  }
+
+  const pool = getDatabasePool();
+  const result = await pool.query(
+    `SELECT o.id AS order_id,
+            o.user_id,
+            o.contact_email,
+            s.id AS subscription_id,
+            s.order_item_id,
+            s.credentials_encrypted,
+            p.metadata AS product_metadata
+     FROM orders o
+     JOIN subscriptions s ON s.order_id = o.id
+     LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
+     LEFT JOIN products p ON p.id = pv.product_id
+     WHERE o.id = $1
+       AND o.user_id = $2
+       AND s.id = $3`,
+    [params.orderId, userId, params.subscriptionId]
+  );
+  const row = result.rows[0] || null;
+  if (!row) {
+    return ErrorResponses.notFound(params.reply, 'Order item not found');
+  }
+
+  const upgradeOptions = normalizeUpgradeOptions(row.product_metadata);
+  if (upgradeOptions?.strict_rules) {
+    const acceptedResult = await pool.query(
+      `SELECT created_at, ip_address, metadata
+       FROM order_compliance_evidence_logs
+       WHERE order_id = $1
+         AND user_id = $2
+         AND event_type = 'strict_rules_acceptance'
+         AND metadata->>'subscription_id' = $3
+         AND (metadata->>'rules_version')::int = $4
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [
+        params.orderId,
+        userId,
+        params.subscriptionId,
+        upgradeOptions.strict_rules_version || 1,
+      ]
+    );
+    if (acceptedResult.rows.length === 0) {
+      await logCredentialRevealAttempt(params.request, {
+        subscriptionId: params.subscriptionId,
+        success: false,
+        failureReason: 'strict_rules_not_accepted',
+        metadata: {
+          order_id: params.orderId,
+          order_item_id: row.order_item_id ?? null,
+        },
+      });
+      return ErrorResponses.badRequest(
+        params.reply,
+        'Strict rules acceptance is required before revealing credentials'
+      );
+    }
+  }
+
+  if (!row.credentials_encrypted) {
+    await logCredentialRevealAttempt(params.request, {
+      subscriptionId: params.subscriptionId,
+      success: false,
+      failureReason: 'credentials_missing',
+      metadata: {
+        order_id: params.orderId,
+        order_item_id: row.order_item_id ?? null,
+        source: 'subscription_item',
+      },
+    });
+    await orderComplianceEvidenceService.recordCredentialRevealEvidence({
+      orderId: params.orderId,
+      userId,
+      customerEmail: row.contact_email ?? null,
+      ipAddress: getRequestIp(params.request),
+      success: false,
+      evidence: {
+        source: 'subscription_item',
+        subscription_id: params.subscriptionId,
+        order_item_id: row.order_item_id ?? null,
+        failure_reason: 'credentials_missing',
+        user_agent: getRequestUserAgent(params.request),
+      },
+    });
+    return ErrorResponses.notFound(
+      params.reply,
+      'Credentials are not available for this item'
+    );
+  }
+
+  const decrypted = credentialsEncryptionService.decryptFromString(
+    row.credentials_encrypted
+  );
+  if (!decrypted.wasEncrypted && decrypted.migratedPayload) {
+    await subscriptionService.updateSubscriptionCredentialsEncryptedValue({
+      subscriptionId: params.subscriptionId,
+      encryptedValue: decrypted.migratedPayload,
+    });
+  }
+
+  await logCredentialRevealAttempt(params.request, {
+    subscriptionId: params.subscriptionId,
+    success: true,
+    metadata: {
+      order_id: params.orderId,
+      order_item_id: row.order_item_id ?? null,
+      source: 'subscription_item',
+    },
+  });
+  await orderComplianceEvidenceService.recordCredentialRevealEvidence({
+    orderId: params.orderId,
+    userId,
+    customerEmail: row.contact_email ?? null,
+    ipAddress: getRequestIp(params.request),
+    success: true,
+    evidence: {
+      source: 'subscription_item',
+      subscription_id: params.subscriptionId,
+      order_item_id: row.order_item_id ?? null,
+      user_agent: getRequestUserAgent(params.request),
+    },
+  });
+
+  return SuccessResponses.ok(params.reply, {
+    order_id: params.orderId,
+    subscription_id: params.subscriptionId,
+    order_item_id: row.order_item_id ?? null,
+    credentials: decrypted.plaintext,
+  });
+}
 
 export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get(
@@ -394,63 +554,6 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
         return ErrorResponses.notFound(reply, 'Order not found');
       }
 
-      const entitlements = await orderEntitlementService.listForOrder({
-        orderId,
-        userId,
-      });
-      const entitlementWithCredentials =
-        entitlements.find(
-          entitlement =>
-            typeof entitlement.credentials_encrypted === 'string' &&
-            entitlement.credentials_encrypted.trim().length > 0
-        ) ?? null;
-
-      if (entitlementWithCredentials?.credentials_encrypted) {
-        const decrypted = credentialsEncryptionService.decryptFromString(
-          entitlementWithCredentials.credentials_encrypted
-        );
-        if (!decrypted.wasEncrypted && decrypted.migratedPayload) {
-          await orderEntitlementService.updateEntitlementCredentialsEncryptedValue(
-            {
-              entitlementId: entitlementWithCredentials.id,
-              encryptedValue: decrypted.migratedPayload,
-            }
-          );
-        }
-
-        await logCredentialRevealAttempt(request, {
-          subscriptionId:
-            entitlementWithCredentials.source_subscription_id ?? null,
-          success: true,
-          metadata: {
-            order_id: orderId,
-            entitlement_id: entitlementWithCredentials.id,
-            source: 'order_entitlement',
-          },
-        });
-        await orderComplianceEvidenceService.recordCredentialRevealEvidence({
-          orderId,
-          userId,
-          customerEmail: order.contact_email ?? null,
-          ipAddress: getRequestIp(request),
-          success: true,
-          evidence: {
-            source: 'order_entitlement',
-            entitlement_id: entitlementWithCredentials.id,
-            subscription_id:
-              entitlementWithCredentials.source_subscription_id ?? null,
-          },
-        });
-
-        return SuccessResponses.ok(reply, {
-          order_id: orderId,
-          entitlement_id: entitlementWithCredentials.id,
-          subscription_id:
-            entitlementWithCredentials.source_subscription_id ?? null,
-          credentials: decrypted.plaintext,
-        });
-      }
-
       const subscriptionResult = await pool.query(
         `SELECT id, status, credentials_encrypted
          FROM subscriptions
@@ -483,6 +586,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           evidence: {
             source: 'order_entitlement_fallback',
             failure_reason: 'credentials_missing',
+            user_agent: getRequestUserAgent(request),
           },
         });
         return ErrorResponses.notFound(
@@ -491,41 +595,11 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
         );
       }
 
-      const decrypted = credentialsEncryptionService.decryptFromString(
-        subscriptionWithCredentials.credentials_encrypted
-      );
-      if (!decrypted.wasEncrypted && decrypted.migratedPayload) {
-        await subscriptionService.updateSubscriptionCredentialsEncryptedValue({
-          subscriptionId: subscriptionWithCredentials.id as string,
-          encryptedValue: decrypted.migratedPayload,
-        });
-      }
-
-      await logCredentialRevealAttempt(request, {
-        subscriptionId: subscriptionWithCredentials.id as string,
-        success: true,
-        metadata: {
-          order_id: orderId,
-          source: 'subscription_fallback',
-        },
-      });
-      await orderComplianceEvidenceService.recordCredentialRevealEvidence({
+      return revealOrderItemCredentials({
+        request,
+        reply,
         orderId,
-        userId,
-        customerEmail: order.contact_email ?? null,
-        ipAddress: getRequestIp(request),
-        success: true,
-        evidence: {
-          source: 'subscription_fallback',
-          subscription_id: subscriptionWithCredentials.id as string,
-        },
-      });
-
-      return SuccessResponses.ok(reply, {
-        order_id: orderId,
-        entitlement_id: null,
-        subscription_id: subscriptionWithCredentials.id as string,
-        credentials: decrypted.plaintext,
+        subscriptionId: subscriptionWithCredentials.id as string,
       });
     }
   );
@@ -546,141 +620,15 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const userId = request.user?.userId;
-      if (!userId) {
-        return ErrorResponses.unauthorized(reply, 'Authentication required');
-      }
-
       const { orderId, subscriptionId } = request.params as {
         orderId: string;
         subscriptionId: string;
       };
-      const pool = getDatabasePool();
-      const result = await pool.query(
-        `SELECT o.id AS order_id,
-                o.user_id,
-                o.contact_email,
-                s.id AS subscription_id,
-                s.order_item_id,
-                s.credentials_encrypted,
-                p.metadata AS product_metadata
-         FROM orders o
-         JOIN subscriptions s ON s.order_id = o.id
-         LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-         LEFT JOIN products p ON p.id = pv.product_id
-         WHERE o.id = $1
-           AND o.user_id = $2
-           AND s.id = $3`,
-        [orderId, userId, subscriptionId]
-      );
-      const row = result.rows[0] || null;
-      if (!row) {
-        return ErrorResponses.notFound(reply, 'Order item not found');
-      }
-
-      const upgradeOptions = normalizeUpgradeOptions(row.product_metadata);
-      if (upgradeOptions?.strict_rules) {
-        const acceptedResult = await pool.query(
-          `SELECT created_at, ip_address, metadata
-           FROM order_compliance_evidence_logs
-           WHERE order_id = $1
-             AND user_id = $2
-             AND event_type = 'strict_rules_acceptance'
-             AND metadata->>'subscription_id' = $3
-             AND (metadata->>'rules_version')::int = $4
-           ORDER BY created_at DESC
-           LIMIT 1`,
-          [
-            orderId,
-            userId,
-            subscriptionId,
-            upgradeOptions.strict_rules_version || 1,
-          ]
-        );
-        if (acceptedResult.rows.length === 0) {
-          await logCredentialRevealAttempt(request, {
-            subscriptionId,
-            success: false,
-            failureReason: 'strict_rules_not_accepted',
-            metadata: {
-              order_id: orderId,
-              order_item_id: row.order_item_id ?? null,
-            },
-          });
-          return ErrorResponses.badRequest(
-            reply,
-            'Strict rules must be accepted before revealing credentials'
-          );
-        }
-      }
-
-      if (!row.credentials_encrypted) {
-        await logCredentialRevealAttempt(request, {
-          subscriptionId,
-          success: false,
-          failureReason: 'credentials_missing',
-          metadata: {
-            order_id: orderId,
-            order_item_id: row.order_item_id ?? null,
-            source: 'subscription_item',
-          },
-        });
-        await orderComplianceEvidenceService.recordCredentialRevealEvidence({
-          orderId,
-          userId,
-          customerEmail: row.contact_email ?? null,
-          ipAddress: getRequestIp(request),
-          success: false,
-          evidence: {
-            source: 'subscription_item',
-            subscription_id: subscriptionId,
-            order_item_id: row.order_item_id ?? null,
-            failure_reason: 'credentials_missing',
-          },
-        });
-        return ErrorResponses.notFound(
-          reply,
-          'Credentials are not available for this item'
-        );
-      }
-
-      const decrypted = credentialsEncryptionService.decryptFromString(
-        row.credentials_encrypted
-      );
-      if (!decrypted.wasEncrypted && decrypted.migratedPayload) {
-        await subscriptionService.updateSubscriptionCredentialsEncryptedValue({
-          subscriptionId,
-          encryptedValue: decrypted.migratedPayload,
-        });
-      }
-
-      await logCredentialRevealAttempt(request, {
-        subscriptionId,
-        success: true,
-        metadata: {
-          order_id: orderId,
-          order_item_id: row.order_item_id ?? null,
-          source: 'subscription_item',
-        },
-      });
-      await orderComplianceEvidenceService.recordCredentialRevealEvidence({
+      return revealOrderItemCredentials({
+        request,
+        reply,
         orderId,
-        userId,
-        customerEmail: row.contact_email ?? null,
-        ipAddress: getRequestIp(request),
-        success: true,
-        evidence: {
-          source: 'subscription_item',
-          subscription_id: subscriptionId,
-          order_item_id: row.order_item_id ?? null,
-        },
-      });
-
-      return SuccessResponses.ok(reply, {
-        order_id: orderId,
-        subscription_id: subscriptionId,
-        order_item_id: row.order_item_id ?? null,
-        credentials: decrypted.plaintext,
+        subscriptionId,
       });
     }
   );
@@ -709,6 +657,13 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
         orderId: string;
         subscriptionId: string;
       };
+      const parsedBody = acceptRulesBodySchema.safeParse(request.body);
+      if (!parsedBody.success) {
+        return ErrorResponses.badRequest(
+          reply,
+          'Rules confirmation is required'
+        );
+      }
       const pool = getDatabasePool();
       const result = await pool.query(
         `SELECT o.contact_email, s.order_item_id, p.metadata AS product_metadata
@@ -755,7 +710,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           accessEvidence: {
             accepted: true,
             accepted_at: new Date().toISOString(),
-            user_agent: request.headers['user-agent'] ?? null,
+            user_agent: getRequestUserAgent(request),
           },
           metadata: {
             subscription_id: subscriptionId,
@@ -812,43 +767,82 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
         subscriptionId: string;
       };
       const pool = getDatabasePool();
+      const currentResult = await pool.query(
+        `SELECT s.id, s.order_item_id, s.activation_handshake_state, o.contact_email
+         FROM subscriptions s
+         JOIN orders o ON o.id = s.order_id
+         WHERE o.id = $1
+           AND o.user_id = $2
+           AND s.id = $3`,
+        [orderId, userId, subscriptionId]
+      );
+      const current = currentResult.rows[0] || null;
+      if (!current) {
+        return ErrorResponses.notFound(reply, 'Order item not found');
+      }
+      if (current.activation_handshake_state === 'customer_ready') {
+        return SuccessResponses.ok(reply, {
+          subscription_id: subscriptionId,
+          activation_handshake_state: 'customer_ready',
+        });
+      }
+      if (current.activation_handshake_state !== 'awaiting_customer') {
+        return reply.status(409).send({
+          error: 'Conflict',
+          code: 'INVALID_ACTIVATION_STATE',
+          message:
+            'Activation instructions are not awaiting customer confirmation',
+          current_state: current.activation_handshake_state,
+        });
+      }
       const result = await pool.query(
-        `UPDATE subscriptions s
+        `UPDATE subscriptions
          SET activation_handshake_state = 'customer_ready',
              activation_customer_ready_at = NOW()
-         FROM orders o
-         WHERE o.id = s.order_id
-           AND o.id = $1
-           AND o.user_id = $2
-           AND s.id = $3
-           AND s.activation_handshake_state IN ('instructions_delivered', 'awaiting_customer')
-         RETURNING s.id, s.order_item_id, o.contact_email`,
-        [orderId, userId, subscriptionId]
+         WHERE id = $1
+           AND activation_handshake_state = 'awaiting_customer'
+         RETURNING id, order_item_id`,
+        [subscriptionId]
       );
       const row = result.rows[0] || null;
       if (!row) {
-        return ErrorResponses.badRequest(
-          reply,
-          'Activation instructions are not awaiting customer confirmation'
-        );
+        return reply.status(409).send({
+          error: 'Conflict',
+          code: 'INVALID_ACTIVATION_STATE',
+          message:
+            'Activation instructions are not awaiting customer confirmation',
+          current_state: current.activation_handshake_state,
+        });
       }
 
-      await orderComplianceEvidenceService.recordGenericEvidence({
-        orderId,
-        eventType: 'activation_customer_ready',
-        userId,
-        customerEmail: row.contact_email ?? null,
-        ipAddress: getRequestIp(request),
-        accessEvidence: {
-          confirmed: true,
-          confirmed_at: new Date().toISOString(),
-          user_agent: request.headers['user-agent'] ?? null,
-        },
-        metadata: {
-          subscription_id: subscriptionId,
-          order_item_id: row.order_item_id ?? null,
-        },
-      });
+      const existingEvidence = await pool.query(
+        `SELECT 1
+         FROM order_compliance_evidence_logs
+         WHERE order_id = $1
+           AND user_id = $2
+           AND event_type = 'activation_customer_ready'
+           AND metadata->>'subscription_id' = $3
+         LIMIT 1`,
+        [orderId, userId, subscriptionId]
+      );
+      if (existingEvidence.rows.length === 0) {
+        await orderComplianceEvidenceService.recordGenericEvidence({
+          orderId,
+          eventType: 'activation_customer_ready',
+          userId,
+          customerEmail: current.contact_email ?? null,
+          ipAddress: getRequestIp(request),
+          accessEvidence: {
+            confirmed: true,
+            confirmed_at: new Date().toISOString(),
+            user_agent: getRequestUserAgent(request),
+          },
+          metadata: {
+            subscription_id: subscriptionId,
+            order_item_id: row.order_item_id ?? null,
+          },
+        });
+      }
 
       return SuccessResponses.ok(reply, {
         subscription_id: subscriptionId,
@@ -902,9 +896,15 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (entitlements.length > 0) {
           const orderItemsResult = await pool.query(
-            `SELECT id, product_name, variant_name, term_months, metadata
-             FROM order_items
-             WHERE order_id = $1`,
+            `SELECT oi.id,
+                    COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+                    COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
+                    oi.term_months,
+                    oi.metadata
+             FROM order_items oi
+             LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
+             LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+             WHERE oi.order_id = $1`,
             [orderId]
           );
           const orderItemById = new Map<string, OrderItemContext>();
@@ -1013,9 +1013,15 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (entitlements.length > 0) {
           const orderItemsResult = await pool.query(
-            `SELECT id, product_name, variant_name, term_months, metadata
-             FROM order_items
-             WHERE order_id = $1`,
+            `SELECT oi.id,
+                    COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+                    COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
+                    oi.term_months,
+                    oi.metadata
+             FROM order_items oi
+             LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
+             LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+             WHERE oi.order_id = $1`,
             [orderId]
           );
           const orderItemById = new Map<string, OrderItemContext>();

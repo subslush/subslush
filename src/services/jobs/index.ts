@@ -21,6 +21,7 @@ import { runEmailVerificationSync } from './authJobs';
 import { runDailyFxFetch, runWeeklyPricingPublish } from './fxJobs';
 import { getDelayUntilNextFxRunMs, parseFxCronSchedule } from './fxSchedule';
 import { runOrderDeliveryEmailWatchdogSweep } from './orderJobs';
+import { runTelegramOrderNotificationSweep } from './telegramJobs';
 
 const scheduler = new JobScheduler();
 let jobsRegistered = false;
@@ -152,6 +153,21 @@ function registerJobs(): void {
     lockTtlSeconds: 300,
     handler: runOrderDeliveryEmailWatchdogSweep,
   });
+
+  if (env.TELEGRAM_ORDER_NOTIFICATIONS_ENABLED) {
+    scheduler.register({
+      name: 'telegram-order-notifications',
+      intervalMs: env.TELEGRAM_ORDER_NOTIFICATION_INTERVAL,
+      initialDelayMs: 15000,
+      lockKey: 'jobs:telegram_order_notifications',
+      lockTtlSeconds: env.TELEGRAM_ORDER_NOTIFICATION_LOCK_TIMEOUT_SECONDS + 30,
+      handler: runTelegramOrderNotificationSweep,
+    });
+  } else {
+    Logger.info('Telegram order notification scheduler is disabled', {
+      featureFlag: 'TELEGRAM_ORDER_NOTIFICATIONS_ENABLED',
+    });
+  }
 
   if (env.FX_ENGINE_ENABLED && env.FX_FETCH_JOB_ENABLED) {
     const now = new Date();

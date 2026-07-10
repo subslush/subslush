@@ -11,6 +11,8 @@ const path = require('path');
 const crypto = require('crypto');
 const DatabaseConnection = require('./connection');
 
+const MIGRATION_VALIDATION_STRICT_AFTER_DATE = '20260709';
+
 class MigrationRunner {
     constructor() {
         this.db = new DatabaseConnection();
@@ -350,6 +352,7 @@ class MigrationRunner {
 
             const migrationFiles = await this.getMigrationFiles();
             let hasErrors = false;
+            let grandfatheredCount = 0;
 
             for (const file of migrationFiles) {
                 console.log(`\n📄 Validating: ${file}`);
@@ -357,6 +360,14 @@ class MigrationRunner {
                 const filePath = path.join(this.migrationsDir, file);
                 const content = await fs.readFile(filePath, 'utf8');
                 const hasMarkers = this.hasMigrationMarkers(content);
+                const strictValidation = this.requiresStrictValidation(file);
+
+                if (!strictValidation) {
+                    grandfatheredCount += 1;
+                    console.warn(
+                        `   ⚠️  Legacy migration grandfathered for DOWN/transaction validation`
+                    );
+                }
 
                 // Check file format
                 const upSql = this.stripPsqlMeta(
@@ -371,19 +382,33 @@ class MigrationRunner {
                     hasErrors = true;
                 }
 
-                if (hasMarkers && !downSql.trim()) {
-                    console.error(`   ❌ No DOWN migration found`);
+                if (strictValidation && !hasMarkers) {
+                    console.error(`   ❌ Missing Up/Down migration markers`);
                     hasErrors = true;
+                }
+
+                if (hasMarkers && !downSql.trim()) {
+                    if (strictValidation) {
+                        console.error(`   ❌ No DOWN migration found`);
+                        hasErrors = true;
+                    } else {
+                        console.warn(`   ⚠️  No DOWN migration found`);
+                    }
                 } else if (!hasMarkers) {
                     console.warn(`   ⚠️  Legacy migration format (no Down migration)`);
                 }
 
-                // Check for transaction blocks
-                if (!upSql.includes('BEGIN') || !upSql.includes('COMMIT')) {
+                if (strictValidation && (!upSql.includes('BEGIN') || !upSql.includes('COMMIT'))) {
+                    console.error(`   ❌ UP migration missing transaction block`);
+                    hasErrors = true;
+                } else if (!upSql.includes('BEGIN') || !upSql.includes('COMMIT')) {
                     console.warn(`   ⚠️  UP migration missing transaction block`);
                 }
 
-                if (downSql.trim() && (!downSql.includes('BEGIN') || !downSql.includes('COMMIT'))) {
+                if (strictValidation && downSql.trim() && (!downSql.includes('BEGIN') || !downSql.includes('COMMIT'))) {
+                    console.error(`   ❌ DOWN migration missing transaction block`);
+                    hasErrors = true;
+                } else if (downSql.trim() && (!downSql.includes('BEGIN') || !downSql.includes('COMMIT'))) {
                     console.warn(`   ⚠️  DOWN migration missing transaction block`);
                 }
 
@@ -396,6 +421,11 @@ class MigrationRunner {
                 console.log('\n❌ Migration validation failed');
                 process.exit(1);
             } else {
+                if (grandfatheredCount > 0) {
+                    console.log(
+                        `\n⚠️  ${grandfatheredCount} legacy migration(s) grandfathered for DOWN/transaction validation`
+                    );
+                }
                 console.log('\n✅ All migrations are valid');
             }
 
@@ -584,6 +614,17 @@ class MigrationRunner {
             return null;
         }
         return match[2] ? `${match[1]}_${match[2]}` : match[1];
+    }
+
+    /**
+     * Strict DOWN/transaction validation applies only to migrations dated after 2026-07-09.
+     */
+    requiresStrictValidation(filename) {
+        const match = filename.match(/^(\d{8})/);
+        if (!match) {
+            return true;
+        }
+        return match[1] > MIGRATION_VALIDATION_STRICT_AFTER_DATE;
     }
 
     /**

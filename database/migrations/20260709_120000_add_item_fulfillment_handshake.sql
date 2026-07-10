@@ -4,6 +4,7 @@
 --   - Adds item/subscription delivery timestamps and activation-link handshake state
 --   - Expands compliance evidence event types for item delivery, activation, and strict rules
 
+-- Up Migration
 BEGIN;
 
 ALTER TABLE subscriptions

@@ -4,37 +4,25 @@ import { adminPreHandler } from '../../middleware/adminMiddleware';
 import { getDatabasePool } from '../../config/database';
 import { ErrorResponses, SuccessResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
-import { credentialsEncryptionService } from '../../utils/encryption';
-import { logAdminAction } from '../../services/auditLogService';
-import { subscriptionService } from '../../services/subscriptionService';
 import { formatMmuCoverageLabel } from '../../utils/mmuSchedule';
 import { parseJsonValue } from '../../utils/json';
 import { normalizeUpgradeOptions } from '../../utils/upgradeOptions';
 
-const decryptSubscriptionCredentials = async (
-  request: FastifyRequest,
-  subscriptionId: string,
-  encrypted: string | null | undefined,
-  context: string
-): Promise<string | null> => {
-  await logAdminAction(request, {
-    action: 'subscriptions.credentials.view',
-    entityType: 'subscription',
-    entityId: subscriptionId,
-    metadata: {
-      context,
-      credentialPresent: Boolean(encrypted),
-    },
-  });
-  if (!encrypted) return null;
-  const decrypted = credentialsEncryptionService.decryptFromString(encrypted);
-  if (!decrypted.wasEncrypted && decrypted.migratedPayload) {
-    await subscriptionService.updateSubscriptionCredentialsEncryptedValue({
-      subscriptionId,
-      encryptedValue: decrypted.migratedPayload,
-    });
-  }
-  return decrypted.plaintext;
+const normalizeSelectionType = (
+  selectionType: string | null | undefined
+): 'new_account' | 'own_account' | 'none' | 'other' => {
+  if (!selectionType) return 'none';
+  if (selectionType === 'upgrade_new_account') return 'new_account';
+  if (selectionType === 'upgrade_own_account') return 'own_account';
+  return 'other';
+};
+
+const resolveOpenTaskStatus = (row: {
+  task_id?: string | null;
+  task_is_issue?: boolean | null;
+}): 'open' | 'issue' | null => {
+  if (!row.task_id) return null;
+  return row.task_is_issue === true ? 'issue' : 'open';
 };
 
 export async function adminFulfillmentRoutes(
@@ -84,8 +72,8 @@ export async function adminFulfillmentRoutes(
                  s.status AS subscription_status,
                  s.activation_handshake_state,
                  s.delivered_at,
-                 oi.product_name,
-                 oi.variant_name,
+                 COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+                 COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                  oi.term_months,
                  p.metadata AS product_metadata,
                  t.id AS task_id,
@@ -99,8 +87,8 @@ export async function adminFulfillmentRoutes(
           FROM orders o
           JOIN subscriptions s ON s.order_id = o.id
           LEFT JOIN order_items oi ON oi.id = s.order_item_id
-          LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-          LEFT JOIN products p ON p.id = pv.product_id
+          LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.product_variant_id, s.product_variant_id)
+          LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
           LEFT JOIN users u ON u.id = o.user_id
           LEFT JOIN admin_tasks t ON t.subscription_id = s.id AND t.completed_at IS NULL
           LEFT JOIN subscription_upgrade_selections sel ON sel.subscription_id = s.id
@@ -117,7 +105,11 @@ export async function adminFulfillmentRoutes(
         } else {
           sql += ` AND s.status <> 'active' AND COALESCE(t.task_type, 'credential_provision') <> 'manual_monthly_upgrade'`;
         }
-        sql += ` ORDER BY o.updated_at DESC LIMIT $1 OFFSET $2`;
+        if (tab === 'mmu') {
+          sql += ` ORDER BY t.due_date ASC NULLS LAST, o.id ASC, t.id ASC LIMIT $1 OFFSET $2`;
+        } else {
+          sql += ` ORDER BY o.updated_at ASC NULLS LAST, o.id ASC, s.created_at ASC LIMIT $1 OFFSET $2`;
+        }
         params.push(limit, offset);
         const result = await pool.query(sql, params);
 
@@ -227,8 +219,23 @@ export async function adminFulfillmentRoutes(
         if (!order) return ErrorResponses.notFound(reply, 'Order not found');
 
         const itemsResult = await pool.query(
-          `SELECT s.*, oi.product_name, oi.variant_name, oi.term_months,
+          `SELECT s.id, s.user_id, s.order_id, s.order_item_id, s.product_variant_id,
+                  s.service_type, s.service_plan, s.status, s.term_months,
+                  s.term_start_at, s.start_date, s.end_date, s.renewal_date,
+                  s.auto_renew, s.next_billing_at, s.renewal_method,
+                  s.price_cents, s.currency, s.created_at, s.delivered_at,
+                  s.delivered_by, s.delivery_email_sent_at,
+                  s.activation_handshake_state,
+                  (s.credentials_encrypted IS NOT NULL) AS subscription_credentials_on_file,
+                  COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+                  COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
+                  oi.term_months,
                   oi.metadata AS item_metadata, p.metadata AS product_metadata,
+                  sel.selection_type, sel.account_identifier,
+                  (sel.credentials_encrypted IS NOT NULL) AS selection_credentials_on_file,
+                  open_task.id AS task_id,
+                  open_task.task_type AS task_type,
+                  open_task.is_issue AS task_is_issue,
                   EXISTS (
                     SELECT 1 FROM credential_reveal_audit_logs cr
                     WHERE cr.subscription_id = s.id AND cr.success = TRUE
@@ -244,8 +251,17 @@ export async function adminFulfillmentRoutes(
                   ) AS rules_acknowledged
            FROM subscriptions s
            LEFT JOIN order_items oi ON oi.id = s.order_item_id
-           LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-           LEFT JOIN products p ON p.id = pv.product_id
+           LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.product_variant_id, s.product_variant_id)
+           LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+           LEFT JOIN subscription_upgrade_selections sel ON sel.subscription_id = s.id
+           LEFT JOIN LATERAL (
+             SELECT t.id, t.task_type, t.is_issue, t.due_date, t.created_at
+             FROM admin_tasks t
+             WHERE t.subscription_id = s.id
+               AND t.completed_at IS NULL
+             ORDER BY t.is_issue DESC, t.due_date ASC NULLS LAST, t.created_at ASC, t.id ASC
+             LIMIT 1
+           ) open_task ON TRUE
            WHERE s.order_id = $1
            ORDER BY s.created_at ASC`,
           [orderId]
@@ -260,12 +276,14 @@ export async function adminFulfillmentRoutes(
             variant_name: row.variant_name,
             term_months: row.term_months,
             status: row.status,
-            credentials_on_file: Boolean(row.credentials_encrypted),
-            credentials: await decryptSubscriptionCredentials(
-              request,
-              row.id,
-              row.credentials_encrypted,
-              'fulfillment_order_detail'
+            credentials_on_file: Boolean(row.subscription_credentials_on_file),
+            task_id: row.task_id ?? null,
+            task_status: resolveOpenTaskStatus(row),
+            task_type: row.task_type ?? null,
+            selection_type: normalizeSelectionType(row.selection_type),
+            submitted_account_identifier: row.account_identifier ?? null,
+            own_account_credentials_on_file: Boolean(
+              row.selection_credentials_on_file
             ),
             handshake_state: row.activation_handshake_state,
             delivered_at: row.delivered_at,
@@ -319,8 +337,14 @@ export async function adminFulfillmentRoutes(
         const { taskId } = request.params as { taskId: string };
         const pool = getDatabasePool();
         const result = await pool.query(
-          `SELECT t.*, s.credentials_encrypted, s.term_months, s.service_type,
-                  s.service_plan, s.order_id, o.contact_email, u.email AS account_email,
+          `SELECT t.id, t.subscription_id, t.user_id, t.order_id, t.task_type,
+                  t.due_date, t.completed_at, t.is_issue, t.notes,
+                  t.priority, t.task_category, t.sla_due_at, t.mmu_cycle_index,
+                  t.mmu_cycle_total, t.created_at,
+                  s.term_months, s.term_start_at, s.service_type,
+                  s.service_plan, s.order_id,
+                  (s.credentials_encrypted IS NOT NULL) AS credentials_on_file,
+                  o.contact_email, u.email AS account_email,
                   sel.upgrade_options_snapshot
            FROM admin_tasks t
            JOIN subscriptions s ON s.id = t.subscription_id
@@ -344,28 +368,49 @@ export async function adminFulfillmentRoutes(
           cycleIndex: Number(task.mmu_cycle_index),
         });
         const history = await pool.query(
-          `SELECT id, due_date, completed_at, mmu_cycle_index, mmu_cycle_total
+          `SELECT id, due_date, completed_at, is_issue, notes, mmu_cycle_index, mmu_cycle_total
            FROM admin_tasks
            WHERE subscription_id = $1
              AND task_type = 'manual_monthly_upgrade'
            ORDER BY due_date ASC`,
           [task.subscription_id]
         );
+        const { credentials_encrypted: _credentialsEncrypted, ...safeTask } =
+          task;
         return SuccessResponses.ok(reply, {
           task: {
-            ...task,
+            ...safeTask,
             mmu_label: mmuLabel?.label ?? null,
+            month_label: mmuLabel?.label ?? null,
             mmu_covers_months_from: mmuLabel?.coversMonthsFrom ?? null,
+            covers_months_from: mmuLabel?.coversMonthsFrom ?? null,
             mmu_covers_months_to: mmuLabel?.coversMonthsTo ?? null,
+            covers_months_to: mmuLabel?.coversMonthsTo ?? null,
             mmu_term_months: mmuLabel?.termMonths ?? null,
+            term_months: task.term_months ?? mmuLabel?.termMonths ?? null,
+            term_start: task.term_start_at ?? null,
           },
-          credentials: await decryptSubscriptionCredentials(
-            request,
-            task.subscription_id,
-            task.credentials_encrypted,
-            'mmu_task_detail'
-          ),
-          cycle_history: history.rows,
+          cycle_history: history.rows.map(row => {
+            const label = formatMmuCoverageLabel({
+              termMonths: Number(task.term_months),
+              intervalMonths:
+                Number(options?.['manual_monthly_upgrade_interval_months']) ||
+                1,
+              cycleIndex: Number(row.mmu_cycle_index),
+            });
+            return {
+              ...row,
+              mmu_label: label?.label ?? null,
+              month_label: label?.label ?? null,
+              mmu_covers_months_from: label?.coversMonthsFrom ?? null,
+              covers_months_from: label?.coversMonthsFrom ?? null,
+              mmu_covers_months_to: label?.coversMonthsTo ?? null,
+              covers_months_to: label?.coversMonthsTo ?? null,
+              mmu_term_months: label?.termMonths ?? null,
+              term_months: task.term_months ?? label?.termMonths ?? null,
+              term_start: task.term_start_at ?? null,
+            };
+          }),
           order: {
             id: task.order_id,
             customer_email: task.contact_email || task.account_email,

@@ -112,6 +112,17 @@ function normalizeSlugField(value?: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+const pricingLockMetadata = (params: {
+  metadata?: Record<string, unknown> | null | undefined;
+  snapshotId: string;
+  source: string;
+}): Record<string, unknown> => ({
+  ...(params.metadata || {}),
+  snapshot_id: params.snapshotId,
+  settlement_currency: 'USD',
+  source: params.source,
+});
+
 function normalizeIntegerOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === '') {
     return null;
@@ -430,6 +441,65 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class CatalogService {
+  private async createManualPricingSnapshot(
+    client: PoolClient
+  ): Promise<string> {
+    const result = await client.query(
+      `INSERT INTO pricing_publish_runs (
+         status, triggered_by, published_at, reason, metadata
+       )
+       VALUES ('succeeded', 'manual', NOW(), 'catalog_manual_price', '{}'::jsonb)
+       RETURNING snapshot_id`
+    );
+    return result.rows[0]?.snapshot_id as string;
+  }
+
+  private async alignVariantCurrentPriceSnapshot(params: {
+    client: PoolClient;
+    variantId: string;
+    at?: Date | null;
+    snapshotId: string;
+  }): Promise<void> {
+    await params.client.query(
+      `UPDATE price_history
+       SET metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb
+       WHERE product_variant_id = $1
+         AND starts_at <= COALESCE($2::timestamp, NOW())
+         AND (ends_at IS NULL OR ends_at > COALESCE($2::timestamp, NOW()))`,
+      [
+        params.variantId,
+        params.at,
+        JSON.stringify({
+          snapshot_id: params.snapshotId,
+          settlement_currency: 'USD',
+        }),
+      ]
+    );
+  }
+
+  private async alignFixedCurrentPriceSnapshot(params: {
+    client: PoolClient;
+    productId: string;
+    at?: Date | null;
+    snapshotId: string;
+  }): Promise<void> {
+    await params.client.query(
+      `UPDATE product_fixed_price_history
+       SET metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb
+       WHERE product_id = $1
+         AND starts_at <= COALESCE($2::timestamp, NOW())
+         AND (ends_at IS NULL OR ends_at > COALESCE($2::timestamp, NOW()))`,
+      [
+        params.productId,
+        params.at,
+        JSON.stringify({
+          snapshot_id: params.snapshotId,
+          settlement_currency: 'USD',
+        }),
+      ]
+    );
+  }
+
   private async hasProductSubCategoryMapTable(queryable: {
     query: (text: string, values?: any[]) => Promise<any>;
   }): Promise<boolean> {
@@ -1274,6 +1344,30 @@ export class CatalogService {
           ]
         );
 
+        if (
+          fixedPriceCents !== null &&
+          fixedPriceCents >= 0 &&
+          fixedPriceCurrency
+        ) {
+          const snapshotId = await this.createManualPricingSnapshot(client);
+          await client.query(
+            `INSERT INTO product_fixed_price_history
+              (product_id, price_cents, currency, starts_at, ends_at, metadata)
+             VALUES ($1, $2, $3, NOW(), NULL, $4)`,
+            [
+              created.id,
+              fixedPriceCents,
+              fixedPriceCurrency,
+              JSON.stringify(
+                pricingLockMetadata({
+                  snapshotId,
+                  source: 'catalog_fixed_product_create',
+                })
+              ),
+            ]
+          );
+        }
+
         await client.query('COMMIT');
         const product = await this.getProductById(created.id);
         if (!product) {
@@ -1540,14 +1634,14 @@ export class CatalogService {
               ? (normalizedFixedPriceCurrency ?? null)
               : normalizeCurrencyCode(existingProduct.fixed_price_currency) ||
                 null;
-          const now = new Date();
+          const now = null;
 
           await client.query(
             `UPDATE product_fixed_price_history
-             SET ends_at = $1
+             SET ends_at = COALESCE($1::timestamp, NOW())
              WHERE product_id = $2
-               AND starts_at < $1
-               AND (ends_at IS NULL OR ends_at > $1)
+               AND starts_at < COALESCE($1::timestamp, NOW())
+               AND (ends_at IS NULL OR ends_at > COALESCE($1::timestamp, NOW()))
                AND (
                  $3::text IS NULL
                  OR UPPER(currency) = $3
@@ -1561,10 +1655,11 @@ export class CatalogService {
             resolvedFixedPriceCents >= 0 &&
             resolvedFixedPriceCurrency
           ) {
+            const snapshotId = await this.createManualPricingSnapshot(client);
             await client.query(
               `INSERT INTO product_fixed_price_history
                 (product_id, price_cents, currency, starts_at, ends_at, metadata)
-               VALUES ($1, $2, $3, $4, $5, $6)`,
+               VALUES ($1, $2, $3, COALESCE($4::timestamp, NOW()), $5, $6)`,
               [
                 productId,
                 resolvedFixedPriceCents,
@@ -1572,11 +1667,20 @@ export class CatalogService {
                 now,
                 null,
                 JSON.stringify({
-                  source: 'admin_product_update',
+                  ...pricingLockMetadata({
+                    snapshotId,
+                    source: 'admin_product_update',
+                  }),
                   updated_fields: Object.keys(updates || {}),
                 }),
               ]
             );
+            await this.alignFixedCurrentPriceSnapshot({
+              client,
+              productId,
+              at: now,
+              snapshotId,
+            });
           }
         }
 
@@ -3150,32 +3254,57 @@ export class CatalogService {
   async createPriceHistory(
     input: CreatePriceHistoryInput
   ): Promise<ServiceResult<PriceHistory>> {
+    const pool = getDatabasePool();
+    const client = await pool.connect();
+    let transactionOpen = false;
     try {
       const normalizedCurrency = normalizeCurrencyCode(input.currency);
       if (!normalizedCurrency) {
         return createErrorResult('Unsupported currency');
       }
 
-      const pool = getDatabasePool();
-      const result = await pool.query(
+      const startsAt = input.starts_at || null;
+      await client.query('BEGIN');
+      transactionOpen = true;
+      const snapshotId = await this.createManualPricingSnapshot(client);
+      const result = await client.query(
         `INSERT INTO price_history
           (product_variant_id, price_cents, currency, starts_at, ends_at, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6)
+         VALUES ($1, $2, $3, COALESCE($4::timestamp, NOW()), $5, $6)
          RETURNING *`,
         [
           input.product_variant_id,
           input.price_cents,
           normalizedCurrency,
-          input.starts_at || new Date(),
+          startsAt,
           input.ends_at || null,
-          input.metadata ? JSON.stringify(input.metadata) : null,
+          JSON.stringify(
+            pricingLockMetadata({
+              metadata: input.metadata,
+              snapshotId,
+              source: 'catalog_price_history_create',
+            })
+          ),
         ]
       );
+      await this.alignVariantCurrentPriceSnapshot({
+        client,
+        variantId: input.product_variant_id,
+        at: startsAt,
+        snapshotId,
+      });
+      await client.query('COMMIT');
+      transactionOpen = false;
 
       return createSuccessResult(mapPriceHistory(result.rows[0]));
     } catch (error) {
+      if (transactionOpen) {
+        await client.query('ROLLBACK');
+      }
       Logger.error('Failed to create price history entry:', error);
       return createErrorResult('Failed to create price history entry');
+    } finally {
+      client.release();
     }
   }
 
@@ -3186,7 +3315,7 @@ export class CatalogService {
     const pool = getDatabasePool();
     const client = await pool.connect();
     let transactionOpen = false;
-    const startsAt = input.starts_at || new Date();
+    const startsAt = input.starts_at || null;
     const endPrevious = options?.endPrevious ?? true;
 
     try {
@@ -3203,19 +3332,21 @@ export class CatalogService {
       if (endPrevious) {
         await client.query(
           `UPDATE price_history
-           SET ends_at = $1
+           SET ends_at = COALESCE($1::timestamp, NOW())
            WHERE product_variant_id = $2
-             AND starts_at < $1
-             AND (ends_at IS NULL OR ends_at > $1)
+             AND starts_at < COALESCE($1::timestamp, NOW())
+             AND (ends_at IS NULL OR ends_at > COALESCE($1::timestamp, NOW()))
              AND UPPER(currency) = $3`,
           [startsAt, input.product_variant_id, normalizedCurrency]
         );
       }
 
+      const snapshotId = await this.createManualPricingSnapshot(client);
+
       const result = await client.query(
         `INSERT INTO price_history
           (product_variant_id, price_cents, currency, starts_at, ends_at, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6)
+         VALUES ($1, $2, $3, COALESCE($4::timestamp, NOW()), $5, $6)
          RETURNING *`,
         [
           input.product_variant_id,
@@ -3223,9 +3354,21 @@ export class CatalogService {
           normalizedCurrency,
           startsAt,
           input.ends_at || null,
-          input.metadata ? JSON.stringify(input.metadata) : null,
+          JSON.stringify(
+            pricingLockMetadata({
+              metadata: input.metadata,
+              snapshotId,
+              source: 'catalog_current_price',
+            })
+          ),
         ]
       );
+      await this.alignVariantCurrentPriceSnapshot({
+        client,
+        variantId: input.product_variant_id,
+        at: startsAt,
+        snapshotId,
+      });
 
       await client.query('COMMIT');
       transactionOpen = false;
@@ -3549,7 +3692,7 @@ export class CatalogService {
 
   async getCurrentPrice(
     variantId: string,
-    atDate: Date = new Date()
+    atDate?: Date
   ): Promise<PriceHistory | null> {
     try {
       const pool = getDatabasePool();
@@ -3557,11 +3700,17 @@ export class CatalogService {
         `SELECT *
          FROM price_history
          WHERE product_variant_id = $1
-           AND starts_at <= $2
-           AND (ends_at IS NULL OR ends_at > $2)
+           AND starts_at <= COALESCE($2::timestamp, NOW())
+           AND (ends_at IS NULL OR ends_at > COALESCE($2::timestamp, NOW()))
+           AND metadata->>'snapshot_id' IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM pricing_publish_runs ppr
+             WHERE ppr.snapshot_id::text = price_history.metadata->>'snapshot_id'
+               AND ppr.status = 'succeeded'
+           )
          ORDER BY starts_at DESC
          LIMIT 1`,
-        [variantId, atDate]
+        [variantId, atDate ?? null]
       );
       return result.rows.length > 0 ? mapPriceHistory(result.rows[0]) : null;
     } catch (error) {
@@ -3577,7 +3726,7 @@ export class CatalogService {
   }): Promise<PriceHistory | null> {
     try {
       const pool = getDatabasePool();
-      const atDate = params.atDate ?? new Date();
+      const atDate = params.atDate ?? null;
       const currency = normalizeCurrencyCode(params.currency);
       if (!currency) {
         return null;
@@ -3587,9 +3736,15 @@ export class CatalogService {
         `SELECT *
          FROM price_history
          WHERE product_variant_id = $1
-           AND starts_at <= $2
-           AND (ends_at IS NULL OR ends_at > $2)
+           AND starts_at <= COALESCE($2::timestamp, NOW())
+           AND (ends_at IS NULL OR ends_at > COALESCE($2::timestamp, NOW()))
            AND UPPER(currency) = $3
+           AND metadata->>'snapshot_id' IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM pricing_publish_runs ppr
+             WHERE ppr.snapshot_id::text = price_history.metadata->>'snapshot_id'
+               AND ppr.status = 'succeeded'
+           )
          ORDER BY starts_at DESC
          LIMIT 1`,
         [params.variantId, atDate, currency]
@@ -3644,7 +3799,7 @@ export class CatalogService {
 
     try {
       const pool = getDatabasePool();
-      const atDate = params.atDate ?? new Date();
+      const atDate = params.atDate ?? null;
       const currency = normalizeCurrencyCode(params.currency);
       if (!currency) {
         return priceMap;
@@ -3654,9 +3809,15 @@ export class CatalogService {
         `SELECT DISTINCT ON (product_variant_id) *
          FROM price_history
          WHERE product_variant_id = ANY($1)
-           AND starts_at <= $2
-           AND (ends_at IS NULL OR ends_at > $2)
+           AND starts_at <= COALESCE($2::timestamp, NOW())
+           AND (ends_at IS NULL OR ends_at > COALESCE($2::timestamp, NOW()))
            AND UPPER(currency) = $3
+           AND metadata->>'snapshot_id' IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM pricing_publish_runs ppr
+             WHERE ppr.snapshot_id::text = price_history.metadata->>'snapshot_id'
+               AND ppr.status = 'succeeded'
+           )
          ORDER BY product_variant_id, starts_at DESC`,
         [params.variantIds, atDate, currency]
       );
@@ -3679,7 +3840,7 @@ export class CatalogService {
   }): Promise<FixedProductPriceHistory | null> {
     try {
       const pool = getDatabasePool();
-      const atDate = params.atDate ?? new Date();
+      const atDate = params.atDate ?? null;
       const currency = normalizeCurrencyCode(params.currency);
       if (!currency) {
         return null;
@@ -3689,9 +3850,15 @@ export class CatalogService {
         `SELECT *
          FROM product_fixed_price_history
          WHERE product_id = $1
-           AND starts_at <= $2
-           AND (ends_at IS NULL OR ends_at > $2)
+           AND starts_at <= COALESCE($2::timestamp, NOW())
+           AND (ends_at IS NULL OR ends_at > COALESCE($2::timestamp, NOW()))
            AND UPPER(currency) = $3
+           AND metadata->>'snapshot_id' IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM pricing_publish_runs ppr
+             WHERE ppr.snapshot_id::text = product_fixed_price_history.metadata->>'snapshot_id'
+               AND ppr.status = 'succeeded'
+           )
          ORDER BY starts_at DESC
          LIMIT 1`,
         [params.productId, atDate, currency]
@@ -3756,7 +3923,7 @@ export class CatalogService {
 
     try {
       const pool = getDatabasePool();
-      const atDate = params.atDate ?? new Date();
+      const atDate = params.atDate ?? null;
       const currency = normalizeCurrencyCode(params.currency);
       if (!currency) {
         return priceMap;
@@ -3766,9 +3933,15 @@ export class CatalogService {
         `SELECT DISTINCT ON (product_id) *
          FROM product_fixed_price_history
          WHERE product_id = ANY($1)
-           AND starts_at <= $2
-           AND (ends_at IS NULL OR ends_at > $2)
+           AND starts_at <= COALESCE($2::timestamp, NOW())
+           AND (ends_at IS NULL OR ends_at > COALESCE($2::timestamp, NOW()))
            AND UPPER(currency) = $3
+           AND metadata->>'snapshot_id' IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM pricing_publish_runs ppr
+             WHERE ppr.snapshot_id::text = product_fixed_price_history.metadata->>'snapshot_id'
+               AND ppr.status = 'succeeded'
+           )
          ORDER BY product_id, starts_at DESC`,
         [params.productIds, atDate, currency]
       );
@@ -3795,7 +3968,7 @@ export class CatalogService {
   }): Promise<PriceHistory | null> {
     try {
       const pool = getDatabasePool();
-      const atDate = params.atDate ?? new Date();
+      const atDate = params.atDate ?? null;
       const preferred = normalizeCurrencyCode(params.preferredCurrency);
       const fallback = normalizeCurrencyCode(params.fallbackCurrency);
 
@@ -3803,8 +3976,14 @@ export class CatalogService {
         `SELECT *
          FROM price_history
          WHERE product_variant_id = $1
-           AND starts_at <= $2
-           AND (ends_at IS NULL OR ends_at > $2)
+           AND starts_at <= COALESCE($2::timestamp, NOW())
+           AND (ends_at IS NULL OR ends_at > COALESCE($2::timestamp, NOW()))
+           AND metadata->>'snapshot_id' IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM pricing_publish_runs ppr
+             WHERE ppr.snapshot_id::text = price_history.metadata->>'snapshot_id'
+               AND ppr.status = 'succeeded'
+           )
          ORDER BY
            CASE
              WHEN $3::text IS NOT NULL AND UPPER(currency) = $3 THEN 0

@@ -857,7 +857,9 @@ export class SubscriptionService {
       }
 
       if (updates.term_start_at !== undefined) {
-        updateFields.push(`term_start_at = $${++paramCount}`);
+        updateFields.push(
+          `term_start_at = COALESCE(term_start_at, $${++paramCount})`
+        );
         updateValues.push(updates.term_start_at);
       }
 
@@ -1160,7 +1162,9 @@ export class SubscriptionService {
       }
 
       if (params.updates.term_start_at !== undefined) {
-        updateFields.push(`term_start_at = $${++paramCount}`);
+        updateFields.push(
+          `term_start_at = COALESCE(term_start_at, $${++paramCount})`
+        );
         updateValues.push(params.updates.term_start_at);
       }
 
@@ -1437,7 +1441,9 @@ export class SubscriptionService {
       }
 
       if (updates.term_start_at !== undefined) {
-        updateFields.push(`term_start_at = $${++paramCount}`);
+        updateFields.push(
+          `term_start_at = COALESCE(term_start_at, $${++paramCount})`
+        );
         updateValues.push(updates.term_start_at);
       }
 
@@ -1725,7 +1731,9 @@ export class SubscriptionService {
         updateValues.push(dateOverrides.start_date);
       }
       if (dateOverrides?.term_start_at !== undefined) {
-        updateFields.push(`term_start_at = $${++paramCount}`);
+        updateFields.push(
+          `term_start_at = COALESCE(term_start_at, $${++paramCount})`
+        );
         updateValues.push(dateOverrides.term_start_at);
       }
       if (dateOverrides?.end_date) {

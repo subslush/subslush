@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authPreHandler } from '../../middleware/authMiddleware';
 import { adminPreHandler } from '../../middleware/adminMiddleware';
 import { orderService } from '../../services/orderService';
+import { paymentService } from '../../services/paymentService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { orderRiskService } from '../../services/orderRiskService';
 import { logAdminAction } from '../../services/auditLogService';
@@ -31,6 +32,18 @@ const isValidUuid = (value: string): boolean =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value
   );
+
+const activationStateConflict = (
+  reply: FastifyReply,
+  message: string,
+  currentState: string | null
+): FastifyReply =>
+  reply.status(409).send({
+    error: 'Conflict',
+    code: 'INVALID_ACTIVATION_STATE',
+    message,
+    current_state: currentState,
+  });
 
 async function deliverOrderItem(params: {
   orderId: string;
@@ -166,6 +179,38 @@ async function deliverOrderItem(params: {
   return { success: true, orderStatus: nextStatus };
 }
 
+async function ensureFulfillmentTasksForManuallyPaidOrder(orderId: string) {
+  const pool = getDatabasePool();
+  const subscriptionsResult = await pool.query(
+    `SELECT s.id, s.user_id, s.service_type, s.service_plan
+     FROM subscriptions s
+     WHERE s.order_id = $1
+       AND s.status = 'pending'
+     ORDER BY s.created_at ASC`,
+    [orderId]
+  );
+
+  let created = 0;
+  for (const row of subscriptionsResult.rows) {
+    const didCreate = await subscriptionService.createCredentialProvisionTask({
+      subscriptionId: row.id,
+      userId: row.user_id,
+      orderId,
+      notes: [
+        `Manual payment verification received for ${row.service_type} ${row.service_plan}.`,
+        `Subscription ${row.id}.`,
+        `Order ${orderId}.`,
+      ].join(' '),
+    });
+    if (didCreate) created += 1;
+  }
+
+  return {
+    subscriptionCount: subscriptionsResult.rows.length,
+    created,
+  };
+}
+
 export async function adminOrderRoutes(
   fastify: FastifyInstance
 ): Promise<void> {
@@ -252,7 +297,7 @@ export async function adminOrderRoutes(
         body: {
           type: 'object',
           properties: {
-            reason: { type: 'string' },
+            reason: { type: 'string', maxLength: 500 },
           },
         },
       },
@@ -324,7 +369,7 @@ export async function adminOrderRoutes(
           type: 'object',
           required: ['instructions'],
           properties: {
-            instructions: { type: 'string', minLength: 1 },
+            instructions: { type: 'string', minLength: 1, maxLength: 4000 },
           },
         },
       },
@@ -337,6 +382,24 @@ export async function adminOrderRoutes(
           subscriptionId: string;
         };
         const { instructions } = request.body as { instructions: string };
+        const stateResult = await getDatabasePool().query(
+          `SELECT activation_handshake_state
+           FROM subscriptions
+           WHERE id = $1 AND order_id = $2`,
+          [subscriptionId, orderId]
+        );
+        const currentState =
+          stateResult.rows[0]?.activation_handshake_state ?? null;
+        if (!stateResult.rows[0]) {
+          return ErrorResponses.notFound(reply, 'Subscription not found');
+        }
+        if (currentState !== 'none') {
+          return activationStateConflict(
+            reply,
+            'Activation instructions can only be delivered from the initial state',
+            currentState
+          );
+        }
         const result = await subscriptionService.updateSubscriptionForAdmin(
           subscriptionId,
           {
@@ -392,7 +455,7 @@ export async function adminOrderRoutes(
           type: 'object',
           required: ['activation_link'],
           properties: {
-            activation_link: { type: 'string', minLength: 1 },
+            activation_link: { type: 'string', minLength: 1, maxLength: 4000 },
           },
         },
       },
@@ -407,6 +470,24 @@ export async function adminOrderRoutes(
         const { activation_link } = request.body as {
           activation_link: string;
         };
+        const stateResult = await getDatabasePool().query(
+          `SELECT activation_handshake_state
+           FROM subscriptions
+           WHERE id = $1 AND order_id = $2`,
+          [subscriptionId, orderId]
+        );
+        const currentState =
+          stateResult.rows[0]?.activation_handshake_state ?? null;
+        if (!stateResult.rows[0]) {
+          return ErrorResponses.notFound(reply, 'Subscription not found');
+        }
+        if (currentState !== 'customer_ready') {
+          return activationStateConflict(
+            reply,
+            'Activation link can only be delivered after customer readiness confirmation',
+            currentState
+          );
+        }
         const saveResult = await subscriptionService.updateSubscriptionForAdmin(
           subscriptionId,
           {
@@ -479,7 +560,7 @@ export async function adminOrderRoutes(
         body: {
           type: 'object',
           properties: {
-            note: { type: 'string' },
+            note: { type: 'string', maxLength: 500 },
           },
         },
       },
@@ -492,6 +573,24 @@ export async function adminOrderRoutes(
           subscriptionId: string;
         };
         const { note } = request.body as { note?: string };
+        const stateResult = await getDatabasePool().query(
+          `SELECT activation_handshake_state
+           FROM subscriptions
+           WHERE id = $1 AND order_id = $2`,
+          [subscriptionId, orderId]
+        );
+        const currentState =
+          stateResult.rows[0]?.activation_handshake_state ?? null;
+        if (!stateResult.rows[0]) {
+          return ErrorResponses.notFound(reply, 'Subscription not found');
+        }
+        if (currentState !== 'link_delivered') {
+          return activationStateConflict(
+            reply,
+            'Activation can only be restarted after a delivered link',
+            currentState
+          );
+        }
         const result = await subscriptionService.updateSubscriptionForAdmin(
           subscriptionId,
           {
@@ -516,6 +615,14 @@ export async function adminOrderRoutes(
           eventType: 'activation_restart',
           userId: order?.user_id ?? null,
           customerEmail: order?.contact_email ?? null,
+          accessEvidence: {
+            restarted_at: new Date().toISOString(),
+            user_agent:
+              typeof request.headers['user-agent'] === 'string' &&
+              request.headers['user-agent'].trim().length > 0
+                ? request.headers['user-agent']
+                : null,
+          },
           metadata: {
             subscription_id: subscriptionId,
             note: note || null,
@@ -581,7 +688,8 @@ export async function adminOrderRoutes(
           `SELECT s.id, s.user_id, s.service_type, s.service_plan, s.status, s.start_date,
                   s.term_start_at, s.end_date, s.renewal_date, s.auto_renew, s.next_billing_at,
                   s.renewal_method, s.price_cents, s.currency, s.order_id, s.product_variant_id,
-                  s.credentials_encrypted, s.created_at,
+                  (s.credentials_encrypted IS NOT NULL) AS subscription_credentials_on_file,
+                  s.created_at,
                   sel.selection_type, sel.account_identifier, sel.manual_monthly_acknowledged_at,
                   sel.submitted_at, sel.locked_at, sel.upgrade_options_snapshot,
                   (sel.credentials_encrypted IS NOT NULL) AS has_user_credentials
@@ -592,11 +700,18 @@ export async function adminOrderRoutes(
            ORDER BY s.created_at ASC`,
           [orderId]
         );
-        const subscriptions = subscriptionsResult.rows.map(row => ({
-          ...row,
-          has_credentials: Boolean(row.credentials_encrypted),
-          has_user_credentials: row.has_user_credentials ?? false,
-        }));
+        const subscriptions = subscriptionsResult.rows.map(row => {
+          const {
+            subscription_credentials_on_file,
+            credentials_encrypted: _credentialsEncrypted,
+            ...subscription
+          } = row;
+          return {
+            ...subscription,
+            has_credentials: Boolean(subscription_credentials_on_file),
+            has_user_credentials: row.has_user_credentials ?? false,
+          };
+        });
 
         const paymentsResult = await pool.query(
           'SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at DESC',
@@ -722,6 +837,95 @@ export async function adminOrderRoutes(
     }
   );
 
+  fastify.post(
+    '/:orderId/mark-paid',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId'],
+          properties: {
+            orderId: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['note'],
+          properties: {
+            note: { type: 'string', minLength: 1, maxLength: 1000 },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { orderId } = request.params as { orderId: string };
+        const { note } = request.body as { note?: string };
+        const normalizedNote = note?.trim() ?? '';
+        if (!normalizedNote) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Manual payment verification note is required'
+          );
+        }
+
+        const result = await paymentService.confirmManualOrderPayment({
+          orderId,
+          adminUserId: request.user?.userId || 'admin',
+          note: normalizedNote,
+        });
+
+        if (!result.success) {
+          if (result.status === 'not_found') {
+            return ErrorResponses.notFound(reply, 'Order not found');
+          }
+          if (result.status === 'invalid_state') {
+            return reply.status(409).send({
+              error: 'Conflict',
+              code: 'ORDER_NOT_PENDING_PAYMENT',
+              message:
+                'Only pending payment orders can be marked paid manually',
+              current_status: result.orderStatus ?? null,
+            });
+          }
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to mark order paid'
+          );
+        }
+
+        await logAdminAction(request, {
+          action: 'orders.mark_paid.manual',
+          entityType: 'order',
+          entityId: orderId,
+          metadata: {
+            note: normalizedNote,
+            subscriptions_created: result.subscriptionsCreated ?? null,
+            open_tasks: result.tasksOpen ?? null,
+          },
+        });
+
+        return SuccessResponses.ok(
+          reply,
+          {
+            order_id: orderId,
+            status: result.orderStatus,
+            subscriptions_created: result.subscriptionsCreated ?? 0,
+            open_tasks: result.tasksOpen ?? 0,
+          },
+          'Order marked paid manually'
+        );
+      } catch (error) {
+        Logger.error('Admin manual mark-paid failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to mark order paid manually'
+        );
+      }
+    }
+  );
+
   fastify.patch(
     '/:orderId/status',
     {
@@ -830,6 +1034,11 @@ export async function adminOrderRoutes(
           );
         }
 
+        const manualPaidTasks =
+          status === 'paid' && before?.status === 'pending_payment'
+            ? await ensureFulfillmentTasksForManuallyPaidOrder(orderId)
+            : null;
+
         await logAdminAction(request, {
           action: 'orders.status.update',
           entityType: 'order',
@@ -848,6 +1057,7 @@ export async function adminOrderRoutes(
             : null,
           metadata: {
             reason: reason || null,
+            manualPaidTasks,
           },
         });
 

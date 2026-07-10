@@ -1057,11 +1057,13 @@ export class OrderService {
       `SELECT s.id,
               s.delivery_email_sent_at,
               s.activation_handshake_state,
-              oi.product_name,
-              oi.variant_name,
+              COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+              COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
               oi.term_months
        FROM subscriptions s
        LEFT JOIN order_items oi ON oi.id = s.order_item_id
+       LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.product_variant_id, s.product_variant_id)
+       LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
        WHERE s.order_id = $1
          AND s.id = $2`,
       [params.orderId, params.subscriptionId]

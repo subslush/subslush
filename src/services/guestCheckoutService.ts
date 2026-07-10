@@ -4,6 +4,7 @@ import { env } from '../config/environment';
 import { Logger } from '../utils/logger';
 import { emailService } from './emailService';
 import { checkoutPricingService } from './checkoutPricingService';
+import { couponService } from './couponService';
 import { orderItemUpgradeSelectionService } from './orderItemUpgradeSelectionService';
 import {
   createSuccessResult,
@@ -111,7 +112,7 @@ const buildBrandedEmailIfSupported = (options: {
 const buildPricingSummary = (
   pricing: CheckoutPricingSummary['items'] | null,
   totals: {
-    pricingSnapshotId: string;
+    pricingSnapshotId: string | null;
     displayCurrency: string;
     settlementCurrency: string;
     orderSubtotalCents: number;
@@ -1007,6 +1008,7 @@ export class GuestCheckoutService {
                 pricedItem.productVariantId ?? pricedItem.product.id,
               pricing_reference_id:
                 pricedItem.productVariantId ?? pricedItem.product.id,
+              pricing_snapshot_id: pricedItem.pricingSnapshotId,
               service_type: serviceType,
               service_plan: planCode,
               duration_months: pricedItem.termMonths,
@@ -1077,6 +1079,36 @@ export class GuestCheckoutService {
               client
             );
           }
+        }
+      }
+
+      // Keep guest drafts on the same coupon lifecycle as authenticated
+      // checkouts: an editable cart has at most one active reservation, held
+      // atomically with the order/items that carry the applied discount.
+      await couponService.voidRedemptionForOrder(orderId, client);
+      if (coupon) {
+        const reservedItem = pricing.items.find(
+          item => item.couponEligible && item.couponDiscountCents > 0
+        );
+        if (!reservedItem) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('coupon_invalid');
+        }
+
+        const reservation = await couponService.reserveCouponRedemption({
+          couponId: coupon.id,
+          userId,
+          orderId,
+          product: reservedItem.product,
+          subtotalCents: reservedItem.termTotalCents,
+          termMonths: reservedItem.termMonths,
+          client,
+        });
+        if (!reservation.success) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('coupon_invalid');
         }
       }
 

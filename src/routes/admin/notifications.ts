@@ -30,7 +30,13 @@ export async function adminNotificationRoutes(
           type: 'object',
           required: ['message'],
           properties: {
+            title: { type: 'string', maxLength: 120 },
             message: { type: 'string', minLength: 1, maxLength: 2000 },
+            expires_at: {
+              type: ['string', 'null'],
+              format: 'date-time',
+              maxLength: 64,
+            },
           },
         },
       },
@@ -38,8 +44,13 @@ export async function adminNotificationRoutes(
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const { message } = request.body as { message: string };
+        const { title, message, expires_at } = request.body as {
+          title?: string;
+          message: string;
+          expires_at?: string | null;
+        };
         const trimmedMessage = sanitizeMessage(message);
+        const trimmedTitle = sanitizeMessage(title) || ANNOUNCEMENT_TITLE;
 
         if (!trimmedMessage) {
           return ErrorResponses.badRequest(
@@ -80,12 +91,13 @@ export async function adminNotificationRoutes(
           const inputs = batch.map(userId => ({
             userId,
             type: ANNOUNCEMENT_TYPE,
-            title: ANNOUNCEMENT_TITLE,
+            title: trimmedTitle,
             message: trimmedMessage,
             metadata: {
               announcement_id: announcementId,
               sent_at: sentAt,
               sent_by: request.user?.userId ?? null,
+              expires_at: expires_at ?? null,
             },
             dedupeKey: `announcement:${announcementId}:${userId}`,
           }));
@@ -127,6 +139,8 @@ export async function adminNotificationRoutes(
             targetCount: userIds.length,
             created: totalCreated,
             messageLength: trimmedMessage.length,
+            title: trimmedTitle,
+            expires_at: expires_at ?? null,
           },
         });
 

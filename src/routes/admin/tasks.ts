@@ -10,7 +10,6 @@ import { validate as uuidValidate } from 'uuid';
 import { subscriptionService } from '../../services/subscriptionService';
 import { credentialsEncryptionService } from '../../utils/encryption';
 import {
-  computeNextRenewalDates,
   formatSubscriptionDisplayName,
   formatSubscriptionShortId,
 } from '../../utils/subscriptionHelpers';
@@ -615,7 +614,34 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
         if (!renewalWorkflowTaskTypes.has(task.task_type)) {
           return ErrorResponses.badRequest(reply, 'Task is not a renewal task');
         }
-        if (!task.payment_confirmed_at) {
+        if (task.task_type === 'manual_monthly_upgrade') {
+          const orderPaymentResult = await pool.query(
+            `SELECT o.id, o.status,
+                    EXISTS (
+                      SELECT 1
+                      FROM payments p
+                      WHERE p.order_id = o.id
+                        AND p.status = 'succeeded'
+                    ) AS has_succeeded_payment
+             FROM orders o
+             LEFT JOIN subscriptions s ON s.order_id = o.id
+             WHERE o.id = $1 OR s.id = $2
+             ORDER BY CASE WHEN o.id = $1 THEN 0 ELSE 1 END
+             LIMIT 1`,
+            [task.order_id || null, task.subscription_id || null]
+          );
+          const order = orderPaymentResult.rows[0] || null;
+          if (
+            !order ||
+            !['paid', 'in_process', 'delivered'].includes(order.status) ||
+            order.has_succeeded_payment !== true
+          ) {
+            return ErrorResponses.badRequest(
+              reply,
+              'Parent order payment must be verified before completing MMU renewal'
+            );
+          }
+        } else if (!task.payment_confirmed_at) {
           return ErrorResponses.badRequest(
             reply,
             'Confirm payment before completing renewal'
@@ -648,9 +674,6 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
                   s.user_id,
                   s.service_type,
                   s.service_plan,
-                  s.term_start_at,
-                  s.term_months,
-                  s.auto_renew,
                   p.name AS product_name,
                   pv.name AS variant_name
            FROM subscriptions s
@@ -662,53 +685,6 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (subscriptionResult.rows.length > 0) {
           const subscription = subscriptionResult.rows[0];
-          const deliveredAtRaw = updateResult.rows[0]?.completed_at;
-          const deliveredAt =
-            deliveredAtRaw instanceof Date
-              ? deliveredAtRaw
-              : new Date(deliveredAtRaw || Date.now());
-          const termStartAt =
-            subscription.term_start_at instanceof Date
-              ? subscription.term_start_at
-              : subscription.term_start_at
-                ? new Date(subscription.term_start_at)
-                : null;
-          const termMonths = Number(subscription.term_months);
-
-          if (
-            Number.isFinite(termMonths) &&
-            termMonths > 0 &&
-            !Number.isNaN(deliveredAt.getTime()) &&
-            (!termStartAt || deliveredAt.getTime() > termStartAt.getTime())
-          ) {
-            const nextDates = computeNextRenewalDates({
-              endDate: deliveredAt,
-              termMonths,
-              autoRenew: subscription.auto_renew === true,
-              now: deliveredAt,
-            });
-
-            const subscriptionUpdate =
-              await subscriptionService.updateSubscriptionForAdmin(
-                subscription.id,
-                {
-                  term_start_at: deliveredAt,
-                  end_date: nextDates.endDate,
-                  renewal_date: nextDates.renewalDate,
-                  next_billing_at: nextDates.nextBillingAt,
-                }
-              );
-
-            if (!subscriptionUpdate.success) {
-              Logger.warn(
-                'Failed to adjust renewal term dates after fulfillment',
-                {
-                  subscriptionId: subscription.id,
-                  error: subscriptionUpdate.error,
-                }
-              );
-            }
-          }
 
           const subscriptionLabel = formatSubscriptionDisplayName({
             productName: subscription.product_name ?? null,

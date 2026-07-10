@@ -3,6 +3,7 @@ import type {
   OwnAccountCredentialRequirement,
   UpgradeOptionsSnapshot,
 } from '../types/subscription';
+import { normalizePlainText } from './plainText';
 
 type UpgradeOptionsInput = Record<string, any> | null | undefined;
 
@@ -50,6 +51,36 @@ const coerceString = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+};
+
+export const normalizeStrictRulesText = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = normalizePlainText(value);
+  return normalized.length > 0 ? normalized : null;
+};
+
+export const normalizeUpgradeOptionsMetadata = (
+  metadata: Record<string, any> | null | undefined
+): Record<string, any> | null | undefined => {
+  if (!metadata || typeof metadata !== 'object') return metadata;
+  const raw = metadata['upgrade_options'] ?? metadata['upgradeOptions'];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return metadata;
+  const options = { ...(raw as Record<string, any>) };
+  const strictRulesText =
+    options['strict_rules_text'] ?? options['strictRulesText'];
+  const normalizedText = normalizeStrictRulesText(strictRulesText);
+  if (strictRulesText !== undefined && strictRulesText !== null) {
+    delete options['strictRulesText'];
+    if (normalizedText) {
+      options['strict_rules_text'] = normalizedText;
+    } else {
+      delete options['strict_rules_text'];
+    }
+  }
+  return {
+    ...metadata,
+    upgrade_options: options,
+  };
 };
 
 const coercePositiveInteger = (value: unknown): number | null => {
@@ -163,7 +194,7 @@ export const normalizeUpgradeOptions = (
   const strictRules = coerceBoolean(
     parsed['strict_rules'] ?? parsed['strictRules']
   );
-  const strictRulesText = coerceString(
+  const strictRulesText = normalizeStrictRulesText(
     parsed['strict_rules_text'] ?? parsed['strictRulesText']
   );
   const strictRulesVersion = coercePositiveInteger(

@@ -11,7 +11,10 @@ import {
   normalizeCurrencyCode,
 } from '../../utils/currency';
 import { FX_BASE_CURRENCY } from '../../services/fx/fxConfig';
-import { normalizeUpgradeOptions } from '../../utils/upgradeOptions';
+import {
+  normalizeUpgradeOptions,
+  normalizeUpgradeOptionsMetadata,
+} from '../../utils/upgradeOptions';
 import { validateMmuTermDivisibility } from '../../utils/mmuSchedule';
 
 const parseBoolean = (value: unknown): boolean | undefined => {
@@ -34,6 +37,42 @@ const parseInteger = (value: unknown): number | null => {
     return null;
   }
   return numeric;
+};
+
+const upgradeOptionsMetadataSchema = {
+  type: 'object',
+  properties: {
+    upgrade_options: {
+      type: 'object',
+      properties: {
+        activation_instructions_template: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 4000,
+        },
+        strict_rules_text: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 8000,
+        },
+      },
+    },
+    upgradeOptions: {
+      type: 'object',
+      properties: {
+        activationInstructionsTemplate: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 4000,
+        },
+        strictRulesText: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 8000,
+        },
+      },
+    },
+  },
 };
 
 async function validateProductMmuTerms(
@@ -326,7 +365,7 @@ export async function adminCatalogRoutes(
             fixed_price_cents: { type: ['integer', 'null'], minimum: 0 },
             fixed_price_currency: { type: ['string', 'null'] },
             status: { type: 'string', enum: ['active', 'inactive'] },
-            metadata: { type: 'object' },
+            metadata: upgradeOptionsMetadataSchema,
           },
         },
       },
@@ -340,6 +379,9 @@ export async function adminCatalogRoutes(
             reply,
             'Create the product as inactive, then add fixed pricing fields or variant pricing before activation.'
           );
+        }
+        if (payload?.metadata) {
+          payload.metadata = normalizeUpgradeOptionsMetadata(payload.metadata);
         }
         const createOptions = normalizeUpgradeOptions(payload?.metadata);
         if (
@@ -418,7 +460,7 @@ export async function adminCatalogRoutes(
             fixed_price_cents: { type: ['integer', 'null'], minimum: 0 },
             fixed_price_currency: { type: ['string', 'null'] },
             status: { type: 'string', enum: ['active', 'inactive'] },
-            metadata: { type: 'object' },
+            metadata: upgradeOptionsMetadataSchema,
           },
         },
       },
@@ -434,6 +476,9 @@ export async function adminCatalogRoutes(
           return ErrorResponses.notFound(reply, 'Product not found');
         }
 
+        if (payload?.metadata) {
+          payload.metadata = normalizeUpgradeOptionsMetadata(payload.metadata);
+        }
         const metadataForValidation =
           payload?.metadata !== undefined ? payload.metadata : before.metadata;
         const durationForValidation =

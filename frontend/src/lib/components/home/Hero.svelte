@@ -126,10 +126,6 @@
 		letter-spacing: -0.01em;
 	}
 
-	.hero-headline-offer {
-		white-space: nowrap;
-	}
-
 	.hero-actions {
 		display: flex;
 		flex-wrap: wrap;

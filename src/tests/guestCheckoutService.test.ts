@@ -2,6 +2,7 @@ import { GuestCheckoutService } from '../services/guestCheckoutService';
 import { getDatabasePool } from '../config/database';
 import { emailService } from '../services/emailService';
 import { checkoutPricingService } from '../services/checkoutPricingService';
+import { couponService } from '../services/couponService';
 
 jest.mock('../config/database', () => ({
   getDatabasePool: jest.fn(),
@@ -19,6 +20,13 @@ jest.mock('../services/checkoutPricingService', () => ({
   },
 }));
 
+jest.mock('../services/couponService', () => ({
+  couponService: {
+    reserveCouponRedemption: jest.fn(),
+    voidRedemptionForOrder: jest.fn(),
+  },
+}));
+
 jest.mock('../utils/logger', () => ({
   Logger: {
     error: jest.fn(),
@@ -33,10 +41,12 @@ const mockEmailService = emailService as jest.Mocked<typeof emailService>;
 const mockCheckoutPricingService = checkoutPricingService as jest.Mocked<
   typeof checkoutPricingService
 >;
+const mockCouponService = couponService as jest.Mocked<typeof couponService>;
 
 describe('GuestCheckoutService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCouponService.voidRedemptionForOrder.mockResolvedValue(false);
   });
 
   it('updates draft orders by checkout_session_key', async () => {

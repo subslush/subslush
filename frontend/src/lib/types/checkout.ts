@@ -52,7 +52,7 @@ export interface CheckoutPricingSummaryItem {
 
 export interface CheckoutPricingSummary {
   items: CheckoutPricingSummaryItem[];
-  pricing_snapshot_id: string;
+  pricing_snapshot_id: string | null;
   display_currency: string;
   settlement_currency: string;
   order_subtotal_cents: number;

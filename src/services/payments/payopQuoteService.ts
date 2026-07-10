@@ -59,6 +59,7 @@ type QuotedSnapshotItem = {
   couponEligible: boolean;
   catalogMode: CatalogMode;
   pricingReferenceId: string;
+  pricingSnapshotId: string;
   targetFxRate: number | null;
 };
 
@@ -181,6 +182,14 @@ const resolveOrderPricingSnapshotId = (
     null
   );
 };
+
+const resolveItemPricingSnapshotId = (
+  metadata: OrderItemMetadata,
+  order: OrderWithItems
+): string | null =>
+  normalizeString(metadata['pricing_snapshot_id']) ||
+  // Orders created before per-line evidence retain their one header lock.
+  resolveOrderPricingSnapshotId(order);
 
 const resolveItemCatalogMode = (metadata: OrderItemMetadata): CatalogMode =>
   metadata['catalog_mode'] === 'fixed_product' ? 'fixed_product' : 'variant';
@@ -335,11 +344,6 @@ const quoteOrderInCurrency = async (params: {
   order: OrderWithItems;
   currency: string;
 }): Promise<OrderCurrencyQuote | null> => {
-  const snapshotId = resolveOrderPricingSnapshotId(params.order);
-  if (!snapshotId) {
-    return null;
-  }
-
   const displayCurrency = resolveOrderDisplayCurrency(params.order);
   const quotedItems: QuotedSnapshotItem[] = [];
 
@@ -354,12 +358,19 @@ const quoteOrderInCurrency = async (params: {
     if (!pricingReferenceId) {
       return null;
     }
+    const pricingSnapshotId = resolveItemPricingSnapshotId(
+      metadata,
+      params.order
+    );
+    if (!pricingSnapshotId) {
+      return null;
+    }
 
     const price = await fetchSnapshotPriceForCurrency({
       catalogMode,
       referenceId: pricingReferenceId,
       currency: params.currency,
-      snapshotId,
+      snapshotId: pricingSnapshotId,
     });
     if (!price) {
       return null;
@@ -394,6 +405,7 @@ const quoteOrderInCurrency = async (params: {
       couponEligible: resolveItemCouponEligibility(item, metadata),
       catalogMode,
       pricingReferenceId,
+      pricingSnapshotId,
       targetFxRate: resolveQuotedPriceFxRate(price),
     });
   }
@@ -430,7 +442,6 @@ const quoteOrderInCurrency = async (params: {
 };
 
 const resolveSnapshotFxCrossRate = async (params: {
-  order: OrderWithItems;
   targetCurrency: string;
   quotedItems: QuotedSnapshotItem[];
 }): Promise<number | null> => {
@@ -443,16 +454,11 @@ const resolveSnapshotFxCrossRate = async (params: {
     return null;
   }
 
-  const snapshotId = resolveOrderPricingSnapshotId(params.order);
-  if (!snapshotId) {
-    return null;
-  }
-
   const eurPrice = await fetchSnapshotPriceForCurrency({
     catalogMode: referenceItem.catalogMode,
     referenceId: referenceItem.pricingReferenceId,
     currency: 'EUR',
-    snapshotId,
+    snapshotId: referenceItem.pricingSnapshotId,
   });
   const eurFxRate = resolveQuotedPriceFxRate(eurPrice);
   if (!eurFxRate || eurFxRate <= 0) {
@@ -476,7 +482,6 @@ const computeProcessingFeeCents = async (params: {
   let fixedFeeCents = params.fee.fixedEurCents;
   if (params.currency !== 'EUR') {
     const crossRate = await resolveSnapshotFxCrossRate({
-      order: params.order,
       targetCurrency: params.currency,
       quotedItems: params.quotedItems,
     });

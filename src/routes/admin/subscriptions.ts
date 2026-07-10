@@ -547,7 +547,11 @@ export async function adminSubscriptionRoutes(
           type: 'object',
           required: ['credentials'],
           properties: {
-            credentials: { type: ['string', 'null'], minLength: 1 },
+            credentials: {
+              type: ['string', 'null'],
+              minLength: 1,
+              maxLength: 4000,
+            },
             reason: { type: 'string', maxLength: 500 },
           },
           additionalProperties: false,

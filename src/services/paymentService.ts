@@ -1103,6 +1103,136 @@ export class PaymentService {
     return created;
   }
 
+  async confirmManualOrderPayment(params: {
+    orderId: string;
+    adminUserId: string;
+    note: string;
+  }): Promise<{
+    success: boolean;
+    error?: string;
+    status?: string;
+    orderStatus?: string;
+    subscriptionsCreated?: number;
+    tasksOpen?: number;
+  }> {
+    const note = params.note.trim();
+    if (!note) {
+      return { success: false, error: 'note_required', status: 'invalid' };
+    }
+
+    const order = await orderService.getOrderWithItems(params.orderId);
+    if (!order) {
+      return { success: false, error: 'order_not_found', status: 'not_found' };
+    }
+    if (order.status !== 'pending_payment') {
+      return {
+        success: false,
+        error: 'order_not_pending_payment',
+        status: 'invalid_state',
+        orderStatus: order.status,
+      };
+    }
+    if (!order.items || order.items.length === 0) {
+      return {
+        success: false,
+        error: 'order_missing_items',
+        status: 'invalid',
+      };
+    }
+
+    const pool = getDatabasePool();
+    const manualPaymentId = `manual_${params.orderId}`;
+    let payment = await paymentRepository.findByProviderPaymentId(
+      'manual',
+      manualPaymentId
+    );
+    if (!payment) {
+      payment = await paymentRepository.create({
+        userId: order.user_id,
+        provider: 'manual',
+        providerPaymentId: manualPaymentId,
+        status: 'succeeded',
+        providerStatus: 'manual_confirmed',
+        purpose: 'subscription',
+        amount: (order.total_cents ?? 0) / 100,
+        currency: (order.currency || 'USD').toLowerCase(),
+        paymentMethodType: 'manual',
+        orderId: order.id,
+        metadata: {
+          order_id: order.id,
+          admin_user_id: params.adminUserId,
+          note,
+          confirmed_at: new Date().toISOString(),
+        },
+      });
+    }
+
+    const updateResult = await pool.query(
+      `UPDATE orders
+       SET status = 'in_process',
+           status_reason = 'manual_payment_confirmed',
+           payment_provider = 'manual',
+           payment_reference = $1,
+           updated_at = NOW()
+       WHERE id = $2
+         AND status = 'pending_payment'
+       RETURNING id`,
+      [manualPaymentId, order.id]
+    );
+    if (updateResult.rows.length === 0) {
+      const refreshed = await orderService.getOrderById(order.id);
+      return {
+        success: false,
+        error: 'order_not_pending_payment',
+        status: 'invalid_state',
+        ...(refreshed?.status ? { orderStatus: refreshed.status } : {}),
+      };
+    }
+
+    if (payment) {
+      await this.createPaymentItemAllocations({
+        paymentRecordId: payment.id,
+        orderItems: order.items,
+      });
+    }
+
+    const createdSubscriptions = await this.createSubscriptionsForOrder({
+      order,
+      orderItems: order.items,
+      renewalMethod: 'manual',
+    });
+    await couponService.finalizeRedemptionForOrder(order.id);
+    const confirmationResult =
+      await orderService.sendOrderPaymentConfirmationEmail(order.id);
+    if (
+      !confirmationResult.success &&
+      !['already_sent', 'renewal_order'].includes(
+        confirmationResult.reason ?? ''
+      )
+    ) {
+      Logger.warn('Manual mark-paid confirmation email failed', {
+        orderId: order.id,
+        reason: confirmationResult.reason,
+      });
+    }
+
+    const taskResult = await pool.query(
+      `SELECT COUNT(*)::int AS open_tasks
+       FROM admin_tasks
+       WHERE order_id = $1
+         AND completed_at IS NULL`,
+      [order.id]
+    );
+
+    return {
+      success: true,
+      status: 'confirmed',
+      orderStatus: 'in_process',
+      subscriptionsCreated: createdSubscriptions.length,
+      tasksOpen: Number(taskResult.rows[0]?.open_tasks ?? 0),
+    };
+  }
+
   private parseMetadataDate(value: unknown): Date | null {
     if (!value) return null;
     if (value instanceof Date) return value;
@@ -1661,7 +1791,6 @@ export class PaymentService {
             1;
           const now = new Date();
           const currentEndDate = new Date(subscription.end_date);
-          const termStartAt = currentEndDate > now ? currentEndDate : now;
           const nextDates = computeNextRenewalDates({
             endDate: currentEndDate,
             termMonths,
@@ -1704,7 +1833,6 @@ export class PaymentService {
             await subscriptionService.updateSubscriptionForRenewalWithGuard({
               subscriptionId,
               updates: {
-                term_start_at: termStartAt,
                 end_date: nextDates.endDate,
                 renewal_date: nextDates.renewalDate,
                 next_billing_at: nextDates.nextBillingAt,
@@ -3669,6 +3797,7 @@ export class PaymentService {
           'cancelled',
           'checkout_timeout'
         );
+        await couponService.voidRedemptionForOrder(orderId);
         cancelled += 1;
       } catch (error) {
         errors += 1;
@@ -5496,7 +5625,6 @@ export class PaymentService {
       1;
     const now = new Date();
     const currentEndDate = new Date(subscription.end_date);
-    const termStartAt = currentEndDate > now ? currentEndDate : now;
     const nextDates = computeNextRenewalDates({
       endDate: currentEndDate,
       termMonths,
@@ -5540,7 +5668,6 @@ export class PaymentService {
       await subscriptionService.updateSubscriptionForRenewalWithGuard({
         subscriptionId: renewalContext.subscriptionId,
         updates: {
-          term_start_at: termStartAt,
           end_date: nextDates.endDate,
           renewal_date: nextDates.renewalDate,
           next_billing_at: null,
@@ -11832,31 +11959,35 @@ export class PaymentService {
         `Received ${fullCurrencies.length} currencies-full from NOWPayments API`
       );
 
-      const filtered = fullCurrencies.filter(currency => !currency.is_fiat);
-      if (filtered.length === 0) {
-        throw new Error('NOWPayments returned no supported crypto currencies');
+      if (fullCurrencies.length > 0) {
+        const filtered = fullCurrencies.filter(currency => !currency.is_fiat);
+        if (filtered.length === 0) {
+          throw new Error(
+            'NOWPayments returned no supported crypto currencies'
+          );
+        }
+
+        const tickerSet = new Set(
+          filtered.map(currency => currency.ticker.toLowerCase())
+        );
+
+        return filtered.map(currency => {
+          const lowerTicker = currency.ticker.toLowerCase();
+          const networkInfo = this.resolveNetworkInfo(lowerTicker, tickerSet);
+          return {
+            ticker: lowerTicker,
+            name: currency.name || this.generateCurrencyName(currency.ticker),
+            image:
+              currency.image ||
+              `https://nowpayments.io/images/coins/${lowerTicker}.svg`,
+            isPopular: currency.is_popular,
+            isStable: currency.is_stable,
+            baseTicker: networkInfo.baseTicker,
+            network: networkInfo.networkLabel,
+            networkCode: networkInfo.networkCode,
+          };
+        });
       }
-
-      const tickerSet = new Set(
-        filtered.map(currency => currency.ticker.toLowerCase())
-      );
-
-      return filtered.map(currency => {
-        const lowerTicker = currency.ticker.toLowerCase();
-        const networkInfo = this.resolveNetworkInfo(lowerTicker, tickerSet);
-        return {
-          ticker: lowerTicker,
-          name: currency.name || this.generateCurrencyName(currency.ticker),
-          image:
-            currency.image ||
-            `https://nowpayments.io/images/coins/${lowerTicker}.svg`,
-          isPopular: currency.is_popular,
-          isStable: currency.is_stable,
-          baseTicker: networkInfo.baseTicker,
-          network: networkInfo.networkLabel,
-          networkCode: networkInfo.networkCode,
-        };
-      });
     } catch (error) {
       Logger.warn(
         'Falling back to basic currency list from NOWPayments',

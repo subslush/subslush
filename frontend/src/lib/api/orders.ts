@@ -75,7 +75,8 @@ class OrdersService {
     subscriptionId: string
   ): Promise<{ accepted: boolean; subscription_id: string; rules_version: number }> {
     const response = await apiClient.post(
-      `${API_ENDPOINTS.ORDERS.LIST}/${orderId}/items/${subscriptionId}/accept-rules`
+      `${API_ENDPOINTS.ORDERS.LIST}/${orderId}/items/${subscriptionId}/accept-rules`,
+      { confirmed: true }
     );
     return unwrapApiData(response);
   }

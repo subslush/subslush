@@ -8,19 +8,33 @@ BEGIN;
 -- INSERT MISSING USERS FROM AUTH
 -- =====================================================
 
-INSERT INTO users (id, email, first_name, last_name, created_at, last_login, status)
-SELECT
-  au.id,
-  au.email,
-  au.raw_user_meta_data->>'first_name',
-  au.raw_user_meta_data->>'last_name',
-  au.created_at,
-  au.last_sign_in_at,
-  'active'
-FROM auth.users au
-WHERE NOT EXISTS (
-  SELECT 1 FROM users u WHERE u.id = au.id
-);
+-- Local PostgreSQL test databases do not include Supabase's auth schema.
+-- Keep the Supabase backfill behavior where auth.users exists, otherwise no-op.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'auth'
+      AND table_name = 'users'
+  ) THEN
+    INSERT INTO users (id, email, first_name, last_name, created_at, last_login, status)
+    SELECT
+      au.id,
+      au.email,
+      au.raw_user_meta_data->>'first_name',
+      au.raw_user_meta_data->>'last_name',
+      au.created_at,
+      au.last_sign_in_at,
+      'active'
+    FROM auth.users au
+    WHERE NOT EXISTS (
+      SELECT 1 FROM users u WHERE u.id = au.id
+    );
+  ELSE
+    RAISE NOTICE 'Skipping auth.users backfill because Supabase auth.users is not present.';
+  END IF;
+END $$;
 
 -- =====================================================
 -- LINK PRE_REGISTRATIONS -> USERS (PREFER AUTH ID)
@@ -76,9 +90,23 @@ WHERE pr.user_id = u.id
 
 SELECT COUNT(*) AS users_total FROM users;
 
-SELECT COUNT(*) AS users_from_auth
-FROM users u
-JOIN auth.users au ON au.id = u.id;
+DO $$
+DECLARE
+  users_from_auth INTEGER;
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'auth'
+      AND table_name = 'users'
+  ) THEN
+    EXECUTE 'SELECT COUNT(*) FROM users u JOIN auth.users au ON au.id = u.id'
+      INTO users_from_auth;
+    RAISE NOTICE 'users_from_auth=%', users_from_auth;
+  ELSE
+    RAISE NOTICE 'users_from_auth skipped because Supabase auth.users is not present.';
+  END IF;
+END $$;
 
 SELECT COUNT(*) AS pre_registrations_linked
 FROM pre_registrations

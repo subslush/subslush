@@ -178,8 +178,12 @@ async function startServer(): Promise<void> {
       await paymentService.refreshSupportedCurrencies();
       server.log.info('NOWPayments currency cache warmed');
     } catch (error) {
-      server.log.warn('Failed to warm NOWPayments currency cache');
-      server.log.warn(error);
+      server.log.warn(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Failed to warm NOWPayments currency cache; continuing with existing fallback behavior'
+      );
     }
 
     await server.listen({
