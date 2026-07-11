@@ -138,6 +138,9 @@ describe('Stripe webhook order flow', () => {
       if (sql.includes('UPDATE orders') && sql.includes('RETURNING')) {
         return { rows: [{ id: 'order-1' }] };
       }
+      if (sql.includes('COUNT(DISTINCT subscription_id)')) {
+        return { rows: [{ task_count: 1 }] };
+      }
       return { rows: [] };
     });
 

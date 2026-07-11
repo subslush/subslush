@@ -768,12 +768,59 @@ export class GuestCheckoutService {
 
       const autoRenewAll = input.items.every(item => item.auto_renew === true);
       const currency = input.currency.trim().toUpperCase();
+      let orderId: string | null = null;
+      let checkoutSessionKey: string;
+      let existingMetadata: Record<string, any> = {};
+
+      if (input.checkout_session_key) {
+        checkoutSessionKey = input.checkout_session_key;
+        const orderResult = await client.query(
+          `SELECT id, status, metadata
+           FROM orders
+           WHERE checkout_session_key = $1
+           FOR UPDATE`,
+          [checkoutSessionKey]
+        );
+
+        if (orderResult.rows.length === 0) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('checkout_session_not_found');
+        }
+
+        const orderRow = orderResult.rows[0];
+        if (orderRow.status !== 'cart') {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('checkout_session_locked');
+        }
+
+        const metadata = parseMetadata(orderRow.metadata) || {};
+        const existingGuestId = metadata['guest_identity_id'];
+        if (existingGuestId && existingGuestId !== identityRow.id) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('checkout_session_mismatch');
+        }
+
+        existingMetadata = metadata;
+        const existingOrderId = orderRow.id as string;
+        orderId = existingOrderId;
+
+        // Repricing an editable checkout replaces, rather than duplicates,
+        // its one reservation. This write is inside the draft transaction, so
+        // a genuinely invalid re-draft restores the prior reservation.
+        await couponService.voidRedemptionForOrder(existingOrderId, client);
+      } else {
+        checkoutSessionKey = randomBytes(CHECKOUT_KEY_BYTES).toString('hex');
+      }
 
       const pricingResult = await checkoutPricingService.priceDraft({
         items: input.items,
         currency,
         couponCode: input.coupon_code ?? null,
         userId,
+        client,
       });
 
       if (!pricingResult.success) {
@@ -811,44 +858,7 @@ export class GuestCheckoutService {
         settlement_final_total_cents: item.settlementFinalTotalCents,
       }));
 
-      let orderId: string | null = null;
-      let checkoutSessionKey: string;
-      let existingMetadata: Record<string, any> = {};
-
       if (input.checkout_session_key) {
-        checkoutSessionKey = input.checkout_session_key;
-        const orderResult = await client.query(
-          `SELECT id, status, metadata
-           FROM orders
-           WHERE checkout_session_key = $1
-           FOR UPDATE`,
-          [checkoutSessionKey]
-        );
-
-        if (orderResult.rows.length === 0) {
-          await client.query('ROLLBACK');
-          transactionOpen = false;
-          return createErrorResult('checkout_session_not_found');
-        }
-
-        const orderRow = orderResult.rows[0];
-        if (orderRow.status !== 'cart') {
-          await client.query('ROLLBACK');
-          transactionOpen = false;
-          return createErrorResult('checkout_session_locked');
-        }
-
-        const metadata = parseMetadata(orderRow.metadata) || {};
-        const existingGuestId = metadata['guest_identity_id'];
-        if (existingGuestId && existingGuestId !== identityRow.id) {
-          await client.query('ROLLBACK');
-          transactionOpen = false;
-          return createErrorResult('checkout_session_mismatch');
-        }
-
-        existingMetadata = metadata;
-        orderId = orderRow.id;
-
         await client.query(
           `UPDATE orders
            SET contact_email = $1,
@@ -904,7 +914,6 @@ export class GuestCheckoutService {
           orderId,
         ]);
       } else {
-        checkoutSessionKey = randomBytes(CHECKOUT_KEY_BYTES).toString('hex');
         const metadata = {
           guest_identity_id: identityRow.id,
           checkout_source: 'guest',

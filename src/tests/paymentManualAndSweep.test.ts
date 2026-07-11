@@ -88,6 +88,9 @@ describe('Manual mark-paid pipeline and stale Payop/Antom sweep', () => {
       if (sql.includes('COUNT(*)::int AS open_tasks')) {
         return Promise.resolve({ rows: [{ open_tasks: 1 }] });
       }
+      if (sql.includes('COUNT(DISTINCT subscription_id)')) {
+        return Promise.resolve({ rows: [{ task_count: 1 }] });
+      }
       return Promise.resolve({ rows: [] });
     });
     const client = { query, release: jest.fn() };

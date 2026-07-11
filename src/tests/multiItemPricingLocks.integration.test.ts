@@ -21,6 +21,8 @@ const dbEnv = {
 };
 
 const productId = '00000000-0000-4000-8000-000000010000';
+const sixMonthProductId = '00000000-0000-4000-8000-000000010100';
+const sixMonthVariantId = '00000000-0000-4000-8000-000000010101';
 const variantIds = {
   first: '00000000-0000-4000-8000-000000010001',
   second: '00000000-0000-4000-8000-000000010002',
@@ -99,8 +101,11 @@ const createDraft = async (params: {
     auto_renew: boolean;
   }>;
   coupon_code?: string;
+  guest_identity_id?: string;
+  checkout_session_key?: string;
 }) => {
-  const guestIdentityId = await createGuestIdentity(params.email);
+  const guestIdentityId =
+    params.guest_identity_id ?? (await createGuestIdentity(params.email));
   return app.inject({
     method: 'POST',
     url: '/checkout/draft',
@@ -109,6 +114,9 @@ const createDraft = async (params: {
       contact_email: params.email,
       currency: 'USD',
       items: params.items,
+      ...(params.checkout_session_key
+        ? { checkout_session_key: params.checkout_session_key }
+        : {}),
       ...(params.coupon_code ? { coupon_code: params.coupon_code } : {}),
     },
   });
@@ -133,6 +141,7 @@ describe('Multi-item pricing locks (fresh PostgreSQL, real checkout route)', () 
     const { rateLimitRedisClient } = await import('../config/redis');
     const { checkoutRoutes } = await import('../routes/checkout');
     const { paymentRoutes } = await import('../routes/payments');
+    const { subscriptionRoutes } = await import('../routes/subscriptions');
     ({ catalogService } = await import('../services/catalogService'));
     ({ couponService } = await import('../services/couponService'));
     ({ paymentService } = await import('../services/paymentService'));
@@ -145,6 +154,24 @@ describe('Multi-item pricing locks (fresh PostgreSQL, real checkout route)', () 
       `INSERT INTO products (id, name, slug, service_type, default_currency, status, metadata)
        VALUES ($1, 'Multi-item pricing lock', 'multi-item-pricing-lock', 'qa', 'USD', 'active', '{}'::jsonb)`,
       [productId]
+    );
+    await databasePool.query(
+      `INSERT INTO products
+        (id, name, slug, service_type, default_currency, duration_months, max_subscriptions, status, metadata)
+       VALUES ($1, 'Six month listing', 'six-month-listing', 'qa', 'USD', 6, 0, 'active', '{}'::jsonb)`,
+      [sixMonthProductId]
+    );
+    await databasePool.query(
+      `INSERT INTO product_variants
+        (id, product_id, name, variant_code, service_plan, is_active)
+       VALUES ($1, $2, 'Six month listing variant', 'six-month-listing', 'six-month-listing', TRUE)`,
+      [sixMonthVariantId, sixMonthProductId]
+    );
+    await databasePool.query(
+      `INSERT INTO product_variant_terms
+        (product_variant_id, months, is_active, sort_order, is_recommended)
+       VALUES ($1, 1, TRUE, 0, TRUE), ($1, 6, TRUE, 1, FALSE)`,
+      [sixMonthVariantId]
     );
     for (const [name, variantId] of Object.entries(variantIds)) {
       await databasePool.query(
@@ -178,6 +205,15 @@ describe('Multi-item pricing locks (fresh PostgreSQL, real checkout route)', () 
       });
       expect(result.success).toBe(true);
     }
+    expect(
+      (
+        await catalogService.setCurrentPrice({
+          product_variant_id: sixMonthVariantId,
+          price_cents: 1200,
+          currency: 'USD',
+        })
+      ).success
+    ).toBe(true);
 
     await databasePool.query(
       `INSERT INTO price_history
@@ -221,6 +257,7 @@ describe('Multi-item pricing locks (fresh PostgreSQL, real checkout route)', () 
     app = Fastify();
     await app.register(checkoutRoutes, { prefix: '/checkout' });
     await app.register(paymentRoutes, { prefix: '/payments' });
+    await app.register(subscriptionRoutes, { prefix: '/subscriptions' });
   });
 
   afterAll(async () => {
@@ -334,6 +371,176 @@ describe('Multi-item pricing locks (fresh PostgreSQL, real checkout route)', () 
       await couponService.listCoupons({ code: 'MULTI-LOCK-15' })
     )[0];
     expect(coupon?.redemptions_used).toBe(1);
+  });
+
+  it('reuses one coupon reservation across repeated drafts of the same checkout', async () => {
+    const email = 'guest-coupon-idempotent@pricing-lock.test';
+    const guestIdentityId = await createGuestIdentity(email);
+    const first = await createDraft({
+      email,
+      guest_identity_id: guestIdentityId,
+      coupon_code: 'MULTI-LOCK-15',
+      items: [
+        { variant_id: variantIds.second, term_months: 1, auto_renew: false },
+      ],
+    });
+    expect(first.statusCode).toBe(200);
+    const firstDraft = first.json().data;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const repeated = await createDraft({
+        email,
+        guest_identity_id: guestIdentityId,
+        checkout_session_key: firstDraft.checkout_session_key,
+        coupon_code: 'MULTI-LOCK-15',
+        items: [
+          {
+            variant_id: variantIds.second,
+            term_months: 1,
+            auto_renew: false,
+          },
+        ],
+      });
+      expect(repeated.statusCode).toBe(200);
+      expect(repeated.json().data.order_id).toBe(firstDraft.order_id);
+      expect(repeated.json().data.pricing.order_coupon_discount_cents).toBe(
+        300
+      );
+      expect(repeated.json().data.pricing.order_total_cents).toBe(1700);
+    }
+
+    const reservations = await databasePool.query(
+      `SELECT coupon_id, status, COUNT(*) OVER ()::int AS row_count
+       FROM coupon_redemptions
+       WHERE order_id = $1`,
+      [firstDraft.order_id]
+    );
+    expect(reservations.rows).toHaveLength(1);
+    expect(reservations.rows[0]).toMatchObject({
+      status: 'reserved',
+      row_count: 1,
+    });
+  });
+
+  it('uses the listing duration for a six-month variant and ignores zero capacity', async () => {
+    const detail = await app.inject({
+      method: 'GET',
+      url: '/subscriptions/products/six-month-listing',
+      headers: { 'x-currency': 'USD' },
+    });
+    expect(detail.statusCode).toBe(200);
+    const listing = detail.json().data;
+    expect(listing.variants).toHaveLength(1);
+    expect(listing.variants[0].id).toBe(sixMonthVariantId);
+    expect(listing.variants[0].term_options).toEqual([
+      expect.objectContaining({ months: 6, total_price: 72 }),
+    ]);
+
+    const draftResponse = await createDraft({
+      email: 'six-month-zero-capacity@pricing-lock.test',
+      items: [
+        {
+          variant_id: sixMonthVariantId,
+          term_months: 6,
+          auto_renew: false,
+        },
+      ],
+    });
+    expect(draftResponse.statusCode).toBe(200);
+    const draft = draftResponse.json().data;
+    expect(draft.pricing.items).toEqual([
+      expect.objectContaining({
+        variant_id: sixMonthVariantId,
+        term_months: 6,
+        pricing_snapshot_id: expect.any(String),
+        final_total_cents: 7200,
+      }),
+    ]);
+
+    const webhook = await completeStripeCheckout({
+      orderId: draft.order_id,
+      paymentIntentId: 'pi_six_month_zero_capacity',
+      sessionId: 'cs_six_month_zero_capacity',
+      amountTotal: 7200,
+    });
+    expect(webhook.statusCode).toBe(200);
+    const fulfilled = await databasePool.query(
+      `SELECT o.status, s.term_months, s.product_variant_id,
+              COUNT(DISTINCT s.id)::int AS subscriptions,
+              COUNT(DISTINCT t.id)::int AS tasks
+       FROM orders o
+       JOIN subscriptions s ON s.order_id = o.id
+       JOIN admin_tasks t ON t.subscription_id = s.id
+       WHERE o.id = $1
+       GROUP BY o.status, s.term_months, s.product_variant_id`,
+      [draft.order_id]
+    );
+    expect(fulfilled.rows).toEqual([
+      {
+        status: 'in_process',
+        term_months: 6,
+        product_variant_id: sixMonthVariantId,
+        subscriptions: 1,
+        tasks: 1,
+      },
+    ]);
+  });
+
+  it('alerts and suppresses confirmation when paid fulfillment entities are incomplete', async () => {
+    const draftResponse = await createDraft({
+      email: 'fulfillment-atomicity@pricing-lock.test',
+      items: [
+        { variant_id: variantIds.first, term_months: 1, auto_renew: false },
+      ],
+    });
+    expect(draftResponse.statusCode).toBe(200);
+    const draft = draftResponse.json().data;
+
+    await databasePool.query(
+      `UPDATE order_items
+       SET metadata = metadata - 'service_type' - 'service_plan'
+       WHERE order_id = $1`,
+      [draft.order_id]
+    );
+
+    const webhook = await completeStripeCheckout({
+      orderId: draft.order_id,
+      paymentIntentId: 'pi_fulfillment_atomicity',
+      sessionId: 'cs_fulfillment_atomicity',
+      amountTotal: draft.pricing.order_total_cents,
+    });
+    expect(webhook.statusCode).toBe(400);
+
+    const state = await databasePool.query(
+      `SELECT o.status, o.status_reason,
+              o.metadata->>'payment_confirmation_email_sent_at' AS confirmation_sent_at,
+              COUNT(DISTINCT s.id)::int AS subscriptions,
+              COUNT(DISTINCT t.id) FILTER (
+                WHERE t.task_category = 'payment_fulfillment_failure'
+                  AND t.is_issue = TRUE
+                  AND t.completed_at IS NULL
+              )::int AS operator_issues,
+              MAX(p.status) AS payment_status,
+              BOOL_OR((p.metadata->>'fulfillment_failure')::boolean) AS payment_alerted
+       FROM orders o
+       LEFT JOIN subscriptions s ON s.order_id = o.id
+       LEFT JOIN admin_tasks t ON t.order_id = o.id
+       LEFT JOIN payments p ON p.order_id = o.id
+       WHERE o.id = $1
+       GROUP BY o.id`,
+      [draft.order_id]
+    );
+    expect(state.rows).toEqual([
+      {
+        status: 'cancelled',
+        status_reason: 'payment_succeeded_fulfillment_failed',
+        confirmation_sent_at: null,
+        subscriptions: 0,
+        operator_issues: 1,
+        payment_status: 'succeeded',
+        payment_alerted: true,
+      },
+    ]);
   });
 
   it('leaves a guest order without a coupon free of redemption records', async () => {

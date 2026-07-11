@@ -655,6 +655,15 @@ class CouponService {
       `INSERT INTO coupon_redemptions (
         coupon_id, user_id, order_id, status, reserved_at, expires_at
       ) VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (order_id) WHERE order_id IS NOT NULL
+      DO UPDATE SET
+        coupon_id = EXCLUDED.coupon_id,
+        user_id = EXCLUDED.user_id,
+        status = 'reserved',
+        reserved_at = EXCLUDED.reserved_at,
+        redeemed_at = NULL,
+        expires_at = EXCLUDED.expires_at,
+        updated_at = NOW()
       RETURNING *`,
       [coupon.id, params.userId, params.orderId, 'reserved', now, expiresAt]
     );

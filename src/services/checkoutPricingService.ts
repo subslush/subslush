@@ -14,6 +14,7 @@ import {
 } from '../utils/termPricing';
 import type { Coupon } from '../types/coupon';
 import type { Product, ProductVariant } from '../types/catalog';
+import type { PoolClient } from 'pg';
 
 export type CheckoutPricingItemInput = {
   variant_id: string;
@@ -83,6 +84,7 @@ export class CheckoutPricingService {
     currency: string;
     couponCode?: string | null;
     userId: string;
+    client?: PoolClient;
   }): Promise<ServiceResult<CheckoutPricingResult>> {
     const normalizedCurrency = normalizeCurrencyCode(params.currency);
     if (!normalizedCurrency) {
@@ -184,6 +186,7 @@ export class CheckoutPricingService {
             subtotalCents: item.termTotalCents,
             termMonths: item.termMonths,
           })),
+          ...(params.client ? { client: params.client } : {}),
         });
 
         if (!couponResult.success) {

@@ -34,6 +34,10 @@
   } from '$lib/types/subscription.js';
   import type { UpgradeSelectionType } from '$lib/types/upgradeSelection.js';
   import type { PageData } from './$types';
+  import {
+    resolveListingTerm,
+    resolveListingVariant
+  } from './listingSelection.js';
 
   export let data: PageData;
 
@@ -412,19 +416,11 @@
 
   $: visitorCountry = resolveCountryName(data.requestCountryCode);
 
-  const resolveDefaultTerm = (variant: ProductVariantOption): ProductTermOption | null => {
-    if (!Array.isArray(variant.term_options) || variant.term_options.length === 0) {
-      return null;
-    }
-    const recommended = variant.term_options.find(term => term.is_recommended);
-    return recommended || variant.term_options[0] || null;
-  };
-
   const resolveSelectedTerm = (variant: ProductVariantOption): ProductTermOption | null =>
-    resolveDefaultTerm(variant);
+    resolveListingTerm({ variant, durationMonths: product?.duration_months });
 
-  $: selectedVariant = variants[0] || null;
-  $: selectedTerm = selectedVariant ? resolveDefaultTerm(selectedVariant) : null;
+  $: selectedVariant = resolveListingVariant(variants);
+  $: selectedTerm = selectedVariant ? resolveSelectedTerm(selectedVariant) : null;
   $: selectedFeatures =
     selectedVariant && normalizeStringList(selectedVariant.features).length > 0
       ? normalizeStringList(selectedVariant.features)
@@ -638,10 +634,8 @@
       if (!currentId) {
         lastViewedProductId = '';
       } else if (currentId !== lastViewedProductId) {
-        const trackedVariant = selectedVariant || variants[0];
-        const defaultTerm = trackedVariant
-          ? resolveSelectedTerm(trackedVariant) || resolveDefaultTerm(trackedVariant)
-          : null;
+        const trackedVariant = selectedVariant;
+        const defaultTerm = trackedVariant ? resolveSelectedTerm(trackedVariant) : null;
         const analyticsItem = buildProductItem(
           trackedVariant,
           defaultTerm,

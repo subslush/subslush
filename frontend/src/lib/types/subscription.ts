@@ -219,6 +219,7 @@ export interface ProductDetail {
     logoKey?: string | null;
     category?: string | null;
     sub_category?: string | null;
+    duration_months?: number | null;
     terms_conditions?: string[] | null;
     termsConditions?: string[] | null;
     upgrade_options?: UpgradeOptions | null;

@@ -2473,29 +2473,6 @@ export class SubscriptionService {
         }
       }
 
-      const maxSubscriptions = product.max_subscriptions;
-      if (maxSubscriptions !== null && maxSubscriptions !== undefined) {
-        if (maxSubscriptions <= 0) {
-          return {
-            canPurchase: false,
-            reason: `No ${serviceType} subscriptions allowed`,
-          };
-        }
-
-        const activeCount = await this.getActiveSubscriptionsCountByProduct(
-          userId,
-          product.id,
-          product.service_type || serviceType
-        );
-
-        if (activeCount >= maxSubscriptions) {
-          return {
-            canPurchase: false,
-            reason: `Maximum ${maxSubscriptions} ${serviceType} subscription(s) allowed`,
-          };
-        }
-      }
-
       return { canPurchase: true };
     } catch (error) {
       Logger.error('Error checking purchase eligibility:', error);

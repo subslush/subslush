@@ -2237,6 +2237,7 @@ export async function subscriptionRoutes(
               logo_key: product.logo_key ?? null,
               category: product.category ?? null,
               sub_category: product.sub_category ?? null,
+              duration_months: durationMonths,
               category_keys: product.category_keys ?? null,
               terms_conditions: termsConditions,
               upgrade_options: upgradeOptions,
@@ -2281,6 +2282,14 @@ export async function subscriptionRoutes(
           });
         }
 
+        if (variants.length !== 1) {
+          Logger.warn('Ambiguous product listing variant configuration', {
+            productId: product.id,
+            activeVariantIds: variants.map(variant => variant.id),
+          });
+          return ErrorResponses.notFound(reply, 'Product not available');
+        }
+
         const variantIds = variants.map(variant => variant.id);
         const [currentPriceMap, fallbackUsdPriceMap, termMap] =
           await Promise.all([
@@ -2307,6 +2316,23 @@ export async function subscriptionRoutes(
 
           const terms = termMap.get(variant.id) ?? [];
           if (terms.length === 0) {
+            continue;
+          }
+
+          const listingDurationMonths = Number(product.duration_months);
+          const listingTerms =
+            Number.isInteger(listingDurationMonths) && listingDurationMonths > 0
+              ? terms.filter(term => term.months === listingDurationMonths)
+              : terms.length === 1
+                ? terms
+                : [];
+          if (listingTerms.length !== 1) {
+            Logger.warn('Ambiguous product listing term configuration', {
+              productId: product.id,
+              variantId: variant.id,
+              durationMonths: product.duration_months ?? null,
+              activeTerms: terms.map(term => term.months),
+            });
             continue;
           }
 
@@ -2347,7 +2373,7 @@ export async function subscriptionRoutes(
 
           const description = variant.description || '';
 
-          const termOptions = terms.map(term => {
+          const termOptions = listingTerms.map(term => {
             const snapshot = computeTermPricing({
               basePriceCents: priceCents,
               termMonths: term.months,
@@ -2397,6 +2423,11 @@ export async function subscriptionRoutes(
             logo_key: product.logo_key ?? null,
             category: product.category ?? null,
             sub_category: product.sub_category ?? null,
+            duration_months:
+              Number.isInteger(Number(product.duration_months)) &&
+              Number(product.duration_months) > 0
+                ? Number(product.duration_months)
+                : null,
             category_keys: product.category_keys ?? null,
             terms_conditions: termsConditions,
             upgrade_options: upgradeOptions,

@@ -887,7 +887,7 @@ export class PaymentService {
     }>
   > {
     if (params.orderItems.length === 0) {
-      return [];
+      throw new Error('fulfillment_order_items_missing');
     }
 
     const pool = params.client ?? getDatabasePool();
@@ -942,7 +942,7 @@ export class PaymentService {
           orderId: params.order.id,
           orderItemId: item.id,
         });
-        continue;
+        throw new Error(`fulfillment_metadata_missing:${item.id}`);
       }
 
       const termMonths =
@@ -1051,7 +1051,7 @@ export class PaymentService {
           orderItemId: item.id,
           error: errorMessage,
         });
-        continue;
+        throw new Error(`fulfillment_subscription_failed:${item.id}`);
       }
 
       const subscription = subscriptionResult.data;
@@ -1118,7 +1118,120 @@ export class PaymentService {
       }
     }
 
+    if (created.length !== params.orderItems.length) {
+      throw new Error(
+        `fulfillment_subscription_count_mismatch:${created.length}/${params.orderItems.length}`
+      );
+    }
+
+    const createdIds = created.map(subscription => subscription.id);
+    const taskResult = await pool.query(
+      `SELECT COUNT(DISTINCT subscription_id)::int AS task_count
+       FROM admin_tasks
+       WHERE order_id = $1
+         AND subscription_id = ANY($2::uuid[])
+         AND completed_at IS NULL`,
+      [params.order.id, createdIds]
+    );
+    const taskCount = Number(taskResult.rows[0]?.task_count ?? 0);
+    if (taskCount !== params.orderItems.length) {
+      throw new Error(
+        `fulfillment_task_count_mismatch:${taskCount}/${params.orderItems.length}`
+      );
+    }
+
     return created;
+  }
+
+  private async markOrderFulfillmentFailed(params: {
+    order: Order;
+    provider: string;
+    providerReference?: string | null;
+    error: unknown;
+  }): Promise<void> {
+    const errorMessage =
+      params.error instanceof Error
+        ? params.error.message
+        : String(params.error);
+    const pool = getDatabasePool();
+    const metadata = {
+      fulfillment_failure: true,
+      fulfillment_failure_provider: params.provider,
+      fulfillment_failure_reference: params.providerReference ?? null,
+      fulfillment_failure_error: errorMessage,
+      fulfillment_failure_at: new Date().toISOString(),
+    };
+
+    await pool.query(
+      `UPDATE orders
+       SET status = 'cancelled',
+           status_reason = 'payment_succeeded_fulfillment_failed',
+           metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [params.order.id, JSON.stringify(metadata)]
+    );
+    await pool.query(
+      `UPDATE payments
+       SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+           updated_at = NOW()
+       WHERE order_id = $1
+         AND status = 'succeeded'`,
+      [params.order.id, JSON.stringify(metadata)]
+    );
+    await pool.query(
+      `INSERT INTO admin_tasks
+        (order_id, user_id, task_type, due_date, priority, notes, task_category, sla_due_at, is_issue)
+       SELECT $1, $2, 'support', NOW(), 'urgent', $3, 'payment_fulfillment_failure', NOW(), TRUE
+       WHERE NOT EXISTS (
+         SELECT 1 FROM admin_tasks
+         WHERE order_id = $1
+           AND task_category = 'payment_fulfillment_failure'
+           AND completed_at IS NULL
+       )`,
+      [
+        params.order.id,
+        params.order.user_id,
+        `Payment succeeded through ${params.provider}, but fulfillment entity creation failed: ${errorMessage}`,
+      ]
+    );
+    await couponService.voidRedemptionForOrder(params.order.id);
+    Logger.error('Payment succeeded but fulfillment entities were incomplete', {
+      orderId: params.order.id,
+      provider: params.provider,
+      providerReference: params.providerReference ?? null,
+      error: errorMessage,
+    });
+  }
+
+  private async createRequiredFulfillmentEntities(params: {
+    order: Order;
+    orderItems: OrderItem[];
+    renewalMethod: string | null;
+    provider: string;
+    providerReference?: string | null;
+  }): Promise<Array<{
+    id: string;
+    orderItemId: string;
+    autoRenew: boolean;
+  }> | null> {
+    try {
+      return await this.createSubscriptionsForOrder({
+        order: params.order,
+        orderItems: params.orderItems,
+        renewalMethod: params.renewalMethod,
+      });
+    } catch (error) {
+      await this.markOrderFulfillmentFailed({
+        order: params.order,
+        provider: params.provider,
+        ...(params.providerReference !== undefined
+          ? { providerReference: params.providerReference }
+          : {}),
+        error,
+      });
+      return null;
+    }
   }
 
   async confirmManualOrderPayment(params: {
@@ -2522,11 +2635,18 @@ export class PaymentService {
         });
       }
 
-      const createdSubscriptions = await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: 'stripe',
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: 'stripe',
+          provider: 'stripe',
+          providerReference: paymentIntentId,
+        }
+      );
+      if (!createdSubscriptions) {
+        return false;
+      }
 
       const autoRenewSubscriptions = createdSubscriptions.filter(
         subscription => subscription.autoRenew
@@ -2763,11 +2883,18 @@ export class PaymentService {
         orderItems: order.items,
       });
 
-      await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: null,
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: null,
+          provider: 'nowpayments',
+          providerReference: payment.providerPaymentId,
+        }
+      );
+      if (!createdSubscriptions) {
+        return false;
+      }
 
       await couponService.finalizeRedemptionForOrder(orderId);
 
@@ -6209,11 +6336,17 @@ export class PaymentService {
         localpayId: params.localpayId,
       });
       if (!renewalApplied) {
-        await this.createSubscriptionsForOrder({
-          order,
-          orderItems: order.items,
-          renewalMethod: null,
-        });
+        const createdSubscriptions =
+          await this.createRequiredFulfillmentEntities({
+            order,
+            orderItems: order.items,
+            renewalMethod: null,
+            provider: 'pay4bit',
+            providerReference: params.localpayId,
+          });
+        if (!createdSubscriptions) {
+          return false;
+        }
       }
 
       await couponService.finalizeRedemptionForOrder(params.orderId);
@@ -6344,11 +6477,18 @@ export class PaymentService {
         orderItems: order.items,
       });
 
-      await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: null,
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: null,
+          provider: 'paypal',
+          providerReference: params.paypalOrderId,
+        }
+      );
+      if (!createdSubscriptions) {
+        return false;
+      }
 
       await couponService.finalizeRedemptionForOrder(params.orderId);
 
@@ -6477,11 +6617,18 @@ export class PaymentService {
         orderItems: order.items,
       });
 
-      await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: null,
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: null,
+          provider: 'payop',
+          providerReference: params.invoiceId,
+        }
+      );
+      if (!createdSubscriptions) {
+        return false;
+      }
 
       await couponService.finalizeRedemptionForOrder(params.orderId);
 
@@ -6706,11 +6853,18 @@ export class PaymentService {
         orderItems: order.items,
       });
 
-      await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: null,
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: null,
+          provider: 'antom',
+          providerReference: params.paymentRequestId,
+        }
+      );
+      if (!createdSubscriptions) {
+        return false;
+      }
 
       await couponService.finalizeRedemptionForOrder(params.orderId);
 
@@ -10328,11 +10482,41 @@ export class PaymentService {
         return { success: false, error: 'order_update_failed' };
       }
 
-      const createdSubscriptions = await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: 'credits',
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: 'credits',
+          provider: 'credits',
+          providerReference: debitTransactionId,
+        }
+      );
+      if (!createdSubscriptions) {
+        const refundResult = await creditService.refundCredits(
+          params.userId,
+          amountDebited,
+          'Credits checkout fulfillment failed - automatic refund',
+          debitTransactionId ?? undefined,
+          { order_id: order.id, reason: 'fulfillment_failed' },
+          {
+            orderId: order.id,
+            priceCents: totalCents,
+            currency: orderCurrency,
+            autoRenew: order.auto_renew === true,
+            renewalMethod: 'credits',
+            statusReason: 'fulfillment_failed_refund',
+          }
+        );
+        if (!refundResult.success) {
+          Logger.error('Failed to refund credits after fulfillment failure', {
+            orderId: order.id,
+            userId: params.userId,
+            transactionId: debitTransactionId,
+            error: refundResult.error,
+          });
+        }
+        return { success: false, error: 'fulfillment_failed' };
+      }
 
       await couponService.finalizeRedemptionForOrder(order.id);
 

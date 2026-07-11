@@ -124,7 +124,6 @@
       <label><span>Category</span><input bind:value={product.category} /></label>
       <label><span>Sub-category</span><input bind:value={product.sub_category} /></label>
       <label><span>Default currency</span><input bind:value={product.default_currency} /></label>
-      <label><span>Max subscriptions</span><input type="number" bind:value={product.max_subscriptions} /></label>
       <label class="wide"><span>Description</span><textarea bind:value={product.description}></textarea></label>
       <button type="button" on:click={saveProduct}>Save basics</button>
     </div></AdminCard>
