@@ -3,7 +3,6 @@ import type {
   OwnAccountCredentialRequirement,
   UpgradeOptionsSnapshot,
 } from '../types/subscription';
-import { normalizePlainText } from './plainText';
 
 type UpgradeOptionsInput = Record<string, any> | null | undefined;
 
@@ -55,7 +54,14 @@ const coerceString = (value: unknown): string | null => {
 
 export const normalizeStrictRulesText = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
-  const normalized = normalizePlainText(value);
+  // Rules are authored as literal text, not HTML. Preserve merchant-authored
+  // angle brackets and entities exactly; every current consumer renders this
+  // value through JSON or Svelte text interpolation (never {@html}).
+  const normalized = value
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   return normalized.length > 0 ? normalized : null;
 };
 

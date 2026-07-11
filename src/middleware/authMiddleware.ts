@@ -180,7 +180,6 @@ export const authMiddleware = (
             userId: payload.userId,
             email: payload.email,
             role: payload.role,
-            sessionId: payload.sessionId,
           };
 
           request.log.info(

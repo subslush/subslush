@@ -165,6 +165,35 @@ describe('admin-next action forms', () => {
     }));
   });
 
+  it('hides expired coupons by default and reveals them with the toggle', async () => {
+    const expiredCode = 'QA-EXPIRED-VISIBLE';
+    const view = render(CouponsPage, {
+      data: {
+        coupons: [
+          {
+            id: 'expired-coupon-id',
+            code: expiredCode,
+            percent_off: 5,
+            scope: 'global',
+            apply_scope: 'highest_eligible_item',
+            status: 'active',
+            starts_at: '2026-01-01T00:00:00.000Z',
+            ends_at: '2026-01-02T00:00:00.000Z',
+            redemptions_used: 0,
+          },
+        ],
+        products: [],
+        newsletter: null,
+        error: '',
+      } as unknown as CouponsPageData,
+    });
+    const couponPage = within(view.container);
+
+    expect(couponPage.queryByText(expiredCode)).toBeNull();
+    await fireEvent.click(couponPage.getByLabelText('Include expired'));
+    await waitFor(() => expect(couponPage.getByText(expiredCode)).toBeTruthy());
+  });
+
   it('propagates a newly created variant into the native term form and submits the term', async () => {
     render(ProductDetailPage, { data: productDetailData as unknown as ProductDetailPageData });
 

@@ -53,6 +53,7 @@ let runManualMonthlyUpgradeSweep: (referenceNow?: Date) => Promise<void>;
 let catalogService: any;
 let subscriptionService: any;
 let emailService: any;
+let Logger: any;
 
 const run = (command: string, args: string[], env = dbEnv): void => {
   execFileSync(command, args, {
@@ -158,6 +159,9 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
     const { adminCatalogRoutes } = await import('../routes/admin/catalog');
     const { adminTaskRoutes } = await import('../routes/admin/tasks');
     const { adminOrderRoutes } = await import('../routes/admin/orders');
+    const { adminSubscriptionRoutes } = await import(
+      '../routes/admin/subscriptions'
+    );
     const { checkoutRoutes } = await import('../routes/checkout');
     const { orderRoutes } = await import('../routes/orders');
     ({ runManualMonthlyUpgradeSweep } = await import(
@@ -166,6 +170,7 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
     ({ catalogService } = await import('../services/catalogService'));
     ({ subscriptionService } = await import('../services/subscriptionService'));
     ({ emailService } = await import('../services/emailService'));
+    ({ Logger } = await import('../utils/logger'));
     databasePool = database.createDatabasePool(env);
     closeDatabasePool = database.closeDatabasePool;
     await seed(databasePool.query.bind(databasePool));
@@ -185,6 +190,9 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
     await app.register(adminCatalogRoutes, { prefix: '/admin' });
     await app.register(adminTaskRoutes, { prefix: '/admin/tasks' });
     await app.register(adminOrderRoutes, { prefix: '/admin/orders' });
+    await app.register(adminSubscriptionRoutes, {
+      prefix: '/admin/subscriptions',
+    });
     await app.register(checkoutRoutes, { prefix: '/checkout' });
     await app.register(orderRoutes, { prefix: '/orders' });
   });
@@ -356,7 +364,8 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
         activation_link_handshake: true,
         activation_instructions_template: 'Confirm that you are ready.',
         strict_rules: true,
-        strict_rules_text: 'alert(1) Do not change the profile.',
+        strict_rules_text:
+          '<script>alert(1)</script> Do not change the profile.',
         strict_rules_version: 7,
       },
       metadata: {
@@ -494,13 +503,28 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
       `UPDATE orders SET status = 'in_process' WHERE id = $1`,
       [single.orderId]
     );
+    const credentialSecret = 'schema-route-credential-SHOULD-NOT-LOG';
+    const activationSecret =
+      'https://activate.test/first?token=schema-route-token-SHOULD-NOT-LOG';
+    const logSpy = jest.spyOn(Logger, 'info');
+    const credentialSave = await app.inject({
+      method: 'POST',
+      url: `/admin/subscriptions/${single.subscriptionId}/credentials`,
+      payload: { credentials: credentialSecret },
+    });
+    expect(credentialSave.statusCode).toBe(200);
     const firstDelivery = await app.inject({
       method: 'POST',
       url: `/admin/orders/${single.orderId}/items/${single.subscriptionId}/activation-link`,
-      payload: { activation_link: 'https://activate.test/first' },
+      payload: { activation_link: activationSecret },
     });
     expect(firstDelivery.statusCode).toBe(200);
     expect(firstDelivery.json().data.order_status).toBe('delivered');
+    const routeLogs = JSON.stringify(logSpy.mock.calls);
+    expect(routeLogs).not.toContain(credentialSecret);
+    expect(routeLogs).not.toContain(activationSecret);
+    expect(routeLogs).not.toContain('schema-route-token-SHOULD-NOT-LOG');
+    logSpy.mockRestore();
 
     const completeRestartCycle = async (fixture: typeof single) => {
       const restart = await app.inject({

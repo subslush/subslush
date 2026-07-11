@@ -8,6 +8,7 @@ jest.mock('../config/environment', () => ({
 }));
 
 jest.mock('../utils/logger', () => ({
+  ...jest.requireActual('../utils/logger'),
   Logger: { info: jest.fn() },
 }));
 
@@ -15,7 +16,7 @@ import { emailService } from '../services/emailService';
 import { Logger } from '../utils/logger';
 
 describe('console email transport', () => {
-  it('logs a complete one-time guest claim URL without truncation', async () => {
+  it('redacts one-time guest claim tokens from console transport logs', async () => {
     const token = 'a'.repeat(64);
     const claimUrl = `http://localhost:3000/checkout/claim?token=${token}`;
     const text = `Your order has been delivered.\n\nClaim it here:\n${claimUrl}`;
@@ -28,12 +29,16 @@ describe('console email transport', () => {
       })
     ).resolves.toEqual({ success: true });
 
-    expect(Logger.info).toHaveBeenCalledWith('Email dispatch (console mode)', {
-      to: 'qa@example.test',
-      bcc: undefined,
-      subject: 'Claim your order',
-      text,
-    });
-    expect((Logger.info as jest.Mock).mock.calls[0][1].text).toContain(token);
+    expect(Logger.info).toHaveBeenCalledWith(
+      'Email dispatch (console mode)',
+      expect.objectContaining({
+        to: 'qa@example.test',
+        bcc: undefined,
+        subject: 'Claim your order',
+      })
+    );
+    const loggedText = (Logger.info as jest.Mock).mock.calls[0][1].text;
+    expect(loggedText).toContain('token=[REDACTED]');
+    expect(loggedText).not.toContain(token);
   });
 });

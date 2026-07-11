@@ -793,7 +793,10 @@ export class SubscriptionService {
     updates: UpdateSubscriptionInput
   ): Promise<SubscriptionResult> {
     try {
-      Logger.info('Admin updating subscription', { subscriptionId, updates });
+      Logger.info('Admin updating subscription', {
+        subscriptionId,
+        changedFields: Object.keys(updates),
+      });
 
       const pool = getDatabasePool();
       const currentResult = await pool.query(
@@ -1371,7 +1374,11 @@ export class SubscriptionService {
     updates: UpdateSubscriptionInput
   ): Promise<SubscriptionResult> {
     try {
-      Logger.info('Updating subscription', { subscriptionId, userId, updates });
+      Logger.info('Updating subscription', {
+        subscriptionId,
+        userId,
+        changedFields: Object.keys(updates),
+      });
 
       const pool = getDatabasePool();
 

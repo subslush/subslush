@@ -18,11 +18,28 @@ import { paymentService } from './services/paymentService';
 import fastifyRawBody from 'fastify-raw-body';
 import { startJobs, stopJobs } from './services/jobs';
 
+const pinoRedact = {
+  paths: [
+    'req.headers.authorization',
+    'req.headers.cookie',
+    'req.headers["x-nowpayments-sig"]',
+    'req.headers["stripe-signature"]',
+    'req.body.credentials',
+    'req.body.credentials_encrypted',
+    'req.body.activation_link',
+    'req.body.password',
+    'req.body.token',
+    'res.headers["set-cookie"]',
+  ],
+  censor: '[REDACTED]',
+};
+
 const fastify = Fastify({
   logger:
     env.NODE_ENV === 'development'
       ? {
           level: 'info',
+          redact: pinoRedact,
           transport: {
             target: 'pino-pretty',
             options: {
@@ -33,6 +50,7 @@ const fastify = Fastify({
         }
       : {
           level: 'warn',
+          redact: pinoRedact,
         },
   trustProxy: true,
 });

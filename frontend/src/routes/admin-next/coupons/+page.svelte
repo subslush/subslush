@@ -26,8 +26,8 @@
   };
 
   const isExpired = (coupon: AdminCoupon) => coupon.ends_at ? new Date(coupon.ends_at) < new Date() : false;
-  const visibleCoupons = (coupons: AdminCoupon[]) =>
-    coupons.filter(coupon => includeExpired || !(isExpired(coupon) && Number(coupon.redemptions_used || 0) === 0));
+  const visibleCoupons = (coupons: AdminCoupon[], showExpired: boolean) =>
+    coupons.filter(coupon => showExpired || !(isExpired(coupon) && Number(coupon.redemptions_used || 0) === 0));
 
   const toIsoDateTime = (value?: string | null) => {
     if (!value) return undefined;
@@ -95,7 +95,7 @@
       <div class="list-head"><h2>Manual coupons</h2><label class="toggle"><input type="checkbox" bind:checked={includeExpired} /> Include expired</label></div>
       <div class="table">
         <div class="thead"><span>Code</span><span>%</span><span>Scope</span><span>Apply to</span><span>Uses</span><span>Window</span><span>Status</span><span></span></div>
-        {#each visibleCoupons(data.coupons) as coupon}
+        {#each visibleCoupons(data.coupons, includeExpired) as coupon}
           <div class="row">
             <span class="mono">{coupon.code}</span><span>{coupon.percent_off}%</span><span>{coupon.scope}</span><span>{coupon.apply_scope || 'highest_eligible_item'}</span><span>{coupon.redemptions_used || 0} / {coupon.max_redemptions || '∞'}</span><span>{formatDate(coupon.starts_at)} – {formatDate(coupon.ends_at)}</span><span><StatusChip status={isExpired(coupon) ? 'expired' : coupon.status || 'active'} /></span><button type="button" on:click={() => deleteCoupon(coupon)}>Delete</button>
           </div>

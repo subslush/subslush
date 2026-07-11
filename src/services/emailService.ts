@@ -1,6 +1,6 @@
 import nodemailer, { Transporter } from 'nodemailer';
 import { env } from '../config/environment';
-import { Logger } from '../utils/logger';
+import { Logger, redactSensitiveLogValue } from '../utils/logger';
 
 type EmailSendResult = {
   success: boolean;
@@ -171,11 +171,13 @@ class EmailService {
         to: payload.to,
         bcc: payload.bcc,
         subject: payload.subject,
-        // Console transport is a local QA/development delivery mechanism. Keep
-        // its complete text so one-time URLs (including claim tokens) can be
-        // exercised without a direct database or service bypass.
-        text: payload.text,
-        ...(payload.html ? { html: payload.html } : {}),
+        // Console transport must follow the same secret-handling contract as
+        // operational logs. Message structure remains visible, but one-time
+        // tokens and other embedded secrets are redacted.
+        text: redactSensitiveLogValue(payload.text),
+        ...(payload.html
+          ? { html: redactSensitiveLogValue(payload.html) }
+          : {}),
       });
       return { success: true };
     }
@@ -213,10 +215,9 @@ class EmailService {
         });
 
         if (!response.ok) {
-          const responseText = await response.text();
+          await response.text();
           Logger.error('Resend API email failed', {
             status: response.status,
-            body: responseText,
           });
           return {
             success: false,

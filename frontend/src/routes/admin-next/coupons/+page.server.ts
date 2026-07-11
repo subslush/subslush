@@ -10,7 +10,9 @@ export const load: PageServerLoad = async ({ fetch, cookies }) => {
   const admin = createAdminService(fetch, { cookie: cookieHeader });
   const adminNext = createAdminNextService(fetch, { cookie: cookieHeader });
   const results = await Promise.allSettled([
-    admin.listCoupons({ limit: 200 }),
+    // Load the complete bounded set once; the page keeps expired coupons
+    // hidden until the administrator explicitly enables the local toggle.
+    admin.listCoupons({ limit: 200, include_expired: true }),
     admin.listProducts({ limit: 200 }),
     adminNext.getNewsletterCoupons(),
   ]);

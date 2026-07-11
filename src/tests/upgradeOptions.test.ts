@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  normalizeStrictRulesText,
   normalizeUpgradeOptionsMetadata,
   normalizeUpgradeOptions,
   ownAccountCredentialRequirementRequiresPassword,
@@ -121,12 +122,12 @@ describe('upgradeOptions utilities', () => {
       activation_link_handshake: true,
       activation_instructions_template: 'Confirm readiness first.',
       strict_rules: true,
-      strict_rules_text: 'No profile changes.',
+      strict_rules_text: '<p>No profile changes.</p>',
       strict_rules_version: 2,
     });
   });
 
-  it('normalizes strict rules text to inert plain text in metadata', () => {
+  it('preserves strict rules as literal text for escaped rendering', () => {
     const metadata = normalizeUpgradeOptionsMetadata({
       upgrade_options: {
         strict_rules: true,
@@ -137,12 +138,19 @@ describe('upgradeOptions utilities', () => {
     });
 
     expect(metadata?.upgrade_options.strict_rules_text).toBe(
-      'alert(1)\nLine 2'
+      '<script>alert(1)</script>\n<img src=x onerror=alert(2)>Line 2'
     );
     expect(normalizeUpgradeOptions(metadata as any)).toMatchObject({
       strict_rules: true,
-      strict_rules_text: 'alert(1)\nLine 2',
+      strict_rules_text:
+        '<script>alert(1)</script>\n<img src=x onerror=alert(2)>Line 2',
       strict_rules_version: 5,
     });
+  });
+
+  it('preserves literal comparison characters in rules text', () => {
+    expect(
+      normalizeStrictRulesText('Passwords must be < 20 chars and > 8.')
+    ).toBe('Passwords must be < 20 chars and > 8.');
   });
 });

@@ -100,6 +100,24 @@ describe('couponService', () => {
     expect(normalizeCouponCode('   ')).toBeNull();
   });
 
+  it('supports an explicit expired-coupon listing contract', async () => {
+    const pool = buildMockPool();
+    mockGetDatabasePool.mockReturnValue(pool as any);
+
+    await couponService.listCoupons({ include_expired: false, limit: 200 });
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('c.ends_at >= NOW()'),
+      [200]
+    );
+
+    pool.query.mockClear();
+    await couponService.listCoupons({ include_expired: true, limit: 200 });
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.not.stringContaining('c.ends_at >= NOW()'),
+      [200]
+    );
+  });
+
   it('validates coupons and computes discounts', async () => {
     const pool = buildMockPool();
     mockGetDatabasePool.mockReturnValue(pool as any);

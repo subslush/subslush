@@ -59,6 +59,7 @@ export async function adminCouponRoutes(
             status: { type: 'string', enum: ['active', 'inactive'] },
             scope: { type: 'string', enum: ['global', 'category', 'product'] },
             code: { type: 'string' },
+            include_expired: { type: 'boolean' },
             limit: { type: 'number', minimum: 1, maximum: 200 },
             offset: { type: 'number', minimum: 0 },
           },
@@ -72,6 +73,7 @@ export async function adminCouponRoutes(
           status?: CouponStatus;
           scope?: CouponScope;
           code?: string;
+          include_expired?: boolean;
           limit?: number;
           offset?: number;
         };

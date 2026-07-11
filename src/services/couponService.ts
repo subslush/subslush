@@ -171,6 +171,7 @@ class CouponService {
     status?: CouponStatus;
     scope?: CouponScope;
     code?: string;
+    include_expired?: boolean;
     limit?: number;
     offset?: number;
   }): Promise<Coupon[]> {
@@ -206,6 +207,9 @@ class CouponService {
           sql += ` AND c.code_normalized = $${++paramCount}`;
           params.push(normalized);
         }
+      }
+      if (filters?.include_expired === false) {
+        sql += ` AND (c.ends_at IS NULL OR c.ends_at >= NOW())`;
       }
       sql += ' ORDER BY c.created_at DESC';
 
