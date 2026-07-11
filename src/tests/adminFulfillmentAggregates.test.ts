@@ -249,6 +249,7 @@ describe('Admin fulfillment aggregate endpoints', () => {
     assertNoCredentialMaterial(body);
     expect(body.data.task).toMatchObject({
       month_label: 'Month 2 of 6',
+      next_month_label: 'Month 3 of 6',
       covers_months_from: 2,
       covers_months_to: 2,
       term_months: 6,
@@ -377,6 +378,7 @@ describe('Admin fulfillment aggregate endpoints', () => {
             variant_name: 'Premium',
             term_months: 6,
             product_metadata: {},
+            selection_type: 'upgrade_own_account',
             task_id: taskA,
             task_type: 'manual_monthly_upgrade',
             due_date: new Date('2026-02-01T00:00:00Z'),
@@ -432,6 +434,9 @@ describe('Admin fulfillment aggregate endpoints', () => {
     expect(subscriptionListResponse.statusCode).toBe(200);
     assertNoCredentialMaterial(queueResponse.json());
     assertNoCredentialMaterial(subscriptionListResponse.json());
+    expect(queueResponse.json().data.orders[0].items[0].selection_type).toBe(
+      'own_account'
+    );
   });
 
   it('writes one audit entry per MMU task credential reveal request', async () => {
@@ -580,6 +585,10 @@ describe('Admin fulfillment aggregate endpoints', () => {
       method: 'GET',
       url: '/admin/fulfillment/queue?tab=mmu&limit=2&offset=0',
     });
+    await app.inject({
+      method: 'GET',
+      url: '/admin/fulfillment/queue?tab=new_orders&sort=recent&limit=8&offset=0',
+    });
 
     await app.close();
 
@@ -591,5 +600,9 @@ describe('Admin fulfillment aggregate endpoints', () => {
       'ORDER BY t.due_date ASC NULLS LAST, o.id ASC, t.id ASC LIMIT $1 OFFSET $2'
     );
     expect(mockQuery.mock.calls[1][1]).toEqual([2, 0]);
+    expect(mockQuery.mock.calls[2][0]).toContain(
+      'ORDER BY o.updated_at DESC NULLS LAST, o.id ASC, s.created_at ASC LIMIT $1 OFFSET $2'
+    );
+    expect(mockQuery.mock.calls[2][1]).toEqual([8, 0]);
   });
 });

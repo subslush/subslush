@@ -14,7 +14,7 @@ export const load: PageServerLoad = async ({ fetch, cookies }) => {
 
   const results = await Promise.allSettled([
     adminNext.getOverview(),
-    adminNext.getQueue({ tab: 'new_orders', limit: 8 }),
+    adminNext.getQueue({ tab: 'new_orders', limit: 8, sort: 'recent' }),
     adminNext.getQueue({ tab: 'mmu', limit: 8 }),
     adminNext.getQueue({ tab: 'awaiting_customer', limit: 8 }),
     adminNext.getQueue({ tab: 'issues', limit: 8 }),

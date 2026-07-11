@@ -99,6 +99,7 @@ type SourceSubscriptionContext = {
   activation_instructions_delivered_at?: Date | null;
   activation_customer_ready_at?: Date | null;
   activation_link_delivered_at?: Date | null;
+  accepted_rules_versions?: string[];
 };
 
 export type DashboardOrderSubscriptionPayload = {
@@ -124,6 +125,7 @@ export type DashboardOrderSubscriptionPayload = {
   activation_instructions_delivered_at: Date | null;
   activation_customer_ready_at: Date | null;
   activation_link_delivered_at: Date | null;
+  strict_rules_accepted: boolean;
   product_options: UpgradeOptionsSnapshot | null;
   status_reason: 'order_entitlement';
   metadata: Record<string, any> & {
@@ -199,6 +201,7 @@ export const toLegacySubscriptionPayload = (params: {
     params.orderItem?.product_metadata,
     itemMetadata
   );
+  const currentRulesVersion = String(productOptions?.strict_rules_version || 1);
   const serviceType =
     readString(itemMetadata, 'service_type', 'serviceType') ??
     readString(params.orderMetadata, 'service_type', 'serviceType') ??
@@ -239,6 +242,10 @@ export const toLegacySubscriptionPayload = (params: {
       params.sourceSubscription?.activation_customer_ready_at ?? null,
     activation_link_delivered_at:
       params.sourceSubscription?.activation_link_delivered_at ?? null,
+    strict_rules_accepted:
+      params.sourceSubscription?.accepted_rules_versions?.includes(
+        currentRulesVersion
+      ) === true,
     product_options: productOptions ?? null,
     status_reason: 'order_entitlement',
     metadata: {
@@ -1004,14 +1011,22 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           }
 
           const sourceSubscriptions = await pool.query(
-            `SELECT id,
-                    activation_handshake_state,
-                    delivered_at,
-                    activation_instructions_delivered_at,
-                    activation_customer_ready_at,
-                    activation_link_delivered_at
-               FROM subscriptions
-              WHERE id = ANY($1::uuid[])`,
+            `SELECT s.id,
+                    s.activation_handshake_state,
+                    s.delivered_at,
+                    s.activation_instructions_delivered_at,
+                    s.activation_customer_ready_at,
+                    s.activation_link_delivered_at,
+                    ARRAY(
+                      SELECT e.metadata->>'rules_version'
+                      FROM order_compliance_evidence_logs e
+                      WHERE e.order_id = s.order_id
+                        AND e.user_id = s.user_id
+                        AND e.event_type = 'strict_rules_acceptance'
+                        AND e.metadata->>'subscription_id' = s.id::text
+                    ) AS accepted_rules_versions
+               FROM subscriptions s
+              WHERE s.id = ANY($1::uuid[])`,
             [
               entitlements
                 .map(entitlement => entitlement.source_subscription_id)
@@ -1036,6 +1051,11 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
                   (row.activation_customer_ready_at as Date | null) ?? null,
                 activation_link_delivered_at:
                   (row.activation_link_delivered_at as Date | null) ?? null,
+                accepted_rules_versions: Array.isArray(
+                  row.accepted_rules_versions
+                )
+                  ? row.accepted_rules_versions.map(String)
+                  : [],
               },
             ])
           );
@@ -1168,14 +1188,22 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           }
 
           const sourceSubscriptions = await pool.query(
-            `SELECT id,
-                    activation_handshake_state,
-                    delivered_at,
-                    activation_instructions_delivered_at,
-                    activation_customer_ready_at,
-                    activation_link_delivered_at
-               FROM subscriptions
-              WHERE id = ANY($1::uuid[])`,
+            `SELECT s.id,
+                    s.activation_handshake_state,
+                    s.delivered_at,
+                    s.activation_instructions_delivered_at,
+                    s.activation_customer_ready_at,
+                    s.activation_link_delivered_at,
+                    ARRAY(
+                      SELECT e.metadata->>'rules_version'
+                      FROM order_compliance_evidence_logs e
+                      WHERE e.order_id = s.order_id
+                        AND e.user_id = s.user_id
+                        AND e.event_type = 'strict_rules_acceptance'
+                        AND e.metadata->>'subscription_id' = s.id::text
+                    ) AS accepted_rules_versions
+               FROM subscriptions s
+              WHERE s.id = ANY($1::uuid[])`,
             [
               entitlements
                 .map(entitlement => entitlement.source_subscription_id)
@@ -1200,6 +1228,11 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
                   (row.activation_customer_ready_at as Date | null) ?? null,
                 activation_link_delivered_at:
                   (row.activation_link_delivered_at as Date | null) ?? null,
+                accepted_rules_versions: Array.isArray(
+                  row.accepted_rules_versions
+                )
+                  ? row.accepted_rules_versions.map(String)
+                  : [],
               },
             ])
           );

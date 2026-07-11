@@ -50,6 +50,7 @@ export interface AdminNextFulfillmentQueueItem {
   variant_name?: string | null;
   term_months?: number | string | null;
   status?: string | null;
+  selection_type?: 'new_account' | 'own_account' | 'none' | 'other' | null;
   delivery_method?: {
     manual_monthly_upgrade?: boolean;
     activation_link_handshake?: boolean;
@@ -161,6 +162,8 @@ export interface AdminNextMmuTask {
   mmu_cycle_total?: number | string | null;
   mmu_label?: string | null;
   month_label?: string | null;
+  next_mmu_label?: string | null;
+  next_month_label?: string | null;
   mmu_covers_months_from?: number | null;
   covers_months_from?: number | null;
   mmu_covers_months_to?: number | null;

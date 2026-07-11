@@ -29,11 +29,19 @@
   const visibleCoupons = (coupons: AdminCoupon[]) =>
     coupons.filter(coupon => includeExpired || !(isExpired(coupon) && Number(coupon.redemptions_used || 0) === 0));
 
+  const toIsoDateTime = (value?: string | null) => {
+    if (!value) return undefined;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+  };
+
   $: summary = `${draft.code || 'CODE'} gives ${draft.percent_off || 0}% off ${draft.apply_scope === 'order_total' ? 'the order total' : 'the highest eligible item'}, ${draft.scope === 'global' ? 'all products' : draft.scope === 'category' ? draft.category || 'selected category' : draft.product_id || 'selected product'}, ${draft.bound_user_id ? `user ${draft.bound_user_id}` : 'any customer'}, ${draft.max_redemptions ? `max ${draft.max_redemptions} uses` : 'unlimited uses'}, ${draft.starts_at ? formatDate(draft.starts_at) : 'now'} – ${draft.ends_at ? formatDate(draft.ends_at) : 'no end'}.`;
 
   const saveCoupon = async () => {
     actionError = ''; actionMessage = '';
     const payload: Partial<AdminCoupon> = { ...draft };
+    payload.starts_at = toIsoDateTime(draft.starts_at);
+    payload.ends_at = toIsoDateTime(draft.ends_at);
     if (payload.scope === 'global') { payload.category = null; payload.product_id = null; }
     if (payload.scope === 'category') payload.product_id = null;
     if (payload.scope === 'product') payload.category = null;

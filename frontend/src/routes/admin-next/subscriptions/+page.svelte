@@ -26,6 +26,9 @@
   let credentials: string | null = null;
   let ownCredentials: string | null = null;
   $: selectedTasks = selected?.tasks || [];
+  $: selectedMmuTasks = selectedTasks.filter(
+    (task: AdminNextSubscriptionTask) => task.task_type === 'manual_monthly_upgrade'
+  );
   $: currentMmuTask = selectedTasks.find(
     (task: AdminNextSubscriptionTask) =>
       task.task_type === 'manual_monthly_upgrade' && !task.completed_at
@@ -144,7 +147,7 @@
       <h3>MMU schedule</h3>
       <div class="schedule">
         <p>Initial delivery · {formatDate(selectedTermStart)} {selected.subscription.delivered_at ? '✓' : '●'}</p>
-        {#each selectedTasks as task}
+        {#each selectedMmuTasks as task}
           <p>{task.month_label || task.mmu_label || task.task_type} · {task.completed_at ? `✓ renewed ${formatDate(task.completed_at)}` : task.is_issue ? '⚠ issue' : `● current due ${formatDate(task.due_date)}`}</p>
         {/each}
       </div>

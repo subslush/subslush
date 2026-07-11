@@ -11,6 +11,7 @@
 const path = require('path');
 const { config } = require('dotenv');
 const { Pool } = require('pg');
+const { classifyMmuAnchor } = require('./lib/mmuAnchorDiagnostic');
 
 config({ path: path.resolve(__dirname, '../.env') });
 
@@ -21,8 +22,6 @@ const pool = new Pool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
 });
-
-const toIso = value => (value instanceof Date ? value.toISOString() : value || null);
 
 async function main() {
   const client = await pool.connect();
@@ -60,12 +59,7 @@ async function main() {
              COALESCE(task_history.completed_cycles, 0) AS completed_cycles,
              task_history.first_completed_task_created_at,
              task_history.max_completed_cycle,
-             COALESCE(mmu.delivered_at, mmu.start_date) AS inferred_anchor,
-             CASE
-               WHEN mmu.term_months > 1
-                 THEN mmu.term_months + (mmu.term_months - 1)
-               ELSE mmu.term_months
-             END AS projected_total_months_if_unfixed
+             COALESCE(mmu.delivered_at, mmu.start_date) AS inferred_anchor
       FROM mmu
       LEFT JOIN task_history ON task_history.subscription_id = mmu.id
       ORDER BY mmu.id
@@ -77,49 +71,7 @@ async function main() {
       return;
     }
 
-    const findings = result.rows.map(row => {
-      const termStart = new Date(row.term_start_at);
-      const inferredAnchor = new Date(row.inferred_anchor);
-      const firstCompletedTaskCreatedAt = row.first_completed_task_created_at
-        ? new Date(row.first_completed_task_created_at)
-        : null;
-      const anchorMovedAfterCompletion = Boolean(
-        firstCompletedTaskCreatedAt &&
-          termStart.getTime() > firstCompletedTaskCreatedAt.getTime()
-      );
-      const anchorDiffersFromInitialDelivery = Boolean(
-        !Number.isNaN(inferredAnchor.getTime()) &&
-          Math.abs(termStart.getTime() - inferredAnchor.getTime()) > 60 * 60 * 1000
-      );
-      const projectedExcessMonths = Math.max(
-        0,
-        Number(row.projected_total_months_if_unfixed) - Number(row.term_months)
-      );
-      const flags = [];
-      if (anchorMovedAfterCompletion) {
-        flags.push('anchor_after_first_completed_task_created');
-      }
-      if (anchorDiffersFromInitialDelivery) flags.push('anchor_differs_from_initial_delivery');
-      if (projectedExcessMonths > 0 && Number(row.completed_cycles) > 0) {
-        flags.push(`repeat_schedule_can_overdeliver_by_${projectedExcessMonths}_months`);
-      }
-
-      return {
-        subscription_id: row.id,
-        order_id: row.order_id,
-        customer_email: row.customer_email,
-        purchased_term_months: Number(row.term_months),
-        interval_months: Number(row.interval_months),
-        immutable_anchor_currently_stored: toIso(row.term_start_at),
-        inferred_initial_delivery_anchor: toIso(row.inferred_anchor),
-        first_completed_task_created_at: toIso(row.first_completed_task_created_at),
-        completed_cycles: Number(row.completed_cycles),
-        highest_completed_cycle_index: row.max_completed_cycle,
-        projected_total_months_if_unfixed: Number(row.projected_total_months_if_unfixed),
-        projected_excess_months_if_unfixed: projectedExcessMonths,
-        flags,
-      };
-    });
+    const findings = result.rows.map(classifyMmuAnchor);
 
     console.log(JSON.stringify({ scanned: findings.length, findings }, null, 2));
   } finally {

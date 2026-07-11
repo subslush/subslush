@@ -12,8 +12,12 @@ const normalizeSelectionType = (
   selectionType: string | null | undefined
 ): 'new_account' | 'own_account' | 'none' | 'other' => {
   if (!selectionType) return 'none';
-  if (selectionType === 'upgrade_new_account') return 'new_account';
-  if (selectionType === 'upgrade_own_account') return 'own_account';
+  if (['upgrade_new_account', 'new_account'].includes(selectionType)) {
+    return 'new_account';
+  }
+  if (['upgrade_own_account', 'own_account'].includes(selectionType)) {
+    return 'own_account';
+  }
   return 'other';
 };
 
@@ -44,6 +48,7 @@ export async function adminFulfillmentRoutes(
             tab: { type: 'string' },
             limit: { type: 'number', minimum: 1, maximum: 200 },
             offset: { type: 'number', minimum: 0 },
+            sort: { type: 'string', enum: ['oldest', 'recent'] },
           },
         },
       },
@@ -55,10 +60,12 @@ export async function adminFulfillmentRoutes(
           tab = 'new_orders',
           limit = 50,
           offset = 0,
+          sort = 'oldest',
         } = request.query as {
           tab?: string;
           limit?: number;
           offset?: number;
+          sort?: 'oldest' | 'recent';
         };
         const pool = getDatabasePool();
         const params: any[] = [];
@@ -89,6 +96,7 @@ export async function adminFulfillmentRoutes(
                  t.completed_at,
                  t.mmu_cycle_index,
                  t.mmu_cycle_total,
+                 sel.selection_type,
                  sel.upgrade_options_snapshot
           FROM orders o
           JOIN subscriptions s ON s.order_id = o.id
@@ -114,7 +122,10 @@ export async function adminFulfillmentRoutes(
         if (tab === 'mmu') {
           sql += ` ORDER BY t.due_date ASC NULLS LAST, o.id ASC, t.id ASC LIMIT $1 OFFSET $2`;
         } else {
-          sql += ` ORDER BY o.updated_at ASC NULLS LAST, o.id ASC, s.created_at ASC LIMIT $1 OFFSET $2`;
+          sql +=
+            sort === 'recent'
+              ? ` ORDER BY o.updated_at DESC NULLS LAST, o.id ASC, s.created_at ASC LIMIT $1 OFFSET $2`
+              : ` ORDER BY o.updated_at ASC NULLS LAST, o.id ASC, s.created_at ASC LIMIT $1 OFFSET $2`;
         }
         params.push(limit, offset);
         const result = await pool.query(sql, params);
@@ -182,6 +193,7 @@ export async function adminFulfillmentRoutes(
                 productOptions?.activation_link_handshake === true,
               strict_rules: productOptions?.strict_rules === true,
             },
+            selection_type: normalizeSelectionType(row.selection_type),
             task_id: row.task_id,
             task_type: row.task_type,
             due_date: row.due_date,
@@ -370,11 +382,17 @@ export async function adminFulfillmentRoutes(
           task.upgrade_options_snapshot,
           {}
         );
+        const intervalMonths =
+          Number(options?.['manual_monthly_upgrade_interval_months']) || 1;
         const mmuLabel = formatMmuCoverageLabel({
           termMonths: Number(task.term_months),
-          intervalMonths:
-            Number(options?.['manual_monthly_upgrade_interval_months']) || 1,
+          intervalMonths,
           cycleIndex: Number(task.mmu_cycle_index),
+        });
+        const nextMmuLabel = formatMmuCoverageLabel({
+          termMonths: Number(task.term_months),
+          intervalMonths,
+          cycleIndex: Number(task.mmu_cycle_index) + intervalMonths,
         });
         const history = await pool.query(
           `SELECT id, due_date, completed_at, is_issue, notes, mmu_cycle_index, mmu_cycle_total
@@ -391,6 +409,8 @@ export async function adminFulfillmentRoutes(
             ...safeTask,
             mmu_label: mmuLabel?.label ?? null,
             month_label: mmuLabel?.label ?? null,
+            next_mmu_label: nextMmuLabel?.label ?? null,
+            next_month_label: nextMmuLabel?.label ?? null,
             mmu_covers_months_from: mmuLabel?.coversMonthsFrom ?? null,
             covers_months_from: mmuLabel?.coversMonthsFrom ?? null,
             mmu_covers_months_to: mmuLabel?.coversMonthsTo ?? null,
@@ -402,9 +422,7 @@ export async function adminFulfillmentRoutes(
           cycle_history: history.rows.map(row => {
             const label = formatMmuCoverageLabel({
               termMonths: Number(task.term_months),
-              intervalMonths:
-                Number(options?.['manual_monthly_upgrade_interval_months']) ||
-                1,
+              intervalMonths,
               cycleIndex: Number(row.mmu_cycle_index),
             });
             return {

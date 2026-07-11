@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductsPage from './products/+page.svelte';
 import ProductDetailPage from './products/[productId=uuid]/+page.svelte';
 import OrderFilePage from './orders/[orderId]/+page.svelte';
+import CouponsPage from './coupons/+page.svelte';
 import type { PageData as ProductsPageData } from './products/$types';
 import type { PageData as ProductDetailPageData } from './products/[productId=uuid]/$types';
 import type { PageData as OrderFilePageData } from './orders/[orderId]/$types';
+import type { PageData as CouponsPageData } from './coupons/$types';
 
 const mocks = vi.hoisted(() => ({
   createProduct: vi.fn(),
@@ -14,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   setCurrentPrice: vi.fn(),
   updateProduct: vi.fn(),
   markOrderPaidManually: vi.fn(),
+  createCoupon: vi.fn(),
   invalidateAll: vi.fn(),
 }));
 
@@ -25,6 +28,7 @@ vi.mock('$lib/api/admin.js', () => ({
     createVariantTerm: mocks.createVariantTerm,
     setCurrentPrice: mocks.setCurrentPrice,
     updateProduct: mocks.updateProduct,
+    createCoupon: mocks.createCoupon,
   },
 }));
 vi.mock('$lib/api/adminNext.js', () => ({
@@ -84,6 +88,7 @@ describe('admin-next action forms', () => {
     mocks.setCurrentPrice.mockResolvedValue({ id: 'price-id' });
     mocks.updateProduct.mockResolvedValue({ id: 'product-id' });
     mocks.markOrderPaidManually.mockResolvedValue({});
+    mocks.createCoupon.mockResolvedValue({ id: 'coupon-id' });
     vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
 
@@ -95,6 +100,7 @@ describe('admin-next action forms', () => {
     mocks.setCurrentPrice.mockReset();
     mocks.updateProduct.mockReset();
     mocks.markOrderPaidManually.mockReset();
+    mocks.createCoupon.mockReset();
     mocks.invalidateAll.mockReset();
   });
 
@@ -132,6 +138,31 @@ describe('admin-next action forms', () => {
       '11111111-1111-4111-8111-111111111111',
       'Confirmed in provider dashboard.',
     ));
+  });
+
+  it('converts coupon datetime-local bounds to zoned ISO timestamps', async () => {
+    const view = render(CouponsPage, {
+      data: { coupons: [], products: [], newsletter: null, error: '' } as unknown as CouponsPageData,
+    });
+    const couponPage = within(view.container);
+
+    const codeLabel = couponPage.getAllByText('Code').find(node => node.closest('label'))!;
+    await fireEvent.input(codeLabel.closest('label')!.querySelector('input')!, {
+      target: { value: 'QA-DATE' },
+    });
+    await fireEvent.input(couponPage.getByText('Start').closest('label')!.querySelector('input')!, {
+      target: { value: '2026-07-11T10:30' },
+    });
+    await fireEvent.input(couponPage.getByText('End').closest('label')!.querySelector('input')!, {
+      target: { value: '2026-07-12T10:30' },
+    });
+    await fireEvent.click(couponPage.getByRole('button', { name: 'Create coupon' }));
+
+    await waitFor(() => expect(mocks.createCoupon).toHaveBeenCalledTimes(1));
+    expect(mocks.createCoupon).toHaveBeenCalledWith(expect.objectContaining({
+      starts_at: new Date('2026-07-11T10:30').toISOString(),
+      ends_at: new Date('2026-07-12T10:30').toISOString(),
+    }));
   });
 
   it('propagates a newly created variant into the native term form and submits the term', async () => {

@@ -347,6 +347,7 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
       activation_instructions_delivered_at: expect.any(String),
       activation_customer_ready_at: expect.any(String),
       activation_link_delivered_at: expect.any(String),
+      strict_rules_accepted: false,
       product_options: {
         allow_new_account: true,
         allow_own_account: false,
@@ -367,6 +368,23 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
       },
     });
     expect(response.body).not.toContain('credentials_encrypted');
+
+    await databasePool.query(
+      `INSERT INTO order_compliance_evidence_logs
+        (order_id, user_id, event_type, metadata)
+       VALUES ($1, '00000000-0000-4000-8000-000000000001',
+         'strict_rules_acceptance',
+         jsonb_build_object('subscription_id', $2::text, 'rules_version', 7))`,
+      [orderId, subscriptionId]
+    );
+    const acceptedResponse = await app.inject({
+      method: 'GET',
+      url: `/orders/${orderId}/subscriptions`,
+    });
+    expect(acceptedResponse.statusCode).toBe(200);
+    expect(
+      acceptedResponse.json().data.subscriptions[0].strict_rules_accepted
+    ).toBe(true);
   });
 
   it('reopens delivered single- and multi-item handshake orders and supports a complete second link cycle', async () => {

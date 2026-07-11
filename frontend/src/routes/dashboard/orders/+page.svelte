@@ -6,6 +6,7 @@
   import type { OrderItem, OrderListItem } from '$lib/types/order.js';
   import type { Subscription } from '$lib/types/subscription.js';
   import StrictRulesNotice from '$lib/components/dashboard/StrictRulesNotice.svelte';
+  import { requiresStrictRulesAcknowledgement } from '$lib/utils/strictRules.js';
 
   export let data: PageData;
 
@@ -19,6 +20,7 @@
   let copyMessageByItem: Record<string, string> = {};
   let activationReadyCheckedByItem: Record<string, boolean> = {};
   let actionMessageByItem: Record<string, string> = {};
+  let rulesAcceptedByItem: Record<string, boolean> = {};
   let rulesModal:
     | { orderId: string; subscription: Subscription; checked: boolean; loading: boolean; error: string }
     | null = null;
@@ -277,7 +279,7 @@
   }
 
   async function revealCredentials(orderId: string, subscription: Subscription) {
-    if (subscription.product_options?.strict_rules) {
+    if (requiresStrictRulesAcknowledgement(subscription, rulesAcceptedByItem[subscription.id] === true)) {
       rulesModal = { orderId, subscription, checked: false, loading: false, error: '' };
       return;
     }
@@ -307,6 +309,7 @@
     rulesModal = { ...current, loading: true, error: '' };
     try {
       await ordersService.acceptOrderItemRules(current.orderId, current.subscription.id);
+      rulesAcceptedByItem = { ...rulesAcceptedByItem, [current.subscription.id]: true };
       rulesModal = null;
       await revealCredentialsAfterRules(current.orderId, current.subscription.id);
     } catch (error) {

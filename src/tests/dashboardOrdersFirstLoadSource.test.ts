@@ -64,6 +64,13 @@ describe('Dashboard orders first-load data flow', () => {
       expect(ordersRoute).toContain('product_options: productOptions ?? null');
     }
 
+    const strictRulesGate = fs.readFileSync(
+      path.resolve(__dirname, '../../frontend/src/lib/utils/strictRules.ts'),
+      'utf8'
+    );
+    expect(strictRulesGate).toContain('subscription.strict_rules_accepted');
+    expect(ordersRoute).toMatch(/\bstrict_rules_accepted\??:/);
+
     // Lifecycle fields are contractually retained even when a particular state
     // is not painted in the current card branch.
     for (const field of [

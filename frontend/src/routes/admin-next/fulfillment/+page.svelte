@@ -163,7 +163,10 @@
               <div class="item-row">
                 <div>
                   <p>{productLine(item)} <span>· {termLabel(item.term_months)}</span></p>
-                  <DeliveryBadges method={item.delivery_method} />
+                  <DeliveryBadges
+                    method={item.delivery_method}
+                    itemType={item.selection_type === 'own_account' ? 'own_account' : 'new_account'}
+                  />
                 </div>
                 <StatusChip status={item.status || 'awaiting_fulfillment'} />
                 {#if isDeliveredItem(item)}

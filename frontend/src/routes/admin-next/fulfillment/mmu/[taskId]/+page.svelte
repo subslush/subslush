@@ -88,7 +88,8 @@
     setBusy();
     try {
       await adminNextService.confirmRenewal(task.id, completionNote || 'MMU renewal completed from admin-next');
-      actionMessage = `${headline} marked renewed.`;
+      const next = task.next_month_label || task.next_mmu_label || null;
+      actionMessage = `${headline} marked renewed.${next ? ` Next: ${next}.` : ''}`;
       await invalidateAll();
     } catch (error) {
       actionError = error instanceof Error ? error.message : 'Failed to complete MMU renewal.';
