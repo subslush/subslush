@@ -193,7 +193,8 @@ describe('Admin order actions', () => {
         ],
       })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ remaining: 0 }] });
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ total: 1, delivered: 1 }] });
     mockGetDatabasePool.mockReturnValue({ query } as any);
     mockSubscriptionService.updateSubscriptionForAdmin.mockResolvedValue({
       success: true,
@@ -251,7 +252,8 @@ describe('Admin order actions', () => {
         ],
       })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ remaining: 1 }] });
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ total: 2, delivered: 1 }] });
     mockGetDatabasePool.mockReturnValue({ query } as any);
     mockSubscriptionService.activateSubscriptionForOrderItem.mockResolvedValue({
       updated: true,
@@ -307,7 +309,8 @@ describe('Admin order actions', () => {
         ],
       })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ remaining: 0 }] });
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ total: 2, delivered: 2 }] });
     mockGetDatabasePool.mockReturnValue({ query } as any);
     mockSubscriptionService.activateSubscriptionForOrderItem.mockResolvedValue({
       updated: true,

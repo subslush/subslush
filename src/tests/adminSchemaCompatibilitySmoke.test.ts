@@ -52,6 +52,7 @@ let databasePool: any;
 let runManualMonthlyUpgradeSweep: (referenceNow?: Date) => Promise<void>;
 let catalogService: any;
 let subscriptionService: any;
+let emailService: any;
 
 const run = (command: string, args: string[], env = dbEnv): void => {
   execFileSync(command, args, {
@@ -156,6 +157,7 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
     const { adminCouponRoutes } = await import('../routes/admin/coupons');
     const { adminCatalogRoutes } = await import('../routes/admin/catalog');
     const { adminTaskRoutes } = await import('../routes/admin/tasks');
+    const { adminOrderRoutes } = await import('../routes/admin/orders');
     const { checkoutRoutes } = await import('../routes/checkout');
     const { orderRoutes } = await import('../routes/orders');
     ({ runManualMonthlyUpgradeSweep } = await import(
@@ -163,6 +165,7 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
     ));
     ({ catalogService } = await import('../services/catalogService'));
     ({ subscriptionService } = await import('../services/subscriptionService'));
+    ({ emailService } = await import('../services/emailService'));
     databasePool = database.createDatabasePool(env);
     closeDatabasePool = database.closeDatabasePool;
     await seed(databasePool.query.bind(databasePool));
@@ -181,6 +184,7 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
     await app.register(adminCouponRoutes, { prefix: '/admin/coupons' });
     await app.register(adminCatalogRoutes, { prefix: '/admin' });
     await app.register(adminTaskRoutes, { prefix: '/admin/tasks' });
+    await app.register(adminOrderRoutes, { prefix: '/admin/orders' });
     await app.register(checkoutRoutes, { prefix: '/checkout' });
     await app.register(orderRoutes, { prefix: '/orders' });
   });
@@ -363,6 +367,279 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
       },
     });
     expect(response.body).not.toContain('credentials_encrypted');
+  });
+
+  it('reopens delivered single- and multi-item handshake orders and supports a complete second link cycle', async () => {
+    const productId = '00000000-0000-4000-8000-000000000400';
+    const variantId = '00000000-0000-4000-8000-000000000401';
+    const single = {
+      orderId: '00000000-0000-4000-8000-000000000410',
+      itemId: '00000000-0000-4000-8000-000000000411',
+      subscriptionId: '00000000-0000-4000-8000-000000000412',
+    };
+    const multi = {
+      orderId: '00000000-0000-4000-8000-000000000420',
+      itemId: '00000000-0000-4000-8000-000000000421',
+      subscriptionId: '00000000-0000-4000-8000-000000000422',
+      otherItemId: '00000000-0000-4000-8000-000000000423',
+      otherSubscriptionId: '00000000-0000-4000-8000-000000000424',
+    };
+
+    await databasePool.query(
+      `INSERT INTO products (id, name, slug, service_type, default_currency, status, metadata)
+       VALUES ($1, 'Handshake restart product', 'handshake-restart-product', 'schema_smoke', 'USD', 'active',
+         '{"upgrade_options":{"allow_new_account":true,"allow_own_account":false,"activation_link_handshake":true,"activation_instructions_template":"Confirm readiness"}}'::jsonb)`,
+      [productId]
+    );
+    await databasePool.query(
+      `INSERT INTO product_variants (id, product_id, name, variant_code, is_active)
+       VALUES ($1, $2, 'Handshake variant', 'handshake-restart', TRUE)`,
+      [variantId, productId]
+    );
+
+    const seedDeliveredOrder = async (fixture: {
+      orderId: string;
+      itemId: string;
+      subscriptionId: string;
+      otherItemId?: string;
+      otherSubscriptionId?: string;
+    }) => {
+      await databasePool.query(
+        `INSERT INTO orders
+          (id, user_id, status, currency, subtotal_cents, discount_cents, total_cents,
+           payment_provider, payment_reference, contact_email)
+         VALUES ($1, '00000000-0000-4000-8000-000000000001', 'delivered', 'USD', 100, 0, 100,
+           'stripe', $2, 'admin@schema-smoke.test')`,
+        [fixture.orderId, `handshake-${fixture.orderId}`]
+      );
+      await databasePool.query(
+        `INSERT INTO payments
+          (user_id, order_id, provider, provider_payment_id, status, purpose, amount, currency)
+         VALUES ('00000000-0000-4000-8000-000000000001', $1, 'stripe', $2, 'succeeded', 'subscription', 1, 'USD')`,
+        [fixture.orderId, `handshake-${fixture.orderId}`]
+      );
+      await databasePool.query(
+        `INSERT INTO order_items
+          (id, order_id, product_variant_id, quantity, unit_price_cents, total_price_cents, currency, term_months, metadata)
+         VALUES ($1, $2, $3, 1, 100, 100, 'USD', 1, '{}'::jsonb)`,
+        [fixture.itemId, fixture.orderId, variantId]
+      );
+      await databasePool.query(
+        `INSERT INTO subscriptions
+          (id, user_id, order_id, order_item_id, product_variant_id, service_type, service_plan,
+           start_date, end_date, renewal_date, term_start_at, term_months, status,
+           credentials_encrypted, delivered_at, activation_handshake_state, activation_link_delivered_at)
+         VALUES ($1, '00000000-0000-4000-8000-000000000001', $2, $3, $4,
+           'schema_smoke', 'handshake', NOW() - INTERVAL '1 day', NOW() + INTERVAL '1 month',
+           NOW() + INTERVAL '3 weeks', NOW() - INTERVAL '1 day', 1, 'active',
+           'old-link', NOW() - INTERVAL '1 day', 'link_delivered', NOW() - INTERVAL '1 day')`,
+        [fixture.subscriptionId, fixture.orderId, fixture.itemId, variantId]
+      );
+      if (fixture.otherItemId && fixture.otherSubscriptionId) {
+        await databasePool.query(
+          `INSERT INTO order_items
+            (id, order_id, product_variant_id, quantity, unit_price_cents, total_price_cents, currency, term_months, metadata)
+           VALUES ($1, $2, $3, 1, 100, 100, 'USD', 1, '{}'::jsonb)`,
+          [fixture.otherItemId, fixture.orderId, variantId]
+        );
+        await databasePool.query(
+          `INSERT INTO subscriptions
+            (id, user_id, order_id, order_item_id, product_variant_id, service_type, service_plan,
+             start_date, end_date, renewal_date, term_start_at, term_months, status,
+             credentials_encrypted, delivered_at, activation_handshake_state)
+           VALUES ($1, '00000000-0000-4000-8000-000000000001', $2, $3, $4,
+             'schema_smoke', 'already-delivered', NOW() - INTERVAL '1 day', NOW() + INTERVAL '1 month',
+             NOW() + INTERVAL '3 weeks', NOW() - INTERVAL '1 day', 1, 'active',
+             'other-credentials', NOW() - INTERVAL '1 day', 'link_delivered')`,
+          [
+            fixture.otherSubscriptionId,
+            fixture.orderId,
+            fixture.otherItemId,
+            variantId,
+          ]
+        );
+      }
+    };
+
+    await seedDeliveredOrder(single);
+    await seedDeliveredOrder(multi);
+
+    await databasePool.query(
+      `UPDATE subscriptions
+       SET activation_handshake_state = 'customer_ready',
+           credentials_encrypted = NULL,
+           activation_link_delivered_at = NULL
+       WHERE id = $1`,
+      [single.subscriptionId]
+    );
+    await databasePool.query(
+      `UPDATE orders SET status = 'in_process' WHERE id = $1`,
+      [single.orderId]
+    );
+    const firstDelivery = await app.inject({
+      method: 'POST',
+      url: `/admin/orders/${single.orderId}/items/${single.subscriptionId}/activation-link`,
+      payload: { activation_link: 'https://activate.test/first' },
+    });
+    expect(firstDelivery.statusCode).toBe(200);
+    expect(firstDelivery.json().data.order_status).toBe('delivered');
+
+    const completeRestartCycle = async (fixture: typeof single) => {
+      const restart = await app.inject({
+        method: 'POST',
+        url: `/admin/orders/${fixture.orderId}/items/${fixture.subscriptionId}/activation-restart`,
+        payload: { note: 'Schema smoke restart' },
+      });
+      expect(restart.statusCode).toBe(200);
+      expect(restart.json().data).toMatchObject({
+        activation_handshake_state: 'awaiting_customer',
+        order_status: 'in_process',
+      });
+
+      const reopened = await databasePool.query(
+        'SELECT status FROM orders WHERE id = $1',
+        [fixture.orderId]
+      );
+      expect(reopened.rows[0].status).toBe('in_process');
+
+      const queue = await app.inject({
+        method: 'GET',
+        url: '/admin/fulfillment/queue?tab=awaiting_customer',
+      });
+      const queueOrder = queue
+        .json()
+        .data.orders.find((order: any) => order.id === fixture.orderId);
+      expect(queueOrder.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            subscription_id: fixture.subscriptionId,
+            status: 'awaiting_customer',
+          }),
+        ])
+      );
+
+      const ready = await app.inject({
+        method: 'POST',
+        url: `/orders/${fixture.orderId}/items/${fixture.subscriptionId}/activation-ready`,
+        payload: { confirmed: true },
+      });
+      expect(ready.statusCode).toBe(200);
+
+      const redeliver = await app.inject({
+        method: 'POST',
+        url: `/admin/orders/${fixture.orderId}/items/${fixture.subscriptionId}/activation-link`,
+        payload: {
+          activation_link: `https://activate.test/${fixture.subscriptionId}/second`,
+        },
+      });
+      expect(redeliver.statusCode).toBe(200);
+      expect(redeliver.json().data.order_status).toBe('delivered');
+
+      const reveal = await app.inject({
+        method: 'POST',
+        url: `/orders/${fixture.orderId}/items/${fixture.subscriptionId}/reveal`,
+      });
+      expect(reveal.statusCode).toBe(200);
+      expect(reveal.json().data.credentials).toBe(
+        `https://activate.test/${fixture.subscriptionId}/second`
+      );
+    };
+
+    await completeRestartCycle(single);
+    await completeRestartCycle(multi);
+
+    const multiRows = await databasePool.query(
+      'SELECT status FROM orders WHERE id = $1',
+      [multi.orderId]
+    );
+    expect(multiRows.rows[0].status).toBe('delivered');
+  });
+
+  it('keeps legacy single-item delivery to one email and synchronizes the customer entitlement status', async () => {
+    const orderId = '00000000-0000-4000-8000-000000000230';
+    const itemId = '00000000-0000-4000-8000-000000000231';
+    const subscriptionId = '00000000-0000-4000-8000-000000000232';
+    const entitlementId = '00000000-0000-4000-8000-000000000233';
+    const variantId = '00000000-0000-4000-8000-000000000011';
+
+    await databasePool.query(
+      `INSERT INTO orders
+        (id, user_id, status, currency, subtotal_cents, discount_cents, total_cents,
+         payment_provider, payment_reference, contact_email)
+       VALUES ($1, '00000000-0000-4000-8000-000000000001', 'in_process', 'USD', 100, 0, 100,
+         'stripe', 'legacy-single-delivery', 'admin@schema-smoke.test')`,
+      [orderId]
+    );
+    await databasePool.query(
+      `INSERT INTO payments
+        (user_id, order_id, provider, provider_payment_id, status, purpose, amount, currency)
+       VALUES ('00000000-0000-4000-8000-000000000001', $1, 'stripe', 'legacy-single-delivery',
+         'succeeded', 'subscription', 1, 'USD')`,
+      [orderId]
+    );
+    await databasePool.query(
+      `INSERT INTO order_items
+        (id, order_id, product_variant_id, quantity, unit_price_cents, total_price_cents, currency, term_months, metadata)
+       VALUES ($1, $2, $3, 1, 100, 100, 'USD', 1, '{}'::jsonb)`,
+      [itemId, orderId, variantId]
+    );
+    await databasePool.query(
+      `INSERT INTO subscriptions
+        (id, user_id, order_id, order_item_id, product_variant_id, service_type, service_plan,
+         start_date, end_date, renewal_date, term_months, status, credentials_encrypted)
+       VALUES ($1, '00000000-0000-4000-8000-000000000001', $2, $3, $4,
+         'schema_smoke', 'legacy', NOW(), NOW() + INTERVAL '1 month', NOW() + INTERVAL '3 weeks',
+         1, 'pending', 'legacy-credentials')`,
+      [subscriptionId, orderId, itemId, variantId]
+    );
+    await databasePool.query(
+      `INSERT INTO order_entitlements
+        (id, order_id, order_item_id, user_id, status, starts_at, ends_at,
+         duration_months_snapshot, source_subscription_id)
+       VALUES ($1, $2, $3, '00000000-0000-4000-8000-000000000001', 'pending',
+         NOW(), NOW() + INTERVAL '1 month', 1, $4)`,
+      [entitlementId, orderId, itemId, subscriptionId]
+    );
+
+    const sendSpy = jest
+      .spyOn(emailService, 'send')
+      .mockResolvedValue({ success: true });
+    try {
+      const delivered = await app.inject({
+        method: 'PATCH',
+        url: `/admin/orders/${orderId}/status`,
+        payload: { status: 'delivered', reason: 'legacy_console_delivery' },
+      });
+      expect(delivered.statusCode).toBe(200);
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(sendSpy.mock.calls[0]?.[0]?.subject).toBe(
+        'Your SubSlush order is delivered'
+      );
+
+      const customerProjection = await app.inject({
+        method: 'GET',
+        url: `/orders/${orderId}/subscriptions`,
+      });
+      expect(customerProjection.statusCode).toBe(200);
+      expect(customerProjection.json().data.subscriptions[0]).toMatchObject({
+        id: subscriptionId,
+        status: 'active',
+      });
+
+      const rows = await databasePool.query(
+        `SELECT s.status AS subscription_status, oe.status AS entitlement_status
+         FROM subscriptions s
+         JOIN order_entitlements oe ON oe.source_subscription_id = s.id
+         WHERE s.id = $1`,
+        [subscriptionId]
+      );
+      expect(rows.rows[0]).toEqual({
+        subscription_status: 'active',
+        entitlement_status: 'active',
+      });
+    } finally {
+      sendSpy.mockRestore();
+    }
   });
 
   it('creates a valid checkout lock for normal catalog price writes and hides snapshot-less prices', async () => {

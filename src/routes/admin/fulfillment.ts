@@ -25,6 +25,12 @@ const resolveOpenTaskStatus = (row: {
   return row.task_is_issue === true ? 'issue' : 'open';
 };
 
+const OPEN_ACTIVATION_STATES = [
+  'instructions_delivered',
+  'awaiting_customer',
+  'customer_ready',
+];
+
 export async function adminFulfillmentRoutes(
   fastify: FastifyInstance
 ): Promise<void> {
@@ -148,7 +154,10 @@ export async function adminFulfillmentRoutes(
                   cycleIndex: Number(row.mmu_cycle_index),
                 })
               : null;
-          if (row.subscription_status === 'active') {
+          const activationPending = OPEN_ACTIVATION_STATES.includes(
+            row.activation_handshake_state
+          );
+          if (row.subscription_status === 'active' && !activationPending) {
             order.delivered_count += 1;
           }
           order.items.push({
@@ -157,12 +166,12 @@ export async function adminFulfillmentRoutes(
             variant_name: row.variant_name,
             term_months: row.term_months,
             status:
-              row.subscription_status === 'active'
-                ? 'delivered'
-                : row.activation_handshake_state === 'customer_ready'
-                  ? 'customer_ready'
-                  : row.activation_handshake_state === 'awaiting_customer'
-                    ? 'awaiting_customer'
+              row.activation_handshake_state === 'customer_ready'
+                ? 'customer_ready'
+                : row.activation_handshake_state === 'awaiting_customer'
+                  ? 'awaiting_customer'
+                  : row.subscription_status === 'active'
+                    ? 'delivered'
                     : row.is_issue
                       ? 'issue'
                       : 'awaiting_fulfillment',

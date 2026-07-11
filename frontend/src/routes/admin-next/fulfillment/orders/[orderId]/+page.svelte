@@ -47,6 +47,9 @@
   };
 
   const refresh = async () => {
+    if (order?.id) {
+      aggregate = await adminNextService.getOrder(order.id);
+    }
     await invalidateAll();
   };
 
@@ -195,18 +198,18 @@
   };
 
   const itemStatus = (item: AdminNextFulfillmentDetailItem) =>
-    isDeliveredItem(item)
-      ? 'delivered'
-      : item.handshake_state === 'customer_ready'
+    item.handshake_state === 'customer_ready'
         ? 'customer_ready'
         : item.handshake_state === 'awaiting_customer'
           ? 'awaiting_customer'
+          : isDeliveredItem(item)
+            ? 'delivered'
           : 'awaiting_fulfillment';
 
   const stepIndex = (item: AdminNextFulfillmentDetailItem) => {
-    if (isDeliveredItem(item) || item.handshake_state === 'link_delivered') return 4;
     if (item.handshake_state === 'customer_ready') return 3;
     if (item.handshake_state === 'awaiting_customer' || item.handshake_state === 'instructions_delivered') return 2;
+    if (isDeliveredItem(item) || item.handshake_state === 'link_delivered') return 4;
     return 1;
   };
 </script>
@@ -269,7 +272,34 @@
       {#each items as item}
         <AdminCard>
           <article id={item.subscription_id} class="item-card">
-            {#if isDeliveredItem(item)}
+            {#if item.product_options?.activation_link_handshake}
+              <div class="item-head">
+                <div>
+                  <h3>{productLine(item)} · {termLabel(item.term_months)}</h3>
+                  <DeliveryBadges method={item.product_options} />
+                </div>
+                <StatusChip status={itemStatus(item)} />
+              </div>
+              <div class="stepper">
+                {#each ['Send instructions', 'Awaiting customer', 'Customer ready', 'Delivered'] as label, index}
+                  <span class:done={stepIndex(item) > index + 1} class:current={stepIndex(item) === index + 1}>{index + 1} {label}</span>
+                {/each}
+              </div>
+              {#if stepIndex(item) === 1}
+                <textarea rows="5" maxlength="4000" bind:value={instructionDrafts[item.subscription_id]} placeholder={item.product_options?.activation_instructions_template || 'Activation instructions'}></textarea>
+                <button class="primary-button" type="button" disabled={!paymentSucceeded} on:click={() => deliverInstructions(item)}>Deliver instructions</button>
+              {:else if stepIndex(item) === 2}
+                <div class="info purple">Awaiting customer. Instructions sent. Waiting for the customer to press "I'm ready to activate".</div>
+              {:else if stepIndex(item) === 3}
+                <div class="info teal">Customer is ready now. Obtain the link from the supplier and paste it below - it expires 2 hours after generation.</div>
+                <input class="mono" maxlength="4000" bind:value={activationLinks[item.subscription_id]} placeholder="Activation link" />
+                <button class="teal-button" type="button" disabled={!paymentSucceeded} on:click={() => deliverLink(item)}>Deliver link</button>
+              {:else}
+                <div class="info green">Link delivered {formatDateTime(item.delivered_at)}. Customer notified their activation link is ready.</div>
+                <button class="quiet-link" type="button" on:click={() => restartActivation(item)}>Link expired unused? Restart activation step</button>
+                <p class="caption">Returns the item to Awaiting customer and notifies them to confirm readiness again. Every restart is logged.</p>
+              {/if}
+            {:else if isDeliveredItem(item)}
               <div class="delivered-row">
                 <Check size={20} />
                 <div>
@@ -308,33 +338,6 @@
                     <p>{item.customer_revealed ? '● Revealed by customer' : '○ Not yet revealed by customer'}</p>
                   </div>
                 </div>
-              {/if}
-            {:else if item.product_options?.activation_link_handshake}
-              <div class="item-head">
-                <div>
-                  <h3>{productLine(item)} · {termLabel(item.term_months)}</h3>
-                  <DeliveryBadges method={item.product_options} />
-                </div>
-                <StatusChip status={itemStatus(item)} />
-              </div>
-              <div class="stepper">
-                {#each ['Send instructions', 'Awaiting customer', 'Customer ready', 'Delivered'] as label, index}
-                  <span class:done={stepIndex(item) > index + 1} class:current={stepIndex(item) === index + 1}>{index + 1} {label}</span>
-                {/each}
-              </div>
-              {#if stepIndex(item) === 1}
-                <textarea rows="5" maxlength="4000" bind:value={instructionDrafts[item.subscription_id]} placeholder={item.product_options?.activation_instructions_template || 'Activation instructions'}></textarea>
-                <button class="primary-button" type="button" disabled={!paymentSucceeded} on:click={() => deliverInstructions(item)}>Deliver instructions</button>
-              {:else if stepIndex(item) === 2}
-                <div class="info purple">Awaiting customer. Instructions sent. Waiting for the customer to press "I'm ready to activate".</div>
-              {:else if stepIndex(item) === 3}
-                <div class="info teal">Customer is ready now. Obtain the link from the supplier and paste it below - it expires 2 hours after generation.</div>
-                <input class="mono" maxlength="4000" bind:value={activationLinks[item.subscription_id]} placeholder="Activation link" />
-                <button class="teal-button" type="button" disabled={!paymentSucceeded} on:click={() => deliverLink(item)}>Deliver link</button>
-              {:else}
-                <div class="info green">Link delivered {formatDateTime(item.delivered_at)}. Customer notified their activation link is ready.</div>
-                <button class="quiet-link" type="button" on:click={() => restartActivation(item)}>Link expired unused? Restart activation step</button>
-                <p class="caption">Returns the item to Awaiting customer and notifies them to confirm readiness again. Every restart is logged.</p>
               {/if}
             {:else}
               <div class="item-head">

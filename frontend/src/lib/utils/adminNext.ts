@@ -83,7 +83,18 @@ export const isGuestEmail = (email?: string | null): boolean =>
 
 export const isDeliveredItem = (
   item: AdminNextFulfillmentQueueItem | AdminNextFulfillmentDetailItem
-): boolean => item.status === 'delivered' || item.status === 'active' || Boolean('delivered_at' in item && item.delivered_at);
+): boolean => {
+  const handshakeState =
+    'handshake_state' in item ? item.handshake_state : null;
+  if (
+    handshakeState === 'instructions_delivered' ||
+    handshakeState === 'awaiting_customer' ||
+    handshakeState === 'customer_ready'
+  ) {
+    return false;
+  }
+  return item.status === 'delivered' || item.status === 'active' || Boolean('delivered_at' in item && item.delivered_at);
+};
 
 export const orderItemCount = (order: AdminNextFulfillmentOrder): number =>
   order.items?.length || 0;

@@ -45,6 +45,44 @@ const activationStateConflict = (
     current_state: currentState,
   });
 
+const OPEN_ACTIVATION_STATES = [
+  'instructions_delivered',
+  'awaiting_customer',
+  'customer_ready',
+] as const;
+
+async function recomputeOrderDeliveryStatus(
+  orderId: string,
+  reason?: string
+): Promise<OrderStatus> {
+  const pool = getDatabasePool();
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (
+              WHERE status = 'active'
+                AND COALESCE(activation_handshake_state, 'none')
+                    <> ALL($2::text[])
+            )::int AS delivered
+     FROM subscriptions
+     WHERE order_id = $1`,
+    [orderId, OPEN_ACTIVATION_STATES]
+  );
+  const total = Number(result.rows[0]?.total ?? 0);
+  const delivered = Number(result.rows[0]?.delivered ?? 0);
+  const nextStatus: OrderStatus =
+    total > 0 && delivered === total ? 'delivered' : 'in_process';
+  const updated = await orderService.updateOrderStatus(
+    orderId,
+    nextStatus,
+    reason ||
+      (nextStatus === 'delivered' ? 'order_delivered' : 'partial_delivery')
+  );
+  if (!updated.success) {
+    throw new Error(updated.error || 'Failed to recompute order status');
+  }
+  return nextStatus;
+}
+
 async function deliverOrderItem(params: {
   orderId: string;
   subscriptionId: string;
@@ -111,6 +149,19 @@ async function deliverOrderItem(params: {
     };
   }
 
+  await pool.query(
+    `UPDATE order_entitlements oe
+     SET status = 'active',
+         starts_at = s.start_date,
+         ends_at = s.end_date,
+         duration_months_snapshot = COALESCE(s.term_months, oe.duration_months_snapshot),
+         updated_at = NOW()
+     FROM subscriptions s
+     WHERE s.id = $1
+       AND oe.source_subscription_id = s.id`,
+    [params.subscriptionId]
+  );
+
   if (!params.skipEmail) {
     await orderService.sendItemDeliveredEmail({
       orderId: params.orderId,
@@ -161,20 +212,7 @@ async function deliverOrderItem(params: {
     },
   });
 
-  const remainingResult = await pool.query(
-    `SELECT COUNT(*)::int AS remaining
-     FROM subscriptions
-     WHERE order_id = $1
-       AND status <> 'active'`,
-    [params.orderId]
-  );
-  const remaining = Number(remainingResult.rows[0]?.remaining ?? 0);
-  const nextStatus: OrderStatus = remaining === 0 ? 'delivered' : 'in_process';
-  await orderService.updateOrderStatus(
-    params.orderId,
-    nextStatus,
-    remaining === 0 ? 'order_delivered' : 'partial_delivery'
-  );
+  const nextStatus = await recomputeOrderDeliveryStatus(params.orderId);
 
   return { success: true, orderStatus: nextStatus };
 }
@@ -595,6 +633,9 @@ export async function adminOrderRoutes(
           subscriptionId,
           {
             activation_handshake_state: 'awaiting_customer',
+            credentials_encrypted: null,
+            activation_customer_ready_at: null,
+            activation_link_delivered_at: null,
             activation_handshake_restarted_at: new Date(),
           }
         );
@@ -604,6 +645,10 @@ export async function adminOrderRoutes(
             result.error || 'Failed to restart activation step'
           );
         }
+        const orderStatus = await recomputeOrderDeliveryStatus(
+          orderId,
+          'activation_restart'
+        );
         await orderService.sendItemDeliveredEmail({
           orderId,
           subscriptionId,
@@ -638,6 +683,7 @@ export async function adminOrderRoutes(
           order_id: orderId,
           subscription_id: subscriptionId,
           activation_handshake_state: 'awaiting_customer',
+          order_status: orderStatus,
         });
       } catch (error) {
         Logger.error('Admin restart activation failed:', error);
@@ -977,6 +1023,7 @@ export async function adminOrderRoutes(
                 subscriptionId: row.id as string,
                 adminUserId: request.user?.userId || 'admin',
                 reason: reason || 'order_delivered',
+                skipEmail: true,
               });
               if (!delivery.success) {
                 return ErrorResponses.badRequest(
