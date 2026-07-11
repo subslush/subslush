@@ -5,6 +5,7 @@
   import type { PageData } from './$types';
   import type { OrderItem, OrderListItem } from '$lib/types/order.js';
   import type { Subscription } from '$lib/types/subscription.js';
+  import StrictRulesNotice from '$lib/components/dashboard/StrictRulesNotice.svelte';
 
   export let data: PageData;
 
@@ -541,9 +542,10 @@
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
     <div class="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
       <h2 class="text-base font-semibold text-gray-900">Rules acknowledgement</h2>
-      <div class="mt-3 max-h-72 overflow-auto whitespace-pre-line rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-        {rulesModal.subscription.product_options?.strict_rules_text || 'You must follow the rules for this item.'}
-      </div>
+      <StrictRulesNotice
+        text={rulesModal.subscription.product_options?.strict_rules_text || 'You must follow the rules for this item.'}
+        version={rulesModal.subscription.product_options?.strict_rules_version}
+      />
       <label class="mt-4 flex items-start gap-2 text-sm text-gray-700">
         <input class="mt-1" type="checkbox" bind:checked={rulesModal.checked} />
         <span>I understand that breaking these rules deactivates the account and voids warranty, replacements and refunds.</span>

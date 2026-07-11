@@ -18,6 +18,7 @@ import { normalizeUpgradeOptions } from '../utils/upgradeOptions';
 import type { OrderStatus } from '../types/order';
 import type { PriceHistory } from '../types/catalog';
 import type { OrderEntitlement } from '../types/orderEntitlement';
+import type { UpgradeOptionsSnapshot } from '../types/subscription';
 import {
   resolvePreferredCurrency,
   resolveCountryFromHeaders,
@@ -94,6 +95,45 @@ type OrderItemContext = {
 type SourceSubscriptionContext = {
   id: string;
   activation_handshake_state?: string | null;
+  delivered_at?: Date | null;
+  activation_instructions_delivered_at?: Date | null;
+  activation_customer_ready_at?: Date | null;
+  activation_link_delivered_at?: Date | null;
+};
+
+export type DashboardOrderSubscriptionPayload = {
+  id: string;
+  user_id: string;
+  service_type: string;
+  service_plan: string;
+  start_date: Date;
+  term_start_at: Date;
+  end_date: Date;
+  renewal_date: Date;
+  status: OrderEntitlement['status'];
+  auto_renew: false;
+  next_billing_at: null;
+  renewal_method: null;
+  term_months: number | null;
+  product_name: string | null;
+  variant_name: string | null;
+  order_id: string;
+  order_item_id: string | null;
+  activation_handshake_state: string | null;
+  delivered_at: Date | null;
+  activation_instructions_delivered_at: Date | null;
+  activation_customer_ready_at: Date | null;
+  activation_link_delivered_at: Date | null;
+  product_options: UpgradeOptionsSnapshot | null;
+  status_reason: 'order_entitlement';
+  metadata: Record<string, any> & {
+    order_entitlement_id: string;
+    source_subscription_id: string | null;
+    mmu_cycle_index: number | null;
+    mmu_cycle_total: number | null;
+  };
+  created_at: Date;
+  updated_at: Date;
 };
 
 const parseMetadata = (value: unknown): ParsedMetadata | null => {
@@ -126,17 +166,39 @@ const readString = (
   return null;
 };
 
-const toLegacySubscriptionPayload = (params: {
+const resolveDashboardProductOptions = (
+  ...metadataSources: Array<ParsedMetadata | null | undefined>
+): UpgradeOptionsSnapshot | null => {
+  let merged: ParsedMetadata | null = null;
+  for (const metadata of metadataSources) {
+    const raw = metadata?.['upgrade_options'] ?? metadata?.['upgradeOptions'];
+    let parsed = raw;
+    if (typeof raw === 'string') {
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = null;
+      }
+    }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      merged = { ...(merged ?? {}), ...(parsed as ParsedMetadata) };
+    }
+  }
+  return merged ? normalizeUpgradeOptions({ upgrade_options: merged }) : null;
+};
+
+export const toLegacySubscriptionPayload = (params: {
   entitlement: OrderEntitlement;
   orderMetadata: ParsedMetadata | null;
   orderItem?: OrderItemContext | undefined;
   sourceSubscription?: SourceSubscriptionContext | undefined;
-}): Record<string, unknown> => {
+}): DashboardOrderSubscriptionPayload => {
   const itemMetadata = parseMetadata(params.orderItem?.metadata);
-  const productOptions =
-    normalizeUpgradeOptions(itemMetadata) ??
-    normalizeUpgradeOptions(params.orderItem?.product_metadata) ??
-    normalizeUpgradeOptions(params.orderMetadata);
+  const productOptions = resolveDashboardProductOptions(
+    params.orderMetadata,
+    params.orderItem?.product_metadata,
+    itemMetadata
+  );
   const serviceType =
     readString(itemMetadata, 'service_type', 'serviceType') ??
     readString(params.orderMetadata, 'service_type', 'serviceType') ??
@@ -170,6 +232,13 @@ const toLegacySubscriptionPayload = (params: {
     order_item_id: params.entitlement.order_item_id ?? null,
     activation_handshake_state:
       params.sourceSubscription?.activation_handshake_state ?? null,
+    delivered_at: params.sourceSubscription?.delivered_at ?? null,
+    activation_instructions_delivered_at:
+      params.sourceSubscription?.activation_instructions_delivered_at ?? null,
+    activation_customer_ready_at:
+      params.sourceSubscription?.activation_customer_ready_at ?? null,
+    activation_link_delivered_at:
+      params.sourceSubscription?.activation_link_delivered_at ?? null,
     product_options: productOptions ?? null,
     status_reason: 'order_entitlement',
     metadata: {
@@ -935,7 +1004,12 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           }
 
           const sourceSubscriptions = await pool.query(
-            `SELECT id, activation_handshake_state
+            `SELECT id,
+                    activation_handshake_state,
+                    delivered_at,
+                    activation_instructions_delivered_at,
+                    activation_customer_ready_at,
+                    activation_link_delivered_at
                FROM subscriptions
               WHERE id = ANY($1::uuid[])`,
             [
@@ -954,6 +1028,14 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
                 id: row.id as string,
                 activation_handshake_state:
                   (row.activation_handshake_state as string | null) ?? null,
+                delivered_at: (row.delivered_at as Date | null) ?? null,
+                activation_instructions_delivered_at:
+                  (row.activation_instructions_delivered_at as Date | null) ??
+                  null,
+                activation_customer_ready_at:
+                  (row.activation_customer_ready_at as Date | null) ?? null,
+                activation_link_delivered_at:
+                  (row.activation_link_delivered_at as Date | null) ?? null,
               },
             ])
           );
@@ -1086,7 +1168,12 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           }
 
           const sourceSubscriptions = await pool.query(
-            `SELECT id, activation_handshake_state
+            `SELECT id,
+                    activation_handshake_state,
+                    delivered_at,
+                    activation_instructions_delivered_at,
+                    activation_customer_ready_at,
+                    activation_link_delivered_at
                FROM subscriptions
               WHERE id = ANY($1::uuid[])`,
             [
@@ -1105,6 +1192,14 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
                 id: row.id as string,
                 activation_handshake_state:
                   (row.activation_handshake_state as string | null) ?? null,
+                delivered_at: (row.delivered_at as Date | null) ?? null,
+                activation_instructions_delivered_at:
+                  (row.activation_instructions_delivered_at as Date | null) ??
+                  null,
+                activation_customer_ready_at:
+                  (row.activation_customer_ready_at as Date | null) ?? null,
+                activation_link_delivered_at:
+                  (row.activation_link_delivered_at as Date | null) ?? null,
               },
             ])
           );

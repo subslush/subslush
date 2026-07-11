@@ -29,15 +29,17 @@
   $: upgradeOptions = metadata.upgrade_options || metadata.upgradeOptions || {};
   $: termsPreview = buildPreview(Number(upgradeOptions.manual_monthly_upgrade_interval_months || 1));
 
-  const setOption = (key: string, value: unknown) => {
+  const setOptions = (updates: Record<string, unknown>) => {
     product.metadata = {
       ...(product.metadata || {}),
       upgrade_options: {
         ...upgradeOptions,
-        [key]: value,
+        ...updates,
       },
     };
   };
+
+  const setOption = (key: string, value: unknown) => setOptions({ [key]: value });
 
   const buildPreview = (interval: number) => {
     const safeInterval = Number.isFinite(interval) && interval > 0 ? Math.floor(interval) : 1;
@@ -144,7 +146,7 @@
       <label class="check"><input type="checkbox" checked={upgradeOptions.activation_link_handshake === true} on:change={(event) => setOption('activation_link_handshake', event.currentTarget.checked)} /><span><b>Activation-link handshake</b></span></label>
       {#if upgradeOptions.activation_link_handshake}<label><span>Default instruction template</span><textarea maxlength="4000" value={upgradeOptions.activation_instructions_template || ''} on:input={(event) => setOption('activation_instructions_template', event.currentTarget.value)}></textarea></label>{/if}
       <label class="check"><input type="checkbox" checked={upgradeOptions.strict_rules === true} on:change={(event) => setOption('strict_rules', event.currentTarget.checked)} /><span><b>Strict rules</b></span></label>
-      {#if upgradeOptions.strict_rules}<label><span>Rules text</span><textarea maxlength="8000" value={upgradeOptions.strict_rules_text || ''} on:input={(event) => { setOption('strict_rules_text', event.currentTarget.value); setOption('strict_rules_version', Number(upgradeOptions.strict_rules_version || 1) + 1); }}></textarea><small>Customers must accept these rules before credentials are revealed. Acceptance is logged as evidence. Rules are versioned — current: v{upgradeOptions.strict_rules_version || 1}.</small></label>{/if}
+      {#if upgradeOptions.strict_rules}<label><span>Rules text</span><textarea maxlength="8000" value={upgradeOptions.strict_rules_text || ''} on:input={(event) => setOptions({ strict_rules_text: event.currentTarget.value, strict_rules_version: Number(upgradeOptions.strict_rules_version || 1) + 1 })}></textarea><small>Customers must accept these rules before credentials are revealed. Acceptance is logged as evidence. Rules are versioned — current: v{upgradeOptions.strict_rules_version || 1}.</small></label>{/if}
       <button type="button" on:click={saveProduct}>Save fulfillment settings</button>
     </div></AdminCard>
   {/if}

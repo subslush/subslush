@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductsPage from './products/+page.svelte';
 import ProductDetailPage from './products/[productId=uuid]/+page.svelte';
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   createVariant: vi.fn(),
   createVariantTerm: vi.fn(),
   setCurrentPrice: vi.fn(),
+  updateProduct: vi.fn(),
   markOrderPaidManually: vi.fn(),
   invalidateAll: vi.fn(),
 }));
@@ -23,6 +24,7 @@ vi.mock('$lib/api/admin.js', () => ({
     createVariant: mocks.createVariant,
     createVariantTerm: mocks.createVariantTerm,
     setCurrentPrice: mocks.setCurrentPrice,
+    updateProduct: mocks.updateProduct,
   },
 }));
 vi.mock('$lib/api/adminNext.js', () => ({
@@ -32,7 +34,20 @@ vi.mock('$lib/api/adminNext.js', () => ({
 const productData = { products: [], variantCounts: {}, error: '' };
 
 const productDetailData = {
-  product: { id: 'product-id', name: 'Smoke Product', slug: 'smoke-product', status: 'inactive', default_currency: 'USD', metadata: {} },
+  product: {
+    id: 'product-id',
+    name: 'Smoke Product',
+    slug: 'smoke-product',
+    status: 'inactive',
+    default_currency: 'USD',
+    metadata: {
+      upgrade_options: {
+        allow_new_account: true,
+        strict_rules: true,
+        strict_rules_version: 1,
+      },
+    },
+  },
   variants: [],
   variantTerms: [],
   priceHistory: [],
@@ -67,6 +82,7 @@ describe('admin-next action forms', () => {
     mocks.createVariant.mockResolvedValue({ id: 'variant-id' });
     mocks.createVariantTerm.mockResolvedValue({ id: 'term-id' });
     mocks.setCurrentPrice.mockResolvedValue({ id: 'price-id' });
+    mocks.updateProduct.mockResolvedValue({ id: 'product-id' });
     mocks.markOrderPaidManually.mockResolvedValue({});
     vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
@@ -77,6 +93,7 @@ describe('admin-next action forms', () => {
     mocks.createVariant.mockReset();
     mocks.createVariantTerm.mockReset();
     mocks.setCurrentPrice.mockReset();
+    mocks.updateProduct.mockReset();
     mocks.markOrderPaidManually.mockReset();
     mocks.invalidateAll.mockReset();
   });
@@ -133,5 +150,32 @@ describe('admin-next action forms', () => {
       months: 1,
       discount_percent: 0,
     })));
+  });
+
+  it('persists strict-rules text and its incremented version in one product update', async () => {
+    const view = render(ProductDetailPage, { data: productDetailData as unknown as ProductDetailPageData });
+    const productPage = within(view.container);
+
+    await fireEvent.click(productPage.getByRole('button', { name: 'Fulfillment settings' }));
+    const rulesInput = productPage.getByText('Rules text').closest('label')?.querySelector('textarea');
+    expect(rulesInput).not.toBeNull();
+    await fireEvent.input(rulesInput!, {
+      target: { value: '<script>alert(1)</script> Do not change the profile.' },
+    });
+    await fireEvent.click(productPage.getByRole('button', { name: 'Save fulfillment settings' }));
+
+    await waitFor(() => expect(mocks.updateProduct).toHaveBeenCalledTimes(1));
+    expect(mocks.updateProduct).toHaveBeenCalledWith(
+      'product-id',
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          upgrade_options: expect.objectContaining({
+            strict_rules: true,
+            strict_rules_text: '<script>alert(1)</script> Do not change the profile.',
+            strict_rules_version: 2,
+          }),
+        }),
+      }),
+    );
   });
 });

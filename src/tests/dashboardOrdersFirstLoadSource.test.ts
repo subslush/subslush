@@ -35,16 +35,47 @@ describe('Dashboard orders first-load data flow', () => {
     expect(page).not.toContain('ordersService.listOrders(');
   });
 
-  it('keeps every subscription field consumed by dashboard gates in the SSR route payload', () => {
+  it('keeps every subscription field consumed by dashboard item UI and gates in the typed SSR route payload', () => {
     const ordersRoute = fs.readFileSync(
       path.resolve(__dirname, '../routes/orders.ts'),
       'utf8'
     );
-    expect(ordersRoute).toContain('product_options: productOptions ?? null');
-    expect(ordersRoute).toContain('activation_handshake_state:');
-    expect(ordersRoute).toContain('mmu_cycle_index');
-    expect(page).toContain('subscription.product_options?.strict_rules');
-    expect(page).toContain('subscription.activation_handshake_state');
-    expect(page).toContain('subscription.status');
+    const renderedConsumerFields = [
+      'id',
+      'order_item_id',
+      'service_type',
+      'status',
+      'term_months',
+      'activation_handshake_state',
+    ];
+    const renderedProductOptionFields = [
+      'strict_rules',
+      'strict_rules_text',
+      'strict_rules_version',
+      'activation_instructions_template',
+    ];
+
+    for (const field of renderedConsumerFields) {
+      expect(page).toContain(`subscription.${field}`);
+      expect(ordersRoute).toMatch(new RegExp(`\\b${field}\\??:`));
+    }
+    for (const field of renderedProductOptionFields) {
+      expect(page).toContain(`product_options?.${field}`);
+      expect(ordersRoute).toContain('product_options: productOptions ?? null');
+    }
+
+    // Lifecycle fields are contractually retained even when a particular state
+    // is not painted in the current card branch.
+    for (const field of [
+      'delivered_at',
+      'activation_instructions_delivered_at',
+      'activation_customer_ready_at',
+      'activation_link_delivered_at',
+      'mmu_cycle_index',
+      'mmu_cycle_total',
+    ]) {
+      expect(ordersRoute).toMatch(new RegExp(`\\b${field}\\??:`));
+    }
+    expect(ordersRoute).toContain('DashboardOrderSubscriptionPayload');
   });
 });

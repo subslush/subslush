@@ -247,6 +247,124 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
     expect(variantPage.json().data.variants).toHaveLength(2);
   });
 
+  it('carries the complete configured dashboard entitlement contract through the real order route', async () => {
+    const productId = '00000000-0000-4000-8000-000000000084';
+    const variantId = '00000000-0000-4000-8000-000000000085';
+    const orderId = '00000000-0000-4000-8000-000000000080';
+    const orderItemId = '00000000-0000-4000-8000-000000000081';
+    const subscriptionId = '00000000-0000-4000-8000-000000000082';
+    const entitlementId = '00000000-0000-4000-8000-000000000083';
+
+    await databasePool.query(
+      `INSERT INTO products (id, name, slug, service_type, default_currency, status, metadata)
+       VALUES ($1, 'Dashboard contract product', 'dashboard-contract-product', 'schema_smoke', 'USD', 'inactive', '{}'::jsonb)`,
+      [productId]
+    );
+    await databasePool.query(
+      `INSERT INTO product_variants (id, product_id, name, variant_code, is_active)
+       VALUES ($1, $2, 'Dashboard contract variant', 'dashboard-contract', TRUE)`,
+      [variantId, productId]
+    );
+
+    const configured = await app.inject({
+      method: 'PATCH',
+      url: `/admin/products/${productId}`,
+      payload: {
+        metadata: {
+          upgrade_options: {
+            allow_new_account: true,
+            allow_own_account: false,
+            manual_monthly_upgrade: true,
+            manual_monthly_upgrade_interval_months: 1,
+            activation_link_handshake: true,
+            activation_instructions_template: 'Confirm that you are ready.',
+            strict_rules: true,
+            strict_rules_text:
+              '<script>alert(1)</script> Do not change the profile.',
+            strict_rules_version: 7,
+          },
+        },
+      },
+    });
+    expect(configured.statusCode).toBe(200);
+
+    await databasePool.query(
+      `INSERT INTO orders
+        (id, user_id, status, currency, subtotal_cents, discount_cents, total_cents, payment_provider, payment_reference, contact_email)
+       VALUES ($1, '00000000-0000-4000-8000-000000000001', 'delivered', 'USD', 100, 0, 100, 'manual', 'dashboard-contract-payment', 'admin@schema-smoke.test')`,
+      [orderId]
+    );
+    await databasePool.query(
+      `INSERT INTO order_items
+        (id, order_id, product_variant_id, quantity, unit_price_cents, total_price_cents, currency, term_months, metadata)
+       VALUES ($1, $2, $3, 1, 100, 100, 'USD', 6,
+         '{"service_type":"schema_smoke","service_plan":"contract","upgrade_options":{"strict_rules":true,"strict_rules_version":7}}'::jsonb)`,
+      [orderItemId, orderId, variantId]
+    );
+    await databasePool.query(
+      `INSERT INTO subscriptions
+        (id, user_id, order_id, order_item_id, product_variant_id, service_type, service_plan,
+         start_date, end_date, renewal_date, term_start_at, term_months, status,
+         delivered_at, activation_handshake_state, activation_instructions_delivered_at,
+         activation_customer_ready_at, activation_link_delivered_at)
+       VALUES ($1, '00000000-0000-4000-8000-000000000001', $2, $3, $4,
+         'schema_smoke', 'contract', '2026-01-01', '2026-07-01', '2026-07-01',
+         '2026-01-01', 6, 'active', '2026-01-02', 'customer_ready',
+         '2026-01-01 10:00:00', '2026-01-01 11:00:00', '2026-01-02 12:00:00')`,
+      [subscriptionId, orderId, orderItemId, variantId]
+    );
+    await databasePool.query(
+      `INSERT INTO order_entitlements
+        (id, order_id, order_item_id, user_id, status, starts_at, ends_at,
+         duration_months_snapshot, mmu_cycle_index, mmu_cycle_total,
+         source_subscription_id, metadata)
+       VALUES ($1, $2, $3, '00000000-0000-4000-8000-000000000001', 'active',
+         '2026-01-01', '2026-07-01', 6, 2, 5, $4, '{"source":"contract-test"}'::jsonb)`,
+      [entitlementId, orderId, orderItemId, subscriptionId]
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/orders/${orderId}/subscriptions`,
+    });
+    expect(response.statusCode).toBe(200);
+    const subscription = response.json().data.subscriptions[0];
+
+    expect(subscription).toMatchObject({
+      id: subscriptionId,
+      order_id: orderId,
+      order_item_id: orderItemId,
+      service_type: 'schema_smoke',
+      service_plan: 'contract',
+      status: 'active',
+      term_months: 6,
+      activation_handshake_state: 'customer_ready',
+      delivered_at: expect.any(String),
+      activation_instructions_delivered_at: expect.any(String),
+      activation_customer_ready_at: expect.any(String),
+      activation_link_delivered_at: expect.any(String),
+      product_options: {
+        allow_new_account: true,
+        allow_own_account: false,
+        manual_monthly_upgrade: true,
+        manual_monthly_upgrade_interval_months: 1,
+        activation_link_handshake: true,
+        activation_instructions_template: 'Confirm that you are ready.',
+        strict_rules: true,
+        strict_rules_text: 'alert(1) Do not change the profile.',
+        strict_rules_version: 7,
+      },
+      metadata: {
+        source: 'contract-test',
+        order_entitlement_id: entitlementId,
+        source_subscription_id: subscriptionId,
+        mmu_cycle_index: 2,
+        mmu_cycle_total: 5,
+      },
+    });
+    expect(response.body).not.toContain('credentials_encrypted');
+  });
+
   it('creates a valid checkout lock for normal catalog price writes and hides snapshot-less prices', async () => {
     const draftVariantId = '00000000-0000-4000-8000-000000000011';
     const directPriceVariantId = '00000000-0000-4000-8000-000000000100';

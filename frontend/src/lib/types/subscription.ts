@@ -340,6 +340,7 @@ export interface Subscription {
     [key: string]: unknown;
   } | null;
   activation_handshake_state?: string | null;
+  delivered_at?: string | null;
   activation_instructions_delivered_at?: string | null;
   activation_customer_ready_at?: string | null;
   activation_link_delivered_at?: string | null;
