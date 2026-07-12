@@ -25,6 +25,8 @@
   let drawerError = '';
   let credentials: string | null = null;
   let ownCredentials: string | null = null;
+  let credentialDraft = '';
+  let credentialSaving = false;
   $: selectedTasks = selected?.tasks || [];
   $: selectedMmuTasks = selectedTasks.filter(
     (task: AdminNextSubscriptionTask) => task.task_type === 'manual_monthly_upgrade'
@@ -71,6 +73,23 @@
     if (!selected?.subscription?.id) return;
     const result = await adminNextService.viewOwnAccountCredentials(selected.subscription.id);
     ownCredentials = result.credentials || 'No submitted credentials.';
+  };
+
+  const updateCredentials = async () => {
+    if (!selected?.subscription?.id || !credentialDraft.trim()) return;
+    drawerError = '';
+    credentialSaving = true;
+    try {
+      await adminNextService.saveCredentials(selected.subscription.id, {
+        credentials: credentialDraft.trim(),
+        reason: 'subscription_credentials_updated_from_admin_next',
+      });
+      credentialDraft = '';
+      credentials = null;
+      selected = await adminNextService.getNextSubscription(selected.subscription.id);
+    } catch (error) {
+      drawerError = error instanceof Error ? error.message : 'Failed to update credentials.';
+    } finally { credentialSaving = false; }
   };
 
   const closeDrawer = async () => {
@@ -139,6 +158,8 @@
           <button type="button" on:click={showOwnCredentials}><Eye size={15} /> Show submitted</button>
         {/if}
       </div>
+      <label><span>Replace delivered credentials</span><textarea bind:value={credentialDraft} placeholder="Stored encrypted; customer reveal rules remain unchanged"></textarea></label>
+      <button type="button" disabled={credentialSaving || !credentialDraft.trim()} on:click={updateCredentials}>{credentialSaving ? 'Saving…' : 'Save credentials'}</button>
       {#if credentials}<pre>{credentials}</pre>{/if}
       {#if ownCredentials}<pre>{ownCredentials}</pre>{/if}
     </section>

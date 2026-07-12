@@ -24,6 +24,7 @@
     max_redemptions: null,
     first_order_only: false,
   };
+  let editingCouponId: string | null = null;
 
   const isExpired = (coupon: AdminCoupon) => coupon.ends_at ? new Date(coupon.ends_at) < new Date() : false;
   const visibleCoupons = (coupons: AdminCoupon[], showExpired: boolean) =>
@@ -46,13 +47,25 @@
     if (payload.scope === 'category') payload.product_id = null;
     if (payload.scope === 'product') payload.category = null;
     try {
-      await adminService.createCoupon(payload);
-      actionMessage = 'Coupon created.';
+      if (editingCouponId) {
+        await adminService.updateCoupon(editingCouponId, payload);
+        actionMessage = 'Coupon updated.';
+      } else {
+        await adminService.createCoupon(payload);
+        actionMessage = 'Coupon created.';
+      }
+      editingCouponId = null;
       draft = { code: '', percent_off: 20, scope: 'global', apply_scope: 'highest_eligible_item', status: 'active', max_redemptions: null, first_order_only: false };
       await invalidateAll();
     } catch (error) {
       actionError = error instanceof Error ? error.message : 'Failed to create coupon.';
     }
+  };
+
+  const editCoupon = (coupon: AdminCoupon) => {
+    editingCouponId = coupon.id;
+    draft = { ...coupon };
+    actionMessage = `Editing ${coupon.code}. Redemption history is preserved.`;
   };
 
   const deleteCoupon = async (coupon: AdminCoupon) => {
@@ -73,7 +86,7 @@
 
   {#if tab === 'manual'}
     <AdminCard>
-      <h2>Create coupon</h2>
+      <h2>{editingCouponId ? 'Edit coupon' : 'Create coupon'}</h2>
       <div class="form">
         <label><span>Code</span><input class="mono" maxlength="200" bind:value={draft.code} /></label>
         <label><span>Percent off</span><input type="number" min="0" max="100" bind:value={draft.percent_off} /></label>
@@ -87,7 +100,7 @@
         <label><span>End</span><input type="datetime-local" bind:value={draft.ends_at} /></label>
         <label class="check"><input type="checkbox" bind:checked={draft.first_order_only} /> First order only</label>
         <p class="summary">{summary}</p>
-        <button type="button" disabled={!draft.code || !draft.percent_off} on:click={saveCoupon}>Create coupon</button>
+        <button type="button" disabled={!draft.code || !draft.percent_off} on:click={saveCoupon}>{editingCouponId ? 'Save coupon' : 'Create coupon'}</button>{#if editingCouponId}<button type="button" on:click={() => { editingCouponId = null; draft = { code: '', percent_off: 20, scope: 'global', apply_scope: 'highest_eligible_item', status: 'active', max_redemptions: null, first_order_only: false }; }}>Cancel edit</button>{/if}
       </div>
     </AdminCard>
 
@@ -97,7 +110,7 @@
         <div class="thead"><span>Code</span><span>%</span><span>Scope</span><span>Apply to</span><span>Uses</span><span>Window</span><span>Status</span><span></span></div>
         {#each visibleCoupons(data.coupons, includeExpired) as coupon}
           <div class="row">
-            <span class="mono">{coupon.code}</span><span>{coupon.percent_off}%</span><span>{coupon.scope}</span><span>{coupon.apply_scope || 'highest_eligible_item'}</span><span>{coupon.redemptions_used || 0} / {coupon.max_redemptions || '∞'}</span><span>{formatDate(coupon.starts_at)} – {formatDate(coupon.ends_at)}</span><span><StatusChip status={isExpired(coupon) ? 'expired' : coupon.status || 'active'} /></span><button type="button" on:click={() => deleteCoupon(coupon)}>Delete</button>
+            <span class="mono">{coupon.code}</span><span>{coupon.percent_off}%</span><span>{coupon.scope}</span><span>{coupon.apply_scope || 'highest_eligible_item'}</span><span>{coupon.redemptions_used || 0} / {coupon.max_redemptions || '∞'}</span><span>{formatDate(coupon.starts_at)} – {formatDate(coupon.ends_at)}</span><span><StatusChip status={isExpired(coupon) ? 'expired' : coupon.status || 'active'} /></span><span><button type="button" on:click={() => editCoupon(coupon)}>Edit</button><button type="button" on:click={() => deleteCoupon(coupon)}>Delete</button></span>
           </div>
         {/each}
       </div>

@@ -10,7 +10,7 @@
 
   export let data: PageData;
 
-  const tabs = ['Basics', 'Variants & Terms', 'Pricing', 'Media', 'Fulfillment settings'];
+  const tabs = ['Basics', 'Catalog', 'Variants & Terms', 'Pricing', 'Media', 'Fulfillment settings'];
   let activeTab = 'Basics';
   let actionError = '';
   let actionMessage = '';
@@ -19,6 +19,12 @@
   let newTerm = { product_variant_id: data.variants[0]?.id || '', months: 1, discount_percent: 0, is_active: true };
   let newPrice = { product_variant_id: data.variants[0]?.id || '', price_cents: 0, currency: data.product.default_currency || 'USD' };
   let newMedia = { product_id: data.product.id, media_type: 'image' as 'image' | 'video', url: '', alt_text: '', is_primary: false };
+  let categoryCsv = (data.product.categories || [data.product.category].filter(Boolean)).join(', ');
+  let selectedSubCategoryIds = [...(data.product.sub_category_ids || [])];
+  let labelId = '';
+  let newLabel = { name: '', slug: '', description: '', color: '#64748b' };
+  let newSubCategory = { category: '', name: '', slug: '' };
+  let presentation: Record<string, any> = structuredClone(data.product.metadata || {});
 
   type ProductMetadata = {
     upgrade_options?: AdminNextUpgradeOptionsSnapshot;
@@ -105,6 +111,55 @@
     try { await adminService.createMedia(newMedia); newMedia = { product_id: data.product.id, media_type: 'image', url: '', alt_text: '', is_primary: false }; await invalidateAll(); }
     catch (error) { actionError = error instanceof Error ? error.message : 'Failed to add media.'; }
   };
+
+  const saveCatalog = async () => {
+    actionError = ''; actionMessage = '';
+    try {
+      product.categories = categoryCsv.split(',').map(value => value.trim()).filter(Boolean);
+      product.sub_category_ids = selectedSubCategoryIds;
+      product.metadata = presentation;
+      await adminService.updateProduct(product.id, product);
+      actionMessage = 'Catalog settings saved.';
+      await invalidateAll();
+    } catch (error) { actionError = error instanceof Error ? error.message : 'Failed to save catalog settings.'; }
+  };
+
+  const createLabel = async () => {
+    actionError = '';
+    try { await adminService.createLabel(newLabel); newLabel = { name: '', slug: '', description: '', color: '#64748b' }; actionMessage = 'Label created.'; await invalidateAll(); }
+    catch (error) { actionError = error instanceof Error ? error.message : 'Failed to create label.'; }
+  };
+  const assignLabel = async () => {
+    if (!labelId) return;
+    try { await adminService.attachProductLabel(product.id, labelId); actionMessage = 'Label assigned.'; await invalidateAll(); }
+    catch (error) { actionError = error instanceof Error ? error.message : 'Failed to assign label.'; }
+  };
+  const removeLabel = async (id: string) => {
+    try { await adminService.detachProductLabel(product.id, id); actionMessage = 'Label removed.'; await invalidateAll(); }
+    catch (error) { actionError = error instanceof Error ? error.message : 'Failed to remove label.'; }
+  };
+  const createSubCategory = async () => {
+    try { await adminService.createProductSubCategory(newSubCategory); newSubCategory = { category: '', name: '', slug: '' }; actionMessage = 'Sub-category created.'; await invalidateAll(); }
+    catch (error) { actionError = error instanceof Error ? error.message : 'Failed to create sub-category.'; }
+  };
+  const toggleVariant = async (variant: any) => {
+    try { await adminService.updateVariant(variant.id, { is_active: !variant.is_active }); await invalidateAll(); }
+    catch (error) { actionError = error instanceof Error ? error.message : 'Failed to update variant.'; }
+  };
+  const deleteVariant = async (variant: any) => {
+    if (!confirm(`Delete ${variant.name}?`)) return;
+    try { await adminService.deleteVariant(variant.id); await invalidateAll(); }
+    catch (error) { actionError = error instanceof Error ? error.message : 'Failed to delete variant.'; }
+  };
+  const toggleTerm = async (term: any, field: 'is_active' | 'is_recommended') => {
+    try { await adminService.updateVariantTerm(term.id, { [field]: !term[field] }); await invalidateAll(); }
+    catch (error) { actionError = error instanceof Error ? error.message : 'Failed to update term.'; }
+  };
+  const deleteTerm = async (term: any) => {
+    if (!confirm(`Delete the ${term.months}-month term?`)) return;
+    try { await adminService.deleteVariantTerm(term.id); await invalidateAll(); }
+    catch (error) { actionError = error instanceof Error ? error.message : 'Failed to delete term.'; }
+  };
 </script>
 
 <svelte:head><title>{data.product.name} - Admin Next</title></svelte:head>
@@ -125,13 +180,22 @@
       <label><span>Service type</span><input bind:value={product.service_type} /></label>
       <label><span>Category</span><input bind:value={product.category} /></label>
       <label><span>Sub-category</span><input bind:value={product.sub_category} /></label>
+      <label><span>Logo key</span><input bind:value={product.logo_key} placeholder="e.g. netflix" /></label>
+      <label><span>Platform</span><input bind:value={presentation.platform} placeholder="e.g. Netflix" /></label>
+      <label><span>Region</span><input bind:value={presentation.region} placeholder="Global" /></label>
+      <label><span>Max subscriptions (informational)</span><input type="number" min="0" bind:value={product.max_subscriptions} /></label>
       <label><span>Default currency</span><input bind:value={product.default_currency} /></label>
       <label class="wide"><span>Description</span><textarea bind:value={product.description}></textarea></label>
       <button type="button" on:click={saveProduct}>Save basics</button>
     </div></AdminCard>
+  {:else if activeTab === 'Catalog'}
+    <AdminCard><h2>Taxonomy</h2><div class="form"><label class="wide"><span>Categories (comma-separated)</span><input bind:value={categoryCsv} /></label><label class="wide"><span>Mapped sub-categories</span><select multiple bind:value={selectedSubCategoryIds}>{#each data.subCategories as sub}<option value={sub.id}>{sub.category} · {sub.name}</option>{/each}</select></label><button type="button" on:click={saveCatalog}>Save taxonomy</button></div></AdminCard>
+    <AdminCard><h2>Create sub-category</h2><div class="form compact"><input placeholder="Category" bind:value={newSubCategory.category} /><input placeholder="Name" bind:value={newSubCategory.name} /><input placeholder="Slug (optional)" bind:value={newSubCategory.slug} /><button type="button" on:click={createSubCategory}>Create sub-category</button></div></AdminCard>
+    <AdminCard><h2>Labels</h2><div class="list">{#each data.labels as label}<p><span>{label.name}</span><button type="button" on:click={() => removeLabel(label.id)}>Remove</button></p>{:else}<p>No labels assigned.</p>{/each}</div><div class="form compact"><select bind:value={labelId}><option value="">Select label</option>{#each data.allLabels as label}<option value={label.id}>{label.name}</option>{/each}</select><button type="button" on:click={assignLabel}>Assign label</button></div><div class="form compact"><input placeholder="New label name" bind:value={newLabel.name} /><input placeholder="Slug" bind:value={newLabel.slug} /><input placeholder="Color" bind:value={newLabel.color} /><button type="button" on:click={createLabel}>Create label</button></div></AdminCard>
+    <AdminCard><h2>Public presentation</h2><div class="form"><label><span>Comparison price cents</span><input type="number" min="0" bind:value={presentation.comparison_price_cents} /></label><label><span>Info box</span><textarea bind:value={presentation.info_box_text}></textarea></label><label><span>Activation guide</span><textarea bind:value={presentation.activation_guide}></textarea></label><label><span>Features (one per line)</span><textarea bind:value={presentation.features}></textarea></label><label><span>Extra features (one per line)</span><textarea bind:value={presentation.extra_features}></textarea></label><button type="button" on:click={saveCatalog}>Save presentation</button></div></AdminCard>
   {:else if activeTab === 'Variants & Terms'}
-    <AdminCard><h2>Variants</h2><div class="list">{#each data.variants as variant}<p><b>{variant.name}</b> · {variant.service_plan || 'plan'} · {variant.is_active ? 'Active' : 'Inactive'}</p>{/each}</div><form class="form compact" on:submit={submitAction(createVariant)}><input required placeholder="Name" bind:value={newVariant.name} /><input required placeholder="Code" bind:value={newVariant.variant_code} /><input placeholder="Service plan" bind:value={newVariant.service_plan} /><button type="submit">Add variant</button></form></AdminCard>
-    <AdminCard><h2>Terms</h2><div class="list">{#each data.variantTerms as term}<p>{term.months} months · {term.discount_percent || 0}% · {term.is_active ? 'Active' : 'Inactive'}</p>{/each}</div><form class="form compact" on:submit={submitAction(createTerm)}><select required aria-label="Variant for term" bind:value={newTerm.product_variant_id}>{#each data.variants as variant}<option value={variant.id}>{variant.name}</option>{/each}</select><input aria-label="Term months" required type="number" min="1" bind:value={newTerm.months} /><input aria-label="Term discount percent" type="number" min="0" max="100" bind:value={newTerm.discount_percent} /><button type="submit">Add term</button></form></AdminCard>
+    <AdminCard><h2>Variants</h2><div class="list">{#each data.variants as variant}<p><b>{variant.name}</b> · {variant.service_plan || 'plan'} · {variant.is_active ? 'Active' : 'Inactive'} <button type="button" on:click={() => toggleVariant(variant)}>{variant.is_active ? 'Deactivate' : 'Activate'}</button><button type="button" on:click={() => deleteVariant(variant)}>Delete</button></p>{/each}</div><form class="form compact" on:submit={submitAction(createVariant)}><input required placeholder="Name" bind:value={newVariant.name} /><input required placeholder="Code" bind:value={newVariant.variant_code} /><input placeholder="Service plan" bind:value={newVariant.service_plan} /><button type="submit">Add variant</button></form></AdminCard>
+    <AdminCard><h2>Terms</h2><div class="list">{#each data.variantTerms as term}<p>{term.months} months · {term.discount_percent || 0}% · {term.is_active ? 'Active' : 'Inactive'} · {term.is_recommended ? 'Recommended' : ''} <button type="button" on:click={() => toggleTerm(term, 'is_active')}>{term.is_active ? 'Deactivate' : 'Activate'}</button><button type="button" on:click={() => toggleTerm(term, 'is_recommended')}>{term.is_recommended ? 'Unrecommend' : 'Recommend'}</button><button type="button" on:click={() => deleteTerm(term)}>Delete</button></p>{/each}</div><form class="form compact" on:submit={submitAction(createTerm)}><select required aria-label="Variant for term" bind:value={newTerm.product_variant_id}>{#each data.variants as variant}<option value={variant.id}>{variant.name}</option>{/each}</select><input aria-label="Term months" required type="number" min="1" bind:value={newTerm.months} /><input aria-label="Term discount percent" type="number" min="0" max="100" bind:value={newTerm.discount_percent} /><button type="submit">Add term</button></form></AdminCard>
   {:else if activeTab === 'Pricing'}
     <AdminCard><h2>Fixed product pricing</h2><div class="form compact"><label><span>Duration months</span><input type="number" bind:value={product.duration_months} /></label><label><span>Fixed price cents</span><input type="number" bind:value={product.fixed_price_cents} /></label><label><span>Fixed currency</span><input bind:value={product.fixed_price_currency} /></label><button type="button" on:click={saveProduct}>Save fixed price</button></div></AdminCard>
     <AdminCard><h2>Variant price history</h2><div class="list">{#each data.priceHistory as price}<p>{formatMoney(price.price_cents, price.currency || 'USD')} · {price.product_variant_id}</p>{/each}</div><form class="form compact" on:submit={submitAction(setPrice)}><select required aria-label="Variant for price" bind:value={newPrice.product_variant_id}>{#each data.variants as variant}<option value={variant.id}>{variant.name}</option>{/each}</select><input aria-label="Price cents" required type="number" min="1" bind:value={newPrice.price_cents} /><input aria-label="Price currency" required bind:value={newPrice.currency} /><button type="submit">Set current price</button></form></AdminCard>
@@ -141,6 +205,7 @@
     <AdminCard><div class="fulfillment">
       <label class="check"><input type="checkbox" checked={upgradeOptions.allow_new_account === true} on:change={(event) => setOption('allow_new_account', event.currentTarget.checked)} /><span><b>New account</b> Admin creates a fresh provider account and delivers its credentials.</span></label>
       <label class="check"><input type="checkbox" checked={upgradeOptions.allow_own_account === true} on:change={(event) => setOption('allow_own_account', event.currentTarget.checked)} /><span><b>Own account</b> Customer submits credentials.</span></label>
+      {#if upgradeOptions.allow_own_account}<label><span>Own-account credential requirement</span><select value={upgradeOptions.own_account_credential_requirement || ''} on:change={(event) => setOption('own_account_credential_requirement', event.currentTarget.value || null)}><option value="">Email and password (default)</option><option value="email_and_password">Email and password</option><option value="email_only">Email only</option></select></label>{/if}
       <label class="check"><input type="checkbox" checked={upgradeOptions.manual_monthly_upgrade === true} on:change={(event) => setOption('manual_monthly_upgrade', event.currentTarget.checked)} /><span><b>Manual monthly upgrade (MMU)</b></span></label>
       {#if upgradeOptions.manual_monthly_upgrade}<label><span>Interval (months)</span><input type="number" min="1" max="12" value={upgradeOptions.manual_monthly_upgrade_interval_months || 1} on:input={(event) => setOption('manual_monthly_upgrade_interval_months', Number(event.currentTarget.value))} /><small>Term length must be divisible by the interval.</small><p>{termsPreview}</p></label>{/if}
       <label class="check"><input type="checkbox" checked={upgradeOptions.activation_link_handshake === true} on:change={(event) => setOption('activation_link_handshake', event.currentTarget.checked)} /><span><b>Activation-link handshake</b></span></label>
