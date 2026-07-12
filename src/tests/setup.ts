@@ -3,6 +3,8 @@
 
 // Mock environment variables for testing
 process.env['NODE_ENV'] = 'test';
+// Never inherit a developer's SMTP/Resend credentials while running tests.
+process.env['EMAIL_PROVIDER'] = 'console';
 process.env['REDIS_HOST'] = 'localhost';
 process.env['REDIS_PORT'] = '6379';
 process.env['REDIS_PASSWORD'] = '';
@@ -78,3 +80,13 @@ process.env['MANUAL_MONTHLY_UPGRADE_INTERVAL'] = '86400000';
 jest.setTimeout(30000);
 
 console.info('Test environment setup complete');
+
+afterAll(async () => {
+  const { redisClient, rateLimitRedisClient } = await import('../config/redis');
+  const clients = [redisClient, rateLimitRedisClient];
+  await Promise.all(
+    clients.map(client =>
+      typeof client.disconnect === 'function' ? client.disconnect() : undefined
+    )
+  );
+});

@@ -577,6 +577,31 @@ export async function adminCatalogRoutes(
               );
             }
 
+            const listingDurationRaw =
+              payload.duration_months !== undefined
+                ? payload.duration_months
+                : before.duration_months;
+            const listingDurationMonths = Number(listingDurationRaw);
+            const hasDesignatedListingTerm =
+              Number.isInteger(listingDurationMonths) &&
+              listingDurationMonths > 0;
+            const activeTermMonths = new Set<number>();
+            for (const variant of activeVariants) {
+              for (const term of termMap.get(variant.id) || []) {
+                const months = Number(term.months);
+                if (Number.isInteger(months) && months > 0) {
+                  activeTermMonths.add(months);
+                }
+              }
+            }
+
+            if (!hasDesignatedListingTerm && activeTermMonths.size > 1) {
+              return ErrorResponses.badRequest(
+                reply,
+                'Cannot activate product: multiple active terms; designate the listing term or keep a single active term'
+              );
+            }
+
             const variantIds = activeVariants.map(variant => variant.id);
             const usdPriceMap =
               await catalogService.listCurrentPricesForCurrency({

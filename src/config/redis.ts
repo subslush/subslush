@@ -88,8 +88,12 @@ class RedisClient {
 
   async disconnect(): Promise<void> {
     if (this.client) {
-      await this.client.disconnect();
+      const client = this.client;
       this.client = null;
+      // Prevent close/reconnect listeners from keeping Jest alive or logging
+      // after its environment has completed teardown.
+      client.removeAllListeners();
+      client.disconnect();
     }
   }
 

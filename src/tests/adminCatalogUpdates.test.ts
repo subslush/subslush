@@ -187,6 +187,77 @@ describe('Admin catalog updates', () => {
     );
   });
 
+  it('allows activation with one active term and no separately designated listing duration', async () => {
+    mockCatalogService.getProductById.mockResolvedValue({
+      id: 'prod-1',
+      status: 'inactive',
+      duration_months: null,
+    } as any);
+    mockCatalogService.listVariants.mockResolvedValue([
+      { id: 'variant-1', name: 'One month', is_active: true },
+    ] as any);
+    mockCatalogService.listVariantTermsForVariants.mockResolvedValue(
+      new Map([['variant-1', [{ months: 1, is_active: true }]]]) as any
+    );
+    mockCatalogService.listCurrentPricesForCurrency.mockResolvedValue(
+      new Map([['variant-1', { price_cents: 1000 }]]) as any
+    );
+    mockCatalogService.updateProduct.mockResolvedValue({
+      success: true,
+      data: { id: 'prod-1', status: 'active' },
+    } as any);
+
+    const app = Fastify();
+    await app.register(adminCatalogRoutes, { prefix: '/admin' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/admin/products/prod-1',
+      payload: { status: 'active' },
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(mockCatalogService.updateProduct).toHaveBeenCalledWith(
+      'prod-1',
+      expect.objectContaining({ status: 'active' })
+    );
+  });
+
+  it('refuses activation with multiple active terms and no designated listing term', async () => {
+    mockCatalogService.getProductById.mockResolvedValue({
+      id: 'prod-1',
+      status: 'inactive',
+      duration_months: null,
+    } as any);
+    mockCatalogService.listVariants.mockResolvedValue([
+      { id: 'variant-1', name: 'One month', is_active: true },
+      { id: 'variant-2', name: 'Six months', is_active: true },
+    ] as any);
+    mockCatalogService.listVariantTermsForVariants.mockResolvedValue(
+      new Map([
+        ['variant-1', [{ months: 1, is_active: true }]],
+        ['variant-2', [{ months: 6, is_active: true }]],
+      ]) as any
+    );
+
+    const app = Fastify();
+    await app.register(adminCatalogRoutes, { prefix: '/admin' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/admin/products/prod-1',
+      payload: { status: 'active' },
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().message).toContain('multiple active terms');
+    expect(mockCatalogService.updateProduct).not.toHaveBeenCalled();
+  });
+
   it('passes category and sub-category filters when listing products', async () => {
     mockCatalogService.listProducts.mockResolvedValue([
       {
