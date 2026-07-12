@@ -476,6 +476,9 @@ try {
   await page.getByLabel('Interval (months)').fill('1');
 
   await page.getByRole('button', { name: 'Basics' }).click();
+  await page.getByLabel('Logo key').selectOption('netflix');
+  await page.getByLabel('Platform').fill('SMOKE platform');
+  await page.getByLabel('Region').fill('SMOKE region');
   await page.getByLabel('Status').selectOption('active');
   await submitAndAssert({
     requestPath: `/api/v1/admin/products/${productId}`,
@@ -483,6 +486,35 @@ try {
     click: () => page.getByRole('button', { name: 'Save basics' }).click(),
     visible: () => page.locator('header .status-chip', { hasText: 'Active' }).waitFor(),
   });
+  const savedBasics = await apiRequest(`/admin/products/${productId}`);
+  if (savedBasics.product?.logo_key !== 'netflix' || savedBasics.product?.metadata?.platform !== 'SMOKE platform' || savedBasics.product?.metadata?.region !== 'SMOKE region') {
+    throw new Error('Logo, platform, or region did not persist through the product basics form.');
+  }
+  await page.getByRole('button', { name: 'Catalog', exact: true }).click();
+  const subCategoryForm = page.locator('div.form.compact').filter({
+    has: page.getByRole('button', { name: 'Create sub-category' }),
+  });
+  const smokeSubCategory = `${runId} Brand`;
+  await subCategoryForm.getByPlaceholder('Category').fill('SMOKE');
+  await subCategoryForm.getByPlaceholder('Name').fill(smokeSubCategory);
+  await submitAndAssert({
+    requestPath: '/api/v1/admin/product-sub-categories',
+    click: () => subCategoryForm.getByRole('button', { name: 'Create sub-category' }).click(),
+    visible: () => page.getByText('Sub-category created.', { exact: true }).waitFor(),
+  });
+  await page.getByLabel('Mapped sub-categories').selectOption({
+    label: `SMOKE · ${smokeSubCategory}`,
+  });
+  await submitAndAssert({
+    requestPath: `/api/v1/admin/products/${productId}`,
+    requestMethod: 'PATCH',
+    click: () => page.getByRole('button', { name: 'Save taxonomy' }).click(),
+    visible: () => page.getByText('Catalog settings saved.', { exact: true }).waitFor(),
+  });
+  const savedTaxonomy = await apiRequest(`/admin/products/${productId}`);
+  if (!savedTaxonomy.product?.sub_category_ids?.length) {
+    throw new Error('Mapped sub-category did not persist through the catalog form.');
+  }
   const publicProduct = await apiRequest(`/subscriptions/products/${productSlug}`);
   if (publicProduct.variants?.[0]?.term_options?.[0]?.comparison_price !== 99.99) {
     throw new Error('Current price comparison metadata did not render on the public product page.');

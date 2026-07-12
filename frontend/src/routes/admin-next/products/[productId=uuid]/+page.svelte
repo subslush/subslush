@@ -4,6 +4,7 @@
   import ErrorBanner from '$lib/components/admin-next/ErrorBanner.svelte';
   import StatusChip from '$lib/components/admin-next/StatusChip.svelte';
   import { adminService } from '$lib/api/admin.js';
+  import { logoKeys } from '$lib/assets/logoRegistry.js';
   import { formatMoney } from '$lib/utils/adminNext.js';
   import type { AdminNextUpgradeOptionsSnapshot } from '$lib/types/adminNext.js';
   import type { PageData } from './$types';
@@ -117,6 +118,11 @@
   const saveProduct = async () => {
     actionError = ''; actionMessage = '';
     try {
+      product.metadata = {
+        ...(product.metadata || {}),
+        platform: presentation.platform || '',
+        region: presentation.region || '',
+      };
       await adminService.updateProduct(product.id, product);
       actionMessage = 'Product saved.';
       await invalidateAll();
@@ -239,7 +245,19 @@
     catch (error) { actionError = error instanceof Error ? error.message : 'Failed to remove label.'; }
   };
   const createSubCategory = async () => {
-    try { await adminService.createProductSubCategory(newSubCategory); newSubCategory = { category: '', name: '', slug: '' }; actionMessage = 'Sub-category created.'; await invalidateAll(); }
+    try {
+      const category = newSubCategory.category.trim();
+      const name = newSubCategory.name.trim();
+      const slug = newSubCategory.slug.trim();
+      await adminService.createProductSubCategory({
+        category,
+        name,
+        ...(slug ? { slug } : {}),
+      });
+      newSubCategory = { category: '', name: '', slug: '' };
+      actionMessage = 'Sub-category created.';
+      await invalidateAll();
+    }
     catch (error) { actionError = error instanceof Error ? error.message : 'Failed to create sub-category.'; }
   };
   const toggleVariant = async (variant: any) => {
@@ -300,7 +318,7 @@
       <label><span>Service type</span><input bind:value={product.service_type} /></label>
       <label><span>Category</span><input bind:value={product.category} /></label>
       <label><span>Sub-category</span><input bind:value={product.sub_category} /></label>
-      <label><span>Logo key</span><input bind:value={product.logo_key} placeholder="e.g. netflix" /></label>
+      <label><span>Logo key</span><select aria-label="Logo key" bind:value={product.logo_key}><option value="">Select logo (optional)</option>{#each logoKeys as key}<option value={key}>{key}</option>{/each}</select></label>
       <label><span>Platform</span><input bind:value={presentation.platform} placeholder="e.g. Netflix" /></label>
       <label><span>Region</span><input bind:value={presentation.region} placeholder="Global" /></label>
       <label><span>Max subscriptions (informational)</span><input type="number" min="0" bind:value={product.max_subscriptions} /></label>
