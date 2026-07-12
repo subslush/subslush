@@ -320,17 +320,18 @@ try {
   }
 
   async function submitAndAssert({ targetPage = page, requestPath, requestMethod = 'POST', click, visible }) {
-    const response = targetPage.waitForResponse(response =>
-      response.request().method() === requestMethod &&
-      new URL(response.url()).pathname === requestPath
+    const request = targetPage.waitForRequest(candidate =>
+      candidate.method() === requestMethod &&
+      new URL(candidate.url()).pathname === requestPath
     );
     await click();
     const surfacedError = targetPage.locator('.error-banner').waitFor().then(async () => {
       throw new Error(`Visible admin error: ${await targetPage.locator('.error-banner').innerText()}`);
     });
-    const matched = await Promise.race([response, surfacedError]);
-    if (!matched.ok()) {
-      throw new Error(`${requestPath} returned ${matched.status()}`);
+    const matchedRequest = await Promise.race([request, surfacedError]);
+    const response = await matchedRequest.response();
+    if (!response?.ok()) {
+      throw new Error(`${requestPath} returned ${response?.status() || 'no response'}`);
     }
     await visible();
   }
@@ -626,6 +627,9 @@ try {
   if (!mmuTask?.id) throw new Error('Explicit-reference MMU sweep did not create a task.');
 
   await page.goto(`${baseUrl}/admin-next/fulfillment/orders/${paidOrderId}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  // The form is server-rendered; wait for Svelte hydration before interacting
+  // so the initial click is not lost before its client handler is attached.
+  await page.waitForLoadState('networkidle');
   const deliverButton = page.getByRole('button', { name: 'Confirm delivery' });
   if (!(await deliverButton.isDisabled())) throw new Error('Delivery is not gated until credentials are saved.');
   await page.getByPlaceholder('Credentials / notes to save on the subscription').fill('SMOKE paid credentials');
@@ -644,6 +648,7 @@ try {
   });
 
   await page.goto(`${baseUrl}/admin-next/fulfillment/orders/${handshakeOrderId}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.waitForLoadState('networkidle');
   await page.locator('textarea').fill('SMOKE browser activation instructions');
   await submitAndAssert({
     requestPath: `/api/v1/admin/orders/${handshakeOrderId}/items/${handshakeSubscriptionId}/activation-instructions`,
@@ -652,6 +657,7 @@ try {
   });
 
   await page.goto(`${baseUrl}/admin-next/fulfillment/mmu/${mmuTask.id}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.waitForLoadState('networkidle');
   await submitAndAssert({
     requestPath: `/api/v1/admin/tasks/${mmuTask.id}/renewal/confirm`,
     click: () => page.getByRole('button', { name: 'Mark renewal completed' }).click(),
@@ -671,6 +677,7 @@ try {
   const customerPage = await customerContext.newPage();
   customerPage.setDefaultTimeout(15_000);
   await customerPage.goto(`${baseUrl}/dashboard/orders`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await customerPage.waitForLoadState('networkidle');
   await dismissConsent(customerPage);
   const strictCard = customerPage.getByText(/Strict Fixture Variant/i).locator('xpath=ancestor::div[contains(@class, "rounded-lg")][1]');
   await strictCard.getByRole('button', { name: 'Reveal' }).click();
@@ -697,6 +704,7 @@ try {
   await customerContext.close();
 
   await page.goto(`${baseUrl}/admin-next/orders/${pendingOrderId}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.waitForLoadState('networkidle');
   await dismissConsent(page);
   const markPaidButton = page.getByRole('button', { name: 'Mark as paid manually' });
   if (!(await markPaidButton.isDisabled())) throw new Error('Mark-paid submit is not gated by its verification note.');
