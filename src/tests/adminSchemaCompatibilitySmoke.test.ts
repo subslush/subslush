@@ -698,8 +698,10 @@ describe('Admin schema compatibility smoke (fresh PostgreSQL)', () => {
       product_variant_id: draftVariantId,
       price_cents: 1999,
       currency: 'USD',
+      metadata: { compare_at_price_cents: 2499 },
     });
     expect(standardPrice.success).toBe(true);
+    expect(standardPrice.data.metadata?.compare_at_price_cents).toBe(2499);
     const directPrice = await catalogService.createPriceHistory({
       product_variant_id: directPriceVariantId,
       price_cents: 2099,

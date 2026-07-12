@@ -2,9 +2,13 @@ import Fastify from 'fastify';
 import { adminCatalogRoutes } from '../routes/admin/catalog';
 import { catalogService } from '../services/catalogService';
 import { logAdminAction } from '../services/auditLogService';
+import { getDatabasePool } from '../config/database';
 
 jest.mock('../services/catalogService');
 jest.mock('../services/auditLogService');
+jest.mock('../config/database', () => ({
+  getDatabasePool: jest.fn(),
+}));
 jest.mock('../middleware/authMiddleware', () => ({
   authPreHandler: jest.fn(async (request: any) => {
     request.user = {
@@ -25,10 +29,16 @@ const mockCatalogService = catalogService as jest.Mocked<typeof catalogService>;
 const mockLogAdminAction = logAdminAction as jest.MockedFunction<
   typeof logAdminAction
 >;
+const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
+  typeof getDatabasePool
+>;
 
 describe('Admin catalog updates', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetDatabasePool.mockReturnValue({
+      query: jest.fn().mockResolvedValue({ rows: [] }),
+    } as any);
   });
 
   it('updates a product label', async () => {
@@ -284,6 +294,43 @@ describe('Admin catalog updates', () => {
         sub_category: 'netflix',
       })
     );
+  });
+
+  it('refuses a non-divisible term edit when MMU is enabled', async () => {
+    mockCatalogService.getVariantTermById.mockResolvedValue({
+      id: 'term-1',
+      product_variant_id: 'variant-1',
+      months: 6,
+    } as any);
+    mockGetDatabasePool.mockReturnValue({
+      query: jest.fn().mockResolvedValue({
+        rows: [
+          {
+            metadata: {
+              upgrade_options: {
+                manual_monthly_upgrade: true,
+                manual_monthly_upgrade_interval_months: 2,
+              },
+            },
+          },
+        ],
+      }),
+    } as any);
+
+    const app = Fastify();
+    await app.register(adminCatalogRoutes, { prefix: '/admin' });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/admin/product-variant-terms/term-1',
+      payload: { months: 3 },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().message).toBe(
+      'Term length must be divisible by the MMU interval.'
+    );
+    expect(mockCatalogService.updateVariantTerm).not.toHaveBeenCalled();
   });
 
   it('creates a product sub-category', async () => {

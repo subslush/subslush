@@ -322,7 +322,10 @@ try {
   async function submitAndAssert({ targetPage = page, requestPath, requestMethod = 'POST', click, visible }) {
     const request = targetPage.waitForRequest(candidate =>
       candidate.method() === requestMethod &&
-      new URL(candidate.url()).pathname === requestPath
+      (typeof requestPath === 'function'
+        ? requestPath(new URL(candidate.url()).pathname)
+        : new URL(candidate.url()).pathname === requestPath ||
+          (requestPath.endsWith('/') && new URL(candidate.url()).pathname.startsWith(requestPath)))
     );
     await click();
     const surfacedError = targetPage.locator('.error-banner').waitFor().then(async () => {
@@ -396,35 +399,47 @@ try {
   await page.getByPlaceholder('Code').fill(`${runId}-variant`);
   await submitAndAssert({
     requestPath: '/api/v1/admin/product-variants',
-    click: () => page.getByRole('button', { name: 'Add variant' }).click(),
+    click: () => page.getByRole('button', { name: 'Create product variant' }).click(),
     visible: () => page.locator('.list b', { hasText: variantName }).waitFor(),
   });
 
   const productId = page.url().split('/').pop();
   const termsForm = page.locator('form').filter({
-    has: page.getByRole('button', { name: 'Add term' }),
+    has: page.getByRole('button', { name: 'Create product term' }),
   });
-  await termsForm.getByLabel('Variant for term').selectOption({ label: variantName });
   await termsForm.getByLabel('Term months').fill('6');
   await submitAndAssert({
     requestPath: '/api/v1/admin/product-variant-terms',
-    click: () => termsForm.getByRole('button', { name: 'Add term' }).click(),
-    visible: () => page.locator('.list p', { hasText: '6 months' }).waitFor(),
+    click: () => termsForm.getByRole('button', { name: 'Create product term' }).click(),
+    visible: () => page.getByText('6 months', { exact: false }).waitFor(),
+  });
+
+  await page.getByRole('button', { name: 'Edit term' }).click();
+  const editTermForm = page.locator('form').filter({
+    has: page.getByRole('button', { name: 'Save term' }),
+  });
+  await editTermForm.getByLabel('Edit term months').fill('6');
+  await submitAndAssert({
+    requestPath: '/api/v1/admin/product-variant-terms/',
+    requestMethod: 'PATCH',
+    click: () => editTermForm.getByRole('button', { name: 'Save term' }).click(),
+    visible: () => page.getByText('Product term saved.', { exact: true }).waitFor(),
   });
 
   await page.getByRole('button', { name: 'Pricing' }).click();
   const priceForm = page.locator('form').filter({
-    has: page.getByRole('button', { name: 'Set current price' }),
+    has: page.getByRole('button', { name: 'Save current price' }),
   });
-  await priceForm.getByLabel('Variant for price').selectOption({ label: variantName });
-  await priceForm.getByLabel('Price cents').fill('1234');
+  await priceForm.getByLabel('Price cents', { exact: true }).fill('1234');
+  await priceForm.getByLabel('Comparison price cents').fill('9999');
   await submitAndAssert({
     requestPath: '/api/v1/admin/price-history/current',
-    click: () => priceForm.getByRole('button', { name: 'Set current price' }).click(),
+    click: () => priceForm.getByRole('button', { name: 'Save current price' }).click(),
     visible: () => page.locator('.list p', { hasText: '$12.34' }).waitFor(),
   });
+  const productDetail = await apiRequest(`/admin/products/${productId}`);
   await assertSucceededCurrentPriceSnapshot(
-    await priceForm.getByLabel('Variant for price').inputValue()
+    productDetail.variants[0].id
   );
 
   await page.getByRole('button', { name: 'Fulfillment settings' }).click();
@@ -468,6 +483,12 @@ try {
     click: () => page.getByRole('button', { name: 'Save basics' }).click(),
     visible: () => page.locator('header .status-chip', { hasText: 'Active' }).waitFor(),
   });
+  const publicProduct = await apiRequest(`/subscriptions/products/${productSlug}`);
+  if (publicProduct.variants?.[0]?.term_options?.[0]?.comparison_price !== 99.99) {
+    throw new Error('Current price comparison metadata did not render on the public product page.');
+  }
+  await page.goto(`${baseUrl}/browse/products/${productSlug}`, { waitUntil: 'networkidle', timeout: 60_000 });
+  await page.locator('p.line-through:visible', { hasText: '$99.99' }).waitFor();
 
   const couponCode = `${runId}-COUPON`;
   await page.goto(`${baseUrl}/admin-next/coupons`, { waitUntil: 'domcontentloaded', timeout: 60_000 });

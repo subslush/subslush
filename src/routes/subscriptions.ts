@@ -1872,7 +1872,10 @@ export async function subscriptionRoutes(
           ]);
           const comparisonPriceCents = await resolveDisplayComparisonPriceCents(
             {
-              metadata: product.metadata,
+              // Comparison pricing belongs to the snapshot-backed variant price,
+              // not the shared product metadata. This keeps a listing's "was"
+              // price in the same record as its sellable current price.
+              metadata: fallbackUsdPrice?.metadata ?? currentPrice?.metadata,
               displayCurrency: currency,
             }
           );
@@ -2372,6 +2375,12 @@ export async function subscriptionRoutes(
             planCode;
 
           const description = variant.description || '';
+          const comparisonPriceCents = await resolveDisplayComparisonPriceCents(
+            {
+              metadata: fallbackUsdPrice?.metadata ?? currentPrice?.metadata,
+              displayCurrency: currency,
+            }
+          );
 
           const termOptions = listingTerms.map(term => {
             const snapshot = computeTermPricing({
@@ -2384,9 +2393,12 @@ export async function subscriptionRoutes(
               months: term.months,
               total_price: snapshot.totalPriceCents / 100,
               comparison_price:
-                snapshot.termSubtotalCents > snapshot.totalPriceCents
-                  ? snapshot.termSubtotalCents / 100
-                  : null,
+                comparisonPriceCents !== null &&
+                comparisonPriceCents > snapshot.totalPriceCents
+                  ? comparisonPriceCents / 100
+                  : snapshot.termSubtotalCents > snapshot.totalPriceCents
+                    ? snapshot.termSubtotalCents / 100
+                    : null,
               discount_percent: term.discount_percent ?? null,
               is_recommended: term.is_recommended,
             };

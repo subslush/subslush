@@ -194,22 +194,20 @@ describe('admin-next action forms', () => {
     await waitFor(() => expect(couponPage.getByText(expiredCode)).toBeTruthy());
   });
 
-  it('propagates a newly created variant into the native term form and submits the term', async () => {
+  it('submits the one product variant through the native form', async () => {
     render(ProductDetailPage, { data: productDetailData as unknown as ProductDetailPageData });
 
     await fireEvent.click(screen.getByRole('button', { name: 'Variants & Terms' }));
     await fireEvent.input(screen.getByPlaceholderText('Name'), { target: { value: 'Smoke variant' } });
     await fireEvent.input(screen.getByPlaceholderText('Code'), { target: { value: 'smoke-variant' } });
-    await fireEvent.submit(screen.getByRole('button', { name: 'Add variant' }).closest('form')!);
+    await fireEvent.submit(screen.getByRole('button', { name: 'Create product variant' }).closest('form')!);
 
     await waitFor(() => expect(mocks.createVariant).toHaveBeenCalledTimes(1));
-    await fireEvent.submit(screen.getByRole('button', { name: 'Add term' }).closest('form')!);
-
-    await waitFor(() => expect(mocks.createVariantTerm).toHaveBeenCalledWith(expect.objectContaining({
-      product_variant_id: 'variant-id',
-      months: 1,
-      discount_percent: 0,
-    })));
+    expect(mocks.createVariant).toHaveBeenCalledWith(expect.objectContaining({
+      product_id: 'product-id',
+      name: 'Smoke variant',
+      variant_code: 'smoke-variant',
+    }));
   });
 
   it('persists strict-rules text and its incremented version in one product update', async () => {

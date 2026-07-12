@@ -31,6 +31,7 @@ const variant = {
 const configureListing = (params: {
   durationMonths: number | null;
   terms: number[];
+  priceMetadata?: Record<string, unknown>;
 }) => {
   mockCatalogService.getProductBySlug.mockResolvedValue(
     product(params.durationMonths) as any
@@ -40,7 +41,12 @@ const configureListing = (params: {
     new Map([
       [
         'variant-1',
-        { product_variant_id: 'variant-1', price_cents: 1000, currency: 'USD' },
+        {
+          product_variant_id: 'variant-1',
+          price_cents: 1000,
+          currency: 'USD',
+          metadata: params.priceMetadata || {},
+        },
       ],
     ]) as any
   );
@@ -112,5 +118,30 @@ describe('public product listing term resolution', () => {
 
     expect(response.statusCode).toBe(404);
     expect(response.json().message).toBe('Product not available');
+  });
+
+  it('renders the price-record compare-at value on the public product page', async () => {
+    configureListing({
+      durationMonths: 1,
+      terms: [1],
+      priceMetadata: { compare_at_price_cents: 1500 },
+    });
+    const app = Fastify();
+    await app.register(subscriptionRoutes, { prefix: '/subscriptions' });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/subscriptions/products/term-listing',
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.variants[0].term_options[0]).toEqual(
+      expect.objectContaining({
+        total_price: 10,
+        comparison_price: 15,
+      })
+    );
   });
 });
