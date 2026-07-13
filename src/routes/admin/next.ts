@@ -335,7 +335,7 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
           SELECT s.id, s.order_id, s.user_id, s.status, s.service_type, s.service_plan,
                  s.term_months, s.term_start_at, s.start_date, s.end_date, s.renewal_date,
                  s.created_at, s.delivered_at, s.activation_handshake_state,
-                 u.email AS customer_email,
+                 COALESCE(u.email, o.contact_email) AS customer_email,
                  COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
                  COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                  t.id AS task_id, t.task_type, t.due_date, t.completed_at, t.is_issue,
@@ -345,6 +345,7 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
                  (sel.credentials_encrypted IS NOT NULL) AS own_account_credentials_on_file
           FROM subscriptions s
           LEFT JOIN users u ON u.id = s.user_id
+          LEFT JOIN orders o ON o.id = s.order_id
           LEFT JOIN order_items oi ON oi.id = s.order_item_id
           LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.product_variant_id, s.product_variant_id)
           LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
@@ -363,7 +364,7 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
           params.push(searchPattern);
           sql += ` AND (s.id::text ILIKE $${params.length}
                     OR s.order_id::text ILIKE $${params.length}
-                    OR COALESCE(u.email, '') ILIKE $${params.length}
+                    OR COALESCE(u.email, o.contact_email, '') ILIKE $${params.length}
                     OR COALESCE(p.name, oi.metadata->>'product_name', '') ILIKE $${params.length}
                     OR COALESCE(pv.name, oi.metadata->>'variant_name', '') ILIKE $${params.length})`;
         }
