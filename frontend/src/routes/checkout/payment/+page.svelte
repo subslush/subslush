@@ -18,7 +18,7 @@
 	import sepaLogo from '$lib/assets/sepa-logo.webp';
 	import swiftLogo from '$lib/assets/swift-logo.webp';
 	import unionPayLogo from '$lib/assets/unionpay-logo.svg';
-	import visaSecureBadge from '$lib/assets/visa-secure.webp';
+	import visaSecureBadge from '$lib/assets/visa-secure-clean.png';
 	import visaLogo from '$lib/assets/visa.svg';
 	import { resolveLogoKey, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
 	import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
@@ -263,7 +263,7 @@
 	] as const;
 
 	const paymentTrustBadges = [
-		{ src: visaSecureBadge, alt: 'Visa Secure', className: 'max-h-8 bg-white' },
+		{ src: visaSecureBadge, alt: 'Visa Secure', className: 'max-h-8' },
 		{ src: mastercardIdCheckBadge, alt: 'Mastercard ID Check', className: 'max-h-7' },
 		{ src: sslSecuredBadge, alt: '256-bit SSL Secured', className: 'max-h-8' }
 	] as const;
