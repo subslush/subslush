@@ -751,9 +751,7 @@
                     <span class="min-w-0">
                       <span class="block text-sm font-semibold text-slate-900">Your account</span>
                       <span class="mt-0.5 block text-xs leading-relaxed text-slate-600">
-                        {resolveOwnAccountCredentialRequirement(upgradeOptions) === 'email_only'
-                          ? 'We only require your account email after checkout.'
-                          : 'We require account email and password after checkout.'}
+                        This product will be applied directly to your account.
                       </span>
                     </span>
                   </span>

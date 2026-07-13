@@ -263,9 +263,9 @@
 	] as const;
 
 	const paymentTrustBadges = [
-		{ src: visaSecureBadge, alt: 'Visa Secure' },
-		{ src: mastercardIdCheckBadge, alt: 'Mastercard ID Check' },
-		{ src: sslSecuredBadge, alt: '256-bit SSL Secured' }
+		{ src: visaSecureBadge, alt: 'Visa Secure', className: 'max-h-8 bg-white' },
+		{ src: mastercardIdCheckBadge, alt: 'Mastercard ID Check', className: 'max-h-7' },
+		{ src: sslSecuredBadge, alt: '256-bit SSL Secured', className: 'max-h-8' }
 	] as const;
 
 	const antomCardBrandLogos = [
@@ -1097,14 +1097,16 @@
 							Questions? Chat with us — we're happy to help.
 						</button>
 
-						<div class="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 sm:gap-x-6">
+						<div class="mt-5 grid grid-cols-3 items-center gap-3">
 							{#each paymentTrustBadges as badge}
-								<img
-									src={badge.src}
-									alt={badge.alt}
-									class="max-h-9 w-auto max-w-[150px] object-contain sm:max-h-10 sm:max-w-[160px]"
-									loading="lazy"
-								/>
+								<div class="flex min-w-0 items-center justify-center">
+									<img
+										src={badge.src}
+										alt={badge.alt}
+										class={`h-auto w-auto max-w-full object-contain ${badge.className}`}
+										loading="lazy"
+									/>
+								</div>
 							{/each}
 						</div>
 
