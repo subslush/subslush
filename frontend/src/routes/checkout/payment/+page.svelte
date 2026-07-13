@@ -1088,44 +1088,39 @@
 							</div>
 						{/if}
 
-						<div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-							<p class="text-xs leading-5 text-slate-500">
-								You'll complete payment on our payment provider's secure checkout. No further
-								charges are added after this step.
-							</p>
-							<div class="mt-3 grid grid-cols-2 gap-2 min-[420px]:grid-cols-4">
+						<button
+							type="button"
+							class="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+							on:click={openCrispChat}
+						>
+							<MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
+							Questions? Chat with us — we're happy to help.
+						</button>
+
+						<div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
 								{#each paymentTrustBadges as badge}
 									<div
-										class="flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 py-1 opacity-70 grayscale"
+										class="flex min-h-12 min-w-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
 									>
 										<img
 											src={badge.src}
 											alt={badge.alt}
-											class="max-h-7 w-auto max-w-full object-contain"
+											class="max-h-7 w-full max-w-[112px] object-contain"
 											loading="lazy"
 										/>
 									</div>
 								{/each}
 								<div
-									class="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-[10px] font-semibold uppercase leading-tight tracking-wide text-slate-500"
+									class="flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-center text-[10px] font-semibold leading-snug text-fuchsia-800 shadow-sm"
 								>
-									<ShieldCheck class="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
-									<span>SubSlush Money-Back Guarantee</span>
+									<ShieldCheck class="h-4 w-4 shrink-0 text-fuchsia-600" aria-hidden="true" />
+									<span>Money-back guarantee</span>
 								</div>
 							</div>
-							<button
-								type="button"
-								class="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
-								on:click={openCrispChat}
-							>
-								<MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
-								Questions? Chat with us — we're happy to help.
-							</button>
-						</div>
 
 						<button
 							type="button"
-							class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(126,34,206,0.28)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+							class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(126,34,206,0.28)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
 							on:click={() => {
 								void handleContinueToProvider();
 							}}

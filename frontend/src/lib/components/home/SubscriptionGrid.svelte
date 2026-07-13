@@ -248,6 +248,7 @@
       id: `${variantId}|${termMonths}|no-renew`,
       serviceType: product.service_type || product.slug || product.name,
       serviceName: product.name,
+      subCategory: product.sub_category || undefined,
       plan: planLabel,
       price,
       currency: product.currency,

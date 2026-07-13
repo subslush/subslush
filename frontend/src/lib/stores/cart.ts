@@ -7,6 +7,7 @@ export type CartItem = {
   id: string;
   serviceType: string;
   serviceName: string;
+  subCategory?: string;
   logoKey?: string;
   logoUrl?: string;
   plan: string;
@@ -37,6 +38,12 @@ const sanitizeCartItem = (raw: unknown): CartItem | null => {
     id: typeof candidate.id === 'string' ? candidate.id : '',
     serviceType: typeof candidate.serviceType === 'string' ? candidate.serviceType : '',
     serviceName: typeof candidate.serviceName === 'string' ? candidate.serviceName : '',
+    subCategory:
+      typeof candidate.subCategory === 'string'
+        ? candidate.subCategory
+        : typeof candidate.sub_category === 'string'
+          ? candidate.sub_category
+          : undefined,
     logoKey:
       typeof candidate.logoKey === 'string'
         ? candidate.logoKey
