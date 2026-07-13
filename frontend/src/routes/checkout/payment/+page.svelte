@@ -38,7 +38,7 @@
 		CheckoutPayopMethodQuote
 	} from '$lib/types/checkout.js';
 	import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
-	import { ArrowLeft, CreditCard, Globe2, Landmark, Loader2, MessageSquare, ShieldCheck, X } from 'lucide-svelte';
+	import { ArrowLeft, CreditCard, Globe2, Landmark, Loader2, MessageSquare, X } from 'lucide-svelte';
 
 	const countryNames =
 		browser && typeof Intl !== 'undefined' && 'DisplayNames' in Intl
@@ -1097,26 +1097,16 @@
 							Questions? Chat with us — we're happy to help.
 						</button>
 
-						<div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-								{#each paymentTrustBadges as badge}
-									<div
-										class="flex min-h-12 min-w-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
-									>
-										<img
-											src={badge.src}
-											alt={badge.alt}
-											class="max-h-7 w-full max-w-[112px] object-contain"
-											loading="lazy"
-										/>
-									</div>
-								{/each}
-								<div
-									class="flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-center text-[10px] font-semibold leading-snug text-fuchsia-800 shadow-sm"
-								>
-									<ShieldCheck class="h-4 w-4 shrink-0 text-fuchsia-600" aria-hidden="true" />
-									<span>Money-back guarantee</span>
-								</div>
-							</div>
+						<div class="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 sm:gap-x-6">
+							{#each paymentTrustBadges as badge}
+								<img
+									src={badge.src}
+									alt={badge.alt}
+									class="max-h-9 w-auto max-w-[150px] object-contain sm:max-h-10 sm:max-w-[160px]"
+									loading="lazy"
+								/>
+							{/each}
+						</div>
 
 						<button
 							type="button"

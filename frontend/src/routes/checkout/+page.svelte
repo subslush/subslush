@@ -2762,7 +2762,7 @@
               </div>
               <button
                 type="button"
-                class="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+                class="mt-5 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
                 on:click={openCrispChat}
               >
                 <MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
