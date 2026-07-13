@@ -579,6 +579,7 @@ try {
   });
 
   const fixtureEmail = `${runId.toLowerCase()}-customer@example.test`;
+  const registeredFixtureEmail = `${runId.toLowerCase()}-registered@example.test`;
   const pendingOrderId = await createPendingFixtureOrder({
     email: `${runId.toLowerCase()}-pending@example.test`,
     variantId: standardFixture.variant.id,
@@ -590,6 +591,12 @@ try {
     months: 1,
   });
   await completeFixtureStripeOrder(paidOrderId);
+  const registeredOrderId = await createPendingFixtureOrder({
+    email: registeredFixtureEmail,
+    variantId: standardFixture.variant.id,
+    months: 1,
+  });
+  await completeFixtureStripeOrder(registeredOrderId);
   const handshakeOrderId = await createFixtureOrder({
     email: `${runId.toLowerCase()}-handshake@example.test`,
     variantId: handshakeFixture.variant.id,
@@ -648,6 +655,16 @@ try {
   if (![paidSubscriptionId, handshakeSubscriptionId, strictSubscriptionId, readySubscriptionId, mmuSubscriptionId].every(Boolean)) {
     throw new Error('Fixture payment did not create the expected subscription.');
   }
+  const registeredOwner = await readOne(
+    `SELECT u.email AS account_email, o.contact_email
+       FROM orders o
+       JOIN users u ON u.id = o.user_id
+      WHERE o.id = $1`,
+    [registeredOrderId]
+  );
+  if (!registeredOwner?.account_email) {
+    throw new Error('Registered fixture is missing its account email.');
+  }
   await apiRequest(`/admin/subscriptions/${strictSubscriptionId}/credentials`, {
     method: 'POST', body: { credentials: 'SMOKE strict credentials', reason: 'smoke fixture setup' },
   });
@@ -663,6 +680,44 @@ try {
   await apiRequest(`/admin/orders/${mmuOrderId}/items/${mmuSubscriptionId}/deliver`, {
     method: 'POST', body: { reason: 'smoke fixture setup' },
   });
+
+  // Guest orders intentionally have a synthetic account email as well as the
+  // real delivery address on the order. Both must be independently searchable.
+  const guestDeliveryEmail = fixtureEmail;
+  const guestDeliveryFragment = guestDeliveryEmail.split('@')[0].slice(-12);
+  const guestFixtureProduct = `${runId} Strict fixture`;
+  const subscriptionsSearch = page.getByRole('textbox', { name: 'Search', exact: true });
+  async function searchSubscriptions(value) {
+    await subscriptionsSearch.fill(value);
+    await Promise.all([
+      page.waitForURL(url => url.pathname === '/admin-next/subscriptions' && url.searchParams.get('search') === value),
+      page.getByRole('button', { name: 'Apply' }).click(),
+    ]);
+  }
+  await page.goto(`${baseUrl}/admin-next/subscriptions`, { waitUntil: 'networkidle', timeout: 60_000 });
+  await searchSubscriptions(guestDeliveryEmail);
+  const guestDeliveryRow = page.locator('.row').filter({ hasText: guestFixtureProduct });
+  await guestDeliveryRow.waitFor();
+  if (await guestDeliveryRow.count() !== 1) throw new Error('Guest delivery-email search did not return the strict fixture subscription.');
+  const guestDeliveryRowText = await guestDeliveryRow.innerText();
+  if (!guestDeliveryRowText.includes(guestDeliveryEmail) || !guestDeliveryRowText.includes(customerOwner.email)) {
+    throw new Error('Guest subscription row did not retain both its synthetic account email and delivery email.');
+  }
+  await searchSubscriptions(guestDeliveryFragment);
+  await page.locator('.row').filter({ hasText: guestFixtureProduct }).waitFor();
+  await searchSubscriptions(strictSubscriptionId);
+  await page.locator('.row').filter({ hasText: guestFixtureProduct }).waitFor();
+  await searchSubscriptions(registeredOwner.account_email);
+  const registeredDeliveryRow = page.locator('.row').filter({ hasText: registeredOwner.account_email });
+  await registeredDeliveryRow.waitFor();
+  if (await registeredDeliveryRow.count() !== 1) throw new Error('Registered account-email search did not return exactly one fixture subscription.');
+  await page.getByText('Delivery email', { exact: true }).waitFor();
+  const registeredSearchResult = await apiRequest(`/admin/next/subscriptions?search=${encodeURIComponent(registeredOwner.account_email)}`);
+  if (registeredSearchResult.subscriptions?.[0]?.delivery_email !== (registeredOwner.contact_email || '')) {
+    throw new Error('Registered subscription did not preserve its delivery-email value.');
+  }
+  await searchSubscriptions(`${runId.toLowerCase()}-missing@example.test`);
+  await page.getByText('No subscriptions found', { exact: true }).waitFor();
 
   const mmuSubscription = await readOne(
     `SELECT id, term_start_at FROM subscriptions WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`,

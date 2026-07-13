@@ -109,7 +109,7 @@
 
   <AdminCard>
     <div class="filters">
-      <label><span>Search</span><input bind:value={search} placeholder="Product, customer, subscription id" /></label>
+      <label><span>Search</span><input bind:value={search} placeholder="Product, account or delivery email, subscription id" /></label>
       <label><span>Status</span><select bind:value={status}><option value="all">All</option><option value="pending">Pending</option><option value="active">Active</option><option value="expired">Expired</option><option value="cancelled">Cancelled</option></select></label>
       <button type="button" on:click={applyFilters}>Apply</button>
     </div>
@@ -120,11 +120,12 @@
   {:else}
     <AdminCard>
       <div class="table">
-        <div class="thead"><span>Product</span><span>Customer</span><span>Status</span><span>Term</span><span>MMU</span><span>Order</span></div>
+        <div class="thead"><span>Product</span><span>User</span><span>Delivery email</span><span>Status</span><span>Term</span><span>MMU</span><span>Order</span></div>
         {#each data.subscriptions as sub}
           <button class="row" type="button" on:click={() => loadDetail(sub.id)}>
             <span>{productLine(sub)}</span>
             <span>{sub.customer_email || '--'}</span>
+            <span>{sub.delivery_email || '--'}</span>
             <span><StatusChip status={sub.status || 'unknown'} /></span>
             <span>{termLabel(sub.term_months)} · {formatDate(sub.start_date)} – {formatDate(sub.end_date)}</span>
             <span>{sub.mmu_label || '—'}</span>
@@ -199,7 +200,7 @@
   input, select { min-height: 38px; border: 1px solid #dedee4; border-radius: 10px; padding: 0 10px; font: inherit; }
   button, .link-button { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; border: 0; border-radius: 10px; background: #1a1a1c; color: white; padding: 0 14px; font-weight: 750; text-decoration: none; cursor: pointer; }
   .table { display: grid; overflow-x: auto; }
-  .thead, .row { display: grid; grid-template-columns: minmax(220px, 1.4fr) 230px 110px 220px 240px 90px; gap: 14px; align-items: center; min-width: 1110px; text-align: left; }
+  .thead, .row { display: grid; grid-template-columns: minmax(220px, 1.4fr) 230px 250px 110px 220px 240px 90px; gap: 14px; align-items: center; min-width: 1374px; text-align: left; }
   .thead { border-bottom: 1px solid #ececee; padding-bottom: 10px; color: #71717a; font-size: 12px; font-weight: 750; }
   .row { border-bottom: 1px solid #f0f0f2; background: transparent; color: #1a1a1c; padding: 13px 0; font: inherit; }
   .row:hover { background: #fafafa; }

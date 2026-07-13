@@ -320,6 +320,7 @@ export interface AdminNextSubscriptionListItem {
   product_name?: string | null;
   variant_name?: string | null;
   customer_email?: string | null;
+  delivery_email?: string | null;
   term_months?: number | string | null;
   start_date?: string | null;
   end_date?: string | null;

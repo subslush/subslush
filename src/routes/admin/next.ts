@@ -335,7 +335,8 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
           SELECT s.id, s.order_id, s.user_id, s.status, s.service_type, s.service_plan,
                  s.term_months, s.term_start_at, s.start_date, s.end_date, s.renewal_date,
                  s.created_at, s.delivered_at, s.activation_handshake_state,
-                 COALESCE(u.email, o.contact_email) AS customer_email,
+                 u.email AS customer_email,
+                 COALESCE(o.contact_email, '') AS delivery_email,
                  COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
                  COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                  t.id AS task_id, t.task_type, t.due_date, t.completed_at, t.is_issue,
@@ -364,7 +365,8 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
           params.push(searchPattern);
           sql += ` AND (s.id::text ILIKE $${params.length}
                     OR s.order_id::text ILIKE $${params.length}
-                    OR COALESCE(u.email, o.contact_email, '') ILIKE $${params.length}
+                    OR COALESCE(u.email, '') ILIKE $${params.length}
+                    OR COALESCE(o.contact_email, '') ILIKE $${params.length}
                     OR COALESCE(p.name, oi.metadata->>'product_name', '') ILIKE $${params.length}
                     OR COALESCE(pv.name, oi.metadata->>'variant_name', '') ILIKE $${params.length})`;
         }

@@ -399,6 +399,7 @@ describe('Admin fulfillment aggregate endpoints', () => {
             status: 'active',
             term_months: 6,
             customer_email: 'customer@example.com',
+            delivery_email: 'delivery@example.com',
             product_name: 'Netflix',
             variant_name: 'Premium',
             task_id: taskA,
@@ -425,7 +426,7 @@ describe('Admin fulfillment aggregate endpoints', () => {
     });
     const subscriptionListResponse = await app.inject({
       method: 'GET',
-      url: '/admin/next/subscriptions',
+      url: '/admin/next/subscriptions?search=delivery%40example.com',
     });
 
     await app.close();
@@ -434,6 +435,20 @@ describe('Admin fulfillment aggregate endpoints', () => {
     expect(subscriptionListResponse.statusCode).toBe(200);
     assertNoCredentialMaterial(queueResponse.json());
     assertNoCredentialMaterial(subscriptionListResponse.json());
+    expect(subscriptionListResponse.json().data.subscriptions[0]).toMatchObject(
+      {
+        customer_email: 'customer@example.com',
+        delivery_email: 'delivery@example.com',
+      }
+    );
+    const subscriptionSql = mockQuery.mock.calls[1][0];
+    expect(subscriptionSql).toContain('u.email AS customer_email');
+    expect(subscriptionSql).toContain(
+      "COALESCE(o.contact_email, '') AS delivery_email"
+    );
+    expect(subscriptionSql).toContain("COALESCE(u.email, '') ILIKE");
+    expect(subscriptionSql).toContain("COALESCE(o.contact_email, '') ILIKE");
+    expect(subscriptionSql).not.toContain('COALESCE(u.email, o.contact_email');
     expect(queueResponse.json().data.orders[0].items[0].selection_type).toBe(
       'own_account'
     );
