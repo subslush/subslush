@@ -455,20 +455,26 @@
                   </div>
 
                   {#if subscription.activation_handshake_state === 'awaiting_customer' || subscription.activation_handshake_state === 'instructions_delivered'}
-                    <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                      <p class="text-xs text-amber-900 whitespace-pre-wrap">
+                    <div class="mt-4 overflow-hidden rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-4 shadow-sm">
+                      <div class="flex items-start gap-3">
+                        <div class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white">1</div>
+                        <div>
+                          <p class="text-sm font-semibold text-violet-950">Ready to activate?</p>
+                          <p class="mt-1 text-xs leading-5 text-violet-900 whitespace-pre-wrap">
                         {subscription.product_options?.activation_instructions_template || 'Review the delivered activation instructions, then confirm when you are ready for the activation link.'}
-                      </p>
-                      <label class="mt-3 flex items-start gap-2 text-xs text-amber-900">
+                          </p>
+                        </div>
+                      </div>
+                      <label class="mt-4 flex items-start gap-2 text-xs font-medium text-violet-950">
                         <input
-                          class="mt-0.5"
+                          class="mt-0.5 rounded border-violet-300 text-violet-600 focus:ring-violet-500"
                           type="checkbox"
                           bind:checked={activationReadyCheckedByItem[subscription.id]}
                         />
-                        <span>I understand the link expires 2 hours after generation.</span>
+                        <span>I understand</span>
                       </label>
                       <button
-                        class="mt-3 rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-60"
+                        class="mt-4 inline-flex items-center rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:from-violet-700 hover:to-fuchsia-700 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                         disabled={!activationReadyCheckedByItem[subscription.id]}
                         on:click={() => confirmActivationReady(order.id, subscription.id)}
                       >
@@ -547,11 +553,10 @@
       <h2 class="text-base font-semibold text-gray-900">Rules acknowledgement</h2>
       <StrictRulesNotice
         text={rulesModal.subscription.product_options?.strict_rules_text || 'You must follow the rules for this item.'}
-        version={rulesModal.subscription.product_options?.strict_rules_version}
       />
       <label class="mt-4 flex items-start gap-2 text-sm text-gray-700">
         <input class="mt-1" type="checkbox" bind:checked={rulesModal.checked} />
-        <span>I understand that breaking these rules deactivates the account and voids warranty, replacements and refunds.</span>
+        <span>I understand that breaking these rules deactivates the subscription and voids warranty, replacements and refunds.</span>
       </label>
       {#if rulesModal.error}
         <p class="mt-2 text-xs text-red-600">{rulesModal.error}</p>

@@ -79,6 +79,8 @@ export const API_ENDPOINTS = {
     STRIPE_SESSION: '/checkout/stripe/session',
     STRIPE_CONFIRM: '/checkout/stripe/confirm',
     CREDITS_COMPLETE: '/checkout/credits/complete',
+    QA_CONFIG: '/checkout/qa/config',
+    QA_COMPLETE: '/checkout/qa/complete',
     NOWPAYMENTS_INVOICE: '/checkout/nowpayments/invoice',
     NOWPAYMENTS_MINIMUM: '/checkout/nowpayments/minimum',
     PAYOP_OPTIONS: '/checkout/payop/options',

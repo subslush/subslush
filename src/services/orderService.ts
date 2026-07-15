@@ -1091,11 +1091,6 @@ export class OrderService {
       .filter(Boolean);
     const baseLabel =
       nameParts.length > 0 ? nameParts.join(' ') : 'Subscription';
-    const termMonths = Number(item.term_months);
-    const label =
-      Number.isFinite(termMonths) && termMonths > 0
-        ? `${baseLabel} - ${Math.floor(termMonths)} month${Math.floor(termMonths) === 1 ? '' : 's'}`
-        : baseLabel;
     const dashboardLink = buildAppLink('/dashboard/orders');
     const helpLink = buildAppLink('/help');
 
@@ -1104,20 +1099,20 @@ export class OrderService {
         ? 'Your activation link is ready'
         : variant === 'activation_restart'
           ? 'Confirm when you are ready to activate'
-          : `Your ${label} is ready`;
+          : `Your ${baseLabel} is ready`;
     const intro =
       variant === 'activation_link_ready'
-        ? 'Your activation link is ready. Reveal it in your dashboard and use it within 2 hours.'
+        ? 'Your activation link is ready.'
         : variant === 'activation_restart'
           ? 'Please confirm when you are ready so we can generate a fresh activation link.'
-          : `Your ${label} is ready.`;
+          : '';
     const text = [
       intro,
       '',
-      `Item: ${label}`,
+      `Item: ${baseLabel}`,
       `Open My Orders: ${dashboardLink}`,
       variant === 'activation_link_ready'
-        ? 'The activation link is not included in this email.'
+        ? 'The link is not included in this email. Reveal it in your SubSlush dashboard.'
         : 'Open the order item and reveal credentials or follow the item instructions.',
       '',
       `Need help? ${helpLink}`,
@@ -1135,10 +1130,10 @@ export class OrderService {
           <tr>
             <td style="padding:14px 16px;font-size:13px;color:#334155;">
               <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Item</div>
-              <div>${escapeHtml(label)}</div>
+              <div>${escapeHtml(baseLabel)}</div>
               ${
                 variant === 'activation_link_ready'
-                  ? '<div style="margin-top:8px;color:#7c2d12;">The link is not included in this email. Reveal it in your dashboard and use it within 2 hours.</div>'
+                  ? '<div style="margin-top:8px;color:#7c2d12;">The link is not included in this email. Reveal it in your SubSlush dashboard.</div>'
                   : ''
               }
             </td>

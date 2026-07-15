@@ -114,6 +114,8 @@ export interface AdminNextFulfillmentDetailItem {
   product_name?: string | null;
   variant_name?: string | null;
   term_months?: number | string | null;
+  total_price_cents?: number | string | null;
+  currency?: string | null;
   status?: string | null;
   credentials_on_file?: boolean | null;
   task_id?: string | null;
@@ -268,9 +270,12 @@ export interface AdminNextOrderFileCustomer extends AdminNextRecord {
 }
 
 export interface AdminNextOrderFileItem extends AdminNextRecord {
+  subscription_id?: string | null;
   product_name?: string | null;
   variant_name?: string | null;
   term_months?: number | string | null;
+  total_price_cents?: number | string | null;
+  currency?: string | null;
   status?: string | null;
   delivered_at?: string | null;
   product_metadata?: {

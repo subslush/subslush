@@ -145,6 +145,10 @@ export type CheckoutCreditsCompleteInput = z.infer<
   typeof checkoutCreditsCompleteSchema
 >;
 
+// The QA route shares the normal completion ownership and consent payload.
+export const checkoutQaCompleteSchema = checkoutCreditsCompleteSchema;
+export type CheckoutQaCompleteInput = z.infer<typeof checkoutQaCompleteSchema>;
+
 export const checkoutNowPaymentsInvoiceSchema = z.object({
   checkout_session_key: checkoutSessionKeySchema,
   order_id: uuidSchema.optional().nullable(),
@@ -474,6 +478,14 @@ export function validateCheckoutCreditsCompleteInput(
     }
     return { success: false, error: 'Invalid input data' };
   }
+}
+
+export function validateCheckoutQaCompleteInput(
+  data: unknown
+):
+  | { success: true; data: CheckoutQaCompleteInput }
+  | { success: false; error: string; details?: unknown } {
+  return validateCheckoutCreditsCompleteInput(data);
 }
 
 export function validateCheckoutNowPaymentsMinimumInput(

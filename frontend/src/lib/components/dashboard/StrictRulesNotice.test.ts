@@ -3,17 +3,16 @@ import { describe, expect, it, vi } from 'vitest';
 import StrictRulesNotice from './StrictRulesNotice.svelte';
 
 describe('StrictRulesNotice', () => {
-	it('renders configured rules as inert text and includes their version', () => {
+	it('renders configured rules as inert text without exposing its version', () => {
 		const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
 		const rules = '<script>alert(1)</script> Do not change the profile.';
 
 		const { container } = render(StrictRulesNotice, {
-			text: rules,
-			version: 7
+			text: rules
 		});
 
 		expect(screen.getByTestId('strict-rules-text').textContent?.trim()).toBe(rules);
-		expect(screen.getByText('Rules version 7')).toBeTruthy();
+		expect(screen.queryByText('Rules version 7')).toBeNull();
 		expect(container.querySelector('script')).toBeNull();
 		expect(container.innerHTML).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
 		expect(alertSpy).not.toHaveBeenCalled();

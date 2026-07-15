@@ -31,6 +31,11 @@
     };
   };
 
+  const itemLabel = (item: AdminNextOrderFileItem) =>
+    [item.product_name, item.variant_name]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .join(' · ') || 'Item';
+
   const markPaid = async () => {
     if (!order || !note.trim() || isMarkingPaid) return;
     if (!confirm('Mark this order as paid manually? Only continue after verifying the provider dashboard.')) return;
@@ -96,6 +101,7 @@
                 <div>
                   <strong>{item.product_name || 'Product'} · {item.variant_name || 'Default'}</strong>
                   <p>{termLabel(item.term_months)}</p>
+                  <p class="subscription-id"><span>Subscription ID</span> <code>{item.subscription_id || '--'}</code></p>
                   <div class="badges">
                     {#if methodFlags(item).manual_monthly_upgrade}<MethodBadge label="MMU" />{/if}
                     {#if methodFlags(item).activation_link_handshake}<MethodBadge label="Activation link" />{/if}
@@ -145,6 +151,10 @@
         <AdminCard>
           <h2>Summary</h2>
           <dl>
+            {#each file.items as item}
+              <dt class="item-price-name">{itemLabel(item)}</dt>
+              <dd>{formatMoney(item.total_price_cents, item.currency || order.currency || 'USD')}</dd>
+            {/each}
             <dt>Subtotal</dt><dd>{formatMoney(order.subtotal_cents, order.currency || 'USD')}</dd>
             <dt>Coupon</dt><dd>{order.coupon_code ? `${order.coupon_code} · ${formatMoney(order.coupon_discount_cents || order.discount_cents, order.currency || 'USD')}` : 'Not used'}</dd>
             <dt>Total</dt><dd>{formatMoney(order.total_cents, order.currency || 'USD')}</dd>
@@ -197,11 +207,14 @@
   .item:last-child { border-bottom: 0; padding-bottom: 0; }
   .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   time, .muted, small { display: block; margin-top: 5px; color: #71717a; font-size: 12px; }
+  .subscription-id { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; color: #71717a; font-size: 12px; }
+  .subscription-id span { font-weight: 650; }
   .timeline { display: grid; gap: 12px; }
   .timeline > div { display: grid; grid-template-columns: 10px 1fr auto; gap: 10px; align-items: start; }
   .timeline span { width: 9px; height: 9px; margin-top: 5px; border-radius: 999px; background: #5b46e0; }
   dl { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
   dt { color: #71717a; }
+  .item-price-name { color: #29292e; font-weight: 650; }
   dd { margin: 0; font-weight: 750; text-align: right; }
   @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
 </style>

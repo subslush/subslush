@@ -2760,14 +2760,6 @@
                   <span class="font-bold bg-gradient-to-r from-pink-500 to-purple-700 bg-clip-text text-transparent">Money-Back Guarantee</span>.
                 </span>
               </div>
-              <button
-                type="button"
-                class="mt-5 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
-                on:click={openCrispChat}
-              >
-                <MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
-                Questions? Chat with us — we're happy to help.
-              </button>
               <div class="mt-4 border-t border-slate-200 pt-3">
                 <button
                   type="button"
@@ -2814,6 +2806,15 @@
                 {/if}
               </div>
             </div>
+
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+              on:click={openCrispChat}
+            >
+              <MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
+              Questions? Chat with us — we're happy to help.
+            </button>
 
             {#if actionError}
               <div class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">

@@ -106,6 +106,8 @@ const buildItemRow = (overrides: Record<string, unknown> = {}) => ({
   product_name: 'Netflix',
   variant_name: 'Premium',
   term_months: 1,
+  order_item_total_cents: 1299,
+  order_item_currency: 'USD',
   item_metadata: {},
   product_metadata: {},
   credentials_encrypted: 'delivered-secret',
@@ -182,6 +184,8 @@ describe('Admin fulfillment aggregate endpoints', () => {
       selection_type: 'own_account',
       submitted_account_identifier: 'customer-login@example.com',
       own_account_credentials_on_file: true,
+      total_price_cents: 1299,
+      currency: 'USD',
     });
     expect(body.data.items[1]).toMatchObject({
       task_id: taskB,

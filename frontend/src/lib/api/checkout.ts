@@ -12,6 +12,9 @@ import type {
   CheckoutPayPalSdkConfigResponse,
   CheckoutCreditsCompleteRequest,
   CheckoutCreditsCompleteResponse,
+  CheckoutQaCompleteRequest,
+  CheckoutQaCompleteResponse,
+  CheckoutQaPaymentConfigResponse,
   CheckoutNowPaymentsInvoiceRequest,
   CheckoutNowPaymentsInvoiceResponse,
   CheckoutNowPaymentsMinimumRequest,
@@ -89,6 +92,18 @@ export class CheckoutService {
       input
     );
     return unwrapApiData<CheckoutCreditsCompleteResponse>(response);
+  }
+
+  async completeQaCheckout(
+    input: CheckoutQaCompleteRequest
+  ): Promise<CheckoutQaCompleteResponse> {
+    const response = await apiClient.post(API_ENDPOINTS.CHECKOUT.QA_COMPLETE, input);
+    return unwrapApiData<CheckoutQaCompleteResponse>(response);
+  }
+
+  async getQaPaymentConfig(): Promise<CheckoutQaPaymentConfigResponse> {
+    const response = await apiClient.get(API_ENDPOINTS.CHECKOUT.QA_CONFIG);
+    return unwrapApiData<CheckoutQaPaymentConfigResponse>(response);
   }
 
   async createNowPaymentsInvoice(

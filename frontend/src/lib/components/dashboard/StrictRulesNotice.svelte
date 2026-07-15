@@ -1,6 +1,5 @@
 <script lang="ts">
 	export let text: string;
-	export let version: number | null | undefined = null;
 </script>
 
 <div
@@ -9,6 +8,3 @@
 >
 	{text}
 </div>
-{#if version}
-	<p class="mt-2 text-xs text-gray-500">Rules version {version}</p>
-{/if}

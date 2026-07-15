@@ -134,6 +134,20 @@ export interface CheckoutCreditsCompleteResponse {
   fulfilled_subscriptions?: number | null;
 }
 
+export type CheckoutQaCompleteRequest = CheckoutCreditsCompleteRequest;
+
+export interface CheckoutQaCompleteResponse {
+  order_id: string;
+  payment_method: 'qa_payment';
+  status: string;
+  subscriptions_created: number;
+  open_tasks: number;
+}
+
+export interface CheckoutQaPaymentConfigResponse {
+  enabled: boolean;
+}
+
 export interface CheckoutNowPaymentsInvoiceRequest {
   checkout_session_key?: string | null;
   order_id?: string | null;

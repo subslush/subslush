@@ -83,7 +83,7 @@ describe('Manual mark-paid pipeline and stale Payop/Antom sweep', () => {
         return Promise.resolve({ rows: [{ id: 'order-1' }] });
       }
       if (sql.includes('SELECT status FROM orders')) {
-        return Promise.resolve({ rows: [{ status: 'pending_payment' }] });
+        return Promise.resolve({ rows: [{ status: order.status }] });
       }
       if (sql.includes('COUNT(*)::int AS open_tasks')) {
         return Promise.resolve({ rows: [{ open_tasks: 1 }] });
@@ -136,6 +136,37 @@ describe('Manual mark-paid pipeline and stale Payop/Antom sweep', () => {
     expect(
       mockOrderService.sendOrderPaymentConfirmationEmail
     ).toHaveBeenCalledTimes(1);
+
+    // The local QA checkout starts from the editable guest draft state. It
+    // deliberately accepts `cart`, while ordinary admin manual mark-paid does
+    // not become broader as a result.
+    order.status = 'cart';
+    const qaResult = await paymentService.confirmManualOrderPayment({
+      orderId: 'order-1',
+      adminUserId: 'user-1',
+      note: 'QA checkout payment (local test environment)',
+      source: 'qa_checkout',
+    });
+
+    expect(qaResult.success).toBe(true);
+    expect(mockPaymentRepository.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        provider: 'manual',
+        providerPaymentId: 'qa_order-1',
+        providerStatus: 'qa_completed',
+        paymentMethodType: 'qa_payment',
+      }),
+      client
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('status = ANY($4::text[])'),
+      expect.arrayContaining([
+        'qa_payment_confirmed',
+        'qa_order-1',
+        'order-1',
+        ['cart', 'pending_payment'],
+      ])
+    );
   });
 
   it('expires stale Payop and Antom pending payments but leaves succeeded payments untouched', async () => {

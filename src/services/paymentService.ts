@@ -1238,6 +1238,7 @@ export class PaymentService {
     orderId: string;
     adminUserId: string;
     note: string;
+    source?: 'manual' | 'qa_checkout';
     audit?: {
       ipAddress?: string | null;
       userAgent?: string | null;
@@ -1252,6 +1253,11 @@ export class PaymentService {
     tasksOpen?: number;
   }> {
     const note = params.note.trim();
+    const source = params.source ?? 'manual';
+    const isQaCheckout = source === 'qa_checkout';
+    const eligibleOrderStatuses = isQaCheckout
+      ? ['cart', 'pending_payment']
+      : ['pending_payment'];
     if (!note) {
       return { success: false, error: 'note_required', status: 'invalid' };
     }
@@ -1260,7 +1266,7 @@ export class PaymentService {
     if (!order) {
       return { success: false, error: 'order_not_found', status: 'not_found' };
     }
-    if (order.status !== 'pending_payment') {
+    if (!eligibleOrderStatuses.includes(order.status)) {
       return {
         success: false,
         error: 'order_not_pending_payment',
@@ -1278,7 +1284,7 @@ export class PaymentService {
 
     const pool = getDatabasePool();
     const client = await pool.connect();
-    const manualPaymentId = `manual_${params.orderId}`;
+    const manualPaymentId = `${isQaCheckout ? 'qa' : 'manual'}_${params.orderId}`;
 
     try {
       await client.query('BEGIN');
@@ -1295,7 +1301,7 @@ export class PaymentService {
           status: 'not_found',
         };
       }
-      if (lockedOrder.rows[0].status !== 'pending_payment') {
+      if (!eligibleOrderStatuses.includes(lockedOrder.rows[0].status)) {
         await client.query('ROLLBACK');
         return {
           success: false,
@@ -1317,11 +1323,11 @@ export class PaymentService {
             provider: 'manual',
             providerPaymentId: manualPaymentId,
             status: 'succeeded',
-            providerStatus: 'manual_confirmed',
+            providerStatus: isQaCheckout ? 'qa_completed' : 'manual_confirmed',
             purpose: 'subscription',
             amount: (order.total_cents ?? 0) / 100,
             currency: (order.currency || 'USD').toLowerCase(),
-            paymentMethodType: 'manual',
+            paymentMethodType: isQaCheckout ? 'qa_payment' : 'manual',
             orderId: order.id,
             // The deferrable singleton trigger requires this denormalized
             // reference whenever the allocation has exactly one item.
@@ -1332,6 +1338,7 @@ export class PaymentService {
               order_id: order.id,
               admin_user_id: params.adminUserId,
               note,
+              payment_source: source,
               confirmed_at: new Date().toISOString(),
             },
           },
@@ -1348,14 +1355,19 @@ export class PaymentService {
       const updateResult = await client.query(
         `UPDATE orders
          SET status = 'in_process',
-             status_reason = 'manual_payment_confirmed',
+             status_reason = $1,
              payment_provider = 'manual',
-             payment_reference = $1,
+             payment_reference = $2,
              updated_at = NOW()
-         WHERE id = $2
-           AND status = 'pending_payment'
+         WHERE id = $3
+           AND status = ANY($4::text[])
          RETURNING id`,
-        [manualPaymentId, order.id]
+        [
+          isQaCheckout ? 'qa_payment_confirmed' : 'manual_payment_confirmed',
+          manualPaymentId,
+          order.id,
+          eligibleOrderStatuses,
+        ]
       );
       if (updateResult.rows.length === 0) {
         throw new Error('order_not_pending_payment');
@@ -1386,11 +1398,14 @@ export class PaymentService {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           params.adminUserId,
-          'orders.mark_paid.manual',
+          isQaCheckout
+            ? 'orders.mark_paid.qa_checkout'
+            : 'orders.mark_paid.manual',
           'order',
           order.id,
           JSON.stringify({
             note,
+            payment_source: source,
             subscriptions_created: createdSubscriptions.length,
             open_tasks: Number(taskResult.rows[0]?.open_tasks ?? 0),
           }),

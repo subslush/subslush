@@ -251,6 +251,10 @@
         <div>
           <h2>Order & payment</h2>
           <dl>
+            {#each items as item}
+              <dt class="item-price-name">{productLine(item)}</dt>
+              <dd>{formatMoney(item.total_price_cents, item.currency || order.currency || 'USD')}</dd>
+            {/each}
             <dt>Total</dt><dd>{formatMoney(order.total_cents, order.currency || 'USD')}</dd>
             <dt>Coupon</dt><dd>{order.coupon_code ? `${order.coupon_code}` : 'Not used'}</dd>
             <dt>Provider</dt><dd>{order.provider || '--'}</dd>
@@ -526,6 +530,11 @@
   dd {
     margin: 0;
     color: #1a1a1c;
+  }
+
+  .item-price-name {
+    color: #34343a;
+    font-weight: 650;
   }
 
   .items-section {
