@@ -66,6 +66,19 @@ export interface Subscription {
   auto_renew_enabled_at?: Date | null;
   auto_renew_disabled_at?: Date | null;
   status_reason?: string | null;
+  delivered_at?: Date | null;
+  delivered_by?: string | null;
+  delivery_email_sent_at?: Date | null;
+  activation_handshake_state?:
+    | 'none'
+    | 'instructions_delivered'
+    | 'awaiting_customer'
+    | 'customer_ready'
+    | 'link_delivered';
+  activation_instructions_delivered_at?: Date | null;
+  activation_customer_ready_at?: Date | null;
+  activation_link_delivered_at?: Date | null;
+  activation_handshake_restarted_at?: Date | null;
   cancellation_requested_at?: Date | null;
   cancellation_reason?: string | null;
   referral_reward_id?: string | null;
@@ -128,6 +141,19 @@ export interface UpdateSubscriptionInput {
   auto_renew_enabled_at?: Date | null;
   auto_renew_disabled_at?: Date | null;
   status_reason?: string | null;
+  delivered_at?: Date | null;
+  delivered_by?: string | null;
+  delivery_email_sent_at?: Date | null;
+  activation_handshake_state?:
+    | 'none'
+    | 'instructions_delivered'
+    | 'awaiting_customer'
+    | 'customer_ready'
+    | 'link_delivered';
+  activation_instructions_delivered_at?: Date | null;
+  activation_customer_ready_at?: Date | null;
+  activation_link_delivered_at?: Date | null;
+  activation_handshake_restarted_at?: Date | null;
   cancellation_requested_at?: Date | null;
   cancellation_reason?: string | null;
   price_cents?: number | null;
@@ -194,6 +220,11 @@ export interface UpgradeOptionsSnapshot {
   manual_monthly_upgrade: boolean;
   manual_monthly_upgrade_interval_months?: number | null;
   own_account_credential_requirement?: OwnAccountCredentialRequirement | null;
+  activation_link_handshake?: boolean;
+  activation_instructions_template?: string | null;
+  strict_rules?: boolean;
+  strict_rules_text?: string | null;
+  strict_rules_version?: number | null;
 }
 
 export interface SubscriptionOperationResult {

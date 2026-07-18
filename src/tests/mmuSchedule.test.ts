@@ -1,5 +1,11 @@
 import { describe, expect, it } from '@jest/globals';
-import { getMmuCycleInfo, shouldCreateMmuTask } from '../utils/mmuSchedule';
+import {
+  formatMmuCoverageLabel,
+  getInitialMmuCoverage,
+  getMmuCycleInfo,
+  shouldCreateMmuTask,
+  validateMmuTermDivisibility,
+} from '../utils/mmuSchedule';
 
 describe('mmuSchedule', () => {
   it('calculates the current cycle based on calendar months', () => {
@@ -45,5 +51,77 @@ describe('mmuSchedule', () => {
 
     expect(shouldCreateMmuTask(cycleEnd, early, 7)).toBe(false);
     expect(shouldCreateMmuTask(cycleEnd, withinLead, 7)).toBe(true);
+  });
+
+  it.each([
+    [6, 1],
+    [12, 1],
+    [12, 2],
+    [6, 2],
+    [12, 3],
+  ])(
+    'covers the full term exactly once for term %i interval %i',
+    (termMonths, intervalMonths) => {
+      const initial = getInitialMmuCoverage({ termMonths, intervalMonths });
+      const covered = new Set<number>();
+      for (
+        let month = initial.coversMonthsFrom;
+        month <= initial.coversMonthsTo;
+        month += 1
+      ) {
+        covered.add(month);
+      }
+
+      for (
+        let cycleIndex = intervalMonths;
+        cycleIndex < termMonths;
+        cycleIndex += intervalMonths
+      ) {
+        const label = formatMmuCoverageLabel({
+          termMonths,
+          intervalMonths,
+          cycleIndex,
+        });
+        expect(label).not.toBeNull();
+        for (
+          let month = label!.coversMonthsFrom;
+          month <= label!.coversMonthsTo;
+          month += 1
+        ) {
+          expect(covered.has(month)).toBe(false);
+          covered.add(month);
+        }
+      }
+
+      expect(Array.from(covered).sort((a, b) => a - b)).toEqual(
+        Array.from({ length: termMonths }, (_, index) => index + 1)
+      );
+    }
+  );
+
+  it('formats representative MMU labels', () => {
+    expect(
+      formatMmuCoverageLabel({
+        termMonths: 6,
+        intervalMonths: 1,
+        cycleIndex: 1,
+      })?.label
+    ).toBe('Month 2 of 6');
+    expect(
+      formatMmuCoverageLabel({
+        termMonths: 12,
+        intervalMonths: 2,
+        cycleIndex: 2,
+      })?.label
+    ).toBe('Months 3-4 of 12');
+  });
+
+  it('rejects invalid MMU term divisibility', () => {
+    expect(
+      validateMmuTermDivisibility({
+        termMonths: 5,
+        intervalMonths: 2,
+      })
+    ).toBe(false);
   });
 });

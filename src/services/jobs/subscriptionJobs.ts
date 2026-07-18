@@ -20,7 +20,11 @@ import {
   notifyCreditsRenewalSuccess,
   type SubscriptionReminderStage,
 } from '../renewalNotificationService';
-import { getMmuCycleInfo, shouldCreateMmuTask } from '../../utils/mmuSchedule';
+import {
+  getMmuCycleInfo,
+  shouldCreateMmuTask,
+  validateMmuTermDivisibility,
+} from '../../utils/mmuSchedule';
 
 interface RenewalCandidate {
   id: string;
@@ -486,7 +490,6 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
       const amountUsd = priceCents / 100;
       const now = new Date();
       const currentEndDate = toDate(candidate.end_date);
-      const termStartAt = currentEndDate > now ? currentEndDate : now;
       const nextDates = computeNextRenewalDates({
         endDate: currentEndDate,
         termMonths: durationMonths,
@@ -600,7 +603,6 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
       const updateOk = await updateSubscription(
         subscriptionId,
         {
-          term_start_at: termStartAt,
           end_date: nextDates.endDate,
           renewal_date: nextDates.renewalDate,
           next_billing_at: nextDates.nextBillingAt,
@@ -1190,10 +1192,12 @@ export async function runUpgradeSelectionReminderSweep(): Promise<void> {
   }
 }
 
-export async function runManualMonthlyUpgradeSweep(): Promise<void> {
+export async function runManualMonthlyUpgradeSweep(
+  referenceNow: Date = new Date()
+): Promise<void> {
   Logger.info('Manual monthly upgrade sweep started');
   const pool = getDatabasePool();
-  const now = new Date();
+  const now = new Date(referenceNow);
 
   try {
     const result = await pool.query(
@@ -1267,6 +1271,19 @@ export async function runManualMonthlyUpgradeSweep(): Promise<void> {
         1,
         Math.min(12, options.manual_monthly_upgrade_interval_months || 1)
       );
+      if (
+        !validateMmuTermDivisibility({
+          termMonths,
+          intervalMonths,
+        })
+      ) {
+        Logger.warn('Skipping MMU task for invalid term/interval pairing', {
+          subscriptionId: row.subscription_id,
+          termMonths,
+          intervalMonths,
+        });
+        continue;
+      }
       if (cycleInfo.cycleIndex % intervalMonths !== 0) {
         continue;
       }

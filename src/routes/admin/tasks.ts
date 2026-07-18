@@ -8,11 +8,15 @@ import { ErrorResponses, SuccessResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
 import { validate as uuidValidate } from 'uuid';
 import { subscriptionService } from '../../services/subscriptionService';
+import { credentialsEncryptionService } from '../../utils/encryption';
 import {
-  computeNextRenewalDates,
   formatSubscriptionDisplayName,
   formatSubscriptionShortId,
 } from '../../utils/subscriptionHelpers';
+import { formatMmuCoverageLabel } from '../../utils/mmuSchedule';
+import { parseJsonValue } from '../../utils/json';
+
+const renewalWorkflowTaskTypes = new Set(['renewal', 'manual_monthly_upgrade']);
 
 const parseBoolean = (value: unknown): boolean | undefined => {
   if (value === undefined || value === null) return undefined;
@@ -101,6 +105,8 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
             s.service_type AS subscription_service_type,
             s.service_plan AS subscription_service_plan,
             s.status AS subscription_status,
+            s.term_months AS subscription_term_months,
+            sel.upgrade_options_snapshot AS subscription_upgrade_options_snapshot,
             CASE
               WHEN t.completed_at IS NOT NULL THEN 'completed'
               WHEN t.is_issue = TRUE THEN 'issue'
@@ -110,6 +116,7 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
           FROM admin_tasks t
           LEFT JOIN orders o ON o.id = t.order_id
           LEFT JOIN subscriptions s ON s.id = t.subscription_id
+          LEFT JOIN subscription_upgrade_selections sel ON sel.subscription_id = s.id
           LEFT JOIN users u ON u.id = COALESCE(o.user_id, s.user_id, t.user_id)
           WHERE 1=1
         `;
@@ -165,8 +172,30 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
         params.push(limit, offset);
 
         const result = await pool.query(sql, params);
+        const tasks = result.rows.map(row => {
+          if (row.task_type !== 'manual_monthly_upgrade') {
+            return row;
+          }
+          const options = parseJsonValue<Record<string, any>>(
+            row.subscription_upgrade_options_snapshot,
+            {}
+          );
+          const label = formatMmuCoverageLabel({
+            termMonths: Number(row.subscription_term_months),
+            intervalMonths:
+              Number(options?.['manual_monthly_upgrade_interval_months']) || 1,
+            cycleIndex: Number(row.mmu_cycle_index),
+          });
+          return {
+            ...row,
+            mmu_label: label?.label ?? null,
+            mmu_covers_months_from: label?.coversMonthsFrom ?? null,
+            mmu_covers_months_to: label?.coversMonthsTo ?? null,
+            mmu_term_months: label?.termMonths ?? null,
+          };
+        });
 
-        return SuccessResponses.ok(reply, { tasks: result.rows });
+        return SuccessResponses.ok(reply, { tasks });
       } catch (error) {
         Logger.error('Admin list tasks failed:', error);
         return ErrorResponses.internalError(reply, 'Failed to list tasks');
@@ -354,6 +383,99 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  fastify.get(
+    '/:taskId/credentials',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['taskId'],
+          properties: {
+            taskId: { type: 'string', format: 'uuid' },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { taskId } = request.params as { taskId: string };
+        if (!isValidUuid(taskId)) {
+          return ErrorResponses.badRequest(reply, 'Invalid task ID format');
+        }
+
+        const pool = getDatabasePool();
+        const taskResult = await pool.query(
+          `SELECT id, task_type, subscription_id
+           FROM admin_tasks
+           WHERE id = $1`,
+          [taskId]
+        );
+        const task = taskResult.rows[0] || null;
+        if (!task) {
+          return ErrorResponses.notFound(reply, 'Task not found');
+        }
+        if (task.task_type !== 'manual_monthly_upgrade') {
+          return ErrorResponses.badRequest(
+            reply,
+            'Credentials are only available for MMU tasks through this endpoint'
+          );
+        }
+        if (!task.subscription_id) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Task is not linked to a subscription'
+          );
+        }
+
+        const result = await subscriptionService.getSubscriptionById(
+          task.subscription_id
+        );
+        if (!result.success || !result.data) {
+          return ErrorResponses.notFound(reply, 'Subscription not found');
+        }
+
+        await logAdminAction(request, {
+          action: 'subscriptions.credentials.view',
+          entityType: 'subscription',
+          entityId: task.subscription_id,
+          metadata: {
+            context: 'mmu_task_view',
+            task_id: taskId,
+            credentialPresent: Boolean(result.data.credentials_encrypted),
+          },
+        });
+
+        if (!result.data.credentials_encrypted) {
+          return SuccessResponses.ok(reply, { credentials: null });
+        }
+
+        const decrypted = credentialsEncryptionService.decryptFromString(
+          result.data.credentials_encrypted
+        );
+        if (!decrypted.wasEncrypted && decrypted.migratedPayload) {
+          await subscriptionService.updateSubscriptionCredentialsEncryptedValue(
+            {
+              subscriptionId: task.subscription_id,
+              encryptedValue: decrypted.migratedPayload,
+            }
+          );
+        }
+
+        return SuccessResponses.ok(reply, {
+          credentials: decrypted.plaintext,
+          subscription_id: task.subscription_id,
+        });
+      } catch (error) {
+        Logger.error('Admin task credential view failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to retrieve task credentials'
+        );
+      }
+    }
+  );
+
   fastify.post(
     '/:taskId/paid',
     {
@@ -397,10 +519,15 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
                  ELSE notes || '\n' || $2
                END
            WHERE id = $3
-             AND task_type = 'renewal'
+             AND task_type = ANY($4::text[])
              AND completed_at IS NULL
            RETURNING *`,
-          [request.user?.userId || null, notePrefix, taskId]
+          [
+            request.user?.userId || null,
+            notePrefix,
+            taskId,
+            Array.from(renewalWorkflowTaskTypes),
+          ]
         );
 
         if (result.rows.length === 0) {
@@ -413,7 +540,7 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
             return ErrorResponses.notFound(reply, 'Task not found');
           }
 
-          if (existsResult.rows[0].task_type !== 'renewal') {
+          if (!renewalWorkflowTaskTypes.has(existsResult.rows[0].task_type)) {
             return ErrorResponses.badRequest(
               reply,
               'Task is not a renewal task'
@@ -484,10 +611,37 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
         if (task.completed_at) {
           return ErrorResponses.badRequest(reply, 'Task already completed');
         }
-        if (task.task_type !== 'renewal') {
+        if (!renewalWorkflowTaskTypes.has(task.task_type)) {
           return ErrorResponses.badRequest(reply, 'Task is not a renewal task');
         }
-        if (!task.payment_confirmed_at) {
+        if (task.task_type === 'manual_monthly_upgrade') {
+          const orderPaymentResult = await pool.query(
+            `SELECT o.id, o.status,
+                    EXISTS (
+                      SELECT 1
+                      FROM payments p
+                      WHERE p.order_id = o.id
+                        AND p.status = 'succeeded'
+                    ) AS has_succeeded_payment
+             FROM orders o
+             LEFT JOIN subscriptions s ON s.order_id = o.id
+             WHERE o.id = $1 OR s.id = $2
+             ORDER BY CASE WHEN o.id = $1 THEN 0 ELSE 1 END
+             LIMIT 1`,
+            [task.order_id || null, task.subscription_id || null]
+          );
+          const order = orderPaymentResult.rows[0] || null;
+          if (
+            !order ||
+            !['paid', 'in_process', 'delivered'].includes(order.status) ||
+            order.has_succeeded_payment !== true
+          ) {
+            return ErrorResponses.badRequest(
+              reply,
+              'Parent order payment must be verified before completing MMU renewal'
+            );
+          }
+        } else if (!task.payment_confirmed_at) {
           return ErrorResponses.badRequest(
             reply,
             'Confirm payment before completing renewal'
@@ -520,9 +674,6 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
                   s.user_id,
                   s.service_type,
                   s.service_plan,
-                  s.term_start_at,
-                  s.term_months,
-                  s.auto_renew,
                   p.name AS product_name,
                   pv.name AS variant_name
            FROM subscriptions s
@@ -534,53 +685,6 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
 
         if (subscriptionResult.rows.length > 0) {
           const subscription = subscriptionResult.rows[0];
-          const deliveredAtRaw = updateResult.rows[0]?.completed_at;
-          const deliveredAt =
-            deliveredAtRaw instanceof Date
-              ? deliveredAtRaw
-              : new Date(deliveredAtRaw || Date.now());
-          const termStartAt =
-            subscription.term_start_at instanceof Date
-              ? subscription.term_start_at
-              : subscription.term_start_at
-                ? new Date(subscription.term_start_at)
-                : null;
-          const termMonths = Number(subscription.term_months);
-
-          if (
-            Number.isFinite(termMonths) &&
-            termMonths > 0 &&
-            !Number.isNaN(deliveredAt.getTime()) &&
-            (!termStartAt || deliveredAt.getTime() > termStartAt.getTime())
-          ) {
-            const nextDates = computeNextRenewalDates({
-              endDate: deliveredAt,
-              termMonths,
-              autoRenew: subscription.auto_renew === true,
-              now: deliveredAt,
-            });
-
-            const subscriptionUpdate =
-              await subscriptionService.updateSubscriptionForAdmin(
-                subscription.id,
-                {
-                  term_start_at: deliveredAt,
-                  end_date: nextDates.endDate,
-                  renewal_date: nextDates.renewalDate,
-                  next_billing_at: nextDates.nextBillingAt,
-                }
-              );
-
-            if (!subscriptionUpdate.success) {
-              Logger.warn(
-                'Failed to adjust renewal term dates after fulfillment',
-                {
-                  subscriptionId: subscription.id,
-                  error: subscriptionUpdate.error,
-                }
-              );
-            }
-          }
 
           const subscriptionLabel = formatSubscriptionDisplayName({
             productName: subscription.product_name ?? null,

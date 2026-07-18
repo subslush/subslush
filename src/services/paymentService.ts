@@ -878,6 +878,7 @@ export class PaymentService {
     order: Order;
     orderItems: OrderItem[];
     renewalMethod: string | null;
+    client?: PoolClient;
   }): Promise<
     Array<{
       id: string;
@@ -886,10 +887,10 @@ export class PaymentService {
     }>
   > {
     if (params.orderItems.length === 0) {
-      return [];
+      throw new Error('fulfillment_order_items_missing');
     }
 
-    const pool = getDatabasePool();
+    const pool = params.client ?? getDatabasePool();
     const orderItemIds = params.orderItems.map(item => item.id);
     const existingResult = await pool.query(
       `SELECT id, order_item_id
@@ -910,7 +911,8 @@ export class PaymentService {
     );
     const selectionByItem =
       await orderItemUpgradeSelectionService.listSelectionsForOrder(
-        params.order.id
+        params.order.id,
+        params.client
       );
 
     const created: Array<{
@@ -940,7 +942,7 @@ export class PaymentService {
           orderId: params.order.id,
           orderItemId: item.id,
         });
-        continue;
+        throw new Error(`fulfillment_metadata_missing:${item.id}`);
       }
 
       const termMonths =
@@ -1007,31 +1009,38 @@ export class PaymentService {
       renewalDate.setDate(renewalDate.getDate() - 7);
       const nextBillingAt = autoRenew ? renewalDate : null;
 
-      const subscriptionResult = await subscriptionService.createSubscription(
-        params.order.user_id,
-        {
-          service_type: serviceType as any,
-          service_plan: servicePlan as any,
-          start_date: startDate,
-          end_date: endDate,
-          renewal_date: renewalDate,
-          auto_renew: autoRenew,
-          order_id: params.order.id,
-          order_item_id: item.id,
-          product_variant_id: item.product_variant_id ?? null,
-          price_cents: termTotalCents,
-          base_price_cents: basePriceCents ?? null,
-          discount_percent: discountPercent ?? null,
-          term_months: termMonths,
-          currency: currency ?? null,
-          next_billing_at: nextBillingAt,
-          renewal_method: params.renewalMethod,
-          status_reason: 'payment_succeeded',
-          upgrade_options_snapshot: upgradeOptions ?? null,
-          selection_provided: selectionProvided,
-          manual_monthly_acknowledged: manualMonthlyAcknowledged,
-        }
-      );
+      const subscriptionInput = {
+        service_type: serviceType as any,
+        service_plan: servicePlan as any,
+        start_date: startDate,
+        end_date: endDate,
+        renewal_date: renewalDate,
+        auto_renew: autoRenew,
+        order_id: params.order.id,
+        order_item_id: item.id,
+        product_variant_id: item.product_variant_id ?? null,
+        price_cents: termTotalCents,
+        base_price_cents: basePriceCents ?? null,
+        discount_percent: discountPercent ?? null,
+        term_months: termMonths,
+        currency: currency ?? null,
+        next_billing_at: nextBillingAt,
+        renewal_method: params.renewalMethod,
+        status_reason: 'payment_succeeded',
+        upgrade_options_snapshot: upgradeOptions ?? null,
+        selection_provided: selectionProvided,
+        manual_monthly_acknowledged: manualMonthlyAcknowledged,
+      };
+      const subscriptionResult = params.client
+        ? await subscriptionService.createSubscription(
+            params.order.user_id,
+            subscriptionInput,
+            params.client
+          )
+        : await subscriptionService.createSubscription(
+            params.order.user_id,
+            subscriptionInput
+          );
 
       if (!subscriptionResult.success || !subscriptionResult.data) {
         const errorMessage = subscriptionResult.success
@@ -1042,7 +1051,7 @@ export class PaymentService {
           orderItemId: item.id,
           error: errorMessage,
         });
-        continue;
+        throw new Error(`fulfillment_subscription_failed:${item.id}`);
       }
 
       const subscription = subscriptionResult.data;
@@ -1056,23 +1065,26 @@ export class PaymentService {
         subscription.term_start_at || subscription.start_date;
       const mmuCycleTotal = termMonths > 1 ? termMonths : null;
       const mmuCycleIndex = mmuCycleTotal ? 1 : null;
-      const entitlement = await orderEntitlementService.upsertEntitlement({
-        order_id: params.order.id,
-        order_item_id: item.id,
-        user_id: params.order.user_id,
-        status: subscription.status,
-        starts_at: subscriptionStartAt,
-        ends_at: subscription.end_date,
-        duration_months_snapshot: termMonths,
-        credentials_encrypted: selectionRow?.credentials_encrypted ?? null,
-        mmu_cycle_index: mmuCycleIndex,
-        mmu_cycle_total: mmuCycleTotal,
-        source_subscription_id: subscription.id,
-        metadata: {
-          source: 'payment_service.createSubscriptionsForOrder',
-          renewal_method: params.renewalMethod,
+      const entitlement = await orderEntitlementService.upsertEntitlement(
+        {
+          order_id: params.order.id,
+          order_item_id: item.id,
+          user_id: params.order.user_id,
+          status: subscription.status,
+          starts_at: subscriptionStartAt,
+          ends_at: subscription.end_date,
+          duration_months_snapshot: termMonths,
+          credentials_encrypted: selectionRow?.credentials_encrypted ?? null,
+          mmu_cycle_index: mmuCycleIndex,
+          mmu_cycle_total: mmuCycleTotal,
+          source_subscription_id: subscription.id,
+          metadata: {
+            source: 'payment_service.createSubscriptionsForOrder',
+            renewal_method: params.renewalMethod,
+          },
         },
-      });
+        params.client
+      );
       if (!entitlement) {
         Logger.warn('Failed to upsert order entitlement for order item', {
           orderId: params.order.id,
@@ -1083,24 +1095,357 @@ export class PaymentService {
 
       if (selectionRow) {
         if (selectionRow.selection_type) {
-          await upgradeSelectionService.submitSelection({
-            subscriptionId: subscription.id,
-            selectionType: selectionRow.selection_type as any,
-            accountIdentifier: selectionRow.account_identifier ?? null,
-            credentials: selectionRow.credentials_encrypted ?? null,
-            manualMonthlyAcknowledgedAt:
-              selectionRow.manual_monthly_acknowledged_at ?? null,
-          });
+          await upgradeSelectionService.submitSelection(
+            {
+              subscriptionId: subscription.id,
+              selectionType: selectionRow.selection_type as any,
+              accountIdentifier: selectionRow.account_identifier ?? null,
+              credentials: selectionRow.credentials_encrypted ?? null,
+              manualMonthlyAcknowledgedAt:
+                selectionRow.manual_monthly_acknowledged_at ?? null,
+            },
+            params.client
+          );
         } else if (selectionRow.manual_monthly_acknowledged_at) {
-          await upgradeSelectionService.acknowledgeManualMonthly({
-            subscriptionId: subscription.id,
-            acknowledgedAt: selectionRow.manual_monthly_acknowledged_at,
-          });
+          await upgradeSelectionService.acknowledgeManualMonthly(
+            {
+              subscriptionId: subscription.id,
+              acknowledgedAt: selectionRow.manual_monthly_acknowledged_at,
+            },
+            params.client
+          );
         }
       }
     }
 
+    if (created.length !== params.orderItems.length) {
+      throw new Error(
+        `fulfillment_subscription_count_mismatch:${created.length}/${params.orderItems.length}`
+      );
+    }
+
+    const createdIds = created.map(subscription => subscription.id);
+    const taskResult = await pool.query(
+      `SELECT COUNT(DISTINCT subscription_id)::int AS task_count
+       FROM admin_tasks
+       WHERE order_id = $1
+         AND subscription_id = ANY($2::uuid[])
+         AND completed_at IS NULL`,
+      [params.order.id, createdIds]
+    );
+    const taskCount = Number(taskResult.rows[0]?.task_count ?? 0);
+    if (taskCount !== params.orderItems.length) {
+      throw new Error(
+        `fulfillment_task_count_mismatch:${taskCount}/${params.orderItems.length}`
+      );
+    }
+
     return created;
+  }
+
+  private async markOrderFulfillmentFailed(params: {
+    order: Order;
+    provider: string;
+    providerReference?: string | null;
+    error: unknown;
+  }): Promise<void> {
+    const errorMessage =
+      params.error instanceof Error
+        ? params.error.message
+        : String(params.error);
+    const pool = getDatabasePool();
+    const metadata = {
+      fulfillment_failure: true,
+      fulfillment_failure_provider: params.provider,
+      fulfillment_failure_reference: params.providerReference ?? null,
+      fulfillment_failure_error: errorMessage,
+      fulfillment_failure_at: new Date().toISOString(),
+    };
+
+    await pool.query(
+      `UPDATE orders
+       SET status = 'cancelled',
+           status_reason = 'payment_succeeded_fulfillment_failed',
+           metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [params.order.id, JSON.stringify(metadata)]
+    );
+    await pool.query(
+      `UPDATE payments
+       SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+           updated_at = NOW()
+       WHERE order_id = $1
+         AND status = 'succeeded'`,
+      [params.order.id, JSON.stringify(metadata)]
+    );
+    await pool.query(
+      `INSERT INTO admin_tasks
+        (order_id, user_id, task_type, due_date, priority, notes, task_category, sla_due_at, is_issue)
+       SELECT $1, $2, 'support', NOW(), 'urgent', $3, 'payment_fulfillment_failure', NOW(), TRUE
+       WHERE NOT EXISTS (
+         SELECT 1 FROM admin_tasks
+         WHERE order_id = $1
+           AND task_category = 'payment_fulfillment_failure'
+           AND completed_at IS NULL
+       )`,
+      [
+        params.order.id,
+        params.order.user_id,
+        `Payment succeeded through ${params.provider}, but fulfillment entity creation failed: ${errorMessage}`,
+      ]
+    );
+    await couponService.voidRedemptionForOrder(params.order.id);
+    Logger.error('Payment succeeded but fulfillment entities were incomplete', {
+      orderId: params.order.id,
+      provider: params.provider,
+      providerReference: params.providerReference ?? null,
+      error: errorMessage,
+    });
+  }
+
+  private async createRequiredFulfillmentEntities(params: {
+    order: Order;
+    orderItems: OrderItem[];
+    renewalMethod: string | null;
+    provider: string;
+    providerReference?: string | null;
+  }): Promise<Array<{
+    id: string;
+    orderItemId: string;
+    autoRenew: boolean;
+  }> | null> {
+    try {
+      return await this.createSubscriptionsForOrder({
+        order: params.order,
+        orderItems: params.orderItems,
+        renewalMethod: params.renewalMethod,
+      });
+    } catch (error) {
+      await this.markOrderFulfillmentFailed({
+        order: params.order,
+        provider: params.provider,
+        ...(params.providerReference !== undefined
+          ? { providerReference: params.providerReference }
+          : {}),
+        error,
+      });
+      return null;
+    }
+  }
+
+  async confirmManualOrderPayment(params: {
+    orderId: string;
+    adminUserId: string;
+    note: string;
+    source?: 'manual' | 'qa_checkout';
+    audit?: {
+      ipAddress?: string | null;
+      userAgent?: string | null;
+      requestId?: string | null;
+    };
+  }): Promise<{
+    success: boolean;
+    error?: string;
+    status?: string;
+    orderStatus?: string;
+    subscriptionsCreated?: number;
+    tasksOpen?: number;
+  }> {
+    const note = params.note.trim();
+    const source = params.source ?? 'manual';
+    const isQaCheckout = source === 'qa_checkout';
+    const eligibleOrderStatuses = isQaCheckout
+      ? ['cart', 'pending_payment']
+      : ['pending_payment'];
+    if (!note) {
+      return { success: false, error: 'note_required', status: 'invalid' };
+    }
+
+    const order = await orderService.getOrderWithItems(params.orderId);
+    if (!order) {
+      return { success: false, error: 'order_not_found', status: 'not_found' };
+    }
+    if (!eligibleOrderStatuses.includes(order.status)) {
+      return {
+        success: false,
+        error: 'order_not_pending_payment',
+        status: 'invalid_state',
+        orderStatus: order.status,
+      };
+    }
+    if (!order.items || order.items.length === 0) {
+      return {
+        success: false,
+        error: 'order_missing_items',
+        status: 'invalid',
+      };
+    }
+
+    const pool = getDatabasePool();
+    const client = await pool.connect();
+    const manualPaymentId = `${isQaCheckout ? 'qa' : 'manual'}_${params.orderId}`;
+
+    try {
+      await client.query('BEGIN');
+
+      const lockedOrder = await client.query(
+        `SELECT status FROM orders WHERE id = $1 FOR UPDATE`,
+        [order.id]
+      );
+      if (lockedOrder.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return {
+          success: false,
+          error: 'order_not_found',
+          status: 'not_found',
+        };
+      }
+      if (!eligibleOrderStatuses.includes(lockedOrder.rows[0].status)) {
+        await client.query('ROLLBACK');
+        return {
+          success: false,
+          error: 'order_not_pending_payment',
+          status: 'invalid_state',
+          orderStatus: lockedOrder.rows[0].status,
+        };
+      }
+
+      let payment = await paymentRepository.findByProviderPaymentId(
+        'manual',
+        manualPaymentId,
+        client
+      );
+      if (!payment) {
+        payment = await paymentRepository.create(
+          {
+            userId: order.user_id,
+            provider: 'manual',
+            providerPaymentId: manualPaymentId,
+            status: 'succeeded',
+            providerStatus: isQaCheckout ? 'qa_completed' : 'manual_confirmed',
+            purpose: 'subscription',
+            amount: (order.total_cents ?? 0) / 100,
+            currency: (order.currency || 'USD').toLowerCase(),
+            paymentMethodType: isQaCheckout ? 'qa_payment' : 'manual',
+            orderId: order.id,
+            // The deferrable singleton trigger requires this denormalized
+            // reference whenever the allocation has exactly one item.
+            ...(order.items.length === 1 && order.items[0]?.id
+              ? { orderItemId: order.items[0].id }
+              : {}),
+            metadata: {
+              order_id: order.id,
+              admin_user_id: params.adminUserId,
+              note,
+              payment_source: source,
+              confirmed_at: new Date().toISOString(),
+            },
+          },
+          client
+        );
+      }
+
+      await this.createPaymentItemAllocations({
+        paymentRecordId: payment.id,
+        orderItems: order.items,
+        client,
+      });
+
+      const updateResult = await client.query(
+        `UPDATE orders
+         SET status = 'in_process',
+             status_reason = $1,
+             payment_provider = 'manual',
+             payment_reference = $2,
+             updated_at = NOW()
+         WHERE id = $3
+           AND status = ANY($4::text[])
+         RETURNING id`,
+        [
+          isQaCheckout ? 'qa_payment_confirmed' : 'manual_payment_confirmed',
+          manualPaymentId,
+          order.id,
+          eligibleOrderStatuses,
+        ]
+      );
+      if (updateResult.rows.length === 0) {
+        throw new Error('order_not_pending_payment');
+      }
+
+      const createdSubscriptions = await this.createSubscriptionsForOrder({
+        order,
+        orderItems: order.items,
+        renewalMethod: 'manual',
+        client,
+      });
+      if (createdSubscriptions.length !== order.items.length) {
+        throw new Error('manual_subscription_creation_failed');
+      }
+
+      await couponService.finalizeRedemptionForOrder(order.id, client);
+      const taskResult = await client.query(
+        `SELECT COUNT(*)::int AS open_tasks
+         FROM admin_tasks
+         WHERE order_id = $1
+           AND completed_at IS NULL`,
+        [order.id]
+      );
+
+      await client.query(
+        `INSERT INTO admin_audit_logs
+          (user_id, action, entity_type, entity_id, metadata, ip_address, user_agent, request_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          params.adminUserId,
+          isQaCheckout
+            ? 'orders.mark_paid.qa_checkout'
+            : 'orders.mark_paid.manual',
+          'order',
+          order.id,
+          JSON.stringify({
+            note,
+            payment_source: source,
+            subscriptions_created: createdSubscriptions.length,
+            open_tasks: Number(taskResult.rows[0]?.open_tasks ?? 0),
+          }),
+          params.audit?.ipAddress ?? null,
+          params.audit?.userAgent ?? null,
+          params.audit?.requestId ?? null,
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      // Email delivery is intentionally outside the transaction: it is an
+      // external side effect and must not be able to leave the order half-paid.
+      const confirmationResult =
+        await orderService.sendOrderPaymentConfirmationEmail(order.id);
+      if (
+        !confirmationResult.success &&
+        !['already_sent', 'renewal_order'].includes(
+          confirmationResult.reason ?? ''
+        )
+      ) {
+        Logger.warn('Manual mark-paid confirmation email failed', {
+          orderId: order.id,
+          reason: confirmationResult.reason,
+        });
+      }
+
+      return {
+        success: true,
+        status: 'confirmed',
+        orderStatus: 'in_process',
+        subscriptionsCreated: createdSubscriptions.length,
+        tasksOpen: Number(taskResult.rows[0]?.open_tasks ?? 0),
+      };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   private parseMetadataDate(value: unknown): Date | null {
@@ -1661,7 +2006,6 @@ export class PaymentService {
             1;
           const now = new Date();
           const currentEndDate = new Date(subscription.end_date);
-          const termStartAt = currentEndDate > now ? currentEndDate : now;
           const nextDates = computeNextRenewalDates({
             endDate: currentEndDate,
             termMonths,
@@ -1704,7 +2048,6 @@ export class PaymentService {
             await subscriptionService.updateSubscriptionForRenewalWithGuard({
               subscriptionId,
               updates: {
-                term_start_at: termStartAt,
                 end_date: nextDates.endDate,
                 renewal_date: nextDates.renewalDate,
                 next_billing_at: nextDates.nextBillingAt,
@@ -2307,11 +2650,18 @@ export class PaymentService {
         });
       }
 
-      const createdSubscriptions = await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: 'stripe',
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: 'stripe',
+          provider: 'stripe',
+          providerReference: paymentIntentId,
+        }
+      );
+      if (!createdSubscriptions) {
+        return false;
+      }
 
       const autoRenewSubscriptions = createdSubscriptions.filter(
         subscription => subscription.autoRenew
@@ -2548,11 +2898,18 @@ export class PaymentService {
         orderItems: order.items,
       });
 
-      await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: null,
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: null,
+          provider: 'nowpayments',
+          providerReference: payment.providerPaymentId,
+        }
+      );
+      if (!createdSubscriptions) {
+        return false;
+      }
 
       await couponService.finalizeRedemptionForOrder(orderId);
 
@@ -3547,6 +3904,41 @@ export class PaymentService {
       `,
       [cutoff, ['stripe', 'nowpayments', 'paypal'], batchSize]
     );
+    const payopAntomTtlHours = env.PAYOP_ANTOM_PENDING_PAYMENT_TTL_HOURS;
+    const payopAntomCutoff =
+      payopAntomTtlHours > 0
+        ? new Date(Date.now() - payopAntomTtlHours * 60 * 60 * 1000)
+        : null;
+    const payopAntomResult = payopAntomCutoff
+      ? await pool.query(
+          `
+          SELECT
+            o.id AS order_id,
+            o.user_id,
+            o.payment_provider,
+            o.payment_reference,
+            p.id AS payment_row_id,
+            COALESCE(p.created_at, o.updated_at, o.created_at) AS started_at
+          FROM orders o
+          LEFT JOIN payments p
+            ON p.provider = o.payment_provider
+           AND p.provider_payment_id = o.payment_reference
+          WHERE o.status = 'pending_payment'
+            AND o.payment_provider = ANY($2::text[])
+            AND COALESCE(p.status, 'pending') IN ('pending', 'requires_action', 'processing')
+            AND COALESCE(p.created_at, o.updated_at, o.created_at) <= $1
+            AND NOT EXISTS (
+              SELECT 1
+              FROM payments succeeded
+              WHERE succeeded.order_id = o.id
+                AND succeeded.status = 'succeeded'
+            )
+          ORDER BY COALESCE(p.created_at, o.updated_at, o.created_at) ASC
+          LIMIT $3
+          `,
+          [payopAntomCutoff, ['payop', 'antom'], batchSize]
+        )
+      : { rows: [] };
 
     let cancelled = 0;
     let reconciled = 0;
@@ -3605,8 +3997,50 @@ export class PaymentService {
       }
     }
 
+    for (const row of payopAntomResult.rows) {
+      const orderId = row.order_id as string;
+      const paymentId = row.payment_reference as string | null;
+      const paymentProvider = row.payment_provider as string | null;
+      try {
+        await pool.query(
+          `UPDATE payments
+           SET status = 'expired',
+               provider_status = COALESCE(provider_status, 'expired'),
+               metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb,
+               updated_at = NOW()
+           WHERE provider = $2
+             AND provider_payment_id = $3
+             AND status <> 'succeeded'`,
+          [
+            JSON.stringify({
+              timeout_reason: 'checkout_timeout',
+              timeout_cancelled_at: new Date().toISOString(),
+              timeout_source: 'sweepStaleCheckoutSessions',
+            }),
+            paymentProvider,
+            paymentId,
+          ]
+        );
+        await orderService.updateOrderStatus(
+          orderId,
+          'cancelled',
+          'checkout_timeout'
+        );
+        await couponService.voidRedemptionForOrder(orderId);
+        cancelled += 1;
+      } catch (error) {
+        errors += 1;
+        Logger.warn('Failed to sweep stale Payop/Antom checkout', {
+          orderId,
+          paymentProvider,
+          paymentId,
+          error,
+        });
+      }
+    }
+
     return {
-      scanned: result.rows.length,
+      scanned: result.rows.length + payopAntomResult.rows.length,
       cancelled,
       reconciled,
       skipped,
@@ -5420,7 +5854,6 @@ export class PaymentService {
       1;
     const now = new Date();
     const currentEndDate = new Date(subscription.end_date);
-    const termStartAt = currentEndDate > now ? currentEndDate : now;
     const nextDates = computeNextRenewalDates({
       endDate: currentEndDate,
       termMonths,
@@ -5464,7 +5897,6 @@ export class PaymentService {
       await subscriptionService.updateSubscriptionForRenewalWithGuard({
         subscriptionId: renewalContext.subscriptionId,
         updates: {
-          term_start_at: termStartAt,
           end_date: nextDates.endDate,
           renewal_date: nextDates.renewalDate,
           next_billing_at: null,
@@ -5919,11 +6351,17 @@ export class PaymentService {
         localpayId: params.localpayId,
       });
       if (!renewalApplied) {
-        await this.createSubscriptionsForOrder({
-          order,
-          orderItems: order.items,
-          renewalMethod: null,
-        });
+        const createdSubscriptions =
+          await this.createRequiredFulfillmentEntities({
+            order,
+            orderItems: order.items,
+            renewalMethod: null,
+            provider: 'pay4bit',
+            providerReference: params.localpayId,
+          });
+        if (!createdSubscriptions) {
+          return false;
+        }
       }
 
       await couponService.finalizeRedemptionForOrder(params.orderId);
@@ -6054,11 +6492,18 @@ export class PaymentService {
         orderItems: order.items,
       });
 
-      await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: null,
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: null,
+          provider: 'paypal',
+          providerReference: params.paypalOrderId,
+        }
+      );
+      if (!createdSubscriptions) {
+        return false;
+      }
 
       await couponService.finalizeRedemptionForOrder(params.orderId);
 
@@ -6187,11 +6632,18 @@ export class PaymentService {
         orderItems: order.items,
       });
 
-      await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: null,
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: null,
+          provider: 'payop',
+          providerReference: params.invoiceId,
+        }
+      );
+      if (!createdSubscriptions) {
+        return false;
+      }
 
       await couponService.finalizeRedemptionForOrder(params.orderId);
 
@@ -6416,11 +6868,18 @@ export class PaymentService {
         orderItems: order.items,
       });
 
-      await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: null,
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: null,
+          provider: 'antom',
+          providerReference: params.paymentRequestId,
+        }
+      );
+      if (!createdSubscriptions) {
+        return false;
+      }
 
       await couponService.finalizeRedemptionForOrder(params.orderId);
 
@@ -10038,11 +10497,41 @@ export class PaymentService {
         return { success: false, error: 'order_update_failed' };
       }
 
-      const createdSubscriptions = await this.createSubscriptionsForOrder({
-        order,
-        orderItems: order.items,
-        renewalMethod: 'credits',
-      });
+      const createdSubscriptions = await this.createRequiredFulfillmentEntities(
+        {
+          order,
+          orderItems: order.items,
+          renewalMethod: 'credits',
+          provider: 'credits',
+          providerReference: debitTransactionId,
+        }
+      );
+      if (!createdSubscriptions) {
+        const refundResult = await creditService.refundCredits(
+          params.userId,
+          amountDebited,
+          'Credits checkout fulfillment failed - automatic refund',
+          debitTransactionId ?? undefined,
+          { order_id: order.id, reason: 'fulfillment_failed' },
+          {
+            orderId: order.id,
+            priceCents: totalCents,
+            currency: orderCurrency,
+            autoRenew: order.auto_renew === true,
+            renewalMethod: 'credits',
+            statusReason: 'fulfillment_failed_refund',
+          }
+        );
+        if (!refundResult.success) {
+          Logger.error('Failed to refund credits after fulfillment failure', {
+            orderId: order.id,
+            userId: params.userId,
+            transactionId: debitTransactionId,
+            error: refundResult.error,
+          });
+        }
+        return { success: false, error: 'fulfillment_failed' };
+      }
 
       await couponService.finalizeRedemptionForOrder(order.id);
 
@@ -11756,31 +12245,35 @@ export class PaymentService {
         `Received ${fullCurrencies.length} currencies-full from NOWPayments API`
       );
 
-      const filtered = fullCurrencies.filter(currency => !currency.is_fiat);
-      if (filtered.length === 0) {
-        throw new Error('NOWPayments returned no supported crypto currencies');
+      if (fullCurrencies.length > 0) {
+        const filtered = fullCurrencies.filter(currency => !currency.is_fiat);
+        if (filtered.length === 0) {
+          throw new Error(
+            'NOWPayments returned no supported crypto currencies'
+          );
+        }
+
+        const tickerSet = new Set(
+          filtered.map(currency => currency.ticker.toLowerCase())
+        );
+
+        return filtered.map(currency => {
+          const lowerTicker = currency.ticker.toLowerCase();
+          const networkInfo = this.resolveNetworkInfo(lowerTicker, tickerSet);
+          return {
+            ticker: lowerTicker,
+            name: currency.name || this.generateCurrencyName(currency.ticker),
+            image:
+              currency.image ||
+              `https://nowpayments.io/images/coins/${lowerTicker}.svg`,
+            isPopular: currency.is_popular,
+            isStable: currency.is_stable,
+            baseTicker: networkInfo.baseTicker,
+            network: networkInfo.networkLabel,
+            networkCode: networkInfo.networkCode,
+          };
+        });
       }
-
-      const tickerSet = new Set(
-        filtered.map(currency => currency.ticker.toLowerCase())
-      );
-
-      return filtered.map(currency => {
-        const lowerTicker = currency.ticker.toLowerCase();
-        const networkInfo = this.resolveNetworkInfo(lowerTicker, tickerSet);
-        return {
-          ticker: lowerTicker,
-          name: currency.name || this.generateCurrencyName(currency.ticker),
-          image:
-            currency.image ||
-            `https://nowpayments.io/images/coins/${lowerTicker}.svg`,
-          isPopular: currency.is_popular,
-          isStable: currency.is_stable,
-          baseTicker: networkInfo.baseTicker,
-          network: networkInfo.networkLabel,
-          networkCode: networkInfo.networkCode,
-        };
-      });
     } catch (error) {
       Logger.warn(
         'Falling back to basic currency list from NOWPayments',

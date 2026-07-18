@@ -219,6 +219,7 @@ export interface ProductDetail {
     logoKey?: string | null;
     category?: string | null;
     sub_category?: string | null;
+    duration_months?: number | null;
     terms_conditions?: string[] | null;
     termsConditions?: string[] | null;
     upgrade_options?: UpgradeOptions | null;
@@ -330,6 +331,20 @@ export interface Subscription {
   renewal_state?: string;
   days_until_renewal?: number | null;
   metadata?: Record<string, unknown> | string | null;
+  product_options?: {
+    activation_link_handshake?: boolean;
+    activation_instructions_template?: string | null;
+    strict_rules?: boolean;
+    strict_rules_text?: string | null;
+    strict_rules_version?: number | null;
+    [key: string]: unknown;
+  } | null;
+  activation_handshake_state?: string | null;
+  strict_rules_accepted?: boolean;
+  delivered_at?: string | null;
+  activation_instructions_delivered_at?: string | null;
+  activation_customer_ready_at?: string | null;
+  activation_link_delivered_at?: string | null;
   order_id?: string | null;
   order_item_id?: string | null;
   product_variant_id?: string | null;

@@ -1,4 +1,5 @@
 import Ajv, { type ValidateFunction } from 'ajv';
+import type { PoolClient } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabasePool } from '../config/database';
 import { redisClient } from '../config/redis';
@@ -164,7 +165,8 @@ export class SubscriptionService {
 
   async createSubscription(
     userId: string,
-    input: CreateSubscriptionInput
+    input: CreateSubscriptionInput,
+    client?: PoolClient
   ): Promise<SubscriptionResult> {
     try {
       Logger.info('Creating subscription', {
@@ -201,7 +203,7 @@ export class SubscriptionService {
       }
 
       const subscriptionId = uuidv4();
-      const pool = getDatabasePool();
+      const pool = client ?? getDatabasePool();
 
       const requestedStatus = input.status ?? 'pending';
       const initialStatus =
@@ -317,11 +319,14 @@ export class SubscriptionService {
       await this.clearStatsCache();
 
       if (upgradeOptionsSnapshot) {
-        await upgradeSelectionService.ensureSelection({
-          subscriptionId,
-          orderId: input.order_id || null,
-          upgradeOptions: upgradeOptionsSnapshot,
-        });
+        await upgradeSelectionService.ensureSelection(
+          {
+            subscriptionId,
+            orderId: input.order_id || null,
+            upgradeOptions: upgradeOptionsSnapshot,
+          },
+          client
+        );
       }
 
       if (selectionRequired && upgradeOptionsSnapshot && !selectionProvided) {
@@ -332,12 +337,15 @@ export class SubscriptionService {
         if (input.order_id) {
           noteParts.push(`Order ${input.order_id}`);
         }
-        await this.createSelectionPendingTask({
-          subscriptionId,
-          userId,
-          orderId: input.order_id || null,
-          notes: noteParts.join(' '),
-        });
+        await this.createSelectionPendingTask(
+          {
+            subscriptionId,
+            userId,
+            orderId: input.order_id || null,
+            notes: noteParts.join(' '),
+          },
+          client
+        );
       } else {
         if (!manualMonthlyOnly && subscription.status === 'pending') {
           const noteParts = [
@@ -347,12 +355,15 @@ export class SubscriptionService {
           if (input.order_id) {
             noteParts.push(`Order ${input.order_id}`);
           }
-          await this.createCredentialProvisionTask({
-            subscriptionId,
-            userId,
-            orderId: input.order_id || null,
-            notes: noteParts.join(' '),
-          });
+          await this.createCredentialProvisionTask(
+            {
+              subscriptionId,
+              userId,
+              orderId: input.order_id || null,
+              notes: noteParts.join(' '),
+            },
+            client
+          );
         }
       }
 
@@ -367,14 +378,17 @@ export class SubscriptionService {
     }
   }
 
-  async createCredentialProvisionTask(params: {
-    subscriptionId: string;
-    userId: string;
-    orderId?: string | null;
-    notes?: string;
-  }): Promise<boolean> {
+  async createCredentialProvisionTask(
+    params: {
+      subscriptionId: string;
+      userId: string;
+      orderId?: string | null;
+      notes?: string;
+    },
+    client?: PoolClient
+  ): Promise<boolean> {
     try {
-      const pool = getDatabasePool();
+      const pool = client ?? getDatabasePool();
       const dueDate = new Date(
         Date.now() + CREDENTIAL_PROVISION_TASK_DUE_HOURS * 60 * 60 * 1000
       );
@@ -415,14 +429,17 @@ export class SubscriptionService {
     }
   }
 
-  async createSelectionPendingTask(params: {
-    subscriptionId: string;
-    userId: string;
-    orderId?: string | null;
-    notes?: string;
-  }): Promise<boolean> {
+  async createSelectionPendingTask(
+    params: {
+      subscriptionId: string;
+      userId: string;
+      orderId?: string | null;
+      notes?: string;
+    },
+    client?: PoolClient
+  ): Promise<boolean> {
     try {
-      const pool = getDatabasePool();
+      const pool = client ?? getDatabasePool();
       const dueDate = new Date(
         Date.now() + SELECTION_PENDING_TASK_DUE_HOURS * 60 * 60 * 1000
       );
@@ -776,7 +793,10 @@ export class SubscriptionService {
     updates: UpdateSubscriptionInput
   ): Promise<SubscriptionResult> {
     try {
-      Logger.info('Admin updating subscription', { subscriptionId, updates });
+      Logger.info('Admin updating subscription', {
+        subscriptionId,
+        changedFields: Object.keys(updates),
+      });
 
       const pool = getDatabasePool();
       const currentResult = await pool.query(
@@ -857,7 +877,9 @@ export class SubscriptionService {
       }
 
       if (updates.term_start_at !== undefined) {
-        updateFields.push(`term_start_at = $${++paramCount}`);
+        updateFields.push(
+          `term_start_at = COALESCE(term_start_at, $${++paramCount})`
+        );
         updateValues.push(updates.term_start_at);
       }
 
@@ -910,6 +932,50 @@ export class SubscriptionService {
       if (updates.status_reason !== undefined) {
         updateFields.push(`status_reason = $${++paramCount}`);
         updateValues.push(updates.status_reason);
+      }
+
+      if (updates.delivered_at !== undefined) {
+        updateFields.push(`delivered_at = $${++paramCount}`);
+        updateValues.push(updates.delivered_at);
+      }
+
+      if (updates.delivered_by !== undefined) {
+        updateFields.push(`delivered_by = $${++paramCount}`);
+        updateValues.push(updates.delivered_by);
+      }
+
+      if (updates.delivery_email_sent_at !== undefined) {
+        updateFields.push(`delivery_email_sent_at = $${++paramCount}`);
+        updateValues.push(updates.delivery_email_sent_at);
+      }
+
+      if (updates.activation_handshake_state !== undefined) {
+        updateFields.push(`activation_handshake_state = $${++paramCount}`);
+        updateValues.push(updates.activation_handshake_state);
+      }
+
+      if (updates.activation_instructions_delivered_at !== undefined) {
+        updateFields.push(
+          `activation_instructions_delivered_at = $${++paramCount}`
+        );
+        updateValues.push(updates.activation_instructions_delivered_at);
+      }
+
+      if (updates.activation_customer_ready_at !== undefined) {
+        updateFields.push(`activation_customer_ready_at = $${++paramCount}`);
+        updateValues.push(updates.activation_customer_ready_at);
+      }
+
+      if (updates.activation_link_delivered_at !== undefined) {
+        updateFields.push(`activation_link_delivered_at = $${++paramCount}`);
+        updateValues.push(updates.activation_link_delivered_at);
+      }
+
+      if (updates.activation_handshake_restarted_at !== undefined) {
+        updateFields.push(
+          `activation_handshake_restarted_at = $${++paramCount}`
+        );
+        updateValues.push(updates.activation_handshake_restarted_at);
       }
 
       if (updates.cancellation_requested_at !== undefined) {
@@ -1116,7 +1182,9 @@ export class SubscriptionService {
       }
 
       if (params.updates.term_start_at !== undefined) {
-        updateFields.push(`term_start_at = $${++paramCount}`);
+        updateFields.push(
+          `term_start_at = COALESCE(term_start_at, $${++paramCount})`
+        );
         updateValues.push(params.updates.term_start_at);
       }
 
@@ -1306,7 +1374,11 @@ export class SubscriptionService {
     updates: UpdateSubscriptionInput
   ): Promise<SubscriptionResult> {
     try {
-      Logger.info('Updating subscription', { subscriptionId, userId, updates });
+      Logger.info('Updating subscription', {
+        subscriptionId,
+        userId,
+        changedFields: Object.keys(updates),
+      });
 
       const pool = getDatabasePool();
 
@@ -1393,7 +1465,9 @@ export class SubscriptionService {
       }
 
       if (updates.term_start_at !== undefined) {
-        updateFields.push(`term_start_at = $${++paramCount}`);
+        updateFields.push(
+          `term_start_at = COALESCE(term_start_at, $${++paramCount})`
+        );
         updateValues.push(updates.term_start_at);
       }
 
@@ -1681,7 +1755,9 @@ export class SubscriptionService {
         updateValues.push(dateOverrides.start_date);
       }
       if (dateOverrides?.term_start_at !== undefined) {
-        updateFields.push(`term_start_at = $${++paramCount}`);
+        updateFields.push(
+          `term_start_at = COALESCE(term_start_at, $${++paramCount})`
+        );
         updateValues.push(dateOverrides.term_start_at);
       }
       if (dateOverrides?.end_date) {
@@ -1803,69 +1879,8 @@ export class SubscriptionService {
     const reason = options?.reason || 'order_delivered';
     try {
       const pool = getDatabasePool();
-      const orderResult = await pool.query(
-        'SELECT metadata, status, updated_at, term_months FROM orders WHERE id = $1',
-        [orderId]
-      );
-      const orderRow = orderResult.rows[0] || null;
-      const orderMetadata = parseJsonValue<Record<string, any>>(
-        orderRow?.metadata,
-        {}
-      );
-      const orderUpdatedAt = orderRow?.updated_at
-        ? new Date(orderRow.updated_at)
-        : null;
-      const deliveredAt =
-        orderRow?.status === 'delivered' &&
-        orderUpdatedAt &&
-        !Number.isNaN(orderUpdatedAt.getTime())
-          ? orderUpdatedAt
-          : new Date();
-
-      const parseDurationMonths = (value: unknown): number | null => {
-        if (value === null || value === undefined) return null;
-        const parsed = Number(value);
-        if (!Number.isFinite(parsed) || parsed <= 0) return null;
-        return Math.floor(parsed);
-      };
-
-      const orderDurationMonths =
-        parseDurationMonths(orderRow?.term_months) ??
-        parseDurationMonths(orderMetadata?.['duration_months']) ??
-        parseDurationMonths(orderMetadata?.['term_months']) ??
-        parseDurationMonths(orderMetadata?.['durationMonths']) ??
-        parseDurationMonths(orderMetadata?.['termMonths']);
-
-      const itemsResult = await pool.query(
-        'SELECT product_variant_id, metadata, term_months FROM order_items WHERE order_id = $1 ORDER BY created_at ASC',
-        [orderId]
-      );
-      let itemDurationMonths: number | null = null;
-      const durationByVariant = new Map<string, number>();
-      for (const item of itemsResult.rows) {
-        const itemMetadata = parseJsonValue<Record<string, any>>(
-          item.metadata,
-          {}
-        );
-        const candidate =
-          parseDurationMonths(item.term_months) ??
-          parseDurationMonths(itemMetadata?.['duration_months']) ??
-          parseDurationMonths(itemMetadata?.['term_months']) ??
-          parseDurationMonths(itemMetadata?.['durationMonths']) ??
-          parseDurationMonths(itemMetadata?.['termMonths']);
-        if (!candidate) {
-          continue;
-        }
-        if (!itemDurationMonths) {
-          itemDurationMonths = candidate;
-        }
-        if (item.product_variant_id) {
-          durationByVariant.set(item.product_variant_id, candidate);
-        }
-      }
-
       const result = await pool.query(
-        `SELECT id, status, credentials_encrypted, auto_renew, start_date, end_date, product_variant_id, term_months
+        `SELECT id
          FROM subscriptions
          WHERE order_id = $1`,
         [orderId]
@@ -1875,65 +1890,16 @@ export class SubscriptionService {
       let skipped = 0;
 
       for (const row of result.rows) {
-        if (row.status !== 'pending') {
-          skipped += 1;
-          continue;
-        }
-        if (requireCredentials && !row.credentials_encrypted) {
-          skipped += 1;
-          continue;
-        }
-
-        const variantDuration =
-          row.product_variant_id &&
-          durationByVariant.has(row.product_variant_id)
-            ? durationByVariant.get(row.product_variant_id)
-            : null;
-        let durationMonths =
-          parseDurationMonths(row.term_months) ??
-          variantDuration ??
-          orderDurationMonths ??
-          itemDurationMonths;
-        if (!durationMonths || durationMonths <= 0) {
-          Logger.warn('Invalid subscription duration, defaulting to 1 month', {
-            subscriptionId: row.id,
-            orderId,
-            durationMonths,
-          });
-          durationMonths = 1;
-        }
-
-        const deliveredAtTime = !Number.isNaN(deliveredAt.getTime())
-          ? deliveredAt
-          : null;
-        const fallbackStart = row.term_start_at
-          ? new Date(row.term_start_at)
-          : row.start_date
-            ? new Date(row.start_date)
-            : new Date();
-        const termStartAt = deliveredAtTime || fallbackStart;
-
-        const endDate = new Date(termStartAt);
-        endDate.setMonth(endDate.getMonth() + durationMonths);
-        const renewalDate = new Date(endDate);
-        renewalDate.setDate(renewalDate.getDate() - 7);
-        const nextBillingAt = row.auto_renew ? renewalDate : null;
-
-        const updateResult = await this.updateSubscriptionStatus(
+        const updateResult = await this.activateSubscriptionForOrderItem(
+          orderId,
           row.id,
-          'active',
-          reason,
           updatedBy,
           {
-            start_date: termStartAt,
-            term_start_at: termStartAt,
-            end_date: endDate,
-            renewal_date: renewalDate,
-            next_billing_at: nextBillingAt,
-            term_months: durationMonths,
+            requireCredentials,
+            reason,
           }
         );
-        if (updateResult.success) {
+        if (updateResult.updated) {
           updated += 1;
         } else {
           skipped += 1;
@@ -1947,6 +1913,177 @@ export class SubscriptionService {
         error,
       });
       return { updated: 0, skipped: 0 };
+    }
+  }
+
+  async activateSubscriptionForOrderItem(
+    orderId: string,
+    subscriptionId: string,
+    updatedBy: string,
+    options?: {
+      requireCredentials?: boolean;
+      reason?: string;
+      deliveredAt?: Date;
+    }
+  ): Promise<{
+    updated: boolean;
+    skipped: boolean;
+    subscription?: Subscription;
+    error?: string;
+  }> {
+    const requireCredentials = options?.requireCredentials ?? true;
+    const reason = options?.reason || 'order_item_delivered';
+    try {
+      const pool = getDatabasePool();
+      const parseDurationMonths = (value: unknown): number | null => {
+        if (value === null || value === undefined) return null;
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed <= 0) return null;
+        return Math.floor(parsed);
+      };
+
+      const result = await pool.query(
+        `SELECT s.*,
+                o.metadata AS order_metadata,
+                o.status AS order_status,
+                o.updated_at AS order_updated_at,
+                o.term_months AS order_term_months,
+                oi.metadata AS item_metadata,
+                oi.term_months AS item_term_months
+         FROM subscriptions s
+         JOIN orders o ON o.id = s.order_id
+         LEFT JOIN order_items oi ON oi.id = s.order_item_id
+         WHERE s.order_id = $1
+           AND s.id = $2`,
+        [orderId, subscriptionId]
+      );
+
+      const row = result.rows[0] || null;
+      if (!row) {
+        return {
+          updated: false,
+          skipped: false,
+          error: 'Subscription not found',
+        };
+      }
+      if (row.status !== 'pending') {
+        return {
+          updated: false,
+          skipped: true,
+          subscription: this.mapRowToSubscription(row),
+        };
+      }
+      if (requireCredentials && !row.credentials_encrypted) {
+        return {
+          updated: false,
+          skipped: true,
+          error: 'Credentials missing',
+        };
+      }
+
+      const orderMetadata = parseJsonValue<Record<string, any>>(
+        row.order_metadata,
+        {}
+      );
+      const itemMetadata = parseJsonValue<Record<string, any>>(
+        row.item_metadata,
+        {}
+      );
+      let durationMonths =
+        parseDurationMonths(row.term_months) ??
+        parseDurationMonths(row.item_term_months) ??
+        parseDurationMonths(itemMetadata?.['duration_months']) ??
+        parseDurationMonths(itemMetadata?.['term_months']) ??
+        parseDurationMonths(itemMetadata?.['durationMonths']) ??
+        parseDurationMonths(itemMetadata?.['termMonths']) ??
+        parseDurationMonths(row.order_term_months) ??
+        parseDurationMonths(orderMetadata?.['duration_months']) ??
+        parseDurationMonths(orderMetadata?.['term_months']) ??
+        parseDurationMonths(orderMetadata?.['durationMonths']) ??
+        parseDurationMonths(orderMetadata?.['termMonths']);
+      if (!durationMonths || durationMonths <= 0) {
+        Logger.warn('Invalid subscription duration, defaulting to 1 month', {
+          subscriptionId,
+          orderId,
+          durationMonths,
+        });
+        durationMonths = 1;
+      }
+
+      const deliveredAt =
+        options?.deliveredAt ??
+        (row.order_status === 'delivered' && row.order_updated_at
+          ? new Date(row.order_updated_at)
+          : new Date());
+      const fallbackStart = row.term_start_at
+        ? new Date(row.term_start_at)
+        : row.start_date
+          ? new Date(row.start_date)
+          : new Date();
+      const termStartAt =
+        deliveredAt && !Number.isNaN(deliveredAt.getTime())
+          ? deliveredAt
+          : fallbackStart;
+
+      const endDate = new Date(termStartAt);
+      endDate.setMonth(endDate.getMonth() + durationMonths);
+      const renewalDate = new Date(endDate);
+      renewalDate.setDate(renewalDate.getDate() - 7);
+      const nextBillingAt = row.auto_renew ? renewalDate : null;
+
+      const updateResult = await this.updateSubscriptionStatus(
+        subscriptionId,
+        'active',
+        reason,
+        updatedBy,
+        {
+          start_date: termStartAt,
+          term_start_at: termStartAt,
+          end_date: endDate,
+          renewal_date: renewalDate,
+          next_billing_at: nextBillingAt,
+          term_months: durationMonths,
+        }
+      );
+      if (!updateResult.success) {
+        return {
+          updated: false,
+          skipped: false,
+          error: updateResult.error || 'Failed to activate subscription',
+        };
+      }
+
+      const deliveryUpdate = await this.updateSubscriptionForAdmin(
+        subscriptionId,
+        {
+          delivered_at: termStartAt,
+          delivered_by:
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+              updatedBy
+            )
+              ? updatedBy
+              : null,
+        }
+      );
+
+      return {
+        updated: true,
+        skipped: false,
+        subscription: deliveryUpdate.success
+          ? deliveryUpdate.data
+          : updateResult.data,
+      };
+    } catch (error) {
+      Logger.error('Failed to activate subscription for order item', {
+        orderId,
+        subscriptionId,
+        error,
+      });
+      return {
+        updated: false,
+        skipped: false,
+        error: 'Failed to activate subscription',
+      };
     }
   }
 
@@ -2343,29 +2480,6 @@ export class SubscriptionService {
         }
       }
 
-      const maxSubscriptions = product.max_subscriptions;
-      if (maxSubscriptions !== null && maxSubscriptions !== undefined) {
-        if (maxSubscriptions <= 0) {
-          return {
-            canPurchase: false,
-            reason: `No ${serviceType} subscriptions allowed`,
-          };
-        }
-
-        const activeCount = await this.getActiveSubscriptionsCountByProduct(
-          userId,
-          product.id,
-          product.service_type || serviceType
-        );
-
-        if (activeCount >= maxSubscriptions) {
-          return {
-            canPurchase: false,
-            reason: `Maximum ${maxSubscriptions} ${serviceType} subscription(s) allowed`,
-          };
-        }
-      }
-
       return { canPurchase: true };
     } catch (error) {
       Logger.error('Error checking purchase eligibility:', error);
@@ -2540,6 +2654,16 @@ export class SubscriptionService {
       auto_renew_enabled_at: row.auto_renew_enabled_at ?? null,
       auto_renew_disabled_at: row.auto_renew_disabled_at ?? null,
       status_reason: row.status_reason ?? null,
+      delivered_at: row.delivered_at ?? null,
+      delivered_by: row.delivered_by ?? null,
+      delivery_email_sent_at: row.delivery_email_sent_at ?? null,
+      activation_handshake_state: row.activation_handshake_state ?? 'none',
+      activation_instructions_delivered_at:
+        row.activation_instructions_delivered_at ?? null,
+      activation_customer_ready_at: row.activation_customer_ready_at ?? null,
+      activation_link_delivered_at: row.activation_link_delivered_at ?? null,
+      activation_handshake_restarted_at:
+        row.activation_handshake_restarted_at ?? null,
       cancellation_requested_at: row.cancellation_requested_at ?? null,
       cancellation_reason: row.cancellation_reason ?? null,
       referral_reward_id: row.referral_reward_id ?? null,

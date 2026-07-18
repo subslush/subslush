@@ -5,7 +5,6 @@ export interface User {
   firstName?: string;
   lastName?: string;
   displayName?: string | null;
-  pinSetAt?: string | null;
   createdAt?: string;
   lastLoginAt?: string;
 }

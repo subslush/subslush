@@ -117,5 +117,6 @@ export interface OrderCredentialRevealResponse {
   order_id: string;
   entitlement_id?: string | null;
   subscription_id?: string | null;
+  order_item_id?: string | null;
   credentials: string;
 }

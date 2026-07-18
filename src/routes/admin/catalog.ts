@@ -3,6 +3,7 @@ import { authPreHandler } from '../../middleware/authMiddleware';
 import { adminPreHandler } from '../../middleware/adminMiddleware';
 import { catalogService } from '../../services/catalogService';
 import { logAdminAction } from '../../services/auditLogService';
+import { getDatabasePool } from '../../config/database';
 import { ErrorResponses, SuccessResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
 import {
@@ -10,6 +11,11 @@ import {
   normalizeCurrencyCode,
 } from '../../utils/currency';
 import { FX_BASE_CURRENCY } from '../../services/fx/fxConfig';
+import {
+  normalizeUpgradeOptions,
+  normalizeUpgradeOptionsMetadata,
+} from '../../utils/upgradeOptions';
+import { validateMmuTermDivisibility } from '../../utils/mmuSchedule';
 
 const parseBoolean = (value: unknown): boolean | undefined => {
   if (value === undefined || value === null) return undefined;
@@ -32,6 +38,83 @@ const parseInteger = (value: unknown): number | null => {
   }
   return numeric;
 };
+
+const upgradeOptionsMetadataSchema = {
+  type: 'object',
+  properties: {
+    upgrade_options: {
+      type: 'object',
+      properties: {
+        activation_instructions_template: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 4000,
+        },
+        strict_rules_text: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 8000,
+        },
+      },
+    },
+    upgradeOptions: {
+      type: 'object',
+      properties: {
+        activationInstructionsTemplate: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 4000,
+        },
+        strictRulesText: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 8000,
+        },
+      },
+    },
+  },
+};
+
+async function validateProductMmuTerms(
+  productId: string,
+  metadata: Record<string, any> | null | undefined,
+  durationMonths?: number | null
+): Promise<{ valid: boolean; message?: string }> {
+  const options = normalizeUpgradeOptions(metadata);
+  if (!options?.manual_monthly_upgrade) {
+    return { valid: true };
+  }
+  const interval = options.manual_monthly_upgrade_interval_months || 1;
+  const pool = getDatabasePool();
+  const termsResult = await pool.query(
+    `SELECT DISTINCT pvt.months
+     FROM product_variants pv
+     JOIN product_variant_terms pvt ON pvt.product_variant_id = pv.id
+     WHERE pv.product_id = $1
+       AND COALESCE(pv.is_active, TRUE) = TRUE
+       AND COALESCE(pvt.is_active, TRUE) = TRUE`,
+    [productId]
+  );
+  const terms = termsResult.rows
+    .map(row => Number(row.months))
+    .filter(value => Number.isFinite(value) && value > 0);
+  if (durationMonths && Number.isFinite(Number(durationMonths))) {
+    terms.push(Number(durationMonths));
+  }
+  const invalid = terms.some(
+    term =>
+      !validateMmuTermDivisibility({
+        termMonths: term,
+        intervalMonths: interval,
+      })
+  );
+  return invalid
+    ? {
+        valid: false,
+        message: 'Term length must be divisible by the MMU interval.',
+      }
+    : { valid: true };
+}
 
 export async function adminCatalogRoutes(
   fastify: FastifyInstance
@@ -282,7 +365,7 @@ export async function adminCatalogRoutes(
             fixed_price_cents: { type: ['integer', 'null'], minimum: 0 },
             fixed_price_currency: { type: ['string', 'null'] },
             status: { type: 'string', enum: ['active', 'inactive'] },
-            metadata: { type: 'object' },
+            metadata: upgradeOptionsMetadataSchema,
           },
         },
       },
@@ -295,6 +378,24 @@ export async function adminCatalogRoutes(
           return ErrorResponses.badRequest(
             reply,
             'Create the product as inactive, then add fixed pricing fields or variant pricing before activation.'
+          );
+        }
+        if (payload?.metadata) {
+          payload.metadata = normalizeUpgradeOptionsMetadata(payload.metadata);
+        }
+        const createOptions = normalizeUpgradeOptions(payload?.metadata);
+        if (
+          createOptions?.manual_monthly_upgrade &&
+          payload?.duration_months &&
+          !validateMmuTermDivisibility({
+            termMonths: payload.duration_months,
+            intervalMonths:
+              createOptions.manual_monthly_upgrade_interval_months || 1,
+          })
+        ) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Term length must be divisible by the MMU interval.'
           );
         }
 
@@ -359,7 +460,7 @@ export async function adminCatalogRoutes(
             fixed_price_cents: { type: ['integer', 'null'], minimum: 0 },
             fixed_price_currency: { type: ['string', 'null'] },
             status: { type: 'string', enum: ['active', 'inactive'] },
-            metadata: { type: 'object' },
+            metadata: upgradeOptionsMetadataSchema,
           },
         },
       },
@@ -373,6 +474,28 @@ export async function adminCatalogRoutes(
 
         if (!before) {
           return ErrorResponses.notFound(reply, 'Product not found');
+        }
+
+        if (payload?.metadata) {
+          payload.metadata = normalizeUpgradeOptionsMetadata(payload.metadata);
+        }
+        const metadataForValidation =
+          payload?.metadata !== undefined ? payload.metadata : before.metadata;
+        const durationForValidation =
+          payload?.duration_months !== undefined
+            ? payload.duration_months
+            : before.duration_months;
+        const mmuValidation = await validateProductMmuTerms(
+          productId,
+          metadataForValidation,
+          durationForValidation
+        );
+        if (!mmuValidation.valid) {
+          return ErrorResponses.badRequest(
+            reply,
+            mmuValidation.message ||
+              'Term length must be divisible by the MMU interval.'
+          );
         }
 
         if (payload?.status === 'active') {
@@ -451,6 +574,31 @@ export async function adminCatalogRoutes(
               return ErrorResponses.badRequest(
                 reply,
                 `Cannot activate product until all active variants have at least one term${detail}`
+              );
+            }
+
+            const listingDurationRaw =
+              payload.duration_months !== undefined
+                ? payload.duration_months
+                : before.duration_months;
+            const listingDurationMonths = Number(listingDurationRaw);
+            const hasDesignatedListingTerm =
+              Number.isInteger(listingDurationMonths) &&
+              listingDurationMonths > 0;
+            const activeTermMonths = new Set<number>();
+            for (const variant of activeVariants) {
+              for (const term of termMap.get(variant.id) || []) {
+                const months = Number(term.months);
+                if (Number.isInteger(months) && months > 0) {
+                  activeTermMonths.add(months);
+                }
+              }
+            }
+
+            if (!hasDesignatedListingTerm && activeTermMonths.size > 1) {
+              return ErrorResponses.badRequest(
+                reply,
+                'Cannot activate product: multiple active terms; designate the listing term or keep a single active term'
               );
             }
 
@@ -930,9 +1078,30 @@ export async function adminCatalogRoutes(
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const result = await catalogService.createVariantTerm(
-          request.body as any
+        const body = request.body as any;
+        const productResult = await getDatabasePool().query(
+          `SELECT p.metadata
+           FROM product_variants pv
+           JOIN products p ON p.id = pv.product_id
+           WHERE pv.id = $1`,
+          [body.product_variant_id]
         );
+        const options = normalizeUpgradeOptions(
+          productResult.rows[0]?.metadata
+        );
+        if (
+          options?.manual_monthly_upgrade &&
+          !validateMmuTermDivisibility({
+            termMonths: body.months,
+            intervalMonths: options.manual_monthly_upgrade_interval_months || 1,
+          })
+        ) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Term length must be divisible by the MMU interval.'
+          );
+        }
+        const result = await catalogService.createVariantTerm(body);
 
         if (!result.success) {
           return ErrorResponses.badRequest(
@@ -992,10 +1161,34 @@ export async function adminCatalogRoutes(
       try {
         const { termId } = request.params as { termId: string };
         const before = await catalogService.getVariantTermById(termId);
-        const result = await catalogService.updateVariantTerm(
-          termId,
-          request.body as any
-        );
+        const body = request.body as any;
+        if (before && body.months !== undefined) {
+          const productResult = await getDatabasePool().query(
+            `SELECT p.metadata
+             FROM product_variant_terms pvt
+             JOIN product_variants pv ON pv.id = pvt.product_variant_id
+             JOIN products p ON p.id = pv.product_id
+             WHERE pvt.id = $1`,
+            [termId]
+          );
+          const options = normalizeUpgradeOptions(
+            productResult.rows[0]?.metadata
+          );
+          if (
+            options?.manual_monthly_upgrade &&
+            !validateMmuTermDivisibility({
+              termMonths: body.months,
+              intervalMonths:
+                options.manual_monthly_upgrade_interval_months || 1,
+            })
+          ) {
+            return ErrorResponses.badRequest(
+              reply,
+              'Term length must be divisible by the MMU interval.'
+            );
+          }
+        }
+        const result = await catalogService.updateVariantTerm(termId, body);
 
         if (!result.success) {
           return ErrorResponses.badRequest(

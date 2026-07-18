@@ -2,9 +2,11 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authPreHandler } from '../../middleware/authMiddleware';
 import { adminPreHandler } from '../../middleware/adminMiddleware';
 import { orderService } from '../../services/orderService';
+import { paymentService } from '../../services/paymentService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { orderRiskService } from '../../services/orderRiskService';
 import { logAdminAction } from '../../services/auditLogService';
+import { orderComplianceEvidenceService } from '../../services/orderComplianceEvidenceService';
 import { getDatabasePool } from '../../config/database';
 import { ErrorResponses, SuccessResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
@@ -30,6 +32,222 @@ const isValidUuid = (value: string): boolean =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value
   );
+
+const activationStateConflict = (
+  reply: FastifyReply,
+  message: string,
+  currentState: string | null
+): FastifyReply =>
+  reply.status(409).send({
+    error: 'Conflict',
+    code: 'INVALID_ACTIVATION_STATE',
+    message,
+    current_state: currentState,
+  });
+
+const OPEN_ACTIVATION_STATES = [
+  'instructions_delivered',
+  'awaiting_customer',
+  'customer_ready',
+] as const;
+
+async function recomputeOrderDeliveryStatus(
+  orderId: string,
+  reason?: string
+): Promise<OrderStatus> {
+  const pool = getDatabasePool();
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (
+              WHERE status = 'active'
+                AND COALESCE(activation_handshake_state, 'none')
+                    <> ALL($2::text[])
+            )::int AS delivered
+     FROM subscriptions
+     WHERE order_id = $1`,
+    [orderId, OPEN_ACTIVATION_STATES]
+  );
+  const total = Number(result.rows[0]?.total ?? 0);
+  const delivered = Number(result.rows[0]?.delivered ?? 0);
+  const nextStatus: OrderStatus =
+    total > 0 && delivered === total ? 'delivered' : 'in_process';
+  const updated = await orderService.updateOrderStatus(
+    orderId,
+    nextStatus,
+    reason ||
+      (nextStatus === 'delivered' ? 'order_delivered' : 'partial_delivery')
+  );
+  if (!updated.success) {
+    throw new Error(updated.error || 'Failed to recompute order status');
+  }
+  return nextStatus;
+}
+
+async function deliverOrderItem(params: {
+  orderId: string;
+  subscriptionId: string;
+  adminUserId: string;
+  reason?: string;
+  skipEmail?: boolean;
+}): Promise<{ success: boolean; error?: string; orderStatus?: OrderStatus }> {
+  const pool = getDatabasePool();
+  const orderResult = await pool.query(
+    `SELECT id, user_id, status, contact_email, paid_with_credits
+     FROM orders
+     WHERE id = $1`,
+    [params.orderId]
+  );
+  const order = orderResult.rows[0] || null;
+  if (!order) return { success: false, error: 'Order not found' };
+  if (!['paid', 'in_process', 'delivered'].includes(order.status)) {
+    return { success: false, error: 'Order payment has not been verified' };
+  }
+
+  const paymentResult = await pool.query(
+    `SELECT 1
+     FROM payments
+     WHERE order_id = $1
+       AND status = 'succeeded'
+     LIMIT 1`,
+    [params.orderId]
+  );
+  if (!order.paid_with_credits && paymentResult.rows.length === 0) {
+    return { success: false, error: 'Order payment has not been verified' };
+  }
+
+  const subscriptionResult = await pool.query(
+    `SELECT id, status, credentials_encrypted, order_item_id
+     FROM subscriptions
+     WHERE order_id = $1
+       AND id = $2`,
+    [params.orderId, params.subscriptionId]
+  );
+  const subscription = subscriptionResult.rows[0] || null;
+  if (!subscription) {
+    return { success: false, error: 'Subscription not found for order' };
+  }
+  if (!subscription.credentials_encrypted) {
+    return {
+      success: false,
+      error: 'Subscription credentials are required before delivery',
+    };
+  }
+
+  const activation = await subscriptionService.activateSubscriptionForOrderItem(
+    params.orderId,
+    params.subscriptionId,
+    params.adminUserId,
+    {
+      requireCredentials: true,
+      reason: params.reason || 'order_item_delivered',
+    }
+  );
+  if (!activation.updated && !activation.skipped) {
+    return {
+      success: false,
+      error: activation.error || 'Failed to activate subscription',
+    };
+  }
+
+  await pool.query(
+    `UPDATE order_entitlements oe
+     SET status = 'active',
+         starts_at = s.start_date,
+         ends_at = s.end_date,
+         duration_months_snapshot = COALESCE(s.term_months, oe.duration_months_snapshot),
+         updated_at = NOW()
+     FROM subscriptions s
+     WHERE s.id = $1
+       AND oe.source_subscription_id = s.id`,
+    [params.subscriptionId]
+  );
+
+  if (!params.skipEmail) {
+    await orderService.sendItemDeliveredEmail({
+      orderId: params.orderId,
+      subscriptionId: params.subscriptionId,
+    });
+  }
+
+  try {
+    const note = `[${new Date().toISOString()}] Auto-completed on item delivery`;
+    await pool.query(
+      `UPDATE admin_tasks
+       SET completed_at = COALESCE(completed_at, NOW()),
+           assigned_admin = COALESCE(assigned_admin, $1),
+           notes = CASE
+             WHEN notes IS NULL OR notes = '' THEN $2
+             ELSE notes || '\n' || $2
+           END
+       WHERE order_id = $3
+         AND subscription_id = $4
+         AND task_type = 'credential_provision'
+         AND task_category = 'order_fulfillment'
+         AND completed_at IS NULL`,
+      [
+        isValidUuid(params.adminUserId) ? params.adminUserId : null,
+        note,
+        params.orderId,
+        params.subscriptionId,
+      ]
+    );
+  } catch (error) {
+    Logger.warn('Failed to auto-complete fulfillment task', {
+      orderId: params.orderId,
+      subscriptionId: params.subscriptionId,
+      error,
+    });
+  }
+
+  await orderComplianceEvidenceService.recordGenericEvidence({
+    orderId: params.orderId,
+    eventType: 'item_delivery',
+    userId: order.user_id ?? null,
+    customerEmail: order.contact_email ?? null,
+    deliveryTimestamp: new Date(),
+    metadata: {
+      subscription_id: params.subscriptionId,
+      order_item_id: subscription.order_item_id ?? null,
+      source: 'admin.orders.item.deliver',
+    },
+  });
+
+  const nextStatus = await recomputeOrderDeliveryStatus(params.orderId);
+
+  return { success: true, orderStatus: nextStatus };
+}
+
+async function ensureFulfillmentTasksForManuallyPaidOrder(orderId: string) {
+  const pool = getDatabasePool();
+  const subscriptionsResult = await pool.query(
+    `SELECT s.id, s.user_id, s.service_type, s.service_plan
+     FROM subscriptions s
+     WHERE s.order_id = $1
+       AND s.status = 'pending'
+     ORDER BY s.created_at ASC`,
+    [orderId]
+  );
+
+  let created = 0;
+  for (const row of subscriptionsResult.rows) {
+    const didCreate = await subscriptionService.createCredentialProvisionTask({
+      subscriptionId: row.id,
+      userId: row.user_id,
+      orderId,
+      notes: [
+        `Manual payment verification received for ${row.service_type} ${row.service_plan}.`,
+        `Subscription ${row.id}.`,
+        `Order ${orderId}.`,
+      ].join(' '),
+    });
+    if (didCreate) created += 1;
+  }
+
+  return {
+    subscriptionCount: subscriptionsResult.rows.length,
+    created,
+  };
+}
 
 export async function adminOrderRoutes(
   fastify: FastifyInstance
@@ -102,6 +320,381 @@ export async function adminOrderRoutes(
     }
   );
 
+  fastify.post(
+    '/:orderId/items/:subscriptionId/deliver',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId', 'subscriptionId'],
+          properties: {
+            orderId: { type: 'string' },
+            subscriptionId: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          properties: {
+            reason: { type: 'string', maxLength: 500 },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { orderId, subscriptionId } = request.params as {
+          orderId: string;
+          subscriptionId: string;
+        };
+        const body = request.body as { reason?: string };
+        const result = await deliverOrderItem({
+          orderId,
+          subscriptionId,
+          adminUserId: request.user?.userId || 'admin',
+          reason: body?.reason || 'order_item_delivered',
+        });
+
+        if (!result.success) {
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to deliver order item'
+          );
+        }
+
+        await logAdminAction(request, {
+          action: 'orders.item.deliver',
+          entityType: 'subscription',
+          entityId: subscriptionId,
+          metadata: {
+            order_id: orderId,
+            order_status: result.orderStatus || null,
+          },
+        });
+
+        return SuccessResponses.ok(
+          reply,
+          {
+            order_id: orderId,
+            subscription_id: subscriptionId,
+            order_status: result.orderStatus,
+          },
+          'Order item delivered'
+        );
+      } catch (error) {
+        Logger.error('Admin deliver order item failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to deliver order item'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/:orderId/items/:subscriptionId/activation-instructions',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId', 'subscriptionId'],
+          properties: {
+            orderId: { type: 'string' },
+            subscriptionId: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['instructions'],
+          properties: {
+            instructions: { type: 'string', minLength: 1, maxLength: 4000 },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { orderId, subscriptionId } = request.params as {
+          orderId: string;
+          subscriptionId: string;
+        };
+        const { instructions } = request.body as { instructions: string };
+        const stateResult = await getDatabasePool().query(
+          `SELECT activation_handshake_state
+           FROM subscriptions
+           WHERE id = $1 AND order_id = $2`,
+          [subscriptionId, orderId]
+        );
+        const currentState =
+          stateResult.rows[0]?.activation_handshake_state ?? null;
+        if (!stateResult.rows[0]) {
+          return ErrorResponses.notFound(reply, 'Subscription not found');
+        }
+        if (currentState !== 'none') {
+          return activationStateConflict(
+            reply,
+            'Activation instructions can only be delivered from the initial state',
+            currentState
+          );
+        }
+        const result = await subscriptionService.updateSubscriptionForAdmin(
+          subscriptionId,
+          {
+            credentials_encrypted: instructions,
+            activation_handshake_state: 'awaiting_customer',
+            activation_instructions_delivered_at: new Date(),
+          }
+        );
+        if (!result.success) {
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to save activation instructions'
+          );
+        }
+        await orderService.sendItemDeliveredEmail({
+          orderId,
+          subscriptionId,
+        });
+        await logAdminAction(request, {
+          action: 'orders.item.activation_instructions.deliver',
+          entityType: 'subscription',
+          entityId: subscriptionId,
+          metadata: { order_id: orderId },
+        });
+        return SuccessResponses.ok(reply, {
+          order_id: orderId,
+          subscription_id: subscriptionId,
+          activation_handshake_state: 'awaiting_customer',
+        });
+      } catch (error) {
+        Logger.error('Admin deliver activation instructions failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to deliver activation instructions'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/:orderId/items/:subscriptionId/activation-link',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId', 'subscriptionId'],
+          properties: {
+            orderId: { type: 'string' },
+            subscriptionId: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['activation_link'],
+          properties: {
+            activation_link: { type: 'string', minLength: 1, maxLength: 4000 },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { orderId, subscriptionId } = request.params as {
+          orderId: string;
+          subscriptionId: string;
+        };
+        const { activation_link } = request.body as {
+          activation_link: string;
+        };
+        const stateResult = await getDatabasePool().query(
+          `SELECT activation_handshake_state
+           FROM subscriptions
+           WHERE id = $1 AND order_id = $2`,
+          [subscriptionId, orderId]
+        );
+        const currentState =
+          stateResult.rows[0]?.activation_handshake_state ?? null;
+        if (!stateResult.rows[0]) {
+          return ErrorResponses.notFound(reply, 'Subscription not found');
+        }
+        if (currentState !== 'customer_ready') {
+          return activationStateConflict(
+            reply,
+            'Activation link can only be delivered after customer readiness confirmation',
+            currentState
+          );
+        }
+        const saveResult = await subscriptionService.updateSubscriptionForAdmin(
+          subscriptionId,
+          {
+            credentials_encrypted: activation_link,
+            activation_handshake_state: 'link_delivered',
+            activation_link_delivered_at: new Date(),
+          }
+        );
+        if (!saveResult.success) {
+          return ErrorResponses.badRequest(
+            reply,
+            saveResult.error || 'Failed to save activation link'
+          );
+        }
+        const delivery = await deliverOrderItem({
+          orderId,
+          subscriptionId,
+          adminUserId: request.user?.userId || 'admin',
+          reason: 'activation_link_delivered',
+          skipEmail: true,
+        });
+        if (!delivery.success) {
+          return ErrorResponses.badRequest(
+            reply,
+            delivery.error || 'Failed to deliver activation link'
+          );
+        }
+        await orderService.sendItemDeliveredEmail({
+          orderId,
+          subscriptionId,
+          variant: 'activation_link_ready',
+        });
+        await logAdminAction(request, {
+          action: 'orders.item.activation_link.deliver',
+          entityType: 'subscription',
+          entityId: subscriptionId,
+          metadata: {
+            order_id: orderId,
+            order_status: delivery.orderStatus || null,
+          },
+        });
+        return SuccessResponses.ok(reply, {
+          order_id: orderId,
+          subscription_id: subscriptionId,
+          activation_handshake_state: 'link_delivered',
+          order_status: delivery.orderStatus,
+        });
+      } catch (error) {
+        Logger.error('Admin deliver activation link failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to deliver activation link'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/:orderId/items/:subscriptionId/activation-restart',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId', 'subscriptionId'],
+          properties: {
+            orderId: { type: 'string' },
+            subscriptionId: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          properties: {
+            note: { type: 'string', maxLength: 500 },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { orderId, subscriptionId } = request.params as {
+          orderId: string;
+          subscriptionId: string;
+        };
+        const { note } = request.body as { note?: string };
+        const stateResult = await getDatabasePool().query(
+          `SELECT activation_handshake_state
+           FROM subscriptions
+           WHERE id = $1 AND order_id = $2`,
+          [subscriptionId, orderId]
+        );
+        const currentState =
+          stateResult.rows[0]?.activation_handshake_state ?? null;
+        if (!stateResult.rows[0]) {
+          return ErrorResponses.notFound(reply, 'Subscription not found');
+        }
+        if (currentState !== 'link_delivered') {
+          return activationStateConflict(
+            reply,
+            'Activation can only be restarted after a delivered link',
+            currentState
+          );
+        }
+        const result = await subscriptionService.updateSubscriptionForAdmin(
+          subscriptionId,
+          {
+            activation_handshake_state: 'awaiting_customer',
+            credentials_encrypted: null,
+            activation_customer_ready_at: null,
+            activation_link_delivered_at: null,
+            activation_handshake_restarted_at: new Date(),
+          }
+        );
+        if (!result.success) {
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to restart activation step'
+          );
+        }
+        const orderStatus = await recomputeOrderDeliveryStatus(
+          orderId,
+          'activation_restart'
+        );
+        await orderService.sendItemDeliveredEmail({
+          orderId,
+          subscriptionId,
+          variant: 'activation_restart',
+        });
+        const order = await orderService.getOrderById(orderId);
+        await orderComplianceEvidenceService.recordGenericEvidence({
+          orderId,
+          eventType: 'activation_restart',
+          userId: order?.user_id ?? null,
+          customerEmail: order?.contact_email ?? null,
+          accessEvidence: {
+            restarted_at: new Date().toISOString(),
+            user_agent:
+              typeof request.headers['user-agent'] === 'string' &&
+              request.headers['user-agent'].trim().length > 0
+                ? request.headers['user-agent']
+                : null,
+          },
+          metadata: {
+            subscription_id: subscriptionId,
+            note: note || null,
+          },
+        });
+        await logAdminAction(request, {
+          action: 'orders.item.activation.restart',
+          entityType: 'subscription',
+          entityId: subscriptionId,
+          metadata: { order_id: orderId, note: note || null },
+        });
+        return SuccessResponses.ok(reply, {
+          order_id: orderId,
+          subscription_id: subscriptionId,
+          activation_handshake_state: 'awaiting_customer',
+          order_status: orderStatus,
+        });
+      } catch (error) {
+        Logger.error('Admin restart activation failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to restart activation step'
+        );
+      }
+    }
+  );
+
   fastify.get(
     '/:orderId/fulfillment',
     {
@@ -141,7 +734,8 @@ export async function adminOrderRoutes(
           `SELECT s.id, s.user_id, s.service_type, s.service_plan, s.status, s.start_date,
                   s.term_start_at, s.end_date, s.renewal_date, s.auto_renew, s.next_billing_at,
                   s.renewal_method, s.price_cents, s.currency, s.order_id, s.product_variant_id,
-                  s.credentials_encrypted, s.created_at,
+                  (s.credentials_encrypted IS NOT NULL) AS subscription_credentials_on_file,
+                  s.created_at,
                   sel.selection_type, sel.account_identifier, sel.manual_monthly_acknowledged_at,
                   sel.submitted_at, sel.locked_at, sel.upgrade_options_snapshot,
                   (sel.credentials_encrypted IS NOT NULL) AS has_user_credentials
@@ -152,11 +746,18 @@ export async function adminOrderRoutes(
            ORDER BY s.created_at ASC`,
           [orderId]
         );
-        const subscriptions = subscriptionsResult.rows.map(row => ({
-          ...row,
-          has_credentials: Boolean(row.credentials_encrypted),
-          has_user_credentials: row.has_user_credentials ?? false,
-        }));
+        const subscriptions = subscriptionsResult.rows.map(row => {
+          const {
+            subscription_credentials_on_file,
+            credentials_encrypted: _credentialsEncrypted,
+            ...subscription
+          } = row;
+          return {
+            ...subscription,
+            has_credentials: Boolean(subscription_credentials_on_file),
+            has_user_credentials: row.has_user_credentials ?? false,
+          };
+        });
 
         const paymentsResult = await pool.query(
           'SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at DESC',
@@ -282,6 +883,92 @@ export async function adminOrderRoutes(
     }
   );
 
+  fastify.post(
+    '/:orderId/mark-paid',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['orderId'],
+          properties: {
+            orderId: { type: 'string' },
+          },
+        },
+        body: {
+          type: 'object',
+          required: ['note'],
+          properties: {
+            note: { type: 'string', minLength: 1, maxLength: 1000 },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { orderId } = request.params as { orderId: string };
+        const { note } = request.body as { note?: string };
+        const normalizedNote = note?.trim() ?? '';
+        if (!normalizedNote) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Manual payment verification note is required'
+          );
+        }
+
+        const result = await paymentService.confirmManualOrderPayment({
+          orderId,
+          adminUserId: request.user?.userId || 'admin',
+          note: normalizedNote,
+          audit: {
+            ipAddress: request.ip,
+            userAgent:
+              typeof request.headers['user-agent'] === 'string'
+                ? request.headers['user-agent']
+                : null,
+            requestId: request.id,
+          },
+        });
+
+        if (!result.success) {
+          if (result.status === 'not_found') {
+            return ErrorResponses.notFound(reply, 'Order not found');
+          }
+          if (result.status === 'invalid_state') {
+            return reply.status(409).send({
+              error: 'Conflict',
+              code: 'ORDER_NOT_PENDING_PAYMENT',
+              message:
+                'Only pending payment orders can be marked paid manually',
+              current_status: result.orderStatus ?? null,
+            });
+          }
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to mark order paid'
+          );
+        }
+
+        return SuccessResponses.ok(
+          reply,
+          {
+            order_id: orderId,
+            status: result.orderStatus,
+            subscriptions_created: result.subscriptionsCreated ?? 0,
+            open_tasks: result.tasksOpen ?? 0,
+          },
+          'Order marked paid manually'
+        );
+      } catch (error) {
+        Logger.error('Admin manual mark-paid failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to mark order paid manually'
+        );
+      }
+    }
+  );
+
   fastify.patch(
     '/:orderId/status',
     {
@@ -317,6 +1004,67 @@ export async function adminOrderRoutes(
           return ErrorResponses.badRequest(reply, 'Invalid order status');
         }
 
+        if (status === 'delivered') {
+          const pool = getDatabasePool();
+          const subscriptionsResult = await pool.query(
+            `SELECT id
+             FROM subscriptions
+             WHERE order_id = $1
+               AND status = 'pending'
+             ORDER BY created_at ASC`,
+            [orderId]
+          );
+
+          if (subscriptionsResult.rows.length > 0) {
+            let lastOrderStatus: OrderStatus | undefined;
+            for (const row of subscriptionsResult.rows) {
+              const delivery = await deliverOrderItem({
+                orderId,
+                subscriptionId: row.id as string,
+                adminUserId: request.user?.userId || 'admin',
+                reason: reason || 'order_delivered',
+                skipEmail: true,
+              });
+              if (!delivery.success) {
+                return ErrorResponses.badRequest(
+                  reply,
+                  delivery.error || 'Failed to deliver order item'
+                );
+              }
+              lastOrderStatus = delivery.orderStatus;
+            }
+
+            const updatedOrder = await orderService.getOrderWithItems(orderId);
+            await logAdminAction(request, {
+              action: 'orders.status.update',
+              entityType: 'order',
+              entityId: orderId,
+              before: before
+                ? {
+                    status: before.status,
+                    status_reason: before.status_reason,
+                  }
+                : null,
+              after: updatedOrder
+                ? {
+                    status: updatedOrder.status,
+                    status_reason: updatedOrder.status_reason,
+                  }
+                : { status: lastOrderStatus || null },
+              metadata: {
+                reason: reason || null,
+                delivered_items: subscriptionsResult.rows.length,
+              },
+            });
+
+            return SuccessResponses.ok(
+              reply,
+              updatedOrder,
+              'Order status updated'
+            );
+          }
+        }
+
         const result = await orderService.updateOrderStatus(
           orderId,
           status,
@@ -330,41 +1078,10 @@ export async function adminOrderRoutes(
           );
         }
 
-        if (status === 'delivered') {
-          const adminUserId = request.user?.userId || 'admin';
-          await subscriptionService.activateSubscriptionsForOrder(
-            orderId,
-            adminUserId,
-            {
-              requireCredentials: true,
-              reason: reason || 'order_delivered',
-            }
-          );
-          try {
-            const pool = getDatabasePool();
-            const assignedAdmin = request.user?.userId || null;
-            const note = `[${new Date().toISOString()}] Auto-completed on delivery`;
-            await pool.query(
-              `UPDATE admin_tasks
-               SET completed_at = COALESCE(completed_at, NOW()),
-                   assigned_admin = COALESCE(assigned_admin, $1),
-                   notes = CASE
-                     WHEN notes IS NULL OR notes = '' THEN $2
-                     ELSE notes || '\n' || $2
-                   END
-               WHERE order_id = $3
-                 AND task_type = 'credential_provision'
-                 AND task_category = 'order_fulfillment'
-                 AND completed_at IS NULL`,
-              [assignedAdmin, note, orderId]
-            );
-          } catch (error) {
-            Logger.warn('Failed to auto-complete fulfillment tasks', {
-              orderId,
-              error,
-            });
-          }
-        }
+        const manualPaidTasks =
+          status === 'paid' && before?.status === 'pending_payment'
+            ? await ensureFulfillmentTasksForManuallyPaidOrder(orderId)
+            : null;
 
         await logAdminAction(request, {
           action: 'orders.status.update',
@@ -384,6 +1101,7 @@ export async function adminOrderRoutes(
             : null,
           metadata: {
             reason: reason || null,
+            manualPaidTasks,
           },
         });
 

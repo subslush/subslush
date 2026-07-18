@@ -13,6 +13,8 @@ type SupabaseUserRecord = {
   confirmed_at?: string | null;
 };
 
+let authUsersSkipLogged = false;
+
 function parseVerifiedAt(value: string | Date | null | undefined): Date | null {
   if (!value) {
     return null;
@@ -24,6 +26,20 @@ function parseVerifiedAt(value: string | Date | null | undefined): Date | null {
 
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function logAuthUsersSkipOnce(reason: string): void {
+  if (authUsersSkipLogged) {
+    return;
+  }
+
+  authUsersSkipLogged = true;
+  Logger.info(
+    'auth.users unavailable/empty - skipping email verification sync',
+    {
+      reason,
+    }
+  );
 }
 
 export async function runEmailVerificationSync(): Promise<void> {
@@ -54,15 +70,38 @@ export async function runEmailVerificationSync(): Promise<void> {
       return;
     }
 
+    const { data: authUsers, error: authUsersError } =
+      await supabaseAdmin.auth.admin.listUsers({
+        page: 1,
+        perPage: 1,
+      });
+
+    if (authUsersError) {
+      logAuthUsersSkipOnce(authUsersError.message || 'listUsers failed');
+      return;
+    }
+
+    if (!authUsers?.users || authUsers.users.length === 0) {
+      logAuthUsersSkipOnce('no Supabase auth users returned');
+      return;
+    }
+
     for (const candidate of candidates) {
       const { data, error } = await supabaseAdmin.auth.admin.getUserById(
         candidate.id
       );
 
       if (error || !data?.user) {
+        const message = error?.message ?? 'Unknown error';
+        if (/user not found/i.test(message)) {
+          logAuthUsersSkipOnce(
+            'local users are not present in Supabase auth.users'
+          );
+          return;
+        }
         Logger.warn('Email verification lookup failed', {
           userId: candidate.id,
-          error: error?.message ?? 'Unknown error',
+          error: message,
         });
         continue;
       }

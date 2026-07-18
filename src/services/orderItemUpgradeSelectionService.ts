@@ -108,10 +108,11 @@ export class OrderItemUpgradeSelectionService {
   }
 
   async listSelectionsForOrder(
-    orderId: string
+    orderId: string,
+    client?: PoolClient
   ): Promise<Record<string, OrderItemUpgradeSelection>> {
     try {
-      const pool = getDatabasePool();
+      const pool = client ?? getDatabasePool();
       const result = await pool.query(
         `SELECT sel.*
          FROM order_item_upgrade_selections sel

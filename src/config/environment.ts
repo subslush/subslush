@@ -32,6 +32,14 @@ const environmentSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT secret must be at least 32 characters'),
   JWT_EXPIRY: z.coerce.number().default(86400),
   JWT_ALGORITHM: z.enum(['HS256', 'RS256']).default('HS256'),
+  QA_PAYMENT_ENABLED: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .default(false)
+    .transform(value => {
+      if (typeof value === 'boolean') return value;
+      return value.toLowerCase() === 'true';
+    }),
   STRIPE_ENABLED: z
     .union([z.string(), z.boolean()])
     .optional()
@@ -544,6 +552,7 @@ const environmentSchema = z.object({
       typeof value === 'string' && value.trim() === '' ? undefined : value,
     z.coerce.number().optional()
   ),
+  PAYOP_ANTOM_PENDING_PAYMENT_TTL_HOURS: z.coerce.number().default(72),
   CHECKOUT_ABANDON_SWEEP_INTERVAL: z.coerce.number().default(300000),
   CHECKOUT_ABANDON_SWEEP_BATCH_SIZE: z.coerce.number().default(100),
 

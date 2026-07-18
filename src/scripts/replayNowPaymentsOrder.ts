@@ -451,8 +451,10 @@ async function runDeliveryFlow(
 
     Logger.info('Replayed delivery for already delivered order', {
       orderId: order.id,
-      replayResult,
-      resendEmail: resendResult,
+      replayUpdated: replayResult.updated,
+      replayActivated: replayResult.activated,
+      replaySkipped: replayResult.skipped,
+      resendEmailSucceeded: resendResult.success,
     });
   } else {
     if (!['in_process', 'paid'].includes(order.status)) {
@@ -484,7 +486,8 @@ async function runDeliveryFlow(
 
     Logger.info('Delivery flow completed', {
       orderId: order.id,
-      activationResult,
+      activationUpdated: activationResult.updated,
+      activationSkipped: activationResult.skipped,
       requireCredentials: options.requireCredentials,
     });
   }

@@ -18,7 +18,7 @@
 	import sepaLogo from '$lib/assets/sepa-logo.webp';
 	import swiftLogo from '$lib/assets/swift-logo.webp';
 	import unionPayLogo from '$lib/assets/unionpay-logo.svg';
-	import visaSecureBadge from '$lib/assets/visa-secure.webp';
+	import visaSecureBadge from '$lib/assets/visa-secure-clean.png';
 	import visaLogo from '$lib/assets/visa.svg';
 	import { resolveLogoKey, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
 	import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
@@ -38,7 +38,7 @@
 		CheckoutPayopMethodQuote
 	} from '$lib/types/checkout.js';
 	import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
-	import { ArrowLeft, CreditCard, Globe2, Landmark, Loader2, MessageSquare, ShieldCheck, X } from 'lucide-svelte';
+	import { ArrowLeft, CreditCard, Globe2, Landmark, Loader2, MessageSquare, X } from 'lucide-svelte';
 
 	const countryNames =
 		browser && typeof Intl !== 'undefined' && 'DisplayNames' in Intl
@@ -86,7 +86,7 @@
 	let taxResidences: CheckoutAntomResidence[] = [];
 	let selectedTaxResidenceOption: CheckoutAntomResidence = defaultTaxResidence;
 	let selectedTaxResidenceLabel = 'Outside the EU | 0%';
-	let selectedProvider: 'antom' | 'payop' | null = null;
+	let selectedProvider: 'antom' | 'payop' | 'qa' | null = null;
 	let selectedAntomOptionId: CheckoutAntomOptionQuote['option_id'] | null = null;
 	let selectedMethodId: number | null = null;
 	let selectedAntomOption: CheckoutAntomOptionQuote | null = null;
@@ -104,6 +104,8 @@
 	let taxModalOpen = false;
 	let taxDialogElement: HTMLDivElement | null = null;
 	let taxTriggerElement: HTMLButtonElement | null = null;
+	let qaPaymentCompleted = false;
+	let qaPaymentEnabled = false;
 
 	const resolveCountryLabel = (countryCode: string | null | undefined): string => {
 		const normalized = (countryCode || '').trim().toUpperCase();
@@ -193,6 +195,14 @@
 		persistDraftState();
 	};
 
+	const selectQaPayment = (): void => {
+		selectedProvider = 'qa';
+		selectedAntomOptionId = null;
+		selectedMethodId = null;
+		actionError = '';
+		persistDraftState();
+	};
+
 	const openTaxModal = (): void => {
 		taxModalOpen = true;
 		if (browser) {
@@ -263,9 +273,9 @@
 	] as const;
 
 	const paymentTrustBadges = [
-		{ src: visaSecureBadge, alt: 'Visa Secure' },
-		{ src: mastercardIdCheckBadge, alt: 'Mastercard ID Check' },
-		{ src: sslSecuredBadge, alt: '256-bit SSL Secured' }
+		{ src: visaSecureBadge, alt: 'Visa Secure', className: 'max-h-8' },
+		{ src: mastercardIdCheckBadge, alt: 'Mastercard ID Check', className: 'max-h-7' },
+		{ src: sslSecuredBadge, alt: '256-bit SSL Secured', className: 'max-h-8' }
 	] as const;
 
 	const antomCardBrandLogos = [
@@ -331,7 +341,7 @@
 			appliedCouponCode,
 			selectedPaymentCountry: selectedCountry,
 			selectedTaxResidence,
-			selectedPaymentProvider: selectedProvider,
+			selectedPaymentProvider: selectedProvider === 'qa' ? null : selectedProvider,
 			selectedAntomOptionId,
 			selectedPayopMethodId: selectedMethodId,
 			legalConsent
@@ -452,7 +462,7 @@
 				selectedProvider === 'payop' &&
 				methods.some((method) => method.method_id === selectedMethodId);
 
-			if (!currentAntomSelection && !currentPayopSelection) {
+			if (!currentAntomSelection && !currentPayopSelection && selectedProvider !== 'qa') {
 				if (antomOptions.length > 0) {
 					selectedProvider = 'antom';
 					selectedAntomOptionId = antomOptions[0]?.option_id ?? null;
@@ -461,6 +471,10 @@
 					selectedProvider = 'payop';
 					selectedMethodId = selectedMethodId ?? methods[0]?.method_id ?? null;
 					selectedAntomOptionId = null;
+				} else if (qaPaymentEnabled) {
+					selectedProvider = 'qa';
+					selectedAntomOptionId = null;
+					selectedMethodId = null;
 				} else {
 					selectedProvider = null;
 					selectedAntomOptionId = null;
@@ -561,6 +575,16 @@
 				checkout_session_key_snapshot: checkoutSessionKey,
 				consent_source: 'checkout_payment_page'
 			};
+			if (selectedProvider === 'qa') {
+				const response = await checkoutService.completeQaCheckout({
+					...accessPayload,
+					legal_consent
+				});
+				orderId = response.order_id;
+				qaPaymentCompleted = true;
+				persistDraftState();
+				return;
+			}
 			const response =
 				selectedProvider === 'antom' && chosenAntomOption
 					? await checkoutService.createAntomSession({
@@ -590,7 +614,7 @@
 		antomOptions.find((option) => option.option_id === selectedAntomOptionId) ?? null;
 
 	$: selectedTaxResidenceOption = resolveTaxResidenceForDisplay(
-		selectedProvider,
+		selectedProvider === 'qa' ? null : selectedProvider,
 		selectedAntomOption,
 		selectedTaxResidence,
 		taxResidences
@@ -669,6 +693,12 @@
 		if (!checkoutSessionKey && !orderId) {
 			await goto('/checkout');
 			return;
+		}
+
+		try {
+			qaPaymentEnabled = (await checkoutService.getQaPaymentConfig()).enabled === true;
+		} catch {
+			qaPaymentEnabled = false;
 		}
 
 		await loadPaymentOptions({
@@ -769,8 +799,29 @@
 									>
 										Try again
 									</button>
+									{#if qaPaymentEnabled}
+										<button
+											type="button"
+											data-testid="qa-payment-option"
+											class={`mt-3 w-full rounded-2xl border px-4 py-4 text-left transition ${
+												selectedProvider === 'qa'
+													? 'border-fuchsia-300 bg-fuchsia-50/40 shadow-sm'
+													: 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+											}`}
+											on:click={selectQaPayment}
+										>
+											<div class="flex items-start gap-3">
+												<div class={`mt-1 h-4 w-4 rounded-full border ${selectedProvider === 'qa' ? 'border-fuchsia-500 ring-4 ring-fuchsia-100' : 'border-slate-300'}`}></div>
+												<div class="min-w-0 flex-1">
+													<p class="text-sm font-semibold text-slate-900">QA Payment</p>
+													<p class="mt-1 text-xs text-slate-500">Local testing only — completes this order immediately.</p>
+												</div>
+												<span class="text-xs font-semibold text-fuchsia-700">Instant</span>
+											</div>
+										</button>
+									{/if}
 								</div>
-							{:else if antomOptions.length === 0 && methods.length === 0}
+							{:else if antomOptions.length === 0 && methods.length === 0 && !qaPaymentEnabled}
 								<div class="p-4">
 									<div
 										class="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 text-sm text-slate-600"
@@ -783,6 +834,27 @@
 							{:else}
 								<div class="p-4">
 									<div class="space-y-3">
+										{#if qaPaymentEnabled}
+											<button
+												type="button"
+												data-testid="qa-payment-option"
+												class={`w-full rounded-2xl border px-4 py-4 text-left transition ${
+													selectedProvider === 'qa'
+														? 'border-fuchsia-300 bg-fuchsia-50/40 shadow-sm'
+														: 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+												}`}
+												on:click={selectQaPayment}
+											>
+												<div class="flex items-start gap-3">
+													<div class={`mt-1 h-4 w-4 rounded-full border ${selectedProvider === 'qa' ? 'border-fuchsia-500 ring-4 ring-fuchsia-100' : 'border-slate-300'}`}></div>
+													<div class="min-w-0 flex-1">
+														<p class="text-sm font-semibold text-slate-900">QA Payment</p>
+														<p class="mt-1 text-xs text-slate-500">Local testing only — completes this order immediately.</p>
+													</div>
+													<span class="text-xs font-semibold text-fuchsia-700">Instant</span>
+												</div>
+											</button>
+										{/if}
 										{#each antomOptions as option}
 											<button
 												type="button"
@@ -1088,52 +1160,37 @@
 							</div>
 						{/if}
 
-						<div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-							<p class="text-xs leading-5 text-slate-500">
-								You'll complete payment on our payment provider's secure checkout. No further
-								charges are added after this step.
-							</p>
-							<div class="mt-3 grid grid-cols-2 gap-2 min-[420px]:grid-cols-4">
-								{#each paymentTrustBadges as badge}
-									<div
-										class="flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 py-1 opacity-70 grayscale"
-									>
-										<img
-											src={badge.src}
-											alt={badge.alt}
-											class="max-h-7 w-auto max-w-full object-contain"
-											loading="lazy"
-										/>
-									</div>
-								{/each}
-								<div
-									class="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-[10px] font-semibold uppercase leading-tight tracking-wide text-slate-500"
-								>
-									<ShieldCheck class="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
-									<span>SubSlush Money-Back Guarantee</span>
-								</div>
+						{#if qaPaymentCompleted}
+							<div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+								QA Payment successful. Your order is paid and its fulfillment tasks have been created.
 							</div>
-							<button
-								type="button"
-								class="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
-								on:click={openCrispChat}
-							>
-								<MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
-								Questions? Chat with us — we're happy to help.
-							</button>
+						{/if}
+
+						<div class="mt-5 grid grid-cols-3 items-center gap-3">
+							{#each paymentTrustBadges as badge}
+								<div class="flex min-w-0 items-center justify-center">
+									<img
+										src={badge.src}
+										alt={badge.alt}
+										class={`h-auto w-auto max-w-full object-contain ${badge.className}`}
+										loading="lazy"
+									/>
+								</div>
+							{/each}
 						</div>
 
 						<button
 							type="button"
-							class="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(126,34,206,0.28)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+							class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(126,34,206,0.28)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
 							on:click={() => {
 								void handleContinueToProvider();
 							}}
 							disabled={
-								!(selectedAntomOption || selectedMethod) ||
+								!(selectedProvider === 'qa' || selectedAntomOption || selectedMethod) ||
 								creatingSession ||
 								refreshingMethods ||
-								loading
+								loading ||
+								qaPaymentCompleted
 							}
 						>
 							{#if creatingSession}
@@ -1155,6 +1212,15 @@
 							>.
 						</p>
 					</div>
+
+					<button
+						type="button"
+						class="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+						on:click={openCrispChat}
+					>
+						<MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
+						Questions? Chat with us — we're happy to help.
+					</button>
 				</aside>
 			</div>
 		</section>

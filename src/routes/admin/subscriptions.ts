@@ -416,6 +416,7 @@ export async function adminSubscriptionRoutes(
           entityType: 'subscription',
           entityId: subscriptionId,
           metadata: {
+            context: 'subscription_credentials_view',
             credentialPresent: Boolean(result.data.credentials_encrypted),
           },
         });
@@ -546,7 +547,11 @@ export async function adminSubscriptionRoutes(
           type: 'object',
           required: ['credentials'],
           properties: {
-            credentials: { type: ['string', 'null'], minLength: 1 },
+            credentials: {
+              type: ['string', 'null'],
+              minLength: 1,
+              maxLength: 4000,
+            },
             reason: { type: 'string', maxLength: 500 },
           },
           additionalProperties: false,

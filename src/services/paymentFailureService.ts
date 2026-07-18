@@ -394,7 +394,14 @@ export class PaymentFailureService {
     try {
       Logger.error(
         `Admin alert: Payment failure requires intervention: ${failureData.paymentId}`,
-        failureData
+        {
+          paymentId: failureData.paymentId,
+          userId: failureData.userId,
+          failureType: failureData.failureType,
+          status: failureData.status,
+          retryCount: failureData.retryCount,
+          canRetry: failureData.canRetry,
+        }
       );
 
       // Create admin alert

@@ -59,6 +59,42 @@ class OrdersService {
     );
     return unwrapApiData<OrderCredentialRevealResponse>(response);
   }
+
+  async revealOrderItemCredentials(
+    orderId: string,
+    subscriptionId: string
+  ): Promise<OrderCredentialRevealResponse> {
+    const response = await apiClient.post(
+      `${API_ENDPOINTS.ORDERS.LIST}/${orderId}/items/${subscriptionId}/reveal`
+    );
+    return unwrapApiData<OrderCredentialRevealResponse>(response);
+  }
+
+  async acceptOrderItemRules(
+    orderId: string,
+    subscriptionId: string
+  ): Promise<{ accepted: boolean; subscription_id: string; rules_version: number }> {
+    const response = await apiClient.post(
+      `${API_ENDPOINTS.ORDERS.LIST}/${orderId}/items/${subscriptionId}/accept-rules`,
+      { confirmed: true }
+    );
+    return unwrapApiData(response);
+  }
+
+  async confirmActivationReady(
+    orderId: string,
+    subscriptionId: string,
+    confirmed: boolean
+  ): Promise<{
+    subscription_id: string;
+    activation_handshake_state: string;
+  }> {
+    const response = await apiClient.post(
+      `${API_ENDPOINTS.ORDERS.LIST}/${orderId}/items/${subscriptionId}/activation-ready`,
+      { confirmed }
+    );
+    return unwrapApiData(response);
+  }
 }
 
 export const ordersService = new OrdersService();

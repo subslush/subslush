@@ -18,11 +18,28 @@ import { paymentService } from './services/paymentService';
 import fastifyRawBody from 'fastify-raw-body';
 import { startJobs, stopJobs } from './services/jobs';
 
+const pinoRedact = {
+  paths: [
+    'req.headers.authorization',
+    'req.headers.cookie',
+    'req.headers["x-nowpayments-sig"]',
+    'req.headers["stripe-signature"]',
+    'req.body.credentials',
+    'req.body.credentials_encrypted',
+    'req.body.activation_link',
+    'req.body.password',
+    'req.body.token',
+    'res.headers["set-cookie"]',
+  ],
+  censor: '[REDACTED]',
+};
+
 const fastify = Fastify({
   logger:
     env.NODE_ENV === 'development'
       ? {
           level: 'info',
+          redact: pinoRedact,
           transport: {
             target: 'pino-pretty',
             options: {
@@ -33,6 +50,7 @@ const fastify = Fastify({
         }
       : {
           level: 'warn',
+          redact: pinoRedact,
         },
   trustProxy: true,
 });
@@ -178,8 +196,12 @@ async function startServer(): Promise<void> {
       await paymentService.refreshSupportedCurrencies();
       server.log.info('NOWPayments currency cache warmed');
     } catch (error) {
-      server.log.warn('Failed to warm NOWPayments currency cache');
-      server.log.warn(error);
+      server.log.warn(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Failed to warm NOWPayments currency cache; continuing with existing fallback behavior'
+      );
     }
 
     await server.listen({

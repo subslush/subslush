@@ -4,6 +4,7 @@ import { env } from '../config/environment';
 import { Logger } from '../utils/logger';
 import { emailService } from './emailService';
 import { checkoutPricingService } from './checkoutPricingService';
+import { couponService } from './couponService';
 import { orderItemUpgradeSelectionService } from './orderItemUpgradeSelectionService';
 import {
   createSuccessResult,
@@ -111,7 +112,7 @@ const buildBrandedEmailIfSupported = (options: {
 const buildPricingSummary = (
   pricing: CheckoutPricingSummary['items'] | null,
   totals: {
-    pricingSnapshotId: string;
+    pricingSnapshotId: string | null;
     displayCurrency: string;
     settlementCurrency: string;
     orderSubtotalCents: number;
@@ -310,10 +311,13 @@ export class GuestCheckoutService {
     }
   }
 
-  async claimGuestIdentity(params: {
-    token: string;
-    userId: string;
-  }): Promise<ServiceResult<{ guestIdentityId: string; reassigned: boolean }>> {
+  async claimGuestIdentity(params: { token: string; userId: string }): Promise<
+    ServiceResult<{
+      guestIdentityId: string;
+      reassigned: boolean;
+      alreadyClaimed: boolean;
+    }>
+  > {
     const pool = getDatabasePool();
     const client = await pool.connect();
     let transactionOpen = false;
@@ -346,7 +350,7 @@ export class GuestCheckoutService {
 
       if (tokenRow.used_at) {
         const claimedStateResult = await client.query(
-          `SELECT gi.user_id, u.is_guest
+          `SELECT gi.user_id, gi.email, u.is_guest
            FROM guest_identities gi
            LEFT JOIN users u ON u.id = gi.user_id
            WHERE gi.id = $1`,
@@ -355,8 +359,15 @@ export class GuestCheckoutService {
         const claimedState = claimedStateResult.rows[0];
         await client.query('ROLLBACK');
         transactionOpen = false;
-        if (claimedState?.user_id && claimedState.is_guest === false) {
-          return createErrorResult('already_claimed');
+        if (
+          claimedState?.user_id === params.userId &&
+          claimedState.is_guest === false
+        ) {
+          return createSuccessResult({
+            guestIdentityId,
+            reassigned: false,
+            alreadyClaimed: true,
+          });
         }
         return createErrorResult('claim_link_used');
       }
@@ -404,6 +415,12 @@ export class GuestCheckoutService {
       const identityEmail =
         typeof identityRow.email === 'string' ? identityRow.email.trim() : '';
       const notificationEmail = targetEmail || identityEmail;
+
+      if (!targetEmail || targetEmail !== identityEmail) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult('claim_email_mismatch');
+      }
 
       if (existingUserId && existingUserId !== params.userId) {
         const optionalUserTables = [
@@ -664,6 +681,7 @@ export class GuestCheckoutService {
       return createSuccessResult({
         guestIdentityId,
         reassigned: Boolean(existingUserId && existingUserId !== params.userId),
+        alreadyClaimed: false,
       });
     } catch (error) {
       if (transactionOpen) {
@@ -750,12 +768,59 @@ export class GuestCheckoutService {
 
       const autoRenewAll = input.items.every(item => item.auto_renew === true);
       const currency = input.currency.trim().toUpperCase();
+      let orderId: string | null = null;
+      let checkoutSessionKey: string;
+      let existingMetadata: Record<string, any> = {};
+
+      if (input.checkout_session_key) {
+        checkoutSessionKey = input.checkout_session_key;
+        const orderResult = await client.query(
+          `SELECT id, status, metadata
+           FROM orders
+           WHERE checkout_session_key = $1
+           FOR UPDATE`,
+          [checkoutSessionKey]
+        );
+
+        if (orderResult.rows.length === 0) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('checkout_session_not_found');
+        }
+
+        const orderRow = orderResult.rows[0];
+        if (orderRow.status !== 'cart') {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('checkout_session_locked');
+        }
+
+        const metadata = parseMetadata(orderRow.metadata) || {};
+        const existingGuestId = metadata['guest_identity_id'];
+        if (existingGuestId && existingGuestId !== identityRow.id) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('checkout_session_mismatch');
+        }
+
+        existingMetadata = metadata;
+        const existingOrderId = orderRow.id as string;
+        orderId = existingOrderId;
+
+        // Repricing an editable checkout replaces, rather than duplicates,
+        // its one reservation. This write is inside the draft transaction, so
+        // a genuinely invalid re-draft restores the prior reservation.
+        await couponService.voidRedemptionForOrder(existingOrderId, client);
+      } else {
+        checkoutSessionKey = randomBytes(CHECKOUT_KEY_BYTES).toString('hex');
+      }
 
       const pricingResult = await checkoutPricingService.priceDraft({
         items: input.items,
         currency,
         couponCode: input.coupon_code ?? null,
         userId,
+        client,
       });
 
       if (!pricingResult.success) {
@@ -793,44 +858,7 @@ export class GuestCheckoutService {
         settlement_final_total_cents: item.settlementFinalTotalCents,
       }));
 
-      let orderId: string | null = null;
-      let checkoutSessionKey: string;
-      let existingMetadata: Record<string, any> = {};
-
       if (input.checkout_session_key) {
-        checkoutSessionKey = input.checkout_session_key;
-        const orderResult = await client.query(
-          `SELECT id, status, metadata
-           FROM orders
-           WHERE checkout_session_key = $1
-           FOR UPDATE`,
-          [checkoutSessionKey]
-        );
-
-        if (orderResult.rows.length === 0) {
-          await client.query('ROLLBACK');
-          transactionOpen = false;
-          return createErrorResult('checkout_session_not_found');
-        }
-
-        const orderRow = orderResult.rows[0];
-        if (orderRow.status !== 'cart') {
-          await client.query('ROLLBACK');
-          transactionOpen = false;
-          return createErrorResult('checkout_session_locked');
-        }
-
-        const metadata = parseMetadata(orderRow.metadata) || {};
-        const existingGuestId = metadata['guest_identity_id'];
-        if (existingGuestId && existingGuestId !== identityRow.id) {
-          await client.query('ROLLBACK');
-          transactionOpen = false;
-          return createErrorResult('checkout_session_mismatch');
-        }
-
-        existingMetadata = metadata;
-        orderId = orderRow.id;
-
         await client.query(
           `UPDATE orders
            SET contact_email = $1,
@@ -886,7 +914,6 @@ export class GuestCheckoutService {
           orderId,
         ]);
       } else {
-        checkoutSessionKey = randomBytes(CHECKOUT_KEY_BYTES).toString('hex');
         const metadata = {
           guest_identity_id: identityRow.id,
           checkout_source: 'guest',
@@ -1007,6 +1034,7 @@ export class GuestCheckoutService {
                 pricedItem.productVariantId ?? pricedItem.product.id,
               pricing_reference_id:
                 pricedItem.productVariantId ?? pricedItem.product.id,
+              pricing_snapshot_id: pricedItem.pricingSnapshotId,
               service_type: serviceType,
               service_plan: planCode,
               duration_months: pricedItem.termMonths,
@@ -1077,6 +1105,36 @@ export class GuestCheckoutService {
               client
             );
           }
+        }
+      }
+
+      // Keep guest drafts on the same coupon lifecycle as authenticated
+      // checkouts: an editable cart has at most one active reservation, held
+      // atomically with the order/items that carry the applied discount.
+      await couponService.voidRedemptionForOrder(orderId, client);
+      if (coupon) {
+        const reservedItem = pricing.items.find(
+          item => item.couponEligible && item.couponDiscountCents > 0
+        );
+        if (!reservedItem) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('coupon_invalid');
+        }
+
+        const reservation = await couponService.reserveCouponRedemption({
+          couponId: coupon.id,
+          userId,
+          orderId,
+          product: reservedItem.product,
+          subtotalCents: reservedItem.termTotalCents,
+          termMonths: reservedItem.termMonths,
+          client,
+        });
+        if (!reservation.success) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult('coupon_invalid');
         }
       }
 

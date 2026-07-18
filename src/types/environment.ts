@@ -22,6 +22,8 @@ export interface EnvironmentConfig {
   JWT_SECRET: string;
   JWT_EXPIRY: number;
   JWT_ALGORITHM: 'HS256' | 'RS256';
+  /** Local-only QA checkout payment switch; production ignores this. */
+  QA_PAYMENT_ENABLED: boolean;
   STRIPE_ENABLED: boolean;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
@@ -120,6 +122,7 @@ export interface EnvironmentConfig {
   CATALOG_DB_PRICING: boolean;
   COUPON_RESERVATION_MINUTES: number;
   CHECKOUT_ABANDON_TTL_MINUTES: number;
+  PAYOP_ANTOM_PENDING_PAYMENT_TTL_HOURS: number;
   CHECKOUT_ABANDON_SWEEP_INTERVAL: number;
   CHECKOUT_ABANDON_SWEEP_BATCH_SIZE: number;
 

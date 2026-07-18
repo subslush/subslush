@@ -14,6 +14,7 @@ import {
 } from '../utils/termPricing';
 import type { Coupon } from '../types/coupon';
 import type { Product, ProductVariant } from '../types/catalog';
+import type { PoolClient } from 'pg';
 
 export type CheckoutPricingItemInput = {
   variant_id: string;
@@ -58,7 +59,9 @@ export type CheckoutPricingItem = {
 
 export type CheckoutPricingResult = {
   items: CheckoutPricingItem[];
-  pricingSnapshotId: string;
+  // Retained for legacy consumers. Independent, valid line locks do not have
+  // a single cart-level snapshot when they originate from different runs.
+  pricingSnapshotId: string | null;
   displayCurrency: string;
   settlementCurrency: string;
   orderSubtotalCents: number;
@@ -81,6 +84,7 @@ export class CheckoutPricingService {
     currency: string;
     couponCode?: string | null;
     userId: string;
+    client?: PoolClient;
   }): Promise<ServiceResult<CheckoutPricingResult>> {
     const normalizedCurrency = normalizeCurrencyCode(params.currency);
     if (!normalizedCurrency) {
@@ -158,9 +162,6 @@ export class CheckoutPricingService {
     const snapshotIds = new Set(
       pricingItems.map(item => item.pricingSnapshotId)
     );
-    if (snapshotIds.size !== 1) {
-      return createErrorResult('price_unavailable');
-    }
 
     const settlementCurrencies = new Set(
       pricingItems.map(item => item.settlementCurrency)
@@ -168,6 +169,8 @@ export class CheckoutPricingService {
     if (settlementCurrencies.size !== 1) {
       return createErrorResult('invalid_settlement');
     }
+    const pricingSnapshotId =
+      snapshotIds.size === 1 ? ([...snapshotIds][0] as string) : null;
 
     let normalizedCouponCode: string | null = null;
     let coupon: Coupon | undefined;
@@ -183,6 +186,7 @@ export class CheckoutPricingService {
             subtotalCents: item.termTotalCents,
             termMonths: item.termMonths,
           })),
+          ...(params.client ? { client: params.client } : {}),
         });
 
         if (!couponResult.success) {
@@ -255,7 +259,7 @@ export class CheckoutPricingService {
 
     return createSuccessResult({
       items: pricingItems,
-      pricingSnapshotId: [...snapshotIds][0] as string,
+      pricingSnapshotId,
       displayCurrency: normalizedCurrency,
       settlementCurrency: [...settlementCurrencies][0] as string,
       orderSubtotalCents,

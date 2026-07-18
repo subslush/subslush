@@ -52,7 +52,7 @@ export interface CheckoutPricingSummaryItem {
 
 export interface CheckoutPricingSummary {
   items: CheckoutPricingSummaryItem[];
-  pricing_snapshot_id: string;
+  pricing_snapshot_id: string | null;
   display_currency: string;
   settlement_currency: string;
   order_subtotal_cents: number;
@@ -132,6 +132,20 @@ export interface CheckoutCreditsCompleteResponse {
   amount_debited?: number | null;
   balance_after?: number | null;
   fulfilled_subscriptions?: number | null;
+}
+
+export type CheckoutQaCompleteRequest = CheckoutCreditsCompleteRequest;
+
+export interface CheckoutQaCompleteResponse {
+  order_id: string;
+  payment_method: 'qa_payment';
+  status: string;
+  subscriptions_created: number;
+  open_tasks: number;
+}
+
+export interface CheckoutQaPaymentConfigResponse {
+  enabled: boolean;
 }
 
 export interface CheckoutNowPaymentsInvoiceRequest {

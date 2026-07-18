@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { getDatabasePool } from '../config/database';
 import { Logger } from '../utils/logger';
 import { credentialsEncryptionService } from '../utils/encryption';
@@ -49,13 +50,16 @@ function mapSelection(row: any): UpgradeSelection {
 }
 
 export class UpgradeSelectionService {
-  async ensureSelection(params: {
-    subscriptionId: string;
-    orderId?: string | null;
-    upgradeOptions: UpgradeOptionsSnapshot;
-  }): Promise<void> {
+  async ensureSelection(
+    params: {
+      subscriptionId: string;
+      orderId?: string | null;
+      upgradeOptions: UpgradeOptionsSnapshot;
+    },
+    client?: PoolClient
+  ): Promise<void> {
     try {
-      const pool = getDatabasePool();
+      const pool = client ?? getDatabasePool();
       await pool.query(
         `INSERT INTO subscription_upgrade_selections
           (subscription_id, order_id, upgrade_options_snapshot)
@@ -153,16 +157,19 @@ export class UpgradeSelectionService {
     }
   }
 
-  async submitSelection(params: {
-    subscriptionId: string;
-    selectionType: UpgradeSelectionType;
-    accountIdentifier?: string | null;
-    credentials?: string | null;
-    manualMonthlyAcknowledgedAt?: Date | null;
-    autoSelectedAt?: Date | null;
-  }): Promise<UpgradeSelection | null> {
+  async submitSelection(
+    params: {
+      subscriptionId: string;
+      selectionType: UpgradeSelectionType;
+      accountIdentifier?: string | null;
+      credentials?: string | null;
+      manualMonthlyAcknowledgedAt?: Date | null;
+      autoSelectedAt?: Date | null;
+    },
+    client?: PoolClient
+  ): Promise<UpgradeSelection | null> {
     try {
-      const pool = getDatabasePool();
+      const pool = client ?? getDatabasePool();
       const now = new Date();
       const credentialsEncrypted =
         params.credentials !== undefined
@@ -208,12 +215,15 @@ export class UpgradeSelectionService {
     }
   }
 
-  async acknowledgeManualMonthly(params: {
-    subscriptionId: string;
-    acknowledgedAt?: Date;
-  }): Promise<UpgradeSelection | null> {
+  async acknowledgeManualMonthly(
+    params: {
+      subscriptionId: string;
+      acknowledgedAt?: Date;
+    },
+    client?: PoolClient
+  ): Promise<UpgradeSelection | null> {
     try {
-      const pool = getDatabasePool();
+      const pool = client ?? getDatabasePool();
       const now = params.acknowledgedAt ?? new Date();
 
       const result = await pool.query(

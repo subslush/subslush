@@ -171,6 +171,7 @@ class CouponService {
     status?: CouponStatus;
     scope?: CouponScope;
     code?: string;
+    include_expired?: boolean;
     limit?: number;
     offset?: number;
   }): Promise<Coupon[]> {
@@ -206,6 +207,9 @@ class CouponService {
           sql += ` AND c.code_normalized = $${++paramCount}`;
           params.push(normalized);
         }
+      }
+      if (filters?.include_expired === false) {
+        sql += ` AND (c.ends_at IS NULL OR c.ends_at >= NOW())`;
       }
       sql += ' ORDER BY c.created_at DESC';
 
@@ -655,6 +659,15 @@ class CouponService {
       `INSERT INTO coupon_redemptions (
         coupon_id, user_id, order_id, status, reserved_at, expires_at
       ) VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (order_id) WHERE order_id IS NOT NULL
+      DO UPDATE SET
+        coupon_id = EXCLUDED.coupon_id,
+        user_id = EXCLUDED.user_id,
+        status = 'reserved',
+        reserved_at = EXCLUDED.reserved_at,
+        redeemed_at = NULL,
+        expires_at = EXCLUDED.expires_at,
+        updated_at = NOW()
       RETURNING *`,
       [coupon.id, params.userId, params.orderId, 'reserved', now, expiresAt]
     );

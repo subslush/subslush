@@ -4,6 +4,7 @@ import { subscriptionRoutes } from '../routes/subscriptions';
 import { orderRoutes } from '../routes/orders';
 import { getDatabasePool } from '../config/database';
 import { orderEntitlementService } from '../services/orderEntitlementService';
+import { subscriptionService } from '../services/subscriptionService';
 import {
   logAdminAction,
   logCredentialRevealAttempt,
@@ -14,6 +15,11 @@ jest.mock('../services/orderEntitlementService', () => ({
   orderEntitlementService: {
     listForOrder: jest.fn(),
     updateEntitlementCredentialsEncryptedValue: jest.fn(),
+  },
+}));
+jest.mock('../services/subscriptionService', () => ({
+  subscriptionService: {
+    updateSubscriptionCredentialsEncryptedValue: jest.fn(),
   },
 }));
 jest.mock('../middleware/authMiddleware', () => ({
@@ -38,6 +44,7 @@ jest.mock('../services/auditLogService', () => ({
 jest.mock('../services/orderComplianceEvidenceService', () => ({
   orderComplianceEvidenceService: {
     recordCredentialRevealEvidence: jest.fn(),
+    recordGenericEvidence: jest.fn(),
   },
 }));
 jest.mock('../utils/logger');
@@ -47,6 +54,9 @@ const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
 >;
 const mockOrderEntitlementService = orderEntitlementService as jest.Mocked<
   typeof orderEntitlementService
+>;
+const mockSubscriptionService = subscriptionService as jest.Mocked<
+  typeof subscriptionService
 >;
 const mockLogAdminAction = logAdminAction as jest.MockedFunction<
   typeof logAdminAction
@@ -62,6 +72,9 @@ describe('Audit logging routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockOrderEntitlementService.updateEntitlementCredentialsEncryptedValue.mockResolvedValue(
+      true
+    );
+    mockSubscriptionService.updateSubscriptionCredentialsEncryptedValue.mockResolvedValue(
       true
     );
   });
@@ -137,29 +150,29 @@ describe('Audit logging routes', () => {
 
   it('logs order credential reveal success', async () => {
     const mockQuery = jest.fn();
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 'order-1', user_id: 'user-1' }],
-    });
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [{ id: 'order-1', user_id: 'user-1' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          { id: subscriptionId, credentials_encrypted: 'credential-secret' },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            order_id: 'order-1',
+            user_id: 'user-1',
+            contact_email: 'user@example.com',
+            subscription_id: subscriptionId,
+            order_item_id: 'item-1',
+            credentials_encrypted: 'credential-secret',
+            product_metadata: {},
+          },
+        ],
+      });
     mockGetDatabasePool.mockReturnValue({ query: mockQuery } as any);
-    mockOrderEntitlementService.listForOrder.mockResolvedValue([
-      {
-        id: 'ent-1',
-        order_id: 'order-1',
-        order_item_id: null,
-        user_id: 'user-1',
-        status: 'active',
-        starts_at: new Date('2025-01-01T00:00:00Z'),
-        ends_at: new Date('2025-02-01T00:00:00Z'),
-        duration_months_snapshot: 1,
-        credentials_encrypted: 'credential-secret',
-        mmu_cycle_index: 1,
-        mmu_cycle_total: 1,
-        source_subscription_id: subscriptionId,
-        metadata: null,
-        created_at: new Date('2025-01-01T00:00:00Z'),
-        updated_at: new Date('2025-01-01T00:00:00Z'),
-      },
-    ] as any);
 
     const app = Fastify();
     await app.register(orderRoutes, { prefix: '/orders' });
@@ -179,6 +192,40 @@ describe('Audit logging routes', () => {
         subscriptionId,
         success: true,
       })
+    );
+  });
+
+  it('reveals an owned order item without a PIN payload and audits the reveal', async () => {
+    const mockQuery = jest.fn().mockResolvedValueOnce({
+      rows: [
+        {
+          order_id: 'order-1',
+          user_id: 'user-1',
+          contact_email: 'user@example.com',
+          subscription_id: subscriptionId,
+          order_item_id: 'item-1',
+          credentials_encrypted: 'credential-secret',
+          product_metadata: { upgrade_options: { strict_rules: false } },
+        },
+      ],
+    });
+    mockGetDatabasePool.mockReturnValue({ query: mockQuery } as any);
+
+    const app = Fastify();
+    await app.register(orderRoutes, { prefix: '/orders' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/orders/order-1/items/${subscriptionId}/reveal`,
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.credentials).toBe('credential-secret');
+    expect(mockLogCredentialRevealAttempt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ subscriptionId, success: true })
     );
   });
 });

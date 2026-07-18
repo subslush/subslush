@@ -99,7 +99,6 @@ export const validateWebhookSignature: FastifyPluginCallback =
 
           if (!isValidSignature) {
             Logger.error('Invalid webhook signature', {
-              signature,
               ip: getRequestIp(request),
             });
             return ErrorResponses.unauthorized(
@@ -242,7 +241,6 @@ export const auditPaymentOperations: FastifyPluginCallback = async fastify => {
             userAgent: request.headers['user-agent'],
             statusCode: reply.statusCode,
             duration,
-            requestBody: request.method === 'POST' ? request.body : undefined,
           });
         }
 

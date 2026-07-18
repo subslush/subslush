@@ -1,22 +1,36 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
   import { Eye, EyeOff, Receipt } from 'lucide-svelte';
   import { ordersService } from '$lib/api/orders.js';
   import type { PageData } from './$types';
   import type { OrderItem, OrderListItem } from '$lib/types/order.js';
+  import type { Subscription } from '$lib/types/subscription.js';
+  import StrictRulesNotice from '$lib/components/dashboard/StrictRulesNotice.svelte';
+  import { requiresStrictRulesAcknowledgement } from '$lib/utils/strictRules.js';
 
   export let data: PageData;
 
   let orders: OrderListItem[] = data.orders;
   let pagination = data.pagination;
-  let revealedCredentialsByOrder: Record<string, string> = {};
-  let revealLoadingByOrder: Record<string, boolean> = {};
-  let revealErrorByOrder: Record<string, string> = {};
-  let copyMessageByOrder: Record<string, string> = {};
+  let subscriptionsByOrder: Record<string, Subscription[]> = data.subscriptionsByOrder || {};
+  let subscriptionsData = data.subscriptionsByOrder;
+  let revealedCredentialsByItem: Record<string, string> = {};
+  let revealLoadingByItem: Record<string, boolean> = {};
+  let revealErrorByItem: Record<string, string> = {};
+  let copyMessageByItem: Record<string, string> = {};
+  let activationReadyCheckedByItem: Record<string, boolean> = {};
+  let actionMessageByItem: Record<string, string> = {};
+  let rulesAcceptedByItem: Record<string, boolean> = {};
+  let rulesModal:
+    | { orderId: string; subscription: Subscription; checked: boolean; loading: boolean; error: string }
+    | null = null;
 
   $: orders = data.orders;
   $: pagination = data.pagination;
+  $: if (data.subscriptionsByOrder !== subscriptionsData) {
+    subscriptionsData = data.subscriptionsByOrder;
+    subscriptionsByOrder = data.subscriptionsByOrder || {};
+  }
 
   function formatDate(value?: string | null): string {
     if (!value) return '-';
@@ -159,8 +173,8 @@
     return serviceType ? formatServiceLabel(serviceType) : '';
   }
 
-  function canRevealCredentials(order: OrderListItem): boolean {
-    return order.status === 'delivered';
+  function canRevealCredentials(order: OrderListItem, subscription: Subscription): boolean {
+    return order.status === 'delivered' || subscription.status === 'active';
   }
 
   function getCredentialsUnavailableMessage(order: OrderListItem): string {
@@ -205,9 +219,9 @@
     goto(`/dashboard/orders?${params.toString()}`);
   }
 
-  function clearRevealedCredentials(orderId: string) {
-    const { [orderId]: _removed, ...rest } = revealedCredentialsByOrder;
-    revealedCredentialsByOrder = rest;
+  function clearRevealedCredentials(subscriptionId: string) {
+    const { [subscriptionId]: _removed, ...rest } = revealedCredentialsByItem;
+    revealedCredentialsByItem = rest;
   }
 
   function parseCredentials(raw: string): Record<string, string> | null {
@@ -229,71 +243,101 @@
     return null;
   }
 
-  async function copyCredentials(orderId: string, value: string) {
+  async function copyCredentials(subscriptionId: string, value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      copyMessageByOrder = {
-        ...copyMessageByOrder,
-        [orderId]: 'Copied to clipboard.'
+      copyMessageByItem = {
+        ...copyMessageByItem,
+        [subscriptionId]: 'Copied to clipboard.'
       };
       setTimeout(() => {
-        copyMessageByOrder = { ...copyMessageByOrder, [orderId]: '' };
+        copyMessageByItem = { ...copyMessageByItem, [subscriptionId]: '' };
       }, 2000);
     } catch {
-      copyMessageByOrder = {
-        ...copyMessageByOrder,
-        [orderId]: 'Copy failed. Please copy manually.'
+      copyMessageByItem = {
+        ...copyMessageByItem,
+        [subscriptionId]: 'Copy failed. Please copy manually.'
       };
     }
   }
 
-  async function revealCredentials(orderId: string) {
-    revealLoadingByOrder = { ...revealLoadingByOrder, [orderId]: true };
-    revealErrorByOrder = { ...revealErrorByOrder, [orderId]: '' };
+  function getOrderSubscriptions(order: OrderListItem): Subscription[] {
+    return subscriptionsByOrder[order.id] || [];
+  }
+
+  function findOrderItemForSubscription(order: OrderListItem, subscription: Subscription): OrderItem | undefined {
+    return order.items?.find(item => item.id === subscription.order_item_id);
+  }
+
+  async function loadOrderSubscriptions(orderId: string) {
     try {
-      const response = await ordersService.revealOrderCredentials(orderId);
-      revealedCredentialsByOrder = {
-        ...revealedCredentialsByOrder,
-        [orderId]: response.credentials
+      const response = await ordersService.getOrderSubscriptions(orderId);
+      subscriptionsByOrder = { ...subscriptionsByOrder, [orderId]: response.subscriptions || [] };
+    } catch (error) {
+      console.warn('Failed to load order subscriptions:', error);
+    }
+  }
+
+  async function revealCredentials(orderId: string, subscription: Subscription) {
+    if (requiresStrictRulesAcknowledgement(subscription, rulesAcceptedByItem[subscription.id] === true)) {
+      rulesModal = { orderId, subscription, checked: false, loading: false, error: '' };
+      return;
+    }
+    await revealCredentialsAfterRules(orderId, subscription.id);
+  }
+
+  async function revealCredentialsAfterRules(orderId: string, subscriptionId: string) {
+    revealLoadingByItem = { ...revealLoadingByItem, [subscriptionId]: true };
+    revealErrorByItem = { ...revealErrorByItem, [subscriptionId]: '' };
+    try {
+      const response = await ordersService.revealOrderItemCredentials(orderId, subscriptionId);
+      revealedCredentialsByItem = {
+        ...revealedCredentialsByItem,
+        [subscriptionId]: response.credentials
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to reveal credentials.';
-      revealErrorByOrder = { ...revealErrorByOrder, [orderId]: message };
+      revealErrorByItem = { ...revealErrorByItem, [subscriptionId]: message };
     } finally {
-      revealLoadingByOrder = { ...revealLoadingByOrder, [orderId]: false };
+      revealLoadingByItem = { ...revealLoadingByItem, [subscriptionId]: false };
     }
   }
 
-  onMount(() => {
-    let isActive = true;
+  async function acceptRulesAndReveal() {
+    if (!rulesModal || !rulesModal.checked) return;
+    const current = rulesModal;
+    rulesModal = { ...current, loading: true, error: '' };
+    try {
+      await ordersService.acceptOrderItemRules(current.orderId, current.subscription.id);
+      rulesAcceptedByItem = { ...rulesAcceptedByItem, [current.subscription.id]: true };
+      rulesModal = null;
+      await revealCredentialsAfterRules(current.orderId, current.subscription.id);
+    } catch (error) {
+      rulesModal = {
+        ...current,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Unable to accept rules.'
+      };
+    }
+  }
 
-    const refreshOrders = async () => {
-      try {
-        const currentPage = data.page || 1;
-        const limit = pagination.limit || 10;
-        const offset = (currentPage - 1) * limit;
-        const params = {
-          limit,
-          offset,
-          include_items: true,
-          status: data.filters.status || undefined,
-          payment_provider: data.filters.paymentProvider || undefined
-        };
-        const result = await ordersService.listOrders(params);
-        if (!isActive) return;
-        orders = result.orders || [];
-        pagination = result.pagination || pagination;
-      } catch (error) {
-        console.warn('Failed to refresh orders:', error);
-      }
-    };
+  async function confirmActivationReady(orderId: string, subscriptionId: string) {
+    try {
+      await ordersService.confirmActivationReady(
+        orderId,
+        subscriptionId,
+        activationReadyCheckedByItem[subscriptionId] === true
+      );
+      actionMessageByItem = { ...actionMessageByItem, [subscriptionId]: 'Activation readiness sent.' };
+      await loadOrderSubscriptions(orderId);
+    } catch (error) {
+      revealErrorByItem = {
+        ...revealErrorByItem,
+        [subscriptionId]: error instanceof Error ? error.message : 'Unable to confirm readiness.'
+      };
+    }
+  }
 
-    void refreshOrders();
-
-    return () => {
-      isActive = false;
-    };
-  });
 </script>
 
 <svelte:head>
@@ -371,57 +415,110 @@
               <p class="text-xs text-gray-500 mt-3">{formatDate(order.created_at)}</p>
             </div>
           </div>
-          <div class="mt-4 border-t border-gray-100 pt-4">
-            {#if !revealedCredentialsByOrder[order.id] && canRevealCredentials(order)}
-              <button
-                class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                disabled={revealLoadingByOrder[order.id]}
-                on:click={() => revealCredentials(order.id)}
-              >
-                <Eye size={14} />
-                {revealLoadingByOrder[order.id] ? 'Revealing...' : 'Reveal credentials'}
-              </button>
-            {:else if revealedCredentialsByOrder[order.id]}
-              <button
-                class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                on:click={() => clearRevealedCredentials(order.id)}
-              >
-                <EyeOff size={14} />
-                Hide credentials
-              </button>
-            {:else if getCredentialsUnavailableMessage(order)}
-              <p class="text-xs text-gray-500">
-                {getCredentialsUnavailableMessage(order)}
-              </p>
-            {/if}
-            {#if revealErrorByOrder[order.id]}
-              <p class="mt-2 text-xs text-red-600">{revealErrorByOrder[order.id]}</p>
-            {/if}
-            {#if revealedCredentialsByOrder[order.id]}
-              {@const parsedCredentials = parseCredentials(revealedCredentialsByOrder[order.id])}
-              {#if parsedCredentials}
-                <div class="mt-3 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  {#each Object.entries(parsedCredentials) as [key, value]}
-                    <div class="flex items-start justify-between gap-3 text-xs">
-                      <span class="font-medium uppercase tracking-wide text-gray-500">{key}</span>
-                      <span class="max-w-[70%] break-all text-right text-gray-700">{value}</span>
+          <div class="mt-4 space-y-3 border-t border-gray-100 pt-4">
+            {#if getOrderSubscriptions(order).length > 0}
+              {#each getOrderSubscriptions(order) as subscription}
+                {@const orderItem = findOrderItemForSubscription(order, subscription)}
+                <div class="rounded-lg border border-gray-200 p-3">
+                  <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-medium text-gray-900">
+                        {formatOrderItemLabel(orderItem, subscription.service_type)}
+                      </p>
+                      <p class="mt-1 text-xs text-gray-500">
+                        {statusLabel(subscription.status)}
+                        {#if subscription.term_months}
+                          · {subscription.term_months} month{subscription.term_months === 1 ? '' : 's'}
+                        {/if}
+                      </p>
                     </div>
-                  {/each}
+                    {#if !revealedCredentialsByItem[subscription.id] && canRevealCredentials(order, subscription)}
+                      <button
+                        class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                        disabled={revealLoadingByItem[subscription.id]}
+                        on:click={() => revealCredentials(order.id, subscription)}
+                      >
+                        <Eye size={14} />
+                        {revealLoadingByItem[subscription.id] ? 'Revealing...' : 'Reveal'}
+                      </button>
+                    {:else if revealedCredentialsByItem[subscription.id]}
+                      <button
+                        class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                        on:click={() => clearRevealedCredentials(subscription.id)}
+                      >
+                        <EyeOff size={14} />
+                        Hide
+                      </button>
+                    {:else if getCredentialsUnavailableMessage(order)}
+                      <p class="text-xs text-gray-500">{getCredentialsUnavailableMessage(order)}</p>
+                    {/if}
+                  </div>
+
+                  {#if subscription.activation_handshake_state === 'awaiting_customer' || subscription.activation_handshake_state === 'instructions_delivered'}
+                    <div class="mt-4 overflow-hidden rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-4 shadow-sm">
+                      <div class="flex items-start gap-3">
+                        <div class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white">1</div>
+                        <div>
+                          <p class="text-sm font-semibold text-violet-950">Ready to activate?</p>
+                          <p class="mt-1 text-xs leading-5 text-violet-900 whitespace-pre-wrap">
+                        {subscription.product_options?.activation_instructions_template || 'Review the delivered activation instructions, then confirm when you are ready for the activation link.'}
+                          </p>
+                        </div>
+                      </div>
+                      <label class="mt-4 flex items-start gap-2 text-xs font-medium text-violet-950">
+                        <input
+                          class="mt-0.5 rounded border-violet-300 text-violet-600 focus:ring-violet-500"
+                          type="checkbox"
+                          bind:checked={activationReadyCheckedByItem[subscription.id]}
+                        />
+                        <span>I understand</span>
+                      </label>
+                      <button
+                        class="mt-4 inline-flex items-center rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:from-violet-700 hover:to-fuchsia-700 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={!activationReadyCheckedByItem[subscription.id]}
+                        on:click={() => confirmActivationReady(order.id, subscription.id)}
+                      >
+                        I'm ready to activate
+                      </button>
+                    </div>
+                  {/if}
+
+                  {#if revealErrorByItem[subscription.id]}
+                    <p class="mt-2 text-xs text-red-600">{revealErrorByItem[subscription.id]}</p>
+                  {/if}
+                  {#if actionMessageByItem[subscription.id]}
+                    <p class="mt-2 text-xs text-green-700">{actionMessageByItem[subscription.id]}</p>
+                  {/if}
+                  {#if revealedCredentialsByItem[subscription.id]}
+                    {@const parsedCredentials = parseCredentials(revealedCredentialsByItem[subscription.id])}
+                    {#if parsedCredentials}
+                      <div class="mt-3 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        {#each Object.entries(parsedCredentials) as [key, value]}
+                          <div class="flex items-start justify-between gap-3 text-xs">
+                            <span class="font-medium uppercase tracking-wide text-gray-500">{key}</span>
+                            <span class="max-w-[70%] break-all text-right text-gray-700">{value}</span>
+                          </div>
+                        {/each}
+                      </div>
+                    {:else}
+                      <p class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 whitespace-pre-wrap break-words">
+                        {revealedCredentialsByItem[subscription.id]}
+                      </p>
+                    {/if}
+                    <button
+                      class="mt-2 inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      on:click={() => copyCredentials(subscription.id, revealedCredentialsByItem[subscription.id])}
+                    >
+                      Copy credentials
+                    </button>
+                    {#if copyMessageByItem[subscription.id]}
+                      <p class="mt-2 text-xs text-gray-500">{copyMessageByItem[subscription.id]}</p>
+                    {/if}
+                  {/if}
                 </div>
-              {:else}
-                <p class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 whitespace-pre-wrap break-words">
-                  {revealedCredentialsByOrder[order.id]}
-                </p>
-              {/if}
-              <button
-                class="mt-2 inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                on:click={() => copyCredentials(order.id, revealedCredentialsByOrder[order.id])}
-              >
-                Copy credentials
-              </button>
-              {#if copyMessageByOrder[order.id]}
-                <p class="mt-2 text-xs text-gray-500">{copyMessageByOrder[order.id]}</p>
-              {/if}
+              {/each}
+            {:else}
+              <p class="text-xs text-gray-500">{getCredentialsUnavailableMessage(order)}</p>
             {/if}
           </div>
         </div>
@@ -449,3 +546,36 @@
     {/if}
   {/if}
 </section>
+
+{#if rulesModal}
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div class="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
+      <h2 class="text-base font-semibold text-gray-900">Rules acknowledgement</h2>
+      <StrictRulesNotice
+        text={rulesModal.subscription.product_options?.strict_rules_text || 'You must follow the rules for this item.'}
+      />
+      <label class="mt-4 flex items-start gap-2 text-sm text-gray-700">
+        <input class="mt-1" type="checkbox" bind:checked={rulesModal.checked} />
+        <span>I understand that breaking these rules deactivates the subscription and voids warranty, replacements and refunds.</span>
+      </label>
+      {#if rulesModal.error}
+        <p class="mt-2 text-xs text-red-600">{rulesModal.error}</p>
+      {/if}
+      <div class="mt-4 flex justify-end gap-2">
+        <button
+          class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700"
+          on:click={() => (rulesModal = null)}
+        >
+          Cancel
+        </button>
+        <button
+          class="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+          disabled={!rulesModal.checked || rulesModal.loading}
+          on:click={acceptRulesAndReveal}
+        >
+          {rulesModal.loading ? 'Accepting...' : 'Accept'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}

@@ -50,9 +50,28 @@ export const load: PageServerLoad = async ({ url, fetch, parent, cookies }) => {
 
     const payload = await response.json();
     const data = payload?.data || {};
+    const orders = data.orders || [];
+    const subscriptionsByOrder = Object.fromEntries(
+      await Promise.all(
+        orders.map(async (order: { id: string }) => {
+          try {
+            const subscriptionsResponse = await fetch(
+              `${API_CONFIG.BASE_URL}${API_ENDPOINTS.ORDERS.LIST}/${order.id}/subscriptions`,
+              cookieHeader ? { headers: { cookie: cookieHeader } } : undefined
+            );
+            if (!subscriptionsResponse.ok) return [order.id, []];
+            const subscriptionsPayload = await subscriptionsResponse.json();
+            return [order.id, subscriptionsPayload?.data?.subscriptions || []];
+          } catch {
+            return [order.id, []];
+          }
+        })
+      )
+    );
 
     return {
-      orders: data.orders || [],
+      orders,
+      subscriptionsByOrder,
       pagination: data.pagination || { limit, offset, total: 0, hasMore: false },
       page,
       filters: { status, paymentProvider },

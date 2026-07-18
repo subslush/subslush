@@ -266,13 +266,12 @@ describe('SubscriptionService', () => {
       // canPurchaseSubscription now only validates business logic, not credits
     });
 
-    it('should reject purchase when subscription limit reached', async () => {
+    it('should ignore legacy capacity values when validating purchase', async () => {
       const service = new SubscriptionService();
 
-      // Mock to return max subscriptions for Spotify (1)
-      jest
+      const countSpy = jest
         .spyOn(service, 'getActiveSubscriptionsCountByProduct')
-        .mockResolvedValue(1);
+        .mockResolvedValue(999);
 
       jest.spyOn(catalogService, 'getVariantWithProduct').mockResolvedValue({
         product: {
@@ -310,10 +309,8 @@ describe('SubscriptionService', () => {
         'variant-1'
       );
 
-      expect(result.canPurchase).toBe(false);
-      expect(result.reason).toContain(
-        'Maximum 1 spotify subscription(s) allowed'
-      );
+      expect(result.canPurchase).toBe(true);
+      expect(countSpy).not.toHaveBeenCalled();
     });
   });
 

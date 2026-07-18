@@ -3,12 +3,18 @@ import { userRoutes } from '../routes/users';
 import { orderRoutes } from '../routes/orders';
 import { getDatabasePool } from '../config/database';
 import { orderEntitlementService } from '../services/orderEntitlementService';
+import { subscriptionService } from '../services/subscriptionService';
 
 jest.mock('../config/database');
 jest.mock('../services/orderEntitlementService', () => ({
   orderEntitlementService: {
     listForOrder: jest.fn(),
     updateEntitlementCredentialsEncryptedValue: jest.fn(),
+  },
+}));
+jest.mock('../services/subscriptionService', () => ({
+  subscriptionService: {
+    updateSubscriptionCredentialsEncryptedValue: jest.fn(),
   },
 }));
 jest.mock('../middleware/authMiddleware', () => ({
@@ -43,6 +49,9 @@ const mockGetDatabasePool = getDatabasePool as jest.MockedFunction<
 const mockOrderEntitlementService = orderEntitlementService as jest.Mocked<
   typeof orderEntitlementService
 >;
+const mockSubscriptionService = subscriptionService as jest.Mocked<
+  typeof subscriptionService
+>;
 
 describe('Credential reveal smoke flow', () => {
   beforeEach(() => {
@@ -50,13 +59,45 @@ describe('Credential reveal smoke flow', () => {
     mockOrderEntitlementService.updateEntitlementCredentialsEncryptedValue.mockResolvedValue(
       true
     );
+    mockSubscriptionService.updateSubscriptionCredentialsEncryptedValue.mockResolvedValue(
+      true
+    );
   });
 
   it('deprecates PIN verification and reveals credentials directly from orders', async () => {
     const mockQuery = jest.fn();
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 'order-1', user_id: 'user-1' }],
-    });
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'order-1',
+            user_id: 'user-1',
+            contact_email: 'user@example.com',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'sub-1',
+            status: 'active',
+            credentials_encrypted: 'credential-secret',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            order_id: 'order-1',
+            user_id: 'user-1',
+            contact_email: 'user@example.com',
+            subscription_id: 'sub-1',
+            order_item_id: 'item-1',
+            credentials_encrypted: 'credential-secret',
+            product_metadata: { upgrade_options: { strict_rules: false } },
+          },
+        ],
+      });
 
     mockGetDatabasePool.mockReturnValue({ query: mockQuery } as any);
     mockOrderEntitlementService.listForOrder.mockResolvedValue([

@@ -141,14 +141,6 @@ export class SubscriptionService {
     return unwrapApiData<SubscriptionResponse>(response);
   }
 
-  async revealCredentials(subscriptionId: string, pinToken: string): Promise<{ credentials: string; subscription_id: string }> {
-    const response = await apiClient.post(
-      `${API_ENDPOINTS.SUBSCRIPTIONS.DETAILS}/${subscriptionId}/credentials/reveal`,
-      { pin_token: pinToken }
-    );
-    return unwrapApiData<{ credentials: string; subscription_id: string }>(response);
-  }
-
   async cancelSubscription(
     subscriptionId: string,
     reason: string

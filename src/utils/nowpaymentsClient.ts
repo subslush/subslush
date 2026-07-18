@@ -26,6 +26,7 @@ export class NOWPaymentsClient {
   private readonly baseURL: string;
   private readonly apiKey: string;
   private readonly sandboxMode: boolean;
+  private currenciesFullFallbackWarned = false;
 
   constructor() {
     this.sandboxMode = env.NOWPAYMENTS_SANDBOX_MODE;
@@ -70,11 +71,12 @@ export class NOWPaymentsClient {
     options: any = {}
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
+    const { suppressErrorLog, ...fetchOptions } = options;
 
     const headers = {
       'x-api-key': this.apiKey,
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...fetchOptions.headers,
     };
 
     if (this.sandboxMode) {
@@ -83,23 +85,24 @@ export class NOWPaymentsClient {
 
     try {
       Logger.debug(
-        `NOWPayments API request: ${options.method || 'GET'} ${url}`
+        `NOWPayments API request: ${fetchOptions.method || 'GET'} ${url}`
       );
 
       const response = await globalThis.fetch(url, {
-        ...options,
+        ...fetchOptions,
         headers,
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        Logger.error(`NOWPayments API error:`, {
-          status: response.status,
-          statusText: response.statusText,
-          data,
-          url,
-        });
+        if (!suppressErrorLog) {
+          Logger.error(`NOWPayments API error:`, {
+            status: response.status,
+            statusText: response.statusText,
+            url,
+          });
+        }
 
         const errorData = data as { message?: string };
         throw new NOWPaymentsError(
@@ -112,7 +115,6 @@ export class NOWPaymentsClient {
 
       Logger.debug(`NOWPayments API response:`, {
         status: response.status,
-        data,
       });
       return data as T;
     } catch (error) {
@@ -120,7 +122,9 @@ export class NOWPaymentsClient {
         throw error;
       }
 
-      Logger.error(`NOWPayments API request failed:`, error);
+      if (!suppressErrorLog) {
+        Logger.error(`NOWPayments API request failed:`, error);
+      }
       throw new NOWPaymentsError(
         `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -149,7 +153,12 @@ export class NOWPaymentsClient {
       const response =
         await this.makeRequest<NOWPaymentsCurrenciesResponse>('/currencies');
 
-      Logger.debug('NOWPayments currencies API response:', response);
+      Logger.debug('NOWPayments currencies API response', {
+        responseShape: Array.isArray(response) ? 'array' : 'object',
+        currencyCount: Array.isArray(response)
+          ? response.length
+          : (response.currencies?.length ?? 0),
+      });
 
       // Handle both possible response formats for robustness
       if (Array.isArray(response)) {
@@ -159,7 +168,9 @@ export class NOWPaymentsClient {
         // Wrapped in currencies property
         return response.currencies;
       } else {
-        Logger.error('Unexpected currencies API response format:', response);
+        Logger.error('Unexpected currencies API response format', {
+          responseShape: Array.isArray(response) ? 'array' : typeof response,
+        });
         throw new NOWPaymentsError('Invalid currencies response format');
       }
     } catch (error) {
@@ -172,9 +183,16 @@ export class NOWPaymentsClient {
     try {
       const response = await this.makeRequest<
         NOWPaymentsCurrency[] | { currencies: NOWPaymentsCurrency[] }
-      >('/currencies-full');
+      >('/currencies-full', { suppressErrorLog: true });
 
-      Logger.debug('NOWPayments currencies-full API response:', response);
+      const fullCurrencyCount = Array.isArray(response)
+        ? response.length
+        : ((response as { currencies?: NOWPaymentsCurrency[] }).currencies
+            ?.length ?? 0);
+      Logger.debug('NOWPayments currencies-full API response', {
+        responseShape: Array.isArray(response) ? 'array' : 'object',
+        currencyCount: fullCurrencyCount,
+      });
 
       if (Array.isArray(response)) {
         return response;
@@ -189,16 +207,21 @@ export class NOWPaymentsClient {
         return (response as { currencies: NOWPaymentsCurrency[] }).currencies;
       }
 
-      Logger.error('Unexpected currencies-full API response format:', response);
+      Logger.error('Unexpected currencies-full API response format', {
+        responseShape: Array.isArray(response) ? 'array' : typeof response,
+      });
       throw new NOWPaymentsError('Invalid currencies-full response format');
     } catch (error) {
       if (error instanceof NOWPaymentsError && error.statusCode === 404) {
-        Logger.warn(
-          'NOWPayments currencies-full endpoint not available; falling back to basic currencies',
-          {
-            statusCode: error.statusCode,
-          }
-        );
+        if (!this.currenciesFullFallbackWarned) {
+          this.currenciesFullFallbackWarned = true;
+          Logger.warn(
+            'NOWPayments currencies-full returned 404; falling back to /currencies',
+            {
+              statusCode: error.statusCode,
+            }
+          );
+        }
         return [];
       }
       Logger.error('Error fetching currencies-full:', error);
@@ -345,7 +368,9 @@ export class NOWPaymentsClient {
 
       // Check API status
       const status = await this.getStatus();
-      Logger.debug('NOWPayments API status:', status);
+      Logger.debug('NOWPayments API status', {
+        available: typeof status.message === 'string',
+      });
 
       // Validate we can fetch currencies
       const currencies = await this.getCurrencies();

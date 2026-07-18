@@ -125,6 +125,10 @@
       : 'email_and_password';
   const ownAccountRequiresPassword = (item: CartItem): boolean =>
     resolveOwnAccountCredentialRequirement(item) === 'email_and_password';
+  const ownAccountFieldLabel = (item: CartItem, field: 'email' | 'password'): string => {
+    const brand = item.subCategory?.trim();
+    return `${brand ? brand.toUpperCase() : 'ACCOUNT'} ${field.toUpperCase()}`;
+  };
 
   let currenciesLoading = false;
   let currenciesError = '';
@@ -2604,7 +2608,7 @@
                           <div class={`mt-2.5 grid gap-2 ${requiresPassword ? 'md:grid-cols-2' : ''}`}>
                             <div class="space-y-1.5">
                               <label class="text-[10px] font-semibold uppercase tracking-wide text-slate-500" for={`account-email-${item.id}`}>
-                                Account email
+                                {ownAccountFieldLabel(item, 'email')}
                               </label>
                               <input
                                 id={`account-email-${item.id}`}
@@ -2624,7 +2628,7 @@
                             {#if requiresPassword}
                               <div class="space-y-1.5">
                                 <label class="text-[10px] font-semibold uppercase tracking-wide text-slate-500" for={`account-password-${item.id}`}>
-                                  Account password
+                                  {ownAccountFieldLabel(item, 'password')}
                                 </label>
                                 <div class="relative">
                                   <input
@@ -2658,15 +2662,10 @@
                               </div>
                             {/if}
                           </div>
-                          <p class="mt-2 text-[10px] text-slate-500">
-                            Details are encrypted and only used to complete this order.
-                          </p>
-                          <p class="mt-1 hidden text-[10px] text-slate-500 sm:block">
-                            Personal Information Collection Statement: We collect these details to fulfill your order,
-                            run fraud/security checks, and support your request. We may share relevant data with
-                            payment, fraud-screening, and fulfillment providers as needed.
-                            <a href="/privacy" class="underline underline-offset-2 hover:text-slate-700">Privacy Policy</a>
-                          </p>
+                          <div class="mt-2 grid gap-2 text-[10px] leading-4 text-slate-500 sm:grid-cols-2">
+                            <p>Details are encrypted and only used to complete this order.</p>
+                            <p>Our fulfillment team securely applies the subscription, then logs out and permanently deletes your credentials. Use a temporary password and change it after delivery.</p>
+                          </div>
                         </div>
                       </div>
                     {/if}
@@ -2761,18 +2760,6 @@
                   <span class="font-bold bg-gradient-to-r from-pink-500 to-purple-700 bg-clip-text text-transparent">Money-Back Guarantee</span>.
                 </span>
               </div>
-              <p class="mt-3 text-xs leading-5 text-slate-500">
-                A small service fee (varies by payment method) and applicable VAT are added at the next step.
-                The price you see before paying is the final price — no further costs after that.
-              </p>
-              <button
-                type="button"
-                class="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
-                on:click={openCrispChat}
-              >
-                <MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
-                Questions? Chat with us — we're happy to help.
-              </button>
               <div class="mt-4 border-t border-slate-200 pt-3">
                 <button
                   type="button"
@@ -2819,6 +2806,15 @@
                 {/if}
               </div>
             </div>
+
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+              on:click={openCrispChat}
+            >
+              <MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
+              Questions? Chat with us — we're happy to help.
+            </button>
 
             {#if actionError}
               <div class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">

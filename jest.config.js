@@ -21,5 +21,4 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/src/tests/setup.ts'],
   testTimeout: 30000, // 30 seconds for Redis operations
   maxWorkers: 1, // Run tests sequentially to avoid Redis conflicts
-  forceExit: true, // Exit immediately after test completion to avoid hanging
 };

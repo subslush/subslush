@@ -43,22 +43,37 @@ export default [
 		}
 	},
 	...svelte.configs['flat/recommended'],
-	{
-		files: ['**/*.svelte'],
-		languageOptions: {
-			parserOptions: {
-				parser: tsParser,
+		{
+			files: ['**/*.svelte'],
+			languageOptions: {
+				parserOptions: {
+					parser: tsParser,
 				project: null
 			},
 			globals: {
 				...globals.browser
 			}
 		},
-		rules: {
-			'no-undef': 'off' // Svelte has its own handling
+			rules: {
+				'no-undef': 'off' // Svelte has its own handling
+			}
+		},
+		{
+			files: [
+				'src/routes/admin/products/*/+page.svelte',
+				'src/routes/browse/products/*/+page.svelte'
+			],
+			rules: {
+				'svelte/no-at-html-tags': 'off'
+			}
+		},
+		{
+			ignores: [
+				'build/',
+				'.svelte-kit/',
+				'dist/',
+				'node_modules/',
+				'vite.config.js.timestamp-*.mjs'
+			]
 		}
-	},
-	{
-		ignores: ['build/', '.svelte-kit/', 'dist/', 'node_modules/']
-	}
-];
+	];

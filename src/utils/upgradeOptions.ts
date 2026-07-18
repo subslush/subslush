@@ -46,6 +46,58 @@ const coerceMmuIntervalMonths = (value: unknown): number | null => {
   return numeric;
 };
 
+const coerceString = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+export const normalizeStrictRulesText = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  // Rules are authored as literal text, not HTML. Preserve merchant-authored
+  // angle brackets and entities exactly; every current consumer renders this
+  // value through JSON or Svelte text interpolation (never {@html}).
+  const normalized = value
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+export const normalizeUpgradeOptionsMetadata = (
+  metadata: Record<string, any> | null | undefined
+): Record<string, any> | null | undefined => {
+  if (!metadata || typeof metadata !== 'object') return metadata;
+  const raw = metadata['upgrade_options'] ?? metadata['upgradeOptions'];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return metadata;
+  const options = { ...(raw as Record<string, any>) };
+  const strictRulesText =
+    options['strict_rules_text'] ?? options['strictRulesText'];
+  const normalizedText = normalizeStrictRulesText(strictRulesText);
+  if (strictRulesText !== undefined && strictRulesText !== null) {
+    delete options['strictRulesText'];
+    if (normalizedText) {
+      options['strict_rules_text'] = normalizedText;
+    } else {
+      delete options['strict_rules_text'];
+    }
+  }
+  return {
+    ...metadata,
+    upgrade_options: options,
+  };
+};
+
+const coercePositiveInteger = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || !Number.isInteger(numeric) || numeric <= 0) {
+    return null;
+  }
+  return numeric;
+};
+
 export const normalizeOwnAccountCredentialRequirement = (
   value: unknown
 ): OwnAccountCredentialRequirement | null => {
@@ -138,8 +190,30 @@ export const normalizeUpgradeOptions = (
   );
   const ownAccountCredentialRequirement =
     readOwnAccountCredentialRequirement(parsed);
+  const activationLinkHandshake = coerceBoolean(
+    parsed['activation_link_handshake'] ?? parsed['activationLinkHandshake']
+  );
+  const activationInstructionsTemplate = coerceString(
+    parsed['activation_instructions_template'] ??
+      parsed['activationInstructionsTemplate']
+  );
+  const strictRules = coerceBoolean(
+    parsed['strict_rules'] ?? parsed['strictRules']
+  );
+  const strictRulesText = normalizeStrictRulesText(
+    parsed['strict_rules_text'] ?? parsed['strictRulesText']
+  );
+  const strictRulesVersion = coercePositiveInteger(
+    parsed['strict_rules_version'] ?? parsed['strictRulesVersion']
+  );
 
-  if (!allowNewAccount && !allowOwnAccount && !manualMonthlyUpgrade) {
+  if (
+    !allowNewAccount &&
+    !allowOwnAccount &&
+    !manualMonthlyUpgrade &&
+    !activationLinkHandshake &&
+    !strictRules
+  ) {
     return null;
   }
 
@@ -158,6 +232,26 @@ export const normalizeUpgradeOptions = (
           own_account_credential_requirement: ownAccountCredentialRequirement,
         }
       : {}),
+    ...(activationLinkHandshake
+      ? {
+          activation_link_handshake: true,
+          ...(activationInstructionsTemplate
+            ? {
+                activation_instructions_template:
+                  activationInstructionsTemplate,
+              }
+            : {}),
+        }
+      : {}),
+    ...(strictRules
+      ? {
+          strict_rules: true,
+          ...(strictRulesText ? { strict_rules_text: strictRulesText } : {}),
+          ...(strictRulesVersion
+            ? { strict_rules_version: strictRulesVersion }
+            : {}),
+        }
+      : {}),
   };
 };
 
@@ -171,7 +265,9 @@ export const validateUpgradeOptions = (
   const hasAny =
     options.allow_new_account ||
     options.allow_own_account ||
-    options.manual_monthly_upgrade;
+    options.manual_monthly_upgrade ||
+    options.activation_link_handshake ||
+    options.strict_rules;
   if (!hasAny) {
     return { valid: false, reason: 'no_upgrade_options_enabled' };
   }
@@ -198,6 +294,33 @@ export const validateUpgradeOptions = (
         valid: false,
         reason: 'invalid_manual_monthly_upgrade_interval_months',
       };
+    }
+  }
+
+  if (
+    options.activation_link_handshake &&
+    typeof options.activation_instructions_template === 'string' &&
+    options.activation_instructions_template.trim().length === 0
+  ) {
+    return {
+      valid: false,
+      reason: 'invalid_activation_instructions_template',
+    };
+  }
+
+  if (options.strict_rules) {
+    if (
+      typeof options.strict_rules_text === 'string' &&
+      options.strict_rules_text.trim().length === 0
+    ) {
+      return { valid: false, reason: 'invalid_strict_rules_text' };
+    }
+    if (
+      options.strict_rules_version !== undefined &&
+      options.strict_rules_version !== null &&
+      !coercePositiveInteger(options.strict_rules_version)
+    ) {
+      return { valid: false, reason: 'invalid_strict_rules_version' };
     }
   }
 

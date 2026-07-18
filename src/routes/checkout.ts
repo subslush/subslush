@@ -15,6 +15,7 @@ import {
   validateCheckoutNowPaymentsMinimumInput,
   validateCheckoutPayPalConfirmInput,
   validateCheckoutCreditsCompleteInput,
+  validateCheckoutQaCompleteInput,
 } from '../schemas/checkout';
 import { guestCheckoutService } from '../services/guestCheckoutService';
 import { paymentService } from '../services/paymentService';
@@ -446,7 +447,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
     legalConsent: CheckoutLegalConsentPayload;
     request: FastifyRequest;
     checkoutSessionKey?: string | null;
-    channel: 'card' | 'crypto' | 'credits';
+    channel: 'card' | 'crypto' | 'credits' | 'qa';
   }): Promise<boolean> => {
     if (!hasRequiredLegalConsent(params.legalConsent)) {
       return false;
@@ -1716,6 +1717,149 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  fastify.get(
+    '/qa/config',
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      if (!env.QA_PAYMENT_ENABLED || env.NODE_ENV === 'production') {
+        return ErrorResponses.notFound(reply, 'Not found');
+      }
+
+      return SuccessResponses.ok(reply, { enabled: true });
+    }
+  );
+
+  fastify.post(
+    '/qa/complete',
+    {
+      preHandler: [optionalAuthPreHandler, paymentRateLimit],
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            checkout_session_key: { type: 'string' },
+            order_id: { type: 'string' },
+            legal_consent: {
+              type: 'object',
+              properties: {
+                immediate_fulfillment_consent: { type: 'boolean' },
+                terms_policy_consent: { type: 'boolean' },
+                consent_timestamp: { type: 'string' },
+                checkout_session_key_snapshot: { type: 'string' },
+                consent_source: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      // This route is intentionally unavailable outside a local QA run.
+      if (!env.QA_PAYMENT_ENABLED || env.NODE_ENV === 'production') {
+        return ErrorResponses.notFound(reply, 'Not found');
+      }
+
+      try {
+        const validation = validateCheckoutQaCompleteInput(request.body);
+        if (!validation.success) {
+          return sendError(
+            reply,
+            400,
+            'Invalid Input',
+            validation.error,
+            'INVALID_INPUT',
+            validation.details
+          );
+        }
+
+        const { checkout_session_key, order_id, legal_consent } =
+          validation.data;
+        const orderId = await resolveCheckoutOrderId({
+          request,
+          reply,
+          checkoutSessionKey: checkout_session_key ?? null,
+          orderId: order_id ?? null,
+        });
+        if (!orderId) {
+          return reply;
+        }
+
+        if (!hasRequiredLegalConsent(legal_consent)) {
+          return ErrorResponses.badRequest(
+            reply,
+            'Digital fulfillment consent and policy acceptance are required'
+          );
+        }
+
+        const consentSaved = await persistLegalConsentEvidence({
+          orderId,
+          legalConsent: legal_consent,
+          request,
+          checkoutSessionKey: checkout_session_key ?? null,
+          channel: 'qa',
+        });
+        if (!consentSaved) {
+          return ErrorResponses.internalError(
+            reply,
+            'Failed to record checkout consent evidence'
+          );
+        }
+
+        const order = await orderService.getOrderWithItems(orderId);
+        if (!order?.user_id) {
+          return ErrorResponses.notFound(reply, 'Order not found');
+        }
+
+        const result = await paymentService.confirmManualOrderPayment({
+          orderId,
+          adminUserId: order.user_id,
+          note: 'QA checkout payment (local test environment)',
+          source: 'qa_checkout',
+          audit: {
+            ipAddress: getRequestIp(request),
+            userAgent:
+              typeof request.headers['user-agent'] === 'string'
+                ? request.headers['user-agent']
+                : null,
+            requestId: request.id,
+          },
+        });
+
+        if (!result.success) {
+          if (result.status === 'not_found') {
+            return ErrorResponses.notFound(reply, 'Order not found');
+          }
+          if (result.status === 'invalid_state') {
+            return reply.status(409).send({
+              error: 'Conflict',
+              code: 'ORDER_NOT_PENDING_PAYMENT',
+              message:
+                'Only pending payment orders can be completed by QA Payment',
+              current_status: result.orderStatus ?? null,
+            });
+          }
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to complete QA payment'
+          );
+        }
+
+        return SuccessResponses.ok(reply, {
+          order_id: orderId,
+          payment_method: 'qa_payment',
+          status: result.orderStatus,
+          subscriptions_created: result.subscriptionsCreated ?? 0,
+          open_tasks: result.tasksOpen ?? 0,
+        });
+      } catch (error) {
+        Logger.error('QA checkout payment completion failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to complete QA payment'
+        );
+      }
+    }
+  );
+
   fastify.post(
     '/antom/options',
     {
@@ -2505,6 +2649,12 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               'CLAIM_LINK_EXPIRED'
             );
           }
+          if (error === 'claim_email_mismatch') {
+            return ErrorResponses.forbidden(
+              reply,
+              'Sign in with the email address used for this checkout'
+            );
+          }
           if (
             [
               'claim_link_unavailable',
@@ -2528,6 +2678,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         return SuccessResponses.ok(reply, {
           guest_identity_id: result.data.guestIdentityId,
           reassigned: result.data.reassigned,
+          already_claimed: result.data.alreadyClaimed,
         });
       } catch (error) {
         Logger.error('Guest claim failed:', error);

@@ -11,7 +11,6 @@ export interface User {
   lastName?: string;
   role?: string;
   displayName?: string | null;
-  pinSetAt?: string | null;
 }
 
 interface AuthState {

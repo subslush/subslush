@@ -926,6 +926,7 @@
 			id: `${variantId}|${termMonths}|no-renew`,
 			serviceType: activeMegaCategory.key,
 			serviceName: selectedLabel,
+			subCategory: activeOfferProduct.sub_category || undefined,
 			plan: `${termMonths} month${termMonths === 1 ? '' : 's'}`,
 			price: activeOfferProduct.from_price,
 			currency: selectedCurrency,

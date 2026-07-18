@@ -59,6 +59,7 @@ export async function adminCouponRoutes(
             status: { type: 'string', enum: ['active', 'inactive'] },
             scope: { type: 'string', enum: ['global', 'category', 'product'] },
             code: { type: 'string' },
+            include_expired: { type: 'boolean' },
             limit: { type: 'number', minimum: 1, maximum: 200 },
             offset: { type: 'number', minimum: 0 },
           },
@@ -72,6 +73,7 @@ export async function adminCouponRoutes(
           status?: CouponStatus;
           scope?: CouponScope;
           code?: string;
+          include_expired?: boolean;
           limit?: number;
           offset?: number;
         };
@@ -122,7 +124,7 @@ export async function adminCouponRoutes(
           type: 'object',
           required: ['code', 'percent_off', 'scope'],
           properties: {
-            code: { type: 'string', minLength: 1 },
+            code: { type: 'string', minLength: 1, maxLength: 200 },
             percent_off: { type: 'number', minimum: 0, maximum: 100 },
             scope: { type: 'string', enum: ['global', 'category', 'product'] },
             apply_scope: {
@@ -130,13 +132,13 @@ export async function adminCouponRoutes(
               enum: ['highest_eligible_item', 'order_total'],
             },
             status: { type: 'string', enum: ['active', 'inactive'] },
-            starts_at: { type: 'string', format: 'date-time' },
-            ends_at: { type: 'string', format: 'date-time' },
+            starts_at: { type: 'string', format: 'date-time', maxLength: 64 },
+            ends_at: { type: 'string', format: 'date-time', maxLength: 64 },
             max_redemptions: { type: ['number', 'null'], minimum: 0 },
-            bound_user_id: { type: 'string' },
+            bound_user_id: { type: 'string', maxLength: 200 },
             first_order_only: { type: 'boolean' },
-            category: { type: 'string' },
-            product_id: { type: 'string' },
+            category: { type: 'string', maxLength: 200 },
+            product_id: { type: 'string', maxLength: 200 },
             term_months: { type: ['integer', 'null'], minimum: 1 },
           },
         },
@@ -219,7 +221,7 @@ export async function adminCouponRoutes(
         body: {
           type: 'object',
           properties: {
-            code: { type: 'string', minLength: 1 },
+            code: { type: 'string', minLength: 1, maxLength: 200 },
             percent_off: { type: 'number', minimum: 0, maximum: 100 },
             scope: { type: 'string', enum: ['global', 'category', 'product'] },
             apply_scope: {
@@ -227,13 +229,13 @@ export async function adminCouponRoutes(
               enum: ['highest_eligible_item', 'order_total'],
             },
             status: { type: 'string', enum: ['active', 'inactive'] },
-            starts_at: { type: 'string', format: 'date-time' },
-            ends_at: { type: 'string', format: 'date-time' },
+            starts_at: { type: 'string', format: 'date-time', maxLength: 64 },
+            ends_at: { type: 'string', format: 'date-time', maxLength: 64 },
             max_redemptions: { type: ['number', 'null'], minimum: 0 },
-            bound_user_id: { type: 'string' },
+            bound_user_id: { type: 'string', maxLength: 200 },
             first_order_only: { type: 'boolean' },
-            category: { type: 'string' },
-            product_id: { type: 'string' },
+            category: { type: 'string', maxLength: 200 },
+            product_id: { type: 'string', maxLength: 200 },
             term_months: { type: ['integer', 'null'], minimum: 1 },
           },
         },

@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
+
 // Mock implementation of uuid for Jest tests
 // This solves the ESM compatibility issue with uuid v13+
 
-export const v4 = jest.fn(() => 'mocked-uuid-v4');
+export const v4 = jest.fn(() => randomUUID());
 export const validate = jest.fn((value: string) => value !== 'invalid-uuid');
 
 export default {
