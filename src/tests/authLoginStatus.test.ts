@@ -96,4 +96,69 @@ describe('AuthService login status enforcement', () => {
     expect(mockSessionService.createSession).not.toHaveBeenCalled();
     expect(mockJwtService.generateTokens).not.toHaveBeenCalled();
   });
+
+  it('claims an unrecorded verified registration only on the first login', async () => {
+    const supabaseUser = {
+      id: 'user-verified',
+      email: 'verified@example.com',
+      created_at: '2026-07-18T10:00:00.000Z',
+      email_confirmed_at: '2026-07-18T10:05:00.000Z',
+      user_metadata: {},
+    };
+    const mockSignIn = jest.fn().mockResolvedValue({
+      data: { user: supabaseUser },
+      error: null,
+    });
+
+    mockCreateClient
+      .mockImplementationOnce(
+        () => ({ auth: { signInWithPassword: mockSignIn } }) as any
+      )
+      .mockImplementationOnce(() => ({ auth: { admin: {} } }) as any);
+
+    let conversionClaimed = false;
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('INSERT INTO users')) {
+        return {
+          rowCount: 1,
+          rows: [
+            {
+              first_name: 'Verified',
+              last_name: 'Customer',
+              status: 'active',
+              pin_set_at: null,
+            },
+          ],
+        };
+      }
+      if (sql.includes('registration_conversion_recorded_at = NOW()')) {
+        if (conversionClaimed) return { rowCount: 0, rows: [] };
+        conversionClaimed = true;
+        return { rowCount: 1, rows: [{ id: supabaseUser.id }] };
+      }
+      if (sql.includes('SET last_login = NOW()')) {
+        return { rowCount: 1, rows: [] };
+      }
+      throw new Error(`Unexpected SQL in test: ${sql}`);
+    });
+    mockGetDatabasePool.mockReturnValue({ query } as any);
+    mockSessionService.createSession.mockResolvedValue('session-123');
+    mockJwtService.generateTokens.mockReturnValue({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+    } as any);
+
+    const authService = loadAuthService();
+    const first = await authService.login(
+      { email: supabaseUser.email, password: 'password' },
+      { ipAddress: '127.0.0.1', userAgent: 'jest' }
+    );
+    const repeat = await authService.login(
+      { email: supabaseUser.email, password: 'password' },
+      { ipAddress: '127.0.0.1', userAgent: 'jest' }
+    );
+
+    expect(first).toMatchObject({ success: true, isNewlyVerified: true });
+    expect(repeat).toMatchObject({ success: true, isNewlyVerified: false });
+  });
 });

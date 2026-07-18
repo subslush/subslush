@@ -7,6 +7,7 @@
     identifyTikTokUser,
     trackCompleteRegistration
   } from '$lib/utils/analytics.js';
+  import { VERIFIED_NOTICE_STORAGE_KEY } from '$lib/utils/authConfirmation.js';
 
   let status: 'verifying' | 'success' | 'error' = 'verifying';
   let message = 'Confirming your email...';
@@ -37,6 +38,14 @@
       window.localStorage.removeItem(EMAIL_VERIFY_REDIRECT_STORAGE_KEY);
     } catch {
       // Ignore storage errors.
+    }
+  };
+
+  const persistVerifiedNotice = (): void => {
+    try {
+      window.sessionStorage.setItem(VERIFIED_NOTICE_STORAGE_KEY, '1');
+    } catch {
+      // The confirmation still succeeds when browser storage is unavailable.
     }
   };
 
@@ -99,11 +108,12 @@
           ? 'Returning you to claim your order...'
           : 'Redirecting you now...';
       clearStoredRedirect();
+      persistVerifiedNotice();
       if (redirectPath) {
         window.location.href = redirectPath;
         return;
       }
-      window.location.href = '/auth/verified';
+      window.location.href = '/dashboard/orders';
     } catch (error) {
       status = 'error';
       message = 'We could not confirm your email.';

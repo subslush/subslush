@@ -38,6 +38,7 @@ describe('AuthService email confirmation transition', () => {
       id: 'user-123',
       email: 'buyer@example.com',
       created_at: '2026-07-01T10:00:00.000Z',
+      email_confirmed_at: '2026-07-01T10:05:00.000Z',
       user_metadata: {},
     };
     const getUser = jest.fn().mockResolvedValue({
@@ -65,7 +66,7 @@ describe('AuthService email confirmation transition', () => {
           ],
         };
       }
-      if (sql.includes('SET email_verified_at = NOW()')) {
+      if (sql.includes('registration_conversion_recorded_at = NOW()')) {
         if (verified) return { rowCount: 0, rows: [] };
         verified = true;
         return { rowCount: 1, rows: [{ id: supabaseUser.id }] };
@@ -100,7 +101,7 @@ describe('AuthService email confirmation transition', () => {
     expect(repeat).toMatchObject({ success: true, isNewlyVerified: false });
     expect(
       query.mock.calls.filter(([sql]) =>
-        String(sql).includes('SET email_verified_at = NOW()')
+        String(sql).includes('registration_conversion_recorded_at = NOW()')
       )
     ).toHaveLength(2);
   });

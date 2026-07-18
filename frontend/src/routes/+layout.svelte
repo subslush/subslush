@@ -18,6 +18,7 @@
 	import { initConsent } from '$lib/stores/consent.js';
 	import { identifyTikTokUser, initGoogleAnalytics, trackPageView } from '$lib/utils/analytics.js';
 	import { startCartPricingSync } from '$lib/utils/cartPricingSync.js';
+	import { resolveSupabaseSignupConfirmationTarget } from '$lib/utils/authConfirmation.js';
 	import type { LayoutData } from './$types';
 	import '../app.css';
 
@@ -68,6 +69,14 @@
 	}
 
 	onMount(() => {
+		const confirmationTarget = resolveSupabaseSignupConfirmationTarget(
+			new globalThis.URL(window.location.href)
+		);
+		if (confirmationTarget) {
+			window.location.replace(confirmationTarget);
+			return;
+		}
+
 		initConsent();
 		initGoogleAnalytics();
 		initThirdPartyTracking();

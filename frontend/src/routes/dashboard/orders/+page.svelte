@@ -1,12 +1,14 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { Eye, EyeOff, Receipt } from 'lucide-svelte';
+  import { onMount } from 'svelte';
+  import { CheckCircle, Eye, EyeOff, Receipt, X } from 'lucide-svelte';
   import { ordersService } from '$lib/api/orders.js';
   import type { PageData } from './$types';
   import type { OrderItem, OrderListItem } from '$lib/types/order.js';
   import type { Subscription } from '$lib/types/subscription.js';
   import StrictRulesNotice from '$lib/components/dashboard/StrictRulesNotice.svelte';
   import { requiresStrictRulesAcknowledgement } from '$lib/utils/strictRules.js';
+  import { VERIFIED_NOTICE_STORAGE_KEY } from '$lib/utils/authConfirmation.js';
 
   export let data: PageData;
 
@@ -24,6 +26,24 @@
   let rulesModal:
     | { orderId: string; subscription: Subscription; checked: boolean; loading: boolean; error: string }
     | null = null;
+  let showVerifiedNotice = false;
+
+  onMount(() => {
+    try {
+      showVerifiedNotice =
+        window.sessionStorage.getItem(VERIFIED_NOTICE_STORAGE_KEY) === '1';
+      window.sessionStorage.removeItem(VERIFIED_NOTICE_STORAGE_KEY);
+    } catch {
+      showVerifiedNotice = false;
+    }
+
+    if (showVerifiedNotice) {
+      const timeoutId = window.setTimeout(() => {
+        showVerifiedNotice = false;
+      }, 8000);
+      return () => window.clearTimeout(timeoutId);
+    }
+  });
 
   $: orders = data.orders;
   $: pagination = data.pagination;
@@ -344,6 +364,30 @@
   <title>Orders - SubSlush</title>
   <meta name="description" content="Review your recent subscription orders." />
 </svelte:head>
+
+{#if showVerifiedNotice}
+  <div
+    class="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900 shadow-lg"
+    role="status"
+    aria-live="polite"
+  >
+    <CheckCircle class="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+    <div class="min-w-0">
+      <p class="text-sm font-semibold">Email verified</p>
+      <p class="mt-0.5 text-sm text-emerald-800">
+        Your account is confirmed and you are now signed in.
+      </p>
+    </div>
+    <button
+      type="button"
+      class="ml-auto rounded p-0.5 text-emerald-700 hover:bg-emerald-100"
+      aria-label="Dismiss confirmation"
+      on:click={() => (showVerifiedNotice = false)}
+    >
+      <X class="h-4 w-4" />
+    </button>
+  </div>
+{/if}
 
 <section class="space-y-4">
   <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">

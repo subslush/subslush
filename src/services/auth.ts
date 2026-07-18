@@ -360,6 +360,12 @@ class AuthService {
           error: 'User email not found',
         };
       }
+      if (!supabaseUser.email_confirmed_at && !supabaseUser.confirmed_at) {
+        return {
+          success: false,
+          error: 'Email address has not been verified',
+        };
+      }
 
       let pgUser: {
         first_name?: string | null;
@@ -425,21 +431,7 @@ class AuthService {
         };
       }
 
-      try {
-        const verificationResult = await this.pool.query(
-          `UPDATE users
-           SET email_verified_at = NOW()
-           WHERE id = $1 AND email_verified_at IS NULL
-           RETURNING id`,
-          [userId]
-        );
-        isNewlyVerified = (verificationResult.rowCount ?? 0) > 0;
-      } catch (error) {
-        Logger.warn('Failed to update email verification timestamp', {
-          userId,
-          error,
-        });
-      }
+      isNewlyVerified = await this.claimVerifiedRegistrationConversion(userId);
 
       const role = supabaseUser.user_metadata?.['role'] || 'user';
       const sessionId = await sessionService.createSession(userId, {
@@ -578,6 +570,17 @@ class AuthService {
         };
       }
 
+      if (!authData.user.email_confirmed_at && !authData.user.confirmed_at) {
+        return {
+          success: false,
+          error: 'Please confirm your email address',
+        };
+      }
+
+      const isNewlyVerified = await this.claimVerifiedRegistrationConversion(
+        authData.user.id
+      );
+
       // Get role from Supabase Auth metadata (where it's actually stored)
       const role = authData.user.user_metadata?.['role'] || 'user';
 
@@ -624,6 +627,7 @@ class AuthService {
         user,
         tokens,
         sessionId,
+        isNewlyVerified,
       };
     } catch (error) {
       Logger.error('Login error:', error);
@@ -1069,6 +1073,29 @@ class AuthService {
         return 'Too many email requests. Please try again later';
       default:
         return error.message || 'Authentication error occurred';
+    }
+  }
+
+  private async claimVerifiedRegistrationConversion(
+    userId: string
+  ): Promise<boolean> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE users
+         SET email_verified_at = COALESCE(email_verified_at, NOW()),
+             registration_conversion_recorded_at = NOW()
+         WHERE id = $1
+           AND registration_conversion_recorded_at IS NULL
+         RETURNING id`,
+        [userId]
+      );
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      Logger.warn('Failed to record verified registration conversion', {
+        userId,
+        error,
+      });
+      return false;
     }
   }
 

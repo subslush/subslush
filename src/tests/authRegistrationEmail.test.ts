@@ -138,6 +138,31 @@ describe('AuthService registration confirmation email', () => {
     });
   });
 
+  it('targets the application confirmation callback for a standard registration', async () => {
+    const mockPool = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce({ rowCount: 0, rows: [] })
+        .mockResolvedValueOnce({ rowCount: 1, rows: [] }),
+    };
+    mockGetDatabasePool.mockReturnValue(mockPool as any);
+
+    const authService = loadAuthService();
+    const result = await authService.register(
+      {
+        email: 'customer@example.com',
+        password: 'Password123!',
+      },
+      { ipAddress: '127.0.0.1', userAgent: 'jest' }
+    );
+
+    expect(result.success).toBe(true);
+    const redirectTo = mockGenerateLink.mock.calls[0]?.[0]?.options?.redirectTo;
+    const redirectUrl = new globalThis.URL(redirectTo as string);
+    expect(redirectUrl.pathname).toBe('/auth/confirm');
+    expect(redirectUrl.search).toBe('');
+  });
+
   it('cleans up the created auth and profile records when confirmation email sending fails', async () => {
     const mockPool = {
       query: jest

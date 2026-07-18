@@ -59,6 +59,24 @@ const passwordResetConfirmRateLimit = createRateLimitHandler({
   },
 });
 
+const trackVerifiedRegistrationConversion = (params: {
+  request: FastifyRequest;
+  user: { id: string; email: string };
+}): void => {
+  const eventId = `user_${params.user.id}_registration`;
+  void tiktokEventsService.trackCompleteRegistration({
+    userId: params.user.id,
+    email: params.user.email,
+    context: buildTikTokRequestContext(params.request),
+  });
+  void metaEventsService.trackCompleteRegistration({
+    externalId: params.user.id,
+    email: params.user.email,
+    eventId,
+    context: buildMetaRequestContext(params.request),
+  });
+};
+
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.send({
@@ -257,17 +275,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         if (result.user && result.isNewlyVerified) {
-          const eventId = `user_${result.user.id}_registration`;
-          void tiktokEventsService.trackCompleteRegistration({
-            userId: result.user.id,
-            email: result.user.email,
-            context: buildTikTokRequestContext(request),
-          });
-          void metaEventsService.trackCompleteRegistration({
-            externalId: result.user.id,
-            email: result.user.email,
-            eventId,
-            context: buildMetaRequestContext(request),
+          trackVerifiedRegistrationConversion({
+            request,
+            user: result.user,
           });
         }
 
@@ -340,12 +350,19 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             email: result.user.email,
             context: buildTikTokRequestContext(request),
           });
+          if (result.isNewlyVerified) {
+            trackVerifiedRegistrationConversion({
+              request,
+              user: result.user,
+            });
+          }
         }
 
         return reply.send({
           message: 'Login successful',
           user: result.user,
           sessionId: result.sessionId,
+          isNewlyVerified: result.isNewlyVerified ?? false,
         });
       } catch {
         reply.statusCode = 500;

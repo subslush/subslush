@@ -2,7 +2,12 @@ import { writable, derived, get } from 'svelte/store';
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
 import { authService } from '$lib/api/auth.js';
-import { identifyTikTokUser, trackLogin } from '$lib/utils/analytics.js';
+import {
+  identifyTikTokUser,
+  trackCompleteRegistration,
+  trackLogin
+} from '$lib/utils/analytics.js';
+import { VERIFIED_NOTICE_STORAGE_KEY } from '$lib/utils/authConfirmation.js';
 
 export interface User {
   id: string;
@@ -334,9 +339,24 @@ function createAuthStore(initialUser: User | null = null) {
 
         await identifyTikTokUser(response.user);
         trackLogin('email', `user_${response.user.id}_login`);
+        if (response.isNewlyVerified) {
+          trackCompleteRegistration(
+            'email_verification',
+            `user_${response.user.id}_registration`
+          );
+          try {
+            window.sessionStorage.setItem(VERIFIED_NOTICE_STORAGE_KEY, '1');
+          } catch {
+            // Authentication and conversion tracking do not depend on storage.
+          }
+        }
 
         // Force a complete page refresh to ensure server gets the cookie
-        const redirectPath = resolvePostAuthRedirect();
+        const requestedRedirect = resolvePostAuthRedirect();
+        const redirectPath =
+          response.isNewlyVerified && requestedRedirect === '/'
+            ? '/dashboard/orders'
+            : requestedRedirect;
         console.log(
           '🔐 [AUTH STORE] Redirecting after login with refresh:',
           redirectPath
