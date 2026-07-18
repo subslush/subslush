@@ -117,7 +117,20 @@ export async function adminFulfillmentRoutes(
         } else if (tab === 'completed') {
           sql += ` AND s.delivered_at IS NOT NULL`;
         } else {
-          sql += ` AND s.status <> 'active' AND COALESCE(t.task_type, 'credential_provision') <> 'manual_monthly_upgrade'`;
+          // New orders are actionable, open initial-fulfillment work only.
+          //
+          // A subscription can legitimately be expired or cancelled after an
+          // item was delivered. It must not re-enter this queue just because
+          // it is no longer active. Likewise, the LEFT JOIN intentionally
+          // omits completed tasks, so treating a NULL task as credential
+          // provision would incorrectly resurrect legacy completed work.
+          // Keep open selection-pending tasks visible here; they are still
+          // actionable initial-order work and are resolved before credential
+          // provision begins.
+          sql += ` AND s.status = 'pending'
+                       AND t.id IS NOT NULL
+                       AND t.task_type <> 'manual_monthly_upgrade'
+                       AND COALESCE(s.activation_handshake_state, 'none') = 'none'`;
         }
         if (tab === 'mmu') {
           sql += ` ORDER BY t.due_date ASC NULLS LAST, o.id ASC, t.id ASC LIMIT $1 OFFSET $2`;

@@ -624,4 +624,34 @@ describe('Admin fulfillment aggregate endpoints', () => {
     );
     expect(mockQuery.mock.calls[2][1]).toEqual([8, 0]);
   });
+
+  it('limits New orders to pending subscriptions with an open initial-work task', async () => {
+    const mockQuery = jest.fn().mockResolvedValue({ rows: [] });
+    mockGetDatabasePool.mockReturnValue({ query: mockQuery } as any);
+
+    const app = Fastify();
+    await app.register(adminFulfillmentRoutes, {
+      prefix: '/admin/fulfillment',
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/admin/fulfillment/queue?tab=new_orders',
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    const queueSql = mockQuery.mock.calls[0][0];
+    expect(queueSql).toContain("s.status = 'pending'");
+    expect(queueSql).toContain('t.id IS NOT NULL');
+    expect(queueSql).toContain("t.task_type <> 'manual_monthly_upgrade'");
+    expect(queueSql).toContain(
+      "COALESCE(s.activation_handshake_state, 'none') = 'none'"
+    );
+    expect(queueSql).not.toContain("s.status <> 'active'");
+    expect(queueSql).not.toContain(
+      "COALESCE(t.task_type, 'credential_provision')"
+    );
+  });
 });
