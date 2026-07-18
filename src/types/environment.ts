@@ -106,6 +106,10 @@ export interface EnvironmentConfig {
   TIKTOK_EVENTS_ACCESS_TOKEN?: string | undefined;
   TIKTOK_EVENTS_TEST_CODE?: string | undefined;
   TIKTOK_PIXEL_ID?: string | undefined;
+  META_DATASET_ID?: string | undefined;
+  META_CONVERSIONS_API_ACCESS_TOKEN?: string | undefined;
+  META_GRAPH_API_VERSION: string;
+  META_TEST_EVENT_CODE?: string | undefined;
   EMAIL_PROVIDER: 'smtp' | 'console' | 'resend';
   EMAIL_FROM?: string | undefined;
   EMAIL_REPLY_TO?: string | undefined;

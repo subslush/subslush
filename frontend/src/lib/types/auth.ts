@@ -39,6 +39,7 @@ export interface AuthResponse {
   accessToken?: string;
   sessionId?: string;
   requiresEmailVerification?: boolean;
+  isNewlyVerified?: boolean;
 }
 
 export interface ConfirmEmailRequest {

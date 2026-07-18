@@ -227,6 +227,7 @@ export const checkoutPayopSessionSchema = z.object({
     .int('Payment method id must be an integer')
     .positive('Payment method id must be positive'),
   country_code: optionalCountryCodeSchema,
+  initiate_checkout_event_id: optionalEventIdSchema,
   add_payment_info_event_id: optionalEventIdSchema,
   legal_consent: optionalLegalConsentSchema,
 });
@@ -300,6 +301,7 @@ export const checkoutAntomSessionSchema = z.object({
   order_id: uuidSchema.optional().nullable(),
   option_id: antomOptionIdSchema,
   residence_id: optionalTaxResidenceSchema,
+  initiate_checkout_event_id: optionalEventIdSchema,
   add_payment_info_event_id: optionalEventIdSchema,
   legal_consent: optionalLegalConsentSchema,
 });

@@ -30,6 +30,12 @@ type TikTokPixel = {
   ) => void;
   identify: (params: Record<string, string>) => void;
 };
+type MetaPixel = (
+  action: 'track' | 'trackCustom',
+  eventName: string,
+  params?: Record<string, unknown>,
+  eventData?: { eventID?: string }
+) => void;
 
 const FALLBACK_GA_MEASUREMENT_ID = 'G-VQ0N792RNT';
 const GA_MEASUREMENT_ID =
@@ -136,8 +142,11 @@ const hashSha256 = async (value: string): Promise<string | null> => {
 let lastIdentifyKey = '';
 let identifyInFlight: Promise<void> | null = null;
 let hasTrackedTikTokPageView = false;
+let hasHandledInitialMetaPageView = false;
 
-export const identifyTikTokUser = async (user: AuthUser | null): Promise<void> => {
+export const identifyTikTokUser = async (
+  user: AuthUser | null
+): Promise<void> => {
   if (!browser) return;
   const ttq = getTtq();
   if (!ttq || typeof ttq.identify !== 'function') return;
@@ -198,7 +207,10 @@ const trackEvent = (eventName: string, params?: AnalyticsParams): void => {
   );
 };
 
-const trackTikTokEvent = (eventName: string, params?: AnalyticsParams): void => {
+const trackTikTokEvent = (
+  eventName: string,
+  params?: AnalyticsParams
+): void => {
   const ttq = getTtq();
   if (!ttq) return;
   const allowedEvents = new Set([
@@ -233,6 +245,36 @@ const trackTikTokPageView = (): void => {
   }
 };
 
+const getMetaPixel = (): MetaPixel | null => {
+  if (!browser || typeof window.fbq !== 'function') return null;
+  return window.fbq;
+};
+
+const trackMetaEvent = (
+  eventName: string,
+  params?: AnalyticsParams,
+  eventId?: string
+): void => {
+  const fbq = getMetaPixel();
+  if (!fbq) return;
+  const normalizedEventId = eventId?.trim() || undefined;
+  fbq(
+    'track',
+    eventName,
+    params ? cleanParams(params) : {},
+    normalizedEventId ? { eventID: normalizedEventId } : undefined
+  );
+};
+
+const trackMetaPageView = (): void => {
+  if (!hasHandledInitialMetaPageView) {
+    // The base code in app.html owns the initial document PageView.
+    hasHandledInitialMetaPageView = true;
+    return;
+  }
+  trackMetaEvent('PageView');
+};
+
 type TikTokContentType = 'product' | 'product_group';
 
 const buildTikTokContents = (
@@ -252,7 +294,39 @@ const buildTikTokContents = (
     )
     .filter(content => Boolean(content.content_id));
 
-const resolveCurrency = (currency: string | undefined, items: AnalyticsItem[]): string | undefined =>
+const buildMetaContents = (items: AnalyticsItem[]): Record<string, unknown>[] =>
+  items
+    .filter(item => Boolean(item && (item.item_id || item.item_name)))
+    .map(item =>
+      cleanParams({
+        id: item.item_id || item.item_name,
+        quantity: item.quantity || 1,
+        item_price: item.price
+      })
+    )
+    .filter(content => Boolean(content.id));
+
+const buildMetaEcommerceParams = (
+  currency: string | undefined,
+  value: number | undefined,
+  items: AnalyticsItem[],
+  additional: AnalyticsParams = {}
+): AnalyticsParams => {
+  const contents = buildMetaContents(items);
+  return cleanParams({
+    currency: resolveCurrency(currency, items),
+    value,
+    content_ids: contents.map(content => content.id),
+    content_type: 'product',
+    contents,
+    ...additional
+  });
+};
+
+const resolveCurrency = (
+  currency: string | undefined,
+  items: AnalyticsItem[]
+): string | undefined =>
   currency || items.find(item => item.currency)?.currency;
 
 export const trackPageView = (pagePath: string, pageTitle?: string): void => {
@@ -263,9 +337,13 @@ export const trackPageView = (pagePath: string, pageTitle?: string): void => {
     page_location: window.location.href
   });
   trackTikTokPageView();
+  trackMetaPageView();
 };
 
-export const trackViewItemList = (listName: string, items: AnalyticsItem[]): void => {
+export const trackViewItemList = (
+  listName: string,
+  items: AnalyticsItem[]
+): void => {
   const normalizedItems = cleanItems(items);
   if (!normalizedItems.length) return;
   trackEvent('view_item_list', {
@@ -315,6 +393,19 @@ export const trackViewItem = (item: AnalyticsItem, eventId?: string): void => {
     currency: resolveCurrency(primaryItem.currency, normalizedItems),
     event_id: eventId
   });
+  trackMetaEvent(
+    'ViewContent',
+    buildMetaEcommerceParams(
+      primaryItem.currency,
+      primaryItem.price,
+      normalizedItems,
+      {
+        content_name: primaryItem.item_name,
+        content_category: primaryItem.item_category
+      }
+    ),
+    eventId
+  );
 };
 
 export const trackBeginCheckout = (
@@ -367,6 +458,11 @@ export const trackAddToCart = (
     currency: resolveCurrency(currency, normalizedItems),
     event_id: eventId
   });
+  trackMetaEvent(
+    'AddToCart',
+    buildMetaEcommerceParams(currency, value, normalizedItems),
+    eventId
+  );
 };
 
 export const trackAddPaymentInfo = (
@@ -395,6 +491,28 @@ export const trackAddPaymentInfo = (
     currency: resolveCurrency(currency, normalizedItems),
     event_id: eventId
   });
+  trackMetaEvent(
+    'AddPaymentInfo',
+    buildMetaEcommerceParams(currency, value, normalizedItems, {
+      payment_type: paymentType
+    }),
+    eventId
+  );
+};
+
+export const trackMetaInitiateCheckout = (
+  currency: string | undefined,
+  value: number | undefined,
+  items: AnalyticsItem[],
+  eventId?: string
+): void => {
+  const normalizedItems = cleanItems(items);
+  if (!normalizedItems.length) return;
+  trackMetaEvent(
+    'InitiateCheckout',
+    buildMetaEcommerceParams(currency, value, normalizedItems),
+    eventId
+  );
 };
 
 export const trackTikTokInitiateCheckout = (
@@ -495,6 +613,24 @@ export const trackPurchase = (
   });
 };
 
+export const trackMetaPurchase = (
+  transactionId: string,
+  currency: string,
+  value: number,
+  items: AnalyticsItem[],
+  eventId?: string
+): void => {
+  const normalizedItems = cleanItems(items);
+  if (!normalizedItems.length) return;
+  trackMetaEvent(
+    'Purchase',
+    buildMetaEcommerceParams(currency, value, normalizedItems, {
+      order_id: transactionId
+    }),
+    eventId
+  );
+};
+
 export const trackSearch = (
   searchTerm: string,
   items: AnalyticsItem[] = [],
@@ -507,11 +643,24 @@ export const trackSearch = (
   const contents = normalizedItems.length
     ? buildTikTokContents(normalizedItems, 'product_group')
     : [];
-  trackTikTokEvent('Search', cleanParams({
-    search_string: trimmedTerm,
-    contents: contents.length ? contents : undefined,
-    event_id: eventId
-  }));
+  trackTikTokEvent(
+    'Search',
+    cleanParams({
+      search_string: trimmedTerm,
+      contents: contents.length ? contents : undefined,
+      event_id: eventId
+    })
+  );
+  trackMetaEvent(
+    'Search',
+    cleanParams({
+      search_string: trimmedTerm,
+      content_ids: normalizedItems
+        .map(item => item.item_id || item.item_name)
+        .filter(Boolean)
+    }),
+    eventId
+  );
 };
 
 export const trackCompleteRegistration = (
@@ -523,6 +672,11 @@ export const trackCompleteRegistration = (
     content_name: 'Account Registration',
     event_id: eventId
   });
+  trackMetaEvent(
+    'CompleteRegistration',
+    { content_name: 'Account Registration', registration_method: method },
+    eventId
+  );
 };
 
 export const trackLogin = (method?: string, eventId?: string): void => {
@@ -538,6 +692,7 @@ declare global {
     gtag?: GtagFunction;
     dataLayer?: unknown[];
     ttq?: TikTokPixel;
+    fbq?: MetaPixel;
   }
 }
 

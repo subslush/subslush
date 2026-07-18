@@ -38,6 +38,11 @@
 		CheckoutPayopMethodQuote
 	} from '$lib/types/checkout.js';
 	import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
+	import {
+		trackAddPaymentInfo,
+		trackMetaInitiateCheckout,
+		type AnalyticsItem
+	} from '$lib/utils/analytics.js';
 	import { ArrowLeft, CreditCard, Globe2, Landmark, Loader2, MessageSquare, X } from 'lucide-svelte';
 
 	const countryNames =
@@ -236,7 +241,9 @@
 		}
 
 		const focusable = Array.from(
-			taxDialogElement.querySelectorAll<HTMLElement>('button, [href], [tabindex]:not([tabindex="-1"])')
+			taxDialogElement.querySelectorAll<HTMLElement>(
+				'button, [href], [tabindex]:not([tabindex="-1"])'
+			)
 		).filter((element) => !element.hasAttribute('disabled'));
 		if (focusable.length === 0) {
 			event.preventDefault();
@@ -568,6 +575,21 @@
 
 		creatingSession = true;
 		try {
+			const trackingBase = orderId?.trim()
+				? `order_${orderId.trim()}`
+				: checkoutSessionKey?.trim()
+					? `checkout_${checkoutSessionKey.trim()}`
+					: null;
+			const paymentTrackingKey =
+				selectedProvider === 'antom' && chosenAntomOption
+					? `antom_${chosenAntomOption.option_id}`
+					: `payop_${chosenPayopMethod?.method_id ?? 'unknown'}`;
+			const initiateCheckoutEventId = trackingBase
+				? `${trackingBase}_initiate_checkout_${paymentTrackingKey}`
+				: undefined;
+			const addPaymentInfoEventId = trackingBase
+				? `${trackingBase}_add_payment_info_${paymentTrackingKey}`
+				: undefined;
 			const legal_consent = {
 				immediate_fulfillment_consent: legalConsent.immediateFulfillmentConsent,
 				terms_policy_consent: legalConsent.termsPolicyConsent,
@@ -591,17 +613,40 @@
 							...accessPayload,
 							option_id: chosenAntomOption.option_id,
 							residence_id: selectedTaxResidence,
+							initiate_checkout_event_id: initiateCheckoutEventId ?? null,
+							add_payment_info_event_id: addPaymentInfoEventId ?? null,
 							legal_consent
 						})
 					: await checkoutService.createPayopSession({
 							...accessPayload,
 							method_id: chosenPayopMethod?.method_id ?? 0,
 							country_code: selectedCountry,
+							initiate_checkout_event_id: initiateCheckoutEventId ?? null,
+							add_payment_info_event_id: addPaymentInfoEventId ?? null,
 							legal_consent
 						});
 
 			orderId = response.order_id;
 			persistDraftState();
+			const analyticsItems: AnalyticsItem[] = summaryItems.map((item, index) => ({
+				item_id: item.order_item_id,
+				item_name: item.label,
+				price: item.total_cents / 100,
+				currency: item.currency,
+				quantity: 1,
+				index
+			}));
+			if (analyticsItems.length > 0) {
+				const value = Number((summaryTotalCents / 100).toFixed(2));
+				trackMetaInitiateCheckout(summaryCurrency, value, analyticsItems, initiateCheckoutEventId);
+				trackAddPaymentInfo(
+					paymentTrackingKey,
+					summaryCurrency,
+					value,
+					analyticsItems,
+					addPaymentInfoEventId
+				);
+			}
 			window.location.assign(response.session_url);
 		} catch (error) {
 			actionError = error instanceof Error ? error.message : 'Unable to start payment.';
@@ -634,12 +679,12 @@
 	$: summarySubtotalCents =
 		selectedProvider === 'antom' && selectedAntomOption
 			? selectedAntomOption.subtotal_cents
-			: selectedMethod?.processing_subtotal_cents ?? displayTotalCents;
+			: (selectedMethod?.processing_subtotal_cents ?? displayTotalCents);
 
 	$: summaryFeeCents =
 		selectedProvider === 'antom' && selectedAntomOption
 			? selectedAntomOption.service_fee_cents
-			: selectedMethod?.processing_fee_cents ?? null;
+			: (selectedMethod?.processing_fee_cents ?? null);
 
 	$: summaryTaxCents =
 		selectedProvider === 'antom' && selectedAntomOption ? selectedAntomOption.tax_cents : 0;
@@ -647,7 +692,7 @@
 	$: summaryTotalCents =
 		selectedProvider === 'antom' && selectedAntomOption
 			? selectedAntomOption.total_cents
-			: selectedMethod?.processing_total_cents ?? displayTotalCents;
+			: (selectedMethod?.processing_total_cents ?? displayTotalCents);
 
 	$: summaryItems =
 		selectedProvider === 'antom' && selectedAntomOption
@@ -859,8 +904,7 @@
 											<button
 												type="button"
 												class={`w-full rounded-2xl border px-4 py-4 text-left transition ${
-													selectedProvider === 'antom' &&
-													selectedAntomOptionId === option.option_id
+													selectedProvider === 'antom' && selectedAntomOptionId === option.option_id
 														? 'border-fuchsia-300 bg-fuchsia-50/40 shadow-sm'
 														: 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
 												}`}
@@ -975,7 +1019,9 @@
 																			{#if resolveMethodLogo(method)}
 																				<img
 																					src={resolveMethodLogo(method) || undefined}
-																					alt={isPrimaryPaydoMethod(method) ? 'Pay via PayDo (Payop)' : method.title}
+																					alt={isPrimaryPaydoMethod(method)
+																						? 'Pay via PayDo (Payop)'
+																						: method.title}
 																					class={resolveMethodLogoClass(method)}
 																					loading="lazy"
 																				/>
@@ -1074,7 +1120,9 @@
 										<div class="flex min-w-0 items-center gap-3">
 											<div
 												class={`relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border ${
-													needsDarkTile ? 'border-slate-700 bg-slate-950' : 'border-slate-200 bg-white'
+													needsDarkTile
+														? 'border-slate-700 bg-slate-950'
+														: 'border-slate-200 bg-white'
 												}`}
 											>
 												{#if itemLogo}
@@ -1099,7 +1147,9 @@
 												{item.label}
 											</p>
 										</div>
-										<div class="flex min-h-12 shrink-0 items-center justify-end text-sm font-semibold text-slate-900">
+										<div
+											class="flex min-h-12 shrink-0 items-center justify-end text-sm font-semibold text-slate-900"
+										>
 											{formatCents(item.total_cents, item.currency)}
 										</div>
 									</div>
@@ -1107,7 +1157,9 @@
 							</div>
 						{/if}
 
-						<div class={`${summaryItems.length > 0 ? 'mt-4' : ''} space-y-3 text-sm text-slate-600`}>
+						<div
+							class={`${summaryItems.length > 0 ? 'mt-4' : ''} space-y-3 text-sm text-slate-600`}
+						>
 							<div class="flex items-center justify-between gap-4">
 								<span>Subtotal</span>
 								<span class="font-semibold text-slate-900">
@@ -1139,7 +1191,9 @@
 						</p>
 
 						<div class="mt-3 space-y-1">
-							<div class="flex items-center justify-between gap-4 text-base font-bold text-slate-900">
+							<div
+								class="flex items-center justify-between gap-4 text-base font-bold text-slate-900"
+							>
 								<span>Total</span>
 								<span class="text-2xl font-black leading-none tracking-tight text-slate-900">
 									{formatCents(summaryTotalCents, summaryCurrency)}

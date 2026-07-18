@@ -2,7 +2,7 @@ import { writable, derived, get } from 'svelte/store';
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
 import { authService } from '$lib/api/auth.js';
-import { identifyTikTokUser, trackCompleteRegistration, trackLogin } from '$lib/utils/analytics.js';
+import { identifyTikTokUser, trackLogin } from '$lib/utils/analytics.js';
 
 export interface User {
   id: string;
@@ -105,7 +105,10 @@ function createAuthStore(initialUser: User | null = null) {
         // Try to refresh session from cookie
         const response = await authService.refreshSession();
 
-        console.log('🔐 [AUTH STORE] Session refresh successful:', response.user);
+        console.log(
+          '🔐 [AUTH STORE] Session refresh successful:',
+          response.user
+        );
 
         update(s => ({
           ...s,
@@ -148,7 +151,12 @@ function createAuthStore(initialUser: User | null = null) {
 
     // Set loading state
     setLoading: (isLoading: boolean) => {
-      update(state => ({ ...state, isLoading, error: null, errorAction: null }));
+      update(state => ({
+        ...state,
+        isLoading,
+        error: null,
+        errorAction: null
+      }));
     },
 
     // Set error state
@@ -230,7 +238,10 @@ function createAuthStore(initialUser: User | null = null) {
       update(state => ({ ...state, isLoading: true, error: null }));
 
       try {
-        console.log('🔐 [AUTH STORE] Starting registration for:', userData.email);
+        console.log(
+          '🔐 [AUTH STORE] Starting registration for:',
+          userData.email
+        );
 
         const response = await authService.register(userData);
 
@@ -264,7 +275,10 @@ function createAuthStore(initialUser: User | null = null) {
 
         // Force a complete page refresh to ensure server gets the cookie
         const redirectPath = resolvePostAuthRedirect();
-        console.log('🔐 [AUTH STORE] Redirecting after register with refresh:', redirectPath);
+        console.log(
+          '🔐 [AUTH STORE] Redirecting after register with refresh:',
+          redirectPath
+        );
         if (browser) {
           window.location.href = redirectPath;
         }
@@ -323,7 +337,10 @@ function createAuthStore(initialUser: User | null = null) {
 
         // Force a complete page refresh to ensure server gets the cookie
         const redirectPath = resolvePostAuthRedirect();
-        console.log('🔐 [AUTH STORE] Redirecting after login with refresh:', redirectPath);
+        console.log(
+          '🔐 [AUTH STORE] Redirecting after login with refresh:',
+          redirectPath
+        );
         if (browser) {
           window.location.href = redirectPath;
         }

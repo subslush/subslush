@@ -479,6 +479,25 @@ const environmentSchema = z.object({
       typeof value === 'string' && value.trim() === '' ? undefined : value,
     z.string().optional()
   ),
+  META_DATASET_ID: z.preprocess(
+    value =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.string().optional()
+  ),
+  META_CONVERSIONS_API_ACCESS_TOKEN: z.preprocess(
+    value =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.string().optional()
+  ),
+  META_GRAPH_API_VERSION: z
+    .string()
+    .regex(/^v\d+\.\d+$/, 'META_GRAPH_API_VERSION must look like v25.0')
+    .default('v25.0'),
+  META_TEST_EVENT_CODE: z.preprocess(
+    value =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.string().optional()
+  ),
   EMAIL_PROVIDER: z.enum(['smtp', 'console', 'resend']).default('console'),
   EMAIL_FROM: z.preprocess(
     value =>

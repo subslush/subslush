@@ -4,6 +4,10 @@ import {
   buildTikTokRequestContext,
   tiktokEventsService,
 } from '../services/tiktokEventsService';
+import {
+  buildMetaRequestContext,
+  metaEventsService,
+} from '../services/metaEventsService';
 import { userService } from '../services/userService';
 import { createRateLimitHandler } from '../middleware/rateLimitMiddleware';
 import { authPreHandler } from '../middleware/authMiddleware';
@@ -183,14 +187,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
             });
           }
 
-          void tiktokEventsService.trackCompleteRegistration({
-            userId: user.userId,
-            email: user.email,
-            context: buildTikTokRequestContext(request),
-          });
-
           return reply.send({
-            message: 'Verification tracked',
+            message: 'Verification already recorded during email confirmation',
           });
         } catch (error) {
           Logger.error('Verified tracking failed:', error);
@@ -258,11 +256,18 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           setCsrfCookie(reply);
         }
 
-        if (result.user) {
+        if (result.user && result.isNewlyVerified) {
+          const eventId = `user_${result.user.id}_registration`;
           void tiktokEventsService.trackCompleteRegistration({
             userId: result.user.id,
             email: result.user.email,
             context: buildTikTokRequestContext(request),
+          });
+          void metaEventsService.trackCompleteRegistration({
+            externalId: result.user.id,
+            email: result.user.email,
+            eventId,
+            context: buildMetaRequestContext(request),
           });
         }
 
@@ -270,6 +275,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           message: 'Email confirmed successfully',
           user: result.user,
           sessionId: result.sessionId,
+          isNewlyVerified: result.isNewlyVerified ?? false,
         });
       } catch (error) {
         Logger.error('Email confirmation failed:', error);

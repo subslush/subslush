@@ -15,6 +15,7 @@
   import {
     trackAddPaymentInfo,
     trackBeginCheckout,
+    trackMetaInitiateCheckout,
     trackPurchase,
     type AnalyticsItem
   } from '$lib/utils/analytics.js';
@@ -917,31 +918,52 @@
     return initiateCheckoutEventId;
   };
 
-  const trackCheckoutPaymentStep = (
-    paymentType: PaymentAnalyticsMethod
-  ): {
+  type CheckoutPaymentTrackingIds = {
+    initiateCheckoutEventId?: string;
     addPaymentInfoEventId?: string;
-  } => {
+  };
+
+  const buildCheckoutPaymentTrackingIds = (
+    paymentType: PaymentAnalyticsMethod
+  ): CheckoutPaymentTrackingIds => {
     const analyticsItems = buildCheckoutAnalyticsItems($cart);
     if (analyticsItems.length === 0) {
       return {};
     }
 
+    const paymentInitiateCheckoutEventId = buildCheckoutEventId(
+      `initiate_checkout_${paymentType}`
+    );
     const addPaymentInfoEventId = buildCheckoutEventId(
       `add_payment_info_${paymentType}`
     );
 
+    return {
+      initiateCheckoutEventId: paymentInitiateCheckoutEventId,
+      addPaymentInfoEventId
+    };
+  };
+
+  const trackCheckoutPaymentStep = (
+    paymentType: PaymentAnalyticsMethod,
+    trackingIds: CheckoutPaymentTrackingIds
+  ): void => {
+    const analyticsItems = buildCheckoutAnalyticsItems($cart);
+    if (analyticsItems.length === 0) return;
+
+    trackMetaInitiateCheckout(
+      orderCurrency,
+      total,
+      analyticsItems,
+      trackingIds.initiateCheckoutEventId
+    );
     trackAddPaymentInfo(
       paymentType,
       orderCurrency,
       total,
       analyticsItems,
-      addPaymentInfoEventId
+      trackingIds.addPaymentInfoEventId
     );
-
-    return {
-      addPaymentInfoEventId
-    };
   };
 
   const buildDraftSignature = (
@@ -1648,13 +1670,15 @@
       return null;
     }
 
-    const trackingIds = trackCheckoutPaymentStep('card');
+    const trackingIds = buildCheckoutPaymentTrackingIds('card');
     const response = await checkoutService.createCardSession({
       checkout_session_key: getDraftCheckoutSessionKey(),
       funding_preference: fundingPreference,
+      initiate_checkout_event_id: trackingIds.initiateCheckoutEventId ?? null,
       add_payment_info_event_id: trackingIds.addPaymentInfoEventId ?? null,
       legal_consent: buildLegalConsentPayload()
     });
+    trackCheckoutPaymentStep('card', trackingIds);
     return {
       orderId: response.order_id,
       paypalOrderId: response.session_id
@@ -1863,11 +1887,14 @@
     }
 
     const startCardSession = async (trackingIds?: {
+      initiateCheckoutEventId?: string;
       addPaymentInfoEventId?: string;
     }): Promise<string | null> => {
       const response = await checkoutService.createCardSession({
         checkout_session_key: getDraftCheckoutSessionKey(),
         funding_preference: fundingPreference,
+        initiate_checkout_event_id:
+          trackingIds?.initiateCheckoutEventId ?? null,
         add_payment_info_event_id:
           trackingIds?.addPaymentInfoEventId ?? null,
         legal_consent: buildLegalConsentPayload()
@@ -1879,12 +1906,13 @@
     walletDropdownOpen = false;
     redirecting = true;
     try {
-      const trackingIds = trackCheckoutPaymentStep('card');
+      const trackingIds = buildCheckoutPaymentTrackingIds('card');
       const sessionUrl = await startCardSession(trackingIds);
       if (!sessionUrl) {
         actionError = 'Card session unavailable. Please try again.';
         return;
       }
+      trackCheckoutPaymentStep('card', trackingIds);
       window.location.assign(sessionUrl);
     } catch (error) {
       const message =
@@ -1895,9 +1923,10 @@
         const rebuilt = await rebuildDraftForPaymentMethodChange();
         if (rebuilt) {
           try {
-            const retryTrackingIds = trackCheckoutPaymentStep('card');
+            const retryTrackingIds = buildCheckoutPaymentTrackingIds('card');
             const retrySessionUrl = await startCardSession(retryTrackingIds);
             if (retrySessionUrl) {
+              trackCheckoutPaymentStep('card', retryTrackingIds);
               window.location.assign(retrySessionUrl);
               return;
             }
@@ -1974,12 +2003,15 @@
     }
 
     const createInvoice = async (trackingIds?: {
+      initiateCheckoutEventId?: string;
       addPaymentInfoEventId?: string;
     }): Promise<CheckoutNowPaymentsInvoiceResponse> =>
       checkoutService.createNowPaymentsInvoice({
         checkout_session_key: getDraftCheckoutSessionKey(),
         pay_currency: payCurrency,
         force_new_invoice: shouldForceNewInvoice,
+        initiate_checkout_event_id:
+          trackingIds?.initiateCheckoutEventId ?? null,
         add_payment_info_event_id:
           trackingIds?.addPaymentInfoEventId ?? null,
         legal_consent: buildLegalConsentPayload()
@@ -1987,8 +2019,9 @@
 
     invoiceLoading = true;
     try {
-      const trackingIds = trackCheckoutPaymentStep('crypto');
+      const trackingIds = buildCheckoutPaymentTrackingIds('crypto');
       let response = await createInvoice(trackingIds);
+      trackCheckoutPaymentStep('crypto', trackingIds);
       invoice = response;
       invoiceDraftSignature = lastDraftSignature;
     } catch (error) {
@@ -1998,8 +2031,9 @@
         const rebuilt = await rebuildDraftForPaymentMethodChange();
         if (rebuilt) {
           try {
-            const retryTrackingIds = trackCheckoutPaymentStep('crypto');
+            const retryTrackingIds = buildCheckoutPaymentTrackingIds('crypto');
             const response = await createInvoice(retryTrackingIds);
+            trackCheckoutPaymentStep('crypto', retryTrackingIds);
             invoice = response;
             invoiceDraftSignature = lastDraftSignature;
             return;
@@ -2048,7 +2082,8 @@
       return;
     }
 
-    const { addPaymentInfoEventId } = trackCheckoutPaymentStep('credits');
+    const trackingIds = buildCheckoutPaymentTrackingIds('credits');
+    const { initiateCheckoutEventId, addPaymentInfoEventId } = trackingIds;
     const purchaseEventId = buildCheckoutEventId('purchase');
     const analyticsItems = buildCheckoutAnalyticsItems($cart);
 
@@ -2056,10 +2091,12 @@
     try {
       const response = await checkoutService.completeCreditsCheckout({
         checkout_session_key: getDraftCheckoutSessionKey(),
+        initiate_checkout_event_id: initiateCheckoutEventId ?? null,
         add_payment_info_event_id: addPaymentInfoEventId ?? null,
         purchase_event_id: purchaseEventId ?? null,
         legal_consent: buildLegalConsentPayload()
       });
+      trackCheckoutPaymentStep('credits', trackingIds);
       if (analyticsItems.length > 0) {
         trackPurchase(
           response.transaction_id || response.order_id,

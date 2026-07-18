@@ -245,6 +245,7 @@ export interface CheckoutPayopSessionRequest {
   order_id?: string | null;
   method_id: number;
   country_code?: string | null;
+  initiate_checkout_event_id?: string | null;
   add_payment_info_event_id?: string | null;
   legal_consent?: CheckoutLegalConsentInput | null;
 }
@@ -348,6 +349,7 @@ export interface CheckoutAntomSessionRequest {
   order_id?: string | null;
   option_id: 'cards' | 'apple_pay' | 'google_pay';
   residence_id?: string | null;
+  initiate_checkout_event_id?: string | null;
   add_payment_info_event_id?: string | null;
   legal_consent?: CheckoutLegalConsentInput | null;
 }

@@ -3,6 +3,10 @@
   import { Loader2, CheckCircle, AlertTriangle } from 'lucide-svelte';
   import { authService } from '$lib/api/auth.js';
   import { auth } from '$lib/stores/auth.js';
+  import {
+    identifyTikTokUser,
+    trackCompleteRegistration
+  } from '$lib/utils/analytics.js';
 
   let status: 'verifying' | 'success' | 'error' = 'verifying';
   let message = 'Confirming your email...';
@@ -37,7 +41,9 @@
   };
 
   const extractTokens = () => {
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const hashParams = new URLSearchParams(
+      window.location.hash.replace(/^#/, '')
+    );
     const queryParams = new URLSearchParams(window.location.search);
     const redirectFromQuery = sanitizeRedirectPath(queryParams.get('redirect'));
     const redirectPath = redirectFromQuery || readStoredRedirect();
@@ -51,9 +57,11 @@
       accessToken:
         hashParams.get('access_token') || queryParams.get('access_token') || '',
       refreshToken:
-        hashParams.get('refresh_token') || queryParams.get('refresh_token') || '',
+        hashParams.get('refresh_token') ||
+        queryParams.get('refresh_token') ||
+        '',
       redirectPath,
-      flow,
+      flow
     };
   };
 
@@ -66,16 +74,24 @@
     if (!accessToken) {
       status = 'error';
       message = 'Confirmation link is missing or expired.';
-      detail = 'Please request a new verification email or sign in to resend it.';
+      detail =
+        'Please request a new verification email or sign in to resend it.';
       return;
     }
 
     try {
       const response = await authService.confirmEmail({
         accessToken,
-        ...(refreshToken ? { refreshToken } : {}),
+        ...(refreshToken ? { refreshToken } : {})
       });
       auth.setUser(response.user);
+      if (response.isNewlyVerified) {
+        await identifyTikTokUser(response.user);
+        trackCompleteRegistration(
+          'email_verification',
+          `user_${response.user.id}_registration`
+        );
+      }
       status = 'success';
       message = 'Email verified.';
       detail =
@@ -91,18 +107,26 @@
     } catch (error) {
       status = 'error';
       message = 'We could not confirm your email.';
-      detail = error instanceof Error ? error.message : 'Please try again or contact support.';
+      detail =
+        error instanceof Error
+          ? error.message
+          : 'Please try again or contact support.';
     }
   });
 </script>
 
 <svelte:head>
   <title>Confirm Email - SubSlush</title>
-  <meta name="description" content="Confirm your email address to activate your SubSlush account." />
+  <meta
+    name="description"
+    content="Confirm your email address to activate your SubSlush account."
+  />
 </svelte:head>
 
 <div class="space-y-6 text-center">
-  <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-purple-700 to-pink-600 text-white shadow-lg">
+  <div
+    class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-purple-700 to-pink-600 text-white shadow-lg"
+  >
     {#if status === 'verifying'}
       <Loader2 class="h-6 w-6 animate-spin" />
     {:else if status === 'success'}
@@ -113,7 +137,9 @@
   </div>
 
   <div class="space-y-2">
-    <h2 class="text-2xl font-bold text-surface-900 dark:text-surface-100">{message}</h2>
+    <h2 class="text-2xl font-bold text-surface-900 dark:text-surface-100">
+      {message}
+    </h2>
     <p class="text-sm text-surface-600 dark:text-surface-400">{detail}</p>
   </div>
 

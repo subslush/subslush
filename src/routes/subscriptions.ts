@@ -10,6 +10,10 @@ import {
   buildTikTokRequestContext,
   tiktokEventsService,
 } from '../services/tiktokEventsService';
+import {
+  buildMetaRequestContext,
+  metaEventsService,
+} from '../services/metaEventsService';
 import { getDatabasePool } from '../config/database';
 import { upgradeSelectionService } from '../services/upgradeSelectionService';
 import { orderItemUpgradeSelectionService } from '../services/orderItemUpgradeSelectionService';
@@ -1488,6 +1492,13 @@ export async function subscriptionRoutes(
           properties,
           context: buildTikTokRequestContext(request),
         });
+        void metaEventsService.trackAddToCart({
+          externalId: effectiveUserId,
+          email: user?.email ?? null,
+          eventId: resolvedEventId,
+          customData: properties,
+          context: buildMetaRequestContext(request),
+        });
 
         return reply.send({ message: 'Add to cart tracked' });
       } catch (error) {
@@ -1577,13 +1588,21 @@ export async function subscriptionRoutes(
             brand: body.brand ?? null,
           });
 
+          const resolvedEventId =
+            eventId || `user_${effectiveUserId}_view_content_${Date.now()}`;
           void tiktokEventsService.trackViewContent({
             userId: effectiveUserId,
             email: user?.email ?? null,
-            eventId:
-              eventId || `user_${effectiveUserId}_view_content_${Date.now()}`,
+            eventId: resolvedEventId,
             properties,
             context,
+          });
+          void metaEventsService.trackViewContent({
+            externalId: effectiveUserId,
+            email: user?.email ?? null,
+            eventId: resolvedEventId,
+            customData: properties,
+            context: buildMetaRequestContext(request),
           });
 
           return reply.send({ message: 'View content tracked' });
@@ -1614,12 +1633,21 @@ export async function subscriptionRoutes(
           searchProperties['value'] = body.price;
         }
 
+        const resolvedEventId =
+          eventId || `user_${effectiveUserId}_search_${Date.now()}`;
         void tiktokEventsService.trackSearch({
           userId: effectiveUserId,
           email: user?.email ?? null,
-          eventId: eventId || `user_${effectiveUserId}_search_${Date.now()}`,
+          eventId: resolvedEventId,
           properties: searchProperties,
           context,
+        });
+        void metaEventsService.trackSearch({
+          externalId: effectiveUserId,
+          email: user?.email ?? null,
+          eventId: resolvedEventId,
+          customData: searchProperties,
+          context: buildMetaRequestContext(request),
         });
 
         return reply.send({ message: 'Search tracked' });

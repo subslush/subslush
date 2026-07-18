@@ -25,6 +25,10 @@ import {
   buildTikTokRequestContext,
   tiktokEventsService,
 } from '../services/tiktokEventsService';
+import {
+  buildMetaRequestContext,
+  metaEventsService,
+} from '../services/metaEventsService';
 import { ErrorResponses, SuccessResponses, sendError } from '../utils/response';
 import { Logger } from '../utils/logger';
 import { getRequestIp } from '../utils/requestIp';
@@ -255,6 +259,45 @@ const buildOrderTikTokProperties = (
   };
 };
 
+const trackMetaPaymentSelection = (params: {
+  request: FastifyRequest;
+  order: OrderWithItems;
+  initiateCheckoutEventId?: string | null | undefined;
+  addPaymentInfoEventId?: string | null | undefined;
+  paymentType: string;
+}): void => {
+  const eventContext = buildMetaRequestContext(params.request);
+  const externalId =
+    params.order.user_id || params.request.user?.userId || null;
+  const email =
+    params.request.user?.email ?? params.order.contact_email ?? null;
+  const customData = {
+    ...buildOrderTikTokProperties(params.order),
+    payment_type: params.paymentType,
+  };
+
+  void metaEventsService.trackInitiateCheckout({
+    externalId,
+    email,
+    eventId: resolveEventId(
+      params.initiateCheckoutEventId,
+      `order_${params.order.id}_initiate_checkout_${params.paymentType}`
+    ),
+    customData,
+    context: eventContext,
+  });
+  void metaEventsService.trackAddPaymentInfo({
+    externalId,
+    email,
+    eventId: resolveEventId(
+      params.addPaymentInfoEventId,
+      `order_${params.order.id}_add_payment_info_${params.paymentType}`
+    ),
+    customData,
+    context: eventContext,
+  });
+};
+
 type CheckoutPurchaseTrackingPayload = {
   transaction_id: string;
   event_id: string;
@@ -329,13 +372,23 @@ const buildOrderPurchaseTrackingPayload = (
 
 const resolvePurchaseTrackingPayload = async (
   orderId: string,
-  orderStatus?: string | null
+  orderStatus?: string | null,
+  request?: FastifyRequest
 ): Promise<CheckoutPurchaseTrackingPayload | null> => {
   if (!isSuccessfulOrderStatus(orderStatus)) {
     return null;
   }
 
   const orderForTracking = await orderService.getOrderWithItems(orderId);
+  if (orderForTracking && request) {
+    void metaEventsService.trackPurchase({
+      externalId: orderForTracking.user_id || request.user?.userId || null,
+      email: request.user?.email ?? orderForTracking.contact_email ?? null,
+      eventId: `order_${orderForTracking.id}_purchase`,
+      customData: buildOrderTikTokProperties(orderForTracking),
+      context: buildMetaRequestContext(request),
+    });
+  }
   return orderForTracking
     ? buildOrderPurchaseTrackingPayload(orderForTracking)
     : null;
@@ -864,6 +917,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         success_url,
         cancel_url,
         funding_preference,
+        initiate_checkout_event_id,
         add_payment_info_event_id,
         legal_consent,
       } = validation.data;
@@ -1017,6 +1071,13 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             context,
           });
         }
+        trackMetaPaymentSelection({
+          request,
+          order: orderForTracking,
+          initiateCheckoutEventId: initiate_checkout_event_id,
+          addPaymentInfoEventId: add_payment_info_event_id,
+          paymentType: 'card',
+        });
       }
 
       return SuccessResponses.ok(reply, {
@@ -1141,6 +1202,12 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         );
       }
 
+      await resolvePurchaseTrackingPayload(
+        confirmResult.orderId,
+        confirmResult.orderStatus,
+        request
+      );
+
       return SuccessResponses.ok(reply, {
         order_id: confirmResult.orderId,
         session_id: confirmResult.sessionId,
@@ -1234,6 +1301,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           force_new_invoice,
           success_url,
           cancel_url,
+          initiate_checkout_event_id,
           add_payment_info_event_id,
           legal_consent,
         } = validation.data;
@@ -1356,6 +1424,13 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               context,
             });
           }
+          trackMetaPaymentSelection({
+            request,
+            order: orderForTracking,
+            initiateCheckoutEventId: initiate_checkout_event_id,
+            addPaymentInfoEventId: add_payment_info_event_id,
+            paymentType: 'crypto',
+          });
         }
 
         return SuccessResponses.ok(reply, {
@@ -1543,6 +1618,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         const {
           checkout_session_key,
           order_id,
+          initiate_checkout_event_id,
           add_payment_info_event_id,
           purchase_event_id,
           legal_consent,
@@ -1681,6 +1757,16 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             reply,
             'Failed to complete credits checkout'
           );
+        }
+
+        if (orderForTracking) {
+          trackMetaPaymentSelection({
+            request,
+            order: orderForTracking,
+            initiateCheckoutEventId: initiate_checkout_event_id,
+            addPaymentInfoEventId: add_payment_info_event_id,
+            paymentType: 'credits',
+          });
         }
 
         if (orderForTracking) {
@@ -1974,6 +2060,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             order_id: { type: 'string' },
             option_id: { type: 'string' },
             residence_id: { type: 'string' },
+            initiate_checkout_event_id: { type: 'string' },
             add_payment_info_event_id: { type: 'string' },
             legal_consent: {
               type: 'object',
@@ -2008,6 +2095,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           order_id,
           option_id,
           residence_id,
+          initiate_checkout_event_id,
           add_payment_info_event_id,
           legal_consent,
         } = validation.data;
@@ -2111,6 +2199,13 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               context: buildTikTokRequestContext(request),
             });
           }
+          trackMetaPaymentSelection({
+            request,
+            order: orderForTracking,
+            initiateCheckoutEventId: initiate_checkout_event_id,
+            addPaymentInfoEventId: add_payment_info_event_id,
+            paymentType: 'antom',
+          });
         }
 
         return SuccessResponses.ok(reply, {
@@ -2187,7 +2282,8 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
 
         const purchaseTracking = await resolvePurchaseTrackingPayload(
           statusResult.orderId,
-          statusResult.orderStatus
+          statusResult.orderStatus,
+          request
         );
 
         return SuccessResponses.ok(reply, {
@@ -2337,6 +2433,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             order_id: { type: 'string' },
             method_id: { type: 'number' },
             country_code: { type: 'string' },
+            initiate_checkout_event_id: { type: 'string' },
             add_payment_info_event_id: { type: 'string' },
             legal_consent: {
               type: 'object',
@@ -2371,6 +2468,7 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           order_id,
           method_id,
           country_code,
+          initiate_checkout_event_id,
           add_payment_info_event_id,
           legal_consent,
         } = validation.data;
@@ -2487,6 +2585,13 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               context: buildTikTokRequestContext(request),
             });
           }
+          trackMetaPaymentSelection({
+            request,
+            order: orderForTracking,
+            initiateCheckoutEventId: initiate_checkout_event_id,
+            addPaymentInfoEventId: add_payment_info_event_id,
+            paymentType: 'payop',
+          });
         }
 
         return SuccessResponses.ok(reply, {
@@ -2563,7 +2668,8 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
 
         const purchaseTracking = await resolvePurchaseTrackingPayload(
           statusResult.orderId,
-          statusResult.orderStatus
+          statusResult.orderStatus,
+          request
         );
 
         return SuccessResponses.ok(reply, {

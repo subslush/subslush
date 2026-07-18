@@ -97,6 +97,7 @@ export interface AuthResult {
   code?: string | undefined;
   login?: { text: string; url: string } | undefined;
   requiresEmailVerification?: boolean | undefined;
+  isNewlyVerified?: boolean | undefined;
 }
 
 export interface RegisterData {
@@ -365,11 +366,13 @@ class AuthService {
         last_name?: string | null;
         status?: string | null;
         pin_set_at?: string | null;
+        email_verified_at?: string | null;
       } | null = null;
       let accountStatus: string | null = null;
+      let isNewlyVerified = false;
       try {
         const result = await this.pool.query(
-          'SELECT first_name, last_name, status, pin_set_at FROM users WHERE id = $1',
+          'SELECT first_name, last_name, status, pin_set_at, email_verified_at FROM users WHERE id = $1',
           [userId]
         );
         if (result.rows.length > 0) {
@@ -388,10 +391,10 @@ class AuthService {
         try {
           const result = await this.pool.query(
             `INSERT INTO users (id, email, first_name, last_name, created_at, status, email_verified_at)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW())
+             VALUES ($1, $2, $3, $4, $5, $6, NULL)
              ON CONFLICT (id) DO UPDATE
                SET email = EXCLUDED.email
-             RETURNING first_name, last_name, status, pin_set_at`,
+             RETURNING first_name, last_name, status, pin_set_at, email_verified_at`,
             [
               userId,
               userEmail,
@@ -423,10 +426,14 @@ class AuthService {
       }
 
       try {
-        await this.pool.query(
-          'UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = $1',
+        const verificationResult = await this.pool.query(
+          `UPDATE users
+           SET email_verified_at = NOW()
+           WHERE id = $1 AND email_verified_at IS NULL
+           RETURNING id`,
           [userId]
         );
+        isNewlyVerified = (verificationResult.rowCount ?? 0) > 0;
       } catch (error) {
         Logger.warn('Failed to update email verification timestamp', {
           userId,
@@ -470,6 +477,7 @@ class AuthService {
         user,
         tokens,
         sessionId,
+        isNewlyVerified,
       };
     } catch (error) {
       Logger.error('Email confirmation error:', error);

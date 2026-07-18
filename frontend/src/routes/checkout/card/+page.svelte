@@ -7,7 +7,7 @@
 	import { cart } from '$lib/stores/cart.js';
 	import { ordersService } from '$lib/api/orders.js';
 	import { checkoutService } from '$lib/api/checkout.js';
-	import { trackPurchase, type AnalyticsItem } from '$lib/utils/analytics.js';
+	import { trackMetaPurchase, trackPurchase, type AnalyticsItem } from '$lib/utils/analytics.js';
 	import HomeNav from '$lib/components/home/HomeNav.svelte';
 	import Footer from '$lib/components/home/Footer.svelte';
 	import type { Subscription } from '$lib/types/subscription.js';
@@ -146,6 +146,7 @@
 			);
 			const currency = items.find((item) => item.currency)?.currency || 'USD';
 			trackPurchase(orderId, currency, totalValue, items, `order_${orderId}_purchase`);
+			trackMetaPurchase(orderId, currency, totalValue, items, `order_${orderId}_purchase`);
 			markPurchaseTracked(orderId);
 		}
 	}

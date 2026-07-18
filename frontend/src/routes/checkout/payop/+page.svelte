@@ -10,12 +10,25 @@
   import { cart } from '$lib/stores/cart.js';
   import {
     clearCheckoutDraftStorage,
-    loadCheckoutDraftState,
+    loadCheckoutDraftState
   } from '$lib/utils/checkoutDraftState.js';
-  import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
-  import { trackPurchase, type AnalyticsItem } from '$lib/utils/analytics.js';
+  import {
+    formatCurrency,
+    normalizeCurrencyCode
+  } from '$lib/utils/currency.js';
+  import {
+    trackMetaPurchase,
+    trackPurchase,
+    type AnalyticsItem
+  } from '$lib/utils/analytics.js';
   import type { CheckoutPayopStatusResponse } from '$lib/types/checkout.js';
-  import { CheckCircle2, Clock3, Loader2, ShieldCheck, XCircle } from 'lucide-svelte';
+  import {
+    CheckCircle2,
+    Clock3,
+    Loader2,
+    ShieldCheck,
+    XCircle
+  } from 'lucide-svelte';
 
   const POLL_INTERVAL_MS = 3000;
   const POLL_TIMEOUT_MS = 120000;
@@ -42,7 +55,7 @@
   let cartCleared = false;
   let pollingActive = true;
 
-  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
   const isSuccessfulOrderStatus = (value: string | null | undefined): boolean =>
     Boolean(value && ['in_process', 'paid', 'delivered'].includes(value));
@@ -50,7 +63,10 @@
   const hasTrackedPurchase = (eventId: string): boolean => {
     if (!browser) return false;
     try {
-      return sessionStorage.getItem(`${PURCHASE_TRACKED_STORAGE_KEY}:${eventId}`) === '1';
+      return (
+        sessionStorage.getItem(`${PURCHASE_TRACKED_STORAGE_KEY}:${eventId}`) ===
+        '1'
+      );
     } catch {
       return false;
     }
@@ -70,14 +86,14 @@
       return {
         checkout_session_key: checkoutSessionKey,
         invoice_id: invoiceId,
-        txid,
+        txid
       };
     }
     if (orderId) {
       return {
         order_id: orderId,
         invoice_id: invoiceId,
-        txid,
+        txid
       };
     }
     return null;
@@ -89,7 +105,10 @@
       return;
     }
 
-    if (paymentStatus && ['failed', 'expired', 'canceled'].includes(paymentStatus)) {
+    if (
+      paymentStatus &&
+      ['failed', 'expired', 'canceled'].includes(paymentStatus)
+    ) {
       finalizedState = 'failed';
       return;
     }
@@ -97,7 +116,9 @@
     finalizedState = 'pending';
   };
 
-  const trackPurchaseFromStatus = (response: CheckoutPayopStatusResponse): void => {
+  const trackPurchaseFromStatus = (
+    response: CheckoutPayopStatusResponse
+  ): void => {
     const tracking = response.purchase_tracking;
     if (
       !browser ||
@@ -110,12 +131,19 @@
       return;
     }
 
-    const items: AnalyticsItem[] = tracking.items.map((item) => ({ ...item }));
+    const items: AnalyticsItem[] = tracking.items.map(item => ({ ...item }));
     if (items.length === 0) {
       return;
     }
 
     trackPurchase(
+      tracking.transaction_id || response.order_id,
+      tracking.currency || 'USD',
+      tracking.value,
+      items,
+      tracking.event_id
+    );
+    trackMetaPurchase(
       tracking.transaction_id || response.order_id,
       tracking.currency || 'USD',
       tracking.value,
@@ -158,7 +186,10 @@
           return;
         }
       } catch (error) {
-        actionError = error instanceof Error ? error.message : 'Unable to confirm payment status.';
+        actionError =
+          error instanceof Error
+            ? error.message
+            : 'Unable to confirm payment status.';
       }
 
       await wait(POLL_INTERVAL_MS);
@@ -168,14 +199,15 @@
     pollComplete = true;
   };
 
-  const unsubscribe = page.subscribe(($page) => {
+  const unsubscribe = page.subscribe($page => {
     queryStatus = $page.url.searchParams.get('status') ?? '';
     orderId = $page.url.searchParams.get('order_id') ?? orderId;
     invoiceId = $page.url.searchParams.get('invoice_id') ?? invoiceId;
     txid = $page.url.searchParams.get('txid') ?? txid;
   });
 
-  $: confirmationEmail = $auth.user?.email?.trim() || checkoutContactEmail || null;
+  $: confirmationEmail =
+    $auth.user?.email?.trim() || checkoutContactEmail || null;
 
   $: if (browser && finalizedState === 'success' && !cartCleared) {
     cart.clear();
@@ -205,7 +237,10 @@
 
 <svelte:head>
   <title>Payment Status - SubSlush</title>
-  <meta name="description" content="Confirming your payment status and finalizing your order." />
+  <meta
+    name="description"
+    content="Confirming your payment status and finalizing your order."
+  />
 </svelte:head>
 
 <div class="min-h-screen bg-slate-50">
@@ -216,8 +251,12 @@
       class="pointer-events-none absolute inset-x-0 top-0 h-60 bg-gradient-to-br from-purple-100/70 via-purple-100/30 to-pink-100/70"
     ></div>
 
-    <section class="relative mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
-      <div class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
+    <section
+      class="relative mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14"
+    >
+      <div
+        class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl"
+      >
         <div
           class="border-b border-slate-100 bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-6 sm:px-8"
         >
@@ -240,7 +279,9 @@
               {/if}
             </div>
             <div>
-              <p class="text-sm font-semibold uppercase tracking-[0.16em] text-white/60">
+              <p
+                class="text-sm font-semibold uppercase tracking-[0.16em] text-white/60"
+              >
                 Payop checkout
               </p>
               <h1 class="mt-1 text-2xl font-bold text-white">
@@ -264,8 +305,8 @@
               <div class="flex items-center gap-3">
                 <Loader2 class="h-5 w-5 animate-spin text-fuchsia-600" />
                 <p>
-                  We are waiting for the final payment confirmation from the provider. This page
-                  updates automatically.
+                  We are waiting for the final payment confirmation from the
+                  provider. This page updates automatically.
                 </p>
               </div>
             </div>
@@ -275,9 +316,10 @@
             <div
               class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800"
             >
-              Your payment was confirmed and your order is now being processed. Orders are usually
-              delivered within 24 hours, but in rare cases it may take up to 72 hours. We will email
-              you as soon as your order has been delivered.
+              Your payment was confirmed and your order is now being processed.
+              Orders are usually delivered within 24 hours, but in rare cases it
+              may take up to 72 hours. We will email you as soon as your order
+              has been delivered.
             </div>
           {/if}
 
@@ -285,7 +327,8 @@
             <div
               class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700"
             >
-              The payment was not completed. You can return and choose another payment method.
+              The payment was not completed. You can return and choose another
+              payment method.
             </div>
           {/if}
 
@@ -309,17 +352,23 @@
 
           <div class="grid gap-4 md:grid-cols-2">
             <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-              <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+              <p
+                class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500"
+              >
                 Payment details
               </p>
               <dl class="mt-3 space-y-3 text-sm">
                 <div class="flex items-center justify-between gap-4">
                   <dt class="text-slate-600">Method</dt>
-                  <dd class="font-semibold text-slate-900">{methodTitle || 'Payop'}</dd>
+                  <dd class="font-semibold text-slate-900">
+                    {methodTitle || 'Payop'}
+                  </dd>
                 </div>
                 <div class="flex items-center justify-between gap-4">
                   <dt class="text-slate-600">Invoice ID</dt>
-                  <dd class="font-medium text-slate-900">{invoiceId || '--'}</dd>
+                  <dd class="font-medium text-slate-900">
+                    {invoiceId || '--'}
+                  </dd>
                 </div>
                 <div class="flex items-center justify-between gap-4">
                   <dt class="text-slate-600">Transaction ID</dt>
@@ -335,14 +384,22 @@
             </div>
 
             <div class="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-              <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+              <p
+                class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500"
+              >
                 Charge summary
               </p>
-              <div class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <p class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+              <div
+                class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+              >
+                <p
+                  class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500"
+                >
                   Total
                 </p>
-                <p class="mt-1 text-3xl font-black leading-none tracking-tight text-slate-900">
+                <p
+                  class="mt-1 text-3xl font-black leading-none tracking-tight text-slate-900"
+                >
                   {#if processingCurrency && processingTotalCents !== null}
                     {formatCurrency(
                       processingTotalCents / 100,
@@ -358,8 +415,8 @@
               >
                 <ShieldCheck class="mt-0.5 h-4 w-4 shrink-0 text-cyan-600" />
                 <p>
-                  Final order fulfillment is only completed after secure server-to-server payment
-                  confirmation.
+                  Final order fulfillment is only completed after secure
+                  server-to-server payment confirmation.
                 </p>
               </div>
             </div>
