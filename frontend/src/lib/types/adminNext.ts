@@ -25,7 +25,10 @@ export interface AdminNextOverviewKpis {
   customer_ready?: number | string | null;
   issue_tasks?: number | string | null;
   delivered_items_last_7d?: number | string | null;
-  revenue_last_7d?: number | string | null;
+  revenue_by_currency?: Array<{
+    currency?: string | null;
+    amount_cents?: number | string | null;
+  }> | null;
   failed_payments_last_24h?: number | string | null;
 }
 

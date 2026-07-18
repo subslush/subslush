@@ -35,6 +35,17 @@ const OPEN_ACTIVATION_STATES = [
   'customer_ready',
 ];
 
+// Keep the Overview KPI and the New orders tab on the exact same definition
+// of actionable initial-fulfillment work. A completed task is deliberately
+// absent from the open-task join, so it must never qualify by a NULL fallback.
+// Selection-pending support tasks remain actionable and therefore belong here.
+const NEW_ORDER_ACTIONABILITY_SQL = `
+  s.status = 'pending'
+  AND t.id IS NOT NULL
+  AND t.task_type <> 'manual_monthly_upgrade'
+  AND COALESCE(s.activation_handshake_state, 'none') = 'none'
+`;
+
 export async function adminFulfillmentRoutes(
   fastify: FastifyInstance
 ): Promise<void> {
@@ -117,20 +128,7 @@ export async function adminFulfillmentRoutes(
         } else if (tab === 'completed') {
           sql += ` AND s.delivered_at IS NOT NULL`;
         } else {
-          // New orders are actionable, open initial-fulfillment work only.
-          //
-          // A subscription can legitimately be expired or cancelled after an
-          // item was delivered. It must not re-enter this queue just because
-          // it is no longer active. Likewise, the LEFT JOIN intentionally
-          // omits completed tasks, so treating a NULL task as credential
-          // provision would incorrectly resurrect legacy completed work.
-          // Keep open selection-pending tasks visible here; they are still
-          // actionable initial-order work and are resolved before credential
-          // provision begins.
-          sql += ` AND s.status = 'pending'
-                       AND t.id IS NOT NULL
-                       AND t.task_type <> 'manual_monthly_upgrade'
-                       AND COALESCE(s.activation_handshake_state, 'none') = 'none'`;
+          sql += ` AND ${NEW_ORDER_ACTIONABILITY_SQL}`;
         }
         if (tab === 'mmu') {
           sql += ` ORDER BY t.due_date ASC NULLS LAST, o.id ASC, t.id ASC LIMIT $1 OFFSET $2`;
@@ -477,15 +475,34 @@ export async function adminFulfillmentRoutes(
              (SELECT COUNT(DISTINCT o.id)
               FROM orders o
               JOIN subscriptions s ON s.order_id = o.id
-              WHERE o.status IN ('paid', 'in_process') AND s.status <> 'active') AS orders_needing_fulfillment,
+              JOIN admin_tasks t ON t.subscription_id = s.id AND t.completed_at IS NULL
+              WHERE o.status IN ('paid', 'in_process', 'delivered')
+                AND ${NEW_ORDER_ACTIONABILITY_SQL}) AS orders_needing_fulfillment,
              (SELECT COUNT(*) FROM admin_tasks WHERE task_type = 'manual_monthly_upgrade' AND completed_at IS NULL AND due_date < NOW()) AS open_mmu_overdue,
              (SELECT COUNT(*) FROM admin_tasks WHERE task_type = 'manual_monthly_upgrade' AND completed_at IS NULL AND due_date >= NOW() AND due_date <= NOW() + INTERVAL '7 days') AS open_mmu_due_soon,
              (SELECT COUNT(*) FROM subscriptions WHERE activation_handshake_state IN ('awaiting_customer', 'instructions_delivered')) AS awaiting_customer,
              (SELECT COUNT(*) FROM subscriptions WHERE activation_handshake_state = 'customer_ready') AS customer_ready,
              (SELECT COUNT(*) FROM admin_tasks WHERE is_issue = TRUE AND completed_at IS NULL) AS issue_tasks,
              (SELECT COUNT(*) FROM subscriptions WHERE delivered_at >= NOW() - INTERVAL '7 days') AS delivered_items_last_7d,
-             (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'succeeded' AND updated_at >= NOW() - INTERVAL '7 days') AS revenue_last_7d,
-             (SELECT COUNT(*) FROM payments WHERE status IN ('failed', 'canceled', 'expired') AND updated_at >= NOW() - INTERVAL '24 hours') AS failed_payments_last_24h`
+             (SELECT COALESCE(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'currency', revenue.currency,
+                    'amount_cents', revenue.amount_cents
+                  )
+                  ORDER BY revenue.currency
+                ),
+                '[]'::jsonb
+              )
+              FROM (
+                SELECT UPPER(p.currency) AS currency,
+                       ROUND(SUM(p.amount) * 100)::bigint AS amount_cents
+                FROM payments p
+                WHERE p.status = 'succeeded'
+                  AND p.updated_at >= NOW() - INTERVAL '7 days'
+                GROUP BY UPPER(p.currency)
+              ) revenue) AS revenue_by_currency,
+             (SELECT COUNT(*) FROM payments WHERE status IN ('failed', 'canceled', 'expired') AND created_at >= NOW() - INTERVAL '24 hours') AS failed_payments_last_24h`
         );
         return SuccessResponses.ok(reply, result.rows[0] || {});
       } catch (error) {
