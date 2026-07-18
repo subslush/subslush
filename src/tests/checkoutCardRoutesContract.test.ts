@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { checkoutRoutes } from '../routes/checkout';
 import { env } from '../config/environment';
+import { metaEventsService } from '../services/metaEventsService';
 import { orderService } from '../services/orderService';
 import { paymentService } from '../services/paymentService';
 
@@ -36,6 +37,18 @@ jest.mock('../services/tiktokEventsService', () => ({
   },
 }));
 
+jest.mock('../services/metaEventsService', () => ({
+  buildMetaRequestContext: jest.fn(() => ({
+    url: 'https://subslush.com/checkout',
+    userAgent: 'checkout-contract-test',
+  })),
+  metaEventsService: {
+    trackInitiateCheckout: jest.fn(),
+    trackAddPaymentInfo: jest.fn(),
+    trackPurchase: jest.fn(),
+  },
+}));
+
 jest.mock('../utils/logger');
 
 const mockOrderService = orderService as jest.Mocked<typeof orderService>;
@@ -43,6 +56,9 @@ const mockPaymentService = paymentService as unknown as {
   createPayPalCheckoutSession: jest.Mock;
   confirmPayPalCheckoutSession: jest.Mock;
 };
+const mockMetaEventsService = metaEventsService as jest.Mocked<
+  typeof metaEventsService
+>;
 
 describe('Checkout card route contract', () => {
   const orderId = '11111111-1111-4111-8111-111111111111';
@@ -106,6 +122,8 @@ describe('Checkout card route contract', () => {
       url: '/checkout/card/session',
       payload: {
         checkout_session_key: 'checkout_abc123',
+        initiate_checkout_event_id: `order_${orderId}_initiate_checkout_card`,
+        add_payment_info_event_id: `order_${orderId}_add_payment_info_card`,
         legal_consent: {
           immediate_fulfillment_consent: true,
           terms_policy_consent: true,
@@ -138,6 +156,71 @@ describe('Checkout card route contract', () => {
         fundingPreference: null,
       }
     );
+    expect(mockMetaEventsService.trackInitiateCheckout).not.toHaveBeenCalled();
+    expect(mockMetaEventsService.trackAddPaymentInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: `order_${orderId}_add_payment_info_card`,
+      })
+    );
+  });
+
+  it('fires only Meta InitiateCheckout on the checkout transition endpoint', async () => {
+    const eventId = `order_${orderId}_initiate_checkout`;
+    mockOrderService.getOrderByCheckoutSessionKey.mockResolvedValue({
+      id: orderId,
+    } as any);
+    mockOrderService.getOrderWithItems.mockResolvedValue({
+      id: orderId,
+      user_id: null,
+      contact_email: 'guest@example.com',
+      currency: 'USD',
+      total_cents: 1299,
+      metadata: {},
+      items: [
+        {
+          id: 'item-1',
+          product_variant_id: 'variant-1',
+          product_name: 'Example product',
+          variant_name: 'Monthly',
+          quantity: 1,
+          unit_price_cents: 1299,
+          total_price_cents: 1299,
+          currency: 'USD',
+          metadata: {},
+        },
+      ],
+    } as any);
+
+    const app = Fastify();
+    await app.register(checkoutRoutes, { prefix: '/checkout' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/checkout/initiate-checkout',
+      payload: {
+        checkout_session_key: 'checkout_abc123',
+        event_id: eventId,
+      },
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual({
+      order_id: orderId,
+      event_id: eventId,
+    });
+    expect(mockMetaEventsService.trackInitiateCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'guest@example.com',
+        eventId,
+        customData: expect.objectContaining({
+          currency: 'USD',
+          value: 12.99,
+        }),
+      })
+    );
+    expect(mockMetaEventsService.trackAddPaymentInfo).not.toHaveBeenCalled();
   });
 
   it('keeps /checkout/stripe/session as compatibility alias', async () => {

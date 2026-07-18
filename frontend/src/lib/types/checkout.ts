@@ -69,6 +69,16 @@ export interface CheckoutDraftResponse {
   pricing?: CheckoutPricingSummary;
 }
 
+export interface CheckoutInitiateRequest {
+  checkout_session_key: string;
+  event_id: string;
+}
+
+export interface CheckoutInitiateResponse {
+  order_id: string;
+  event_id: string;
+}
+
 export interface CheckoutCardSessionRequest {
   checkout_session_key?: string | null;
   order_id?: string | null;

@@ -52,6 +52,8 @@
   } from 'lucide-svelte';
 
   const CHECKOUT_INITIATE_TRACKING_KEY = 'checkout_initiate_tracking';
+  const META_INITIATE_CHECKOUT_TRACKING_KEY =
+    'meta_initiate_checkout_tracking';
   const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   let contactEmail = '';
@@ -919,7 +921,6 @@
   };
 
   type CheckoutPaymentTrackingIds = {
-    initiateCheckoutEventId?: string;
     addPaymentInfoEventId?: string;
   };
 
@@ -931,32 +932,22 @@
       return {};
     }
 
-    const paymentInitiateCheckoutEventId = buildCheckoutEventId(
-      `initiate_checkout_${paymentType}`
-    );
     const addPaymentInfoEventId = buildCheckoutEventId(
       `add_payment_info_${paymentType}`
     );
 
     return {
-      initiateCheckoutEventId: paymentInitiateCheckoutEventId,
       addPaymentInfoEventId
     };
   };
 
-  const trackCheckoutPaymentStep = (
+  const trackCheckoutAddPaymentInfo = (
     paymentType: PaymentAnalyticsMethod,
     trackingIds: CheckoutPaymentTrackingIds
   ): void => {
     const analyticsItems = buildCheckoutAnalyticsItems($cart);
     if (analyticsItems.length === 0) return;
 
-    trackMetaInitiateCheckout(
-      orderCurrency,
-      total,
-      analyticsItems,
-      trackingIds.initiateCheckoutEventId
-    );
     trackAddPaymentInfo(
       paymentType,
       orderCurrency,
@@ -964,6 +955,36 @@
       analyticsItems,
       trackingIds.addPaymentInfoEventId
     );
+  };
+
+  const trackMetaCheckoutTransition = async (): Promise<void> => {
+    if (!browser) return;
+    const checkoutKey = getDraftCheckoutSessionKey();
+    const eventId = buildCheckoutEventId('initiate_checkout');
+    const analyticsItems = buildCheckoutAnalyticsItems($cart);
+    if (!checkoutKey || !eventId || analyticsItems.length === 0) return;
+
+    if (
+      sessionStorage.getItem(META_INITIATE_CHECKOUT_TRACKING_KEY) === eventId
+    ) {
+      return;
+    }
+
+    trackMetaInitiateCheckout(orderCurrency, total, analyticsItems, eventId);
+
+    try {
+      const response = await checkoutService.trackInitiateCheckout({
+        checkout_session_key: checkoutKey,
+        event_id: eventId
+      });
+      sessionStorage.setItem(
+        META_INITIATE_CHECKOUT_TRACKING_KEY,
+        response.event_id
+      );
+    } catch (error) {
+      // Analytics must never prevent a customer from reaching payment.
+      console.warn('Failed to send Meta InitiateCheckout server event:', error);
+    }
   };
 
   const buildDraftSignature = (
@@ -1030,6 +1051,9 @@
     invoiceError = '';
     invoiceDraftSignature = '';
     resetInitiateCheckoutTracking();
+    if (browser) {
+      sessionStorage.removeItem(META_INITIATE_CHECKOUT_TRACKING_KEY);
+    }
     clearCheckoutDraftStorage();
   };
 
@@ -1674,11 +1698,10 @@
     const response = await checkoutService.createCardSession({
       checkout_session_key: getDraftCheckoutSessionKey(),
       funding_preference: fundingPreference,
-      initiate_checkout_event_id: trackingIds.initiateCheckoutEventId ?? null,
       add_payment_info_event_id: trackingIds.addPaymentInfoEventId ?? null,
       legal_consent: buildLegalConsentPayload()
     });
-    trackCheckoutPaymentStep('card', trackingIds);
+    trackCheckoutAddPaymentInfo('card', trackingIds);
     return {
       orderId: response.order_id,
       paypalOrderId: response.session_id
@@ -1887,14 +1910,11 @@
     }
 
     const startCardSession = async (trackingIds?: {
-      initiateCheckoutEventId?: string;
       addPaymentInfoEventId?: string;
     }): Promise<string | null> => {
       const response = await checkoutService.createCardSession({
         checkout_session_key: getDraftCheckoutSessionKey(),
         funding_preference: fundingPreference,
-        initiate_checkout_event_id:
-          trackingIds?.initiateCheckoutEventId ?? null,
         add_payment_info_event_id:
           trackingIds?.addPaymentInfoEventId ?? null,
         legal_consent: buildLegalConsentPayload()
@@ -1912,7 +1932,7 @@
         actionError = 'Card session unavailable. Please try again.';
         return;
       }
-      trackCheckoutPaymentStep('card', trackingIds);
+      trackCheckoutAddPaymentInfo('card', trackingIds);
       window.location.assign(sessionUrl);
     } catch (error) {
       const message =
@@ -1926,7 +1946,7 @@
             const retryTrackingIds = buildCheckoutPaymentTrackingIds('card');
             const retrySessionUrl = await startCardSession(retryTrackingIds);
             if (retrySessionUrl) {
-              trackCheckoutPaymentStep('card', retryTrackingIds);
+              trackCheckoutAddPaymentInfo('card', retryTrackingIds);
               window.location.assign(retrySessionUrl);
               return;
             }
@@ -2003,15 +2023,12 @@
     }
 
     const createInvoice = async (trackingIds?: {
-      initiateCheckoutEventId?: string;
       addPaymentInfoEventId?: string;
     }): Promise<CheckoutNowPaymentsInvoiceResponse> =>
       checkoutService.createNowPaymentsInvoice({
         checkout_session_key: getDraftCheckoutSessionKey(),
         pay_currency: payCurrency,
         force_new_invoice: shouldForceNewInvoice,
-        initiate_checkout_event_id:
-          trackingIds?.initiateCheckoutEventId ?? null,
         add_payment_info_event_id:
           trackingIds?.addPaymentInfoEventId ?? null,
         legal_consent: buildLegalConsentPayload()
@@ -2021,7 +2038,7 @@
     try {
       const trackingIds = buildCheckoutPaymentTrackingIds('crypto');
       let response = await createInvoice(trackingIds);
-      trackCheckoutPaymentStep('crypto', trackingIds);
+      trackCheckoutAddPaymentInfo('crypto', trackingIds);
       invoice = response;
       invoiceDraftSignature = lastDraftSignature;
     } catch (error) {
@@ -2033,7 +2050,7 @@
           try {
             const retryTrackingIds = buildCheckoutPaymentTrackingIds('crypto');
             const response = await createInvoice(retryTrackingIds);
-            trackCheckoutPaymentStep('crypto', retryTrackingIds);
+            trackCheckoutAddPaymentInfo('crypto', retryTrackingIds);
             invoice = response;
             invoiceDraftSignature = lastDraftSignature;
             return;
@@ -2083,7 +2100,7 @@
     }
 
     const trackingIds = buildCheckoutPaymentTrackingIds('credits');
-    const { initiateCheckoutEventId, addPaymentInfoEventId } = trackingIds;
+    const { addPaymentInfoEventId } = trackingIds;
     const purchaseEventId = buildCheckoutEventId('purchase');
     const analyticsItems = buildCheckoutAnalyticsItems($cart);
 
@@ -2091,12 +2108,11 @@
     try {
       const response = await checkoutService.completeCreditsCheckout({
         checkout_session_key: getDraftCheckoutSessionKey(),
-        initiate_checkout_event_id: initiateCheckoutEventId ?? null,
         add_payment_info_event_id: addPaymentInfoEventId ?? null,
         purchase_event_id: purchaseEventId ?? null,
         legal_consent: buildLegalConsentPayload()
       });
-      trackCheckoutPaymentStep('credits', trackingIds);
+      trackCheckoutAddPaymentInfo('credits', trackingIds);
       if (analyticsItems.length > 0) {
         trackPurchase(
           response.transaction_id || response.order_id,
@@ -2137,6 +2153,7 @@
         return;
       }
 
+      await trackMetaCheckoutTransition();
       persistDraftState();
       await goto('/checkout/payment');
     } catch (error) {

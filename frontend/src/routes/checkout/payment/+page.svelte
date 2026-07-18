@@ -40,7 +40,6 @@
 	import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
 	import {
 		trackAddPaymentInfo,
-		trackMetaInitiateCheckout,
 		type AnalyticsItem
 	} from '$lib/utils/analytics.js';
 	import { ArrowLeft, CreditCard, Globe2, Landmark, Loader2, MessageSquare, X } from 'lucide-svelte';
@@ -584,9 +583,6 @@
 				selectedProvider === 'antom' && chosenAntomOption
 					? `antom_${chosenAntomOption.option_id}`
 					: `payop_${chosenPayopMethod?.method_id ?? 'unknown'}`;
-			const initiateCheckoutEventId = trackingBase
-				? `${trackingBase}_initiate_checkout_${paymentTrackingKey}`
-				: undefined;
 			const addPaymentInfoEventId = trackingBase
 				? `${trackingBase}_add_payment_info_${paymentTrackingKey}`
 				: undefined;
@@ -613,7 +609,6 @@
 							...accessPayload,
 							option_id: chosenAntomOption.option_id,
 							residence_id: selectedTaxResidence,
-							initiate_checkout_event_id: initiateCheckoutEventId ?? null,
 							add_payment_info_event_id: addPaymentInfoEventId ?? null,
 							legal_consent
 						})
@@ -621,7 +616,6 @@
 							...accessPayload,
 							method_id: chosenPayopMethod?.method_id ?? 0,
 							country_code: selectedCountry,
-							initiate_checkout_event_id: initiateCheckoutEventId ?? null,
 							add_payment_info_event_id: addPaymentInfoEventId ?? null,
 							legal_consent
 						});
@@ -638,7 +632,6 @@
 			}));
 			if (analyticsItems.length > 0) {
 				const value = Number((summaryTotalCents / 100).toFixed(2));
-				trackMetaInitiateCheckout(summaryCurrency, value, analyticsItems, initiateCheckoutEventId);
 				trackAddPaymentInfo(
 					paymentTrackingKey,
 					summaryCurrency,

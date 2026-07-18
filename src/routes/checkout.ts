@@ -259,10 +259,9 @@ const buildOrderTikTokProperties = (
   };
 };
 
-const trackMetaPaymentSelection = (params: {
+const trackMetaAddPaymentInfo = (params: {
   request: FastifyRequest;
   order: OrderWithItems;
-  initiateCheckoutEventId?: string | null | undefined;
   addPaymentInfoEventId?: string | null | undefined;
   paymentType: string;
 }): void => {
@@ -276,16 +275,6 @@ const trackMetaPaymentSelection = (params: {
     payment_type: params.paymentType,
   };
 
-  void metaEventsService.trackInitiateCheckout({
-    externalId,
-    email,
-    eventId: resolveEventId(
-      params.initiateCheckoutEventId,
-      `order_${params.order.id}_initiate_checkout_${params.paymentType}`
-    ),
-    customData,
-    context: eventContext,
-  });
   void metaEventsService.trackAddPaymentInfo({
     externalId,
     email,
@@ -894,6 +883,74 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  fastify.post(
+    '/initiate-checkout',
+    {
+      preHandler: [optionalAuthPreHandler],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['checkout_session_key', 'event_id'],
+          additionalProperties: false,
+          properties: {
+            checkout_session_key: { type: 'string', minLength: 1 },
+            event_id: { type: 'string', minLength: 1 },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const body = request.body as {
+          checkout_session_key: string;
+          event_id: string;
+        };
+        const checkoutSessionKey = body.checkout_session_key.trim();
+        const eventId = body.event_id.trim();
+
+        if (!checkoutSessionKey || !eventId) {
+          return ErrorResponses.badRequest(
+            reply,
+            'checkout_session_key and event_id are required'
+          );
+        }
+
+        const orderId = await resolveCheckoutOrderId({
+          request,
+          reply,
+          checkoutSessionKey,
+        });
+        if (!orderId) {
+          return reply;
+        }
+
+        const orderForTracking = await orderService.getOrderWithItems(orderId);
+        if (!orderForTracking) {
+          return ErrorResponses.notFound(reply, 'Order not found');
+        }
+
+        void metaEventsService.trackInitiateCheckout({
+          externalId: orderForTracking.user_id || request.user?.userId || null,
+          email: request.user?.email ?? orderForTracking.contact_email ?? null,
+          eventId,
+          customData: buildOrderTikTokProperties(orderForTracking),
+          context: buildMetaRequestContext(request),
+        });
+
+        return SuccessResponses.ok(reply, {
+          order_id: orderForTracking.id,
+          event_id: eventId,
+        });
+      } catch (error) {
+        Logger.error('Meta initiate checkout tracking failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to track initiate checkout'
+        );
+      }
+    }
+  );
+
   const cardSessionHandler = async (
     request: FastifyRequest,
     reply: FastifyReply
@@ -917,7 +974,6 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         success_url,
         cancel_url,
         funding_preference,
-        initiate_checkout_event_id,
         add_payment_info_event_id,
         legal_consent,
       } = validation.data;
@@ -1071,10 +1127,9 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
             context,
           });
         }
-        trackMetaPaymentSelection({
+        trackMetaAddPaymentInfo({
           request,
           order: orderForTracking,
-          initiateCheckoutEventId: initiate_checkout_event_id,
           addPaymentInfoEventId: add_payment_info_event_id,
           paymentType: 'card',
         });
@@ -1301,7 +1356,6 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           force_new_invoice,
           success_url,
           cancel_url,
-          initiate_checkout_event_id,
           add_payment_info_event_id,
           legal_consent,
         } = validation.data;
@@ -1424,10 +1478,9 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               context,
             });
           }
-          trackMetaPaymentSelection({
+          trackMetaAddPaymentInfo({
             request,
             order: orderForTracking,
-            initiateCheckoutEventId: initiate_checkout_event_id,
             addPaymentInfoEventId: add_payment_info_event_id,
             paymentType: 'crypto',
           });
@@ -1618,7 +1671,6 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         const {
           checkout_session_key,
           order_id,
-          initiate_checkout_event_id,
           add_payment_info_event_id,
           purchase_event_id,
           legal_consent,
@@ -1760,10 +1812,9 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         if (orderForTracking) {
-          trackMetaPaymentSelection({
+          trackMetaAddPaymentInfo({
             request,
             order: orderForTracking,
-            initiateCheckoutEventId: initiate_checkout_event_id,
             addPaymentInfoEventId: add_payment_info_event_id,
             paymentType: 'credits',
           });
@@ -2095,7 +2146,6 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           order_id,
           option_id,
           residence_id,
-          initiate_checkout_event_id,
           add_payment_info_event_id,
           legal_consent,
         } = validation.data;
@@ -2199,10 +2249,9 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               context: buildTikTokRequestContext(request),
             });
           }
-          trackMetaPaymentSelection({
+          trackMetaAddPaymentInfo({
             request,
             order: orderForTracking,
-            initiateCheckoutEventId: initiate_checkout_event_id,
             addPaymentInfoEventId: add_payment_info_event_id,
             paymentType: 'antom',
           });
@@ -2468,7 +2517,6 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           order_id,
           method_id,
           country_code,
-          initiate_checkout_event_id,
           add_payment_info_event_id,
           legal_consent,
         } = validation.data;
@@ -2585,10 +2633,9 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               context: buildTikTokRequestContext(request),
             });
           }
-          trackMetaPaymentSelection({
+          trackMetaAddPaymentInfo({
             request,
             order: orderForTracking,
-            initiateCheckoutEventId: initiate_checkout_event_id,
             addPaymentInfoEventId: add_payment_info_event_id,
             paymentType: 'payop',
           });

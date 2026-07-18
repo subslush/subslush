@@ -5,6 +5,8 @@ import type {
   CheckoutIdentityResponse,
   CheckoutDraftRequest,
   CheckoutDraftResponse,
+  CheckoutInitiateRequest,
+  CheckoutInitiateResponse,
   CheckoutCardSessionRequest,
   CheckoutCardSessionResponse,
   CheckoutCardConfirmRequest,
@@ -45,6 +47,16 @@ export class CheckoutService {
   async upsertDraft(input: CheckoutDraftRequest): Promise<CheckoutDraftResponse> {
     const response = await apiClient.post(API_ENDPOINTS.CHECKOUT.DRAFT, input);
     return unwrapApiData<CheckoutDraftResponse>(response);
+  }
+
+  async trackInitiateCheckout(
+    input: CheckoutInitiateRequest
+  ): Promise<CheckoutInitiateResponse> {
+    const response = await apiClient.post(
+      API_ENDPOINTS.CHECKOUT.INITIATE_CHECKOUT,
+      input
+    );
+    return unwrapApiData<CheckoutInitiateResponse>(response);
   }
 
   async createCardSession(
