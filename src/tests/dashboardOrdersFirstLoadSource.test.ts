@@ -49,9 +49,7 @@ describe('Dashboard orders first-load data flow', () => {
       'activation_handshake_state',
     ];
     const renderedProductOptionFields = [
-      'strict_rules',
       'strict_rules_text',
-      'strict_rules_version',
       'activation_instructions_template',
     ];
 
@@ -68,8 +66,14 @@ describe('Dashboard orders first-load data flow', () => {
       path.resolve(__dirname, '../../frontend/src/lib/utils/strictRules.ts'),
       'utf8'
     );
+    expect(strictRulesGate).toContain(
+      'subscription.product_options?.strict_rules'
+    );
     expect(strictRulesGate).toContain('subscription.strict_rules_accepted');
     expect(ordersRoute).toMatch(/\bstrict_rules_accepted\??:/);
+    // The version remains an internal evidence/audit field; it must not be
+    // rendered to the customer in the rules-acknowledgment modal.
+    expect(page).not.toContain('product_options?.strict_rules_version');
 
     // Lifecycle fields are contractually retained even when a particular state
     // is not painted in the current card branch.

@@ -654,4 +654,45 @@ describe('Admin fulfillment aggregate endpoints', () => {
       "COALESCE(t.task_type, 'credential_provision')"
     );
   });
+
+  it('uses the New orders eligibility rule and currency-safe payment KPIs on Overview', async () => {
+    const mockQuery = jest.fn().mockResolvedValue({
+      rows: [
+        {
+          orders_needing_fulfillment: '0',
+          revenue_by_currency: [{ currency: 'CAD', amount_cents: 9648 }],
+          failed_payments_last_24h: '0',
+        },
+      ],
+    });
+    mockGetDatabasePool.mockReturnValue({ query: mockQuery } as any);
+
+    const app = Fastify();
+    await app.register(adminFulfillmentRoutes, {
+      prefix: '/admin/fulfillment',
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/admin/fulfillment/overview',
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      orders_needing_fulfillment: '0',
+      revenue_by_currency: [{ currency: 'CAD', amount_cents: 9648 }],
+      failed_payments_last_24h: '0',
+    });
+
+    const overviewSql = mockQuery.mock.calls[0][0];
+    expect(overviewSql).toContain("s.status = 'pending'");
+    expect(overviewSql).toContain('t.id IS NOT NULL');
+    expect(overviewSql).toContain('jsonb_agg');
+    expect(overviewSql).toContain('GROUP BY UPPER(p.currency)');
+    expect(overviewSql).toContain("created_at >= NOW() - INTERVAL '24 hours'");
+    expect(overviewSql).not.toContain('SUM(amount)');
+    expect(overviewSql).not.toContain("s.status <> 'active'");
+  });
 });

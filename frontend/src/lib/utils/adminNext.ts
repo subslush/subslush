@@ -15,11 +15,16 @@ export const formatMoney = (
   currency = 'USD'
 ): string => {
   const amount = toNumber(centsOrMinorUnits, 0) / 100;
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency || 'USD',
-    maximumFractionDigits: 2,
-  }).format(amount);
+  const normalizedCurrency = String(currency || 'USD').toUpperCase();
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: normalizedCurrency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${normalizedCurrency} ${amount.toFixed(2)}`;
+  }
 };
 
 export const formatDateTime = (value?: string | null): string => {

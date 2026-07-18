@@ -25,6 +25,12 @@
 
   $: mmuTotal = toNumber(data.kpis.open_mmu_overdue) + toNumber(data.kpis.open_mmu_due_soon);
   $: awaitingTotal = toNumber(data.kpis.awaiting_customer) + toNumber(data.kpis.customer_ready);
+  $: revenueByCurrency = (data.kpis.revenue_by_currency || [])
+    .map(row => ({
+      currency: String(row.currency || 'USD').toUpperCase(),
+      amountCents: toNumber(row.amount_cents),
+    }))
+    .filter(row => row.amountCents > 0);
 
   const firstItem = (order: AdminNextFulfillmentOrder) => order.items?.[0] || null;
 
@@ -147,16 +153,24 @@
     <a href="/admin-next/payments" class="disabled-link">
       <AdminCard interactive>
         <CreditCard size={20} />
-        <p>Revenue</p>
-        <strong>{formatMoney(data.kpis.revenue_last_7d, 'USD')}</strong>
-        <span>last 7 days</span>
+        <p>Revenue by currency</p>
+        <div class="revenue-values" aria-label="Revenue by payment currency">
+          {#if revenueByCurrency.length > 0}
+            {#each revenueByCurrency as revenue}
+              <strong>{formatMoney(revenue.amountCents, revenue.currency)}</strong>
+            {/each}
+          {:else}
+            <strong>—</strong>
+          {/if}
+        </div>
+        <span>successful payments · last 7 days</span>
       </AdminCard>
     </a>
     <a href="/admin-next/payments" class="disabled-link">
       <AdminCard interactive accent={toNumber(data.kpis.failed_payments_last_24h) > 0 ? 'red' : 'none'}>
         <p>Failed payments</p>
         <strong>{toNumber(data.kpis.failed_payments_last_24h)}</strong>
-        <span>last 24 hours</span>
+        <span>created in the last 24 hours</span>
       </AdminCard>
     </a>
   </section>
@@ -254,6 +268,16 @@
     font-size: 30px;
     font-weight: 800;
     line-height: 1.05;
+  }
+
+  .revenue-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+
+  .revenue-values strong {
+    font-size: 22px;
   }
 
   span {
