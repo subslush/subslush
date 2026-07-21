@@ -42,6 +42,14 @@ const parseInteger = (value: unknown): number | null => {
 const upgradeOptionsMetadataSchema = {
   type: 'object',
   properties: {
+    delivery_format_label: {
+      type: 'string',
+      maxLength: 160,
+    },
+    delivery_format_description: {
+      type: 'string',
+      maxLength: 1000,
+    },
     upgrade_options: {
       type: 'object',
       properties: {

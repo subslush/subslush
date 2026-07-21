@@ -10,12 +10,15 @@ jest.mock('../utils/logger');
 
 const mockCatalogService = catalogService as jest.Mocked<typeof catalogService>;
 
-const product = (durationMonths: number | null) => ({
+const product = (
+  durationMonths: number | null,
+  metadata: Record<string, unknown> = {}
+) => ({
   id: 'product-1',
   name: 'Term listing',
   slug: 'term-listing',
   status: 'active',
-  metadata: {},
+  metadata,
   duration_months: durationMonths,
   service_type: 'streaming',
 });
@@ -32,9 +35,10 @@ const configureListing = (params: {
   durationMonths: number | null;
   terms: number[];
   priceMetadata?: Record<string, unknown>;
+  productMetadata?: Record<string, unknown>;
 }) => {
   mockCatalogService.getProductBySlug.mockResolvedValue(
-    product(params.durationMonths) as any
+    product(params.durationMonths, params.productMetadata) as any
   );
   mockCatalogService.listVariants.mockResolvedValue([variant] as any);
   mockCatalogService.listCurrentPricesForCurrency.mockResolvedValue(
@@ -141,6 +145,36 @@ describe('public product listing term resolution', () => {
       expect.objectContaining({
         total_price: 10,
         comparison_price: 15,
+      })
+    );
+  });
+
+  it('exposes custom delivery-format copy from product metadata', async () => {
+    configureListing({
+      durationMonths: 1,
+      terms: [1],
+      productMetadata: {
+        delivery_format_label: 'Activation code delivery',
+        delivery_format_description:
+          'A redemption code is emailed after purchase.',
+      },
+    });
+    const app = Fastify();
+    await app.register(subscriptionRoutes, { prefix: '/subscriptions' });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/subscriptions/products/term-listing',
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.product).toEqual(
+      expect.objectContaining({
+        delivery_format_label: 'Activation code delivery',
+        delivery_format_description:
+          'A redemption code is emailed after purchase.',
       })
     );
   });

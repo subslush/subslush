@@ -236,4 +236,32 @@ describe('admin-next action forms', () => {
       }),
     );
   });
+
+  it('persists custom delivery-format copy from the catalog presentation form', async () => {
+    const view = render(ProductDetailPage, {
+      data: productDetailData as unknown as ProductDetailPageData,
+    });
+    const productPage = within(view.container);
+
+    await fireEvent.click(productPage.getByRole('button', { name: 'Catalog' }));
+    await fireEvent.input(productPage.getByLabelText('Delivery format title'), {
+      target: { value: 'Activation code delivery' },
+    });
+    await fireEvent.input(productPage.getByLabelText('Delivery format details'), {
+      target: { value: 'A redemption code is emailed after purchase.' },
+    });
+    await fireEvent.click(productPage.getByRole('button', { name: 'Save presentation' }));
+
+    await waitFor(() => expect(mocks.updateProduct).toHaveBeenCalledTimes(1));
+    expect(mocks.updateProduct).toHaveBeenCalledWith(
+      'product-id',
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          delivery_format_label: 'Activation code delivery',
+          delivery_format_description:
+            'A redemption code is emailed after purchase.',
+        }),
+      }),
+    );
+  });
 });

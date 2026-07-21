@@ -329,7 +329,18 @@
   $: hasActivationCodeMention =
     deliveryDisclosureText.includes('activation code') ||
     deliveryDisclosureText.includes('redeem code');
+  $: customDeliveryFormatLabel = readProductText([
+    'delivery_format_label',
+    'deliveryFormatLabel'
+  ]);
+  $: customDeliveryFormatDescription = readProductText([
+    'delivery_format_description',
+    'deliveryFormatDescription'
+  ]);
   $: deliveryFormatLabel = (() => {
+    if (customDeliveryFormatLabel) {
+      return customDeliveryFormatLabel;
+    }
     if (upgradeOptions?.allow_new_account && upgradeOptions?.allow_own_account) {
       return 'Account-based (choose at checkout)';
     }
@@ -354,6 +365,9 @@
     return 'Digital account delivery';
   })();
   $: deliveryFormatDescription = (() => {
+    if (customDeliveryFormatDescription) {
+      return customDeliveryFormatDescription;
+    }
     if (upgradeOptions?.allow_new_account && upgradeOptions?.allow_own_account) {
       return 'Choose New account or Your account in checkout before payment.';
     }
@@ -694,75 +708,69 @@
         </div>
       </div>
 
-      {#if hasUpgradeSelection && upgradeOptions}
+      {#if hasSelectionChoices && upgradeOptions}
         <section class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <h3 class="text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">Upgrade option</h3>
-          {#if upgradeOptions.allow_new_account || upgradeOptions.allow_own_account}
-            <div class="mt-2 space-y-2">
-              {#if upgradeOptions.allow_new_account}
-                <button
-                  type="button"
-                  class={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
+          <div class="mt-2 space-y-2">
+            {#if upgradeOptions.allow_new_account}
+              <button
+                type="button"
+                class={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
+                  upgradeSelectionType === 'upgrade_new_account'
+                    ? 'border-fuchsia-300 bg-white'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+                on:click={() => (upgradeSelectionType = 'upgrade_new_account')}
+              >
+                <span class="flex items-center gap-2.5">
+                  <span class={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
                     upgradeSelectionType === 'upgrade_new_account'
-                      ? 'border-fuchsia-300 bg-white'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                  on:click={() => (upgradeSelectionType = 'upgrade_new_account')}
-                >
-                  <span class="flex items-center gap-2.5">
-                    <span class={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                      upgradeSelectionType === 'upgrade_new_account'
-                        ? 'border-fuchsia-500'
-                        : 'border-slate-300'
-                    }`}>
-                      {#if upgradeSelectionType === 'upgrade_new_account'}
-                        <span class="h-2 w-2 rounded-full bg-fuchsia-500"></span>
-                      {/if}
-                    </span>
-                    <span class="min-w-0">
-                      <span class="block text-sm font-semibold text-slate-900">New account</span>
-                      <span class="mt-0.5 block text-xs leading-relaxed text-slate-600">
-                        We create and deliver a ready-to-use account for this product.
-                      </span>
+                      ? 'border-fuchsia-500'
+                      : 'border-slate-300'
+                  }`}>
+                    {#if upgradeSelectionType === 'upgrade_new_account'}
+                      <span class="h-2 w-2 rounded-full bg-fuchsia-500"></span>
+                    {/if}
+                  </span>
+                  <span class="min-w-0">
+                    <span class="block text-sm font-semibold text-slate-900">New account</span>
+                    <span class="mt-0.5 block text-xs leading-relaxed text-slate-600">
+                      We create and deliver a ready-to-use account for this product.
                     </span>
                   </span>
-                </button>
-              {/if}
-              {#if upgradeOptions.allow_own_account}
-                <button
-                  type="button"
-                  class={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
+                </span>
+              </button>
+            {/if}
+            {#if upgradeOptions.allow_own_account}
+              <button
+                type="button"
+                class={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
+                  upgradeSelectionType === 'upgrade_own_account'
+                    ? 'border-fuchsia-300 bg-white'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+                on:click={() => (upgradeSelectionType = 'upgrade_own_account')}
+              >
+                <span class="flex items-center gap-2.5">
+                  <span class={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
                     upgradeSelectionType === 'upgrade_own_account'
-                      ? 'border-fuchsia-300 bg-white'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                  on:click={() => (upgradeSelectionType = 'upgrade_own_account')}
-                >
-                  <span class="flex items-center gap-2.5">
-                    <span class={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                      upgradeSelectionType === 'upgrade_own_account'
-                        ? 'border-fuchsia-500'
-                        : 'border-slate-300'
-                    }`}>
-                      {#if upgradeSelectionType === 'upgrade_own_account'}
-                        <span class="h-2 w-2 rounded-full bg-fuchsia-500"></span>
-                      {/if}
-                    </span>
-                    <span class="min-w-0">
-                      <span class="block text-sm font-semibold text-slate-900">Your account</span>
-                      <span class="mt-0.5 block text-xs leading-relaxed text-slate-600">
-                        This product will be applied directly to your account.
-                      </span>
+                      ? 'border-fuchsia-500'
+                      : 'border-slate-300'
+                  }`}>
+                    {#if upgradeSelectionType === 'upgrade_own_account'}
+                      <span class="h-2 w-2 rounded-full bg-fuchsia-500"></span>
+                    {/if}
+                  </span>
+                  <span class="min-w-0">
+                    <span class="block text-sm font-semibold text-slate-900">Your account</span>
+                    <span class="mt-0.5 block text-xs leading-relaxed text-slate-600">
+                      This product will be applied directly to your account.
                     </span>
                   </span>
-                </button>
-              {/if}
-            </div>
-          {:else}
-            <p class="mt-2 text-xs text-slate-600">
-              This plan requires a manual upgrade workflow after purchase.
-            </p>
-          {/if}
+                </span>
+              </button>
+            {/if}
+          </div>
           {#if selectionError}
             <p class="mt-2 text-xs font-medium text-red-600">{selectionError}</p>
           {/if}

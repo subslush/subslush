@@ -229,6 +229,10 @@ export interface ProductDetail {
     infoBoxText?: string | null;
     activation_guide?: string | null;
     activationGuide?: string | null;
+    delivery_format_label?: string | null;
+    deliveryFormatLabel?: string | null;
+    delivery_format_description?: string | null;
+    deliveryFormatDescription?: string | null;
     extra_features_enabled?: boolean | null;
     extraFeaturesEnabled?: boolean | null;
     extra_features?: string[] | null;

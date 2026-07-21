@@ -2176,6 +2176,14 @@ export async function subscriptionRoutes(
           'activation_guide_text',
           'activationGuideText',
         ]);
+        const deliveryFormatLabel = readMetadataString(product.metadata, [
+          'delivery_format_label',
+          'deliveryFormatLabel',
+        ]);
+        const deliveryFormatDescription = readMetadataString(product.metadata, [
+          'delivery_format_description',
+          'deliveryFormatDescription',
+        ]);
         const extraFeaturesEnabled = readMetadataBoolean(product.metadata, [
           'extra_features_enabled',
           'extraFeaturesEnabled',
@@ -2276,6 +2284,8 @@ export async function subscriptionRoutes(
               region: region || null,
               info_box_text: infoBoxText || null,
               activation_guide: activationGuide || null,
+              delivery_format_label: deliveryFormatLabel || null,
+              delivery_format_description: deliveryFormatDescription || null,
               extra_features_enabled: extraFeaturesEnabled,
               extra_features: extraFeatures,
             },
@@ -2475,6 +2485,8 @@ export async function subscriptionRoutes(
             region: region || null,
             info_box_text: infoBoxText || null,
             activation_guide: activationGuide || null,
+            delivery_format_label: deliveryFormatLabel || null,
+            delivery_format_description: deliveryFormatDescription || null,
             extra_features_enabled: extraFeaturesEnabled,
             extra_features: extraFeatures,
           },
