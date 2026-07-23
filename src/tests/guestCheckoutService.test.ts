@@ -49,6 +49,84 @@ describe('GuestCheckoutService', () => {
     mockCouponService.voidRedemptionForOrder.mockResolvedValue(false);
   });
 
+  it('rejects a required own-account password before persisting a draft order', async () => {
+    const guestIdentityId = '9e20b4b1-72a9-4a1b-9f24-2e8a0c7d7d22';
+    const productId = '11111111-1111-4111-8111-111111111111';
+    const mockClient = {
+      query: jest.fn(async (sql: string) => {
+        if (sql.includes('FROM guest_identities')) {
+          return {
+            rows: [
+              {
+                id: guestIdentityId,
+                email: 'user@example.com',
+                user_id: 'guest-user-id',
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+      release: jest.fn(),
+    };
+    mockGetDatabasePool.mockReturnValue({
+      connect: jest.fn().mockResolvedValue(mockClient),
+    } as any);
+    mockCheckoutPricingService.priceDraft.mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          {
+            input: {
+              product_id: productId,
+              selection_type: 'upgrade_own_account',
+              account_identifier: 'owner@example.com',
+              credentials: null,
+            },
+            product: {
+              id: productId,
+              name: 'Own account product',
+              slug: 'own-account-product',
+              metadata: {
+                upgrade_options: {
+                  allow_own_account: true,
+                  own_account_credential_requirement: 'email_and_password',
+                },
+              },
+            },
+          },
+        ],
+      },
+    } as any);
+
+    const result = await new GuestCheckoutService().upsertDraftOrder({
+      guest_identity_id: guestIdentityId,
+      contact_email: 'user@example.com',
+      currency: 'USD',
+      items: [
+        {
+          product_id: productId,
+          selection_type: 'upgrade_own_account',
+          account_identifier: 'owner@example.com',
+          credentials: null,
+        },
+      ],
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: 'own_account_credentials_required',
+    });
+    expect(
+      mockClient.query.mock.calls.some(([sql]) =>
+        String(sql).includes('INSERT INTO orders')
+      )
+    ).toBe(false);
+    expect(
+      mockClient.query.mock.calls.filter(([sql]) => sql === 'ROLLBACK')
+    ).toHaveLength(1);
+  });
+
   it('updates draft orders by checkout_session_key', async () => {
     const guestIdentityId = '9e20b4b1-72a9-4a1b-9f24-2e8a0c7d7d22';
     const orderId = 'f0a2c3f6-0b5d-48a5-a6d3-9ea38b5f1c0f';

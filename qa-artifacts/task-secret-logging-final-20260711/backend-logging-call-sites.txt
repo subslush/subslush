@@ -1,0 +1,1194 @@
+src/services/jobs/index.ts:55:    Logger.info('Subscription auto-renew sweep scheduler is disabled', {
+src/services/jobs/index.ts:106:    Logger.info('Subscription auto-renew data-quality monitor is disabled', {
+src/services/jobs/index.ts:179:    Logger.info('Registered FX daily fetch schedule', {
+src/services/jobs/index.ts:210:    Logger.info('Registered FX weekly publish schedule', {
+src/services/jobs/index.ts:222:    Logger.info('Background jobs are disabled');
+src/services/jobs/index.ts:233:      Logger.error('Failed to auto-start payment monitoring:', error);
+src/services/jobs/index.ts:247:      Logger.error('Failed to stop payment monitoring:', error);
+src/services/fx/fxDisplayPricingService.ts:115:      Logger.error('Failed to load FX display rate', {
+src/services/creditService.ts:63:          Logger.warn('Failed to read credit balance cache', { userId, error });
+src/services/creditService.ts:97:          Logger.warn('Failed to write credit balance cache', {
+src/services/creditService.ts:106:      Logger.error('Error getting user balance:', error);
+src/services/creditService.ts:141:      Logger.error('Error getting balance summary:', error);
+src/services/creditService.ts:303:      Logger.info(`Added ${amount} credits to user ${userId}`, {
+src/services/creditService.ts:320:      Logger.error('Error adding credits:', error);
+src/services/creditService.ts:330:          Logger.error(
+src/services/creditService.ts:570:        Logger.warn('Failed to refresh balance after debit', { userId, error });
+src/services/creditService.ts:580:      Logger.info(`Debited ${normalizedAmount} credits for user ${userId}`, {
+src/services/creditService.ts:597:      Logger.error('Error debiting credits:', error);
+src/services/creditService.ts:607:          Logger.error(
+src/services/creditService.ts:783:      Logger.info(`Refunded ${amount} credits to user ${userId}`, {
+src/services/creditService.ts:800:      Logger.error('Error refunding credits:', error);
+src/services/creditService.ts:810:          Logger.error(
+src/services/creditService.ts:893:      Logger.error('Error getting transaction history:', error);
+src/services/creditService.ts:914:      Logger.error('Error getting transaction count:', error);
+src/services/creditService.ts:968:      Logger.error('Error getting transaction:', error);
+src/services/creditService.ts:997:      Logger.error('Error getting all user balances:', error);
+src/services/creditService.ts:1008:      Logger.error('Error clearing balance cache:', error);
+src/services/creditService.ts:1025:      Logger.error('Credit service health check failed:', error);
+src/routes/auth.ts:196:          Logger.error('Verified tracking failed:', error);
+src/routes/auth.ts:275:        Logger.error('Email confirmation failed:', error);
+src/routes/auth.ts:510:          Logger.error(
+src/routes/auth.ts:552:          Logger.error('Profile fetch failed:', error);
+src/routes/auth.ts:744:        Logger.error('Password reset confirmation failed:', error);
+src/services/fx/fxRateService.ts:178:        Logger.info('FX fetch completed', {
+src/services/fx/fxRateService.ts:200:            Logger.error('Failed to rollback FX fetch transaction', rollbackError);
+src/services/fx/fxRateService.ts:208:      Logger.error('FX fetch failed', {
+src/services/fx/fxRateService.ts:241:      Logger.error('Failed to fetch FX diagnostics', error);
+src/services/fx/fxRateService.ts:257:      Logger.error('Failed to mark FX cache as LKG', error);
+src/services/fx/fxRateService.ts:282:      Logger.error('Failed to record skipped FX fetch', error);
+src/services/fx/fxRateService.ts:319:      Logger.error('Failed to persist failed FX fetch', error);
+src/services/jobs/jobScheduler.ts:31:      Logger.warn(`Job "${job.name}" is already registered`);
+src/services/jobs/jobScheduler.ts:36:      Logger.warn(`Job "${job.name}" has invalid interval: ${job.intervalMs}`);
+src/services/jobs/jobScheduler.ts:45:      Logger.warn('Job scheduler already started');
+src/services/jobs/jobScheduler.ts:84:    Logger.info(`Job scheduler started (${this.jobs.size} jobs)`);
+src/services/jobs/jobScheduler.ts:100:    Logger.info('Job scheduler stopped');
+src/services/jobs/jobScheduler.ts:105:      Logger.warn(`Job "${job.name}" is already running`);
+src/services/jobs/jobScheduler.ts:112:        Logger.warn(`Skipping job "${job.name}" (Redis unavailable for lock)`);
+src/services/jobs/jobScheduler.ts:122:        Logger.error(`Failed to acquire lock for job "${job.name}":`, error);
+src/services/jobs/jobScheduler.ts:127:        Logger.info(`Job "${job.name}" skipped (lock already held)`);
+src/services/jobs/jobScheduler.ts:137:      Logger.error(`Job "${job.name}" failed:`, error);
+src/services/jobs/jobScheduler.ts:144:          Logger.error(`Failed to release lock for job "${job.name}":`, error);
+src/routes/users.ts:107:          Logger.error('Get profile endpoint error:', error);
+src/routes/users.ts:187:          Logger.info(`User profile updated: ${userId}`);
+src/routes/users.ts:195:          Logger.error('Update profile endpoint error:', error);
+src/routes/users.ts:344:          Logger.info(
+src/routes/users.ts:354:          Logger.error('Update user status endpoint error:', error);
+src/routes/users.ts:402:          Logger.error('Get user sessions endpoint error:', error);
+src/routes/users.ts:475:          Logger.info(`User account deleted: ${userId} (self-deletion)`);
+src/routes/users.ts:483:          Logger.error('Delete account endpoint error:', error);
+src/services/fx/fxPricingPublisherService.ts:107:        Logger.warn('FX pricing publish skipped', {
+src/services/fx/fxPricingPublisherService.ts:278:      Logger.info('FX pricing publish succeeded', {
+src/services/fx/fxPricingPublisherService.ts:298:      Logger.error('FX pricing publish failed', {
+src/services/fx/fxPricingPublisherService.ts:327:          Logger.error('Failed to rollback FX publish transaction', rollbackError);
+src/services/fx/fxPricingPublisherService.ts:369:      Logger.error('Failed to read FX diagnostics', error);
+src/services/paymentMonitoringService.ts:111:      Logger.warn('Payment monitoring service is already running');
+src/services/paymentMonitoringService.ts:115:    Logger.info('Starting payment monitoring service', {
+src/services/paymentMonitoringService.ts:129:        Logger.error('Error in monitoring loop:', error);
+src/services/paymentMonitoringService.ts:135:      Logger.error('Error in initial monitoring cycle:', error);
+src/services/paymentMonitoringService.ts:138:    Logger.info('Payment monitoring service started successfully');
+src/services/paymentMonitoringService.ts:144:      Logger.warn('Payment monitoring service is not running');
+src/services/paymentMonitoringService.ts:148:    Logger.info('Stopping payment monitoring service');
+src/services/paymentMonitoringService.ts:158:    Logger.info('Payment monitoring service stopped');
+src/services/paymentMonitoringService.ts:188:        Logger.info('No pending payments found for monitoring');
+src/services/paymentMonitoringService.ts:205:      Logger.info(
+src/services/paymentMonitoringService.ts:209:      Logger.error('Error initializing pending payments:', error);
+src/services/paymentMonitoringService.ts:221:        Logger.debug('No pending payments to monitor');
+src/services/paymentMonitoringService.ts:225:      Logger.info(`Monitoring ${pendingPayments.length} pending payments`);
+src/services/paymentMonitoringService.ts:238:      Logger.error('Error monitoring pending payments:', error);
+src/services/paymentMonitoringService.ts:249:        Logger.error(`Error monitoring payment ${payment.paymentId}:`, error);
+src/services/paymentMonitoringService.ts:263:      Logger.warn('Skipping monitoring for non-NOWPayments payment ID', {
+src/services/paymentMonitoringService.ts:281:          Logger.warn(
+src/services/paymentMonitoringService.ts:291:    Logger.error(
+src/services/paymentMonitoringService.ts:314:      Logger.error(`Error polling payment status for ${paymentId}:`, error);
+src/services/paymentMonitoringService.ts:340:        Logger.warn(`Payment not found in database: ${paymentData.payment_id}`);
+src/services/paymentMonitoringService.ts:353:        Logger.warn(
+src/services/paymentMonitoringService.ts:365:          Logger.warn(
+src/services/paymentMonitoringService.ts:375:        Logger.debug(
+src/services/paymentMonitoringService.ts:383:      Logger.info(
+src/services/paymentMonitoringService.ts:449:      Logger.error('Error processing payment update:', error);
+src/services/paymentMonitoringService.ts:456:          Logger.error(
+src/services/paymentMonitoringService.ts:471:      Logger.info(`Processing successful payment: ${paymentData.payment_id}`);
+src/services/paymentMonitoringService.ts:497:        Logger.error('Invalid USD amount for monitoring allocation', {
+src/services/paymentMonitoringService.ts:521:        Logger.error(
+src/services/paymentMonitoringService.ts:537:      Logger.info(
+src/services/paymentMonitoringService.ts:541:      Logger.error(
+src/services/paymentMonitoringService.ts:554:      Logger.info(
+src/services/paymentMonitoringService.ts:564:      Logger.error(
+src/services/paymentMonitoringService.ts:609:      Logger.error('Error getting pending payments:', error);
+src/services/paymentMonitoringService.ts:618:        Logger.warn('Skipping non-NOWPayments payment ID for monitoring', {
+src/services/paymentMonitoringService.ts:638:        Logger.info(`Added payment ${paymentId} to monitoring queue`);
+src/services/paymentMonitoringService.ts:641:      Logger.error(`Error adding pending payment ${paymentId}:`, error);
+src/services/paymentMonitoringService.ts:659:      Logger.info(`Removed payment ${paymentId} from monitoring queue`);
+src/services/paymentMonitoringService.ts:661:      Logger.error(`Error removing pending payment ${paymentId}:`, error);
+src/services/paymentMonitoringService.ts:689:      Logger.error('Failed to mark monitoring skipped', { paymentId, error });
+src/services/paymentMonitoringService.ts:708:      Logger.error('Payment monitoring service health check failed:', error);
+src/services/paymentMonitoringService.ts:716:      Logger.info(`Manually triggering payment check for ${paymentId}`);
+src/services/paymentMonitoringService.ts:719:        Logger.warn(`Manual payment check failed for ${paymentId}`);
+src/services/paymentMonitoringService.ts:723:      Logger.error(`Manual payment check failed for ${paymentId}:`, error);
+src/services/jobs/monitoringJobs.ts:149:  Logger.info('PIN lockout monitor started');
+src/services/jobs/monitoringJobs.ts:205:    Logger.info('PIN lockout monitor complete', {
+src/services/jobs/monitoringJobs.ts:211:    Logger.error('PIN lockout monitor failed:', error);
+src/services/jobs/monitoringJobs.ts:216:  Logger.info('Subscription data-quality monitor started');
+src/services/jobs/monitoringJobs.ts:311:    Logger.info('Subscription data-quality monitor complete', {
+src/services/jobs/monitoringJobs.ts:317:    Logger.error('Subscription data-quality monitor failed:', error);
+src/services/jobs/monitoringJobs.ts:322:  Logger.info('Order allocation reconciliation started');
+src/services/jobs/monitoringJobs.ts:332:      Logger.warn(
+src/services/jobs/monitoringJobs.ts:425:    Logger.info('Order allocation reconciliation complete', {
+src/services/jobs/monitoringJobs.ts:431:    Logger.error('Order allocation reconciliation failed:', error);
+src/services/jobs/fxJobs.ts:8:    Logger.info('FX fetch job skipped (feature flag disabled)', {
+src/services/jobs/fxJobs.ts:15:  Logger.info('FX daily fetch job started', {
+src/services/jobs/fxJobs.ts:21:  Logger.info('FX daily fetch job completed', result);
+src/services/jobs/fxJobs.ts:26:    Logger.info('FX publish job skipped (feature flag disabled)', {
+src/services/jobs/fxJobs.ts:33:  Logger.info('FX weekly publish job started', {
+src/services/jobs/fxJobs.ts:46:    Logger.error('FX publish alert: stale or invalid FX data prevented publish', {
+src/services/jobs/fxJobs.ts:55:  Logger.info('FX weekly publish job completed', result);
+src/services/payments/paypalProvider.ts:615:      Logger.warn('PayPal webhook verification skipped: missing webhook ID');
+src/services/payments/paypalProvider.ts:640:      Logger.warn('PayPal webhook signature verification failed', {
+src/services/subscriptionService.ts:73:    Logger.warn('Invalid metadata schema for catalog rules', { error });
+src/services/subscriptionService.ts:102:        Logger.warn('Invalid upgrade options snapshot provided', {
+src/services/subscriptionService.ts:125:            Logger.warn('Invalid upgrade options in order metadata', {
+src/services/subscriptionService.ts:134:        Logger.warn('Failed to read upgrade options from order metadata', {
+src/services/subscriptionService.ts:150:            Logger.warn('Invalid upgrade options in product metadata', {
+src/services/subscriptionService.ts:172:      Logger.info('Creating subscription', {
+src/services/subscriptionService.ts:370:      Logger.info('Subscription created successfully', {
+src/services/subscriptionService.ts:376:      Logger.error('Error creating subscription:', error);
+src/services/subscriptionService.ts:427:      Logger.error('Failed to create credential provision task:', error);
+src/services/subscriptionService.ts:478:      Logger.error('Failed to create selection pending task:', error);
+src/services/subscriptionService.ts:512:      Logger.warn('Failed to complete selection pending tasks', {
+src/services/subscriptionService.ts:530:        Logger.warn('Subscription cache read failed, skipping cache:', error);
+src/services/subscriptionService.ts:578:        Logger.warn('Subscription cache write failed, continuing:', error);
+src/services/subscriptionService.ts:583:      Logger.error('Error getting subscription:', error);
+src/services/subscriptionService.ts:651:      Logger.error('Error getting user subscriptions:', error);
+src/services/subscriptionService.ts:720:      Logger.error('Error getting user subscriptions with count:', error);
+src/services/subscriptionService.ts:786:      Logger.error('Error listing subscriptions (admin):', error);
+src/services/subscriptionService.ts:796:      Logger.info('Admin updating subscription', {
+src/services/subscriptionService.ts:1068:      Logger.info('Admin subscription update completed', { subscriptionId });
+src/services/subscriptionService.ts:1072:      Logger.error('Error updating subscription (admin):', error);
+src/services/subscriptionService.ts:1278:      Logger.error('Error updating subscription for renewal:', error);
+src/services/subscriptionService.ts:1285:        Logger.error('Failed to rollback renewal update', rollbackError);
+src/services/subscriptionService.ts:1297:          Logger.error('Failed to rollback renewal transaction', rollbackError);
+src/services/subscriptionService.ts:1344:      Logger.error('Error updating subscription credentials (admin):', error);
+src/services/subscriptionService.ts:1364:      Logger.warn('Failed to update encrypted credentials value', {
+src/services/subscriptionService.ts:1377:      Logger.info('Updating subscription', {
+src/services/subscriptionService.ts:1586:      Logger.info('Subscription updated successfully', {
+src/services/subscriptionService.ts:1592:      Logger.error('Error updating subscription:', error);
+src/services/subscriptionService.ts:1604:      Logger.info('Cancelling subscription', {
+src/services/subscriptionService.ts:1680:      Logger.error('Error cancelling subscription:', error);
+src/services/subscriptionService.ts:1851:          Logger.warn('Failed to create subscription activation notification', {
+src/services/subscriptionService.ts:1858:      Logger.info('Subscription status updated', {
+src/services/subscriptionService.ts:1868:      Logger.error('Error updating subscription status:', error);
+src/services/subscriptionService.ts:1911:      Logger.error('Failed to activate subscriptions for order', {
+src/services/subscriptionService.ts:2005:        Logger.warn('Invalid subscription duration, defaulting to 1 month', {
+src/services/subscriptionService.ts:2077:      Logger.error('Failed to activate subscription for order item', {
+src/services/subscriptionService.ts:2189:          Logger.warn('Invalid subscription duration, defaulting to 1 month', {
+src/services/subscriptionService.ts:2247:      Logger.error('Failed to replay order delivery', { orderId, error });
+src/services/subscriptionService.ts:2262:      Logger.info('Starting batch update of expired subscriptions');
+src/services/subscriptionService.ts:2293:      Logger.info('Batch update completed', {
+src/services/subscriptionService.ts:2304:      Logger.error('Error updating expired subscriptions:', error);
+src/services/subscriptionService.ts:2485:      Logger.error('Error checking purchase eligibility:', error);
+src/services/subscriptionService.ts:2523:      Logger.error('Error getting active subscriptions count:', error);
+src/services/subscriptionService.ts:2574:      Logger.error(
+src/services/subscriptionService.ts:2685:      Logger.warn('Failed to clear subscription cache', {
+src/services/subscriptionService.ts:2711:      Logger.warn('Failed to clear user subscriptions cache', {
+src/services/subscriptionService.ts:2729:      Logger.warn('Failed to clear subscription stats cache', { error });
+src/services/subscriptionService.ts:2752:      Logger.error('Subscription service health check failed:', error);
+src/services/jobs/paymentJobs.ts:6:  Logger.info('NOWPayments currency refresh started');
+src/services/jobs/paymentJobs.ts:9:    Logger.info('NOWPayments currency refresh completed', {
+src/services/jobs/paymentJobs.ts:13:    Logger.error('NOWPayments currency refresh failed:', error);
+src/services/jobs/paymentJobs.ts:18:  Logger.info('Checkout abandonment sweep started', {
+src/services/jobs/paymentJobs.ts:24:    Logger.info('Checkout abandonment sweep completed', result);
+src/services/jobs/paymentJobs.ts:26:    Logger.error('Checkout abandonment sweep failed:', error);
+src/routes/admin/catalog.ts:163:        Logger.error('Admin list products failed:', error);
+src/routes/admin/catalog.ts:200:        Logger.error('Admin get product failed:', error);
+src/routes/admin/catalog.ts:237:        Logger.error('Admin list product sub-categories failed:', error);
+src/routes/admin/catalog.ts:274:        Logger.error('Admin get product sub-category failed:', error);
+src/routes/admin/catalog.ts:328:        Logger.error('Admin create product sub-category failed:', error);
+src/routes/admin/catalog.ts:420:        Logger.error('Admin create product failed:', error);
+src/routes/admin/catalog.ts:627:        Logger.error('Admin update product failed:', error);
+src/routes/admin/catalog.ts:659:        Logger.error('Admin list product labels failed:', error);
+src/routes/admin/catalog.ts:724:        Logger.error('Admin attach product label failed:', error);
+src/routes/admin/catalog.ts:785:        Logger.error('Admin detach product label failed:', error);
+src/routes/admin/catalog.ts:833:        Logger.error('Admin list variants failed:', error);
+src/routes/admin/catalog.ts:880:        Logger.error('Admin create variant failed:', error);
+src/routes/admin/catalog.ts:941:        Logger.error('Admin update variant failed:', error);
+src/routes/admin/catalog.ts:983:        Logger.error('Admin delete variant failed:', error);
+src/routes/admin/catalog.ts:1025:        Logger.error('Admin list variant terms failed:', error);
+src/routes/admin/catalog.ts:1101:        Logger.error('Admin create variant term failed:', error);
+src/routes/admin/catalog.ts:1188:        Logger.error('Admin update variant term failed:', error);
+src/routes/admin/catalog.ts:1231:        Logger.error('Admin delete variant term failed:', error);
+src/routes/admin/catalog.ts:1267:        Logger.error('Admin list labels failed:', error);
+src/routes/admin/catalog.ts:1310:        Logger.error('Admin create label failed:', error);
+src/routes/admin/catalog.ts:1371:        Logger.error('Admin update label failed:', error);
+src/routes/admin/catalog.ts:1408:        Logger.error('Admin list media failed:', error);
+src/routes/admin/catalog.ts:1454:        Logger.error('Admin create media failed:', error);
+src/routes/admin/catalog.ts:1517:        Logger.error('Admin update media failed:', error);
+src/routes/admin/catalog.ts:1558:        Logger.error('Admin list price history failed:', error);
+src/routes/admin/catalog.ts:1621:        Logger.error('Admin create price history failed:', error);
+src/routes/admin/catalog.ts:1684:        Logger.error('Admin set current price failed:', error);
+src/services/orderComplianceEvidenceService.ts:150:      Logger.error('Failed to record PayPal payment evidence', {
+src/services/orderComplianceEvidenceService.ts:197:      Logger.error('Failed to record order delivery evidence', {
+src/services/orderComplianceEvidenceService.ts:246:      Logger.error('Failed to record credential reveal evidence', {
+src/services/orderComplianceEvidenceService.ts:297:      Logger.error('Failed to record order compliance evidence', {
+src/routes/admin/users.ts:154:        Logger.error('Admin user search failed:', error);
+src/services/jobs/subscriptionJobs.ts:162:    Logger.warn('Failed to update subscription during renewal job', {
+src/services/jobs/subscriptionJobs.ts:313:    Logger.info('Subscription renewal sweep skipped (auto-renew deprecated)', {
+src/services/jobs/subscriptionJobs.ts:324:  Logger.info('Subscription renewal sweep started', {
+src/services/jobs/subscriptionJobs.ts:374:    Logger.info('Subscription renewal sweep complete (no candidates)');
+src/services/jobs/subscriptionJobs.ts:398:        Logger.warn('Auto-renew term resolved from date delta', {
+src/services/jobs/subscriptionJobs.ts:422:      Logger.warn('Auto-renew disabled due to missing cycle end date', {
+src/services/jobs/subscriptionJobs.ts:482:        Logger.info('Skipping credit renewal due to active lock', {
+src/services/jobs/subscriptionJobs.ts:581:          Logger.warn('Failed to create renewal failure notification', {
+src/services/jobs/subscriptionJobs.ts:647:          Logger.warn('Credits renewal success notification failed', {
+src/services/jobs/subscriptionJobs.ts:654:      Logger.info('Auto-renewed subscription with credits', {
+src/services/jobs/subscriptionJobs.ts:673:      Logger.info('Auto-renew disabled for non-credit subscription', {
+src/services/jobs/subscriptionJobs.ts:681:  Logger.info('Subscription renewal sweep complete', {
+src/services/jobs/subscriptionJobs.ts:687:  Logger.info('Subscription expiry sweep started');
+src/services/jobs/subscriptionJobs.ts:691:    Logger.warn('Subscription expiry sweep failed', {
+src/services/jobs/subscriptionJobs.ts:697:  Logger.info('Subscription expiry sweep complete', {
+src/services/jobs/subscriptionJobs.ts:862:  Logger.info('Subscription reminder sweep started');
+src/services/jobs/subscriptionJobs.ts:928:          Logger.warn('Unable to create or load subscription reminder event', {
+src/services/jobs/subscriptionJobs.ts:971:            Logger.warn('Failed to create subscription reminder notification', {
+src/services/jobs/subscriptionJobs.ts:998:    Logger.info('Subscription reminder sweep complete', {
+src/services/jobs/subscriptionJobs.ts:1005:    Logger.error('Subscription reminder sweep failed:', error);
+src/services/jobs/subscriptionJobs.ts:1065:  Logger.info('Upgrade selection reminder sweep started');
+src/services/jobs/subscriptionJobs.ts:1191:    Logger.error('Upgrade selection reminder sweep failed:', error);
+src/services/jobs/subscriptionJobs.ts:1198:  Logger.info('Manual monthly upgrade sweep started');
+src/services/jobs/subscriptionJobs.ts:1280:        Logger.warn('Skipping MMU task for invalid term/interval pairing', {
+src/services/jobs/subscriptionJobs.ts:1336:    Logger.info('Manual monthly upgrade sweep complete', {
+src/services/jobs/subscriptionJobs.ts:1341:    Logger.error('Manual monthly upgrade sweep failed:', error);
+src/routes/admin/coupons.ts:84:        Logger.error('Admin list coupons failed:', error);
+src/routes/admin/coupons.ts:113:        Logger.error('Admin get coupon failed:', error);
+src/routes/admin/coupons.ts:204:        Logger.error('Admin create coupon failed:', error);
+src/routes/admin/coupons.ts:351:        Logger.error('Admin update coupon failed:', error);
+src/routes/admin/coupons.ts:397:        Logger.error('Admin delete coupon failed:', error);
+src/services/perkService.ts:75:      Logger.error('Failed to list user perks:', error);
+src/services/perkService.ts:312:      Logger.error('Failed to apply perk to subscription:', error);
+src/services/perkService.ts:319:          Logger.error(
+src/routes/admin/migration.ts:140:        Logger.error('Admin migration preview failed:', error);
+src/routes/admin/migration.ts:210:        Logger.error('Admin migration apply failed:', error);
+src/services/dashboardService.ts:211:        Logger.error('Failed to fetch credit balance for dashboard:', error);
+src/services/dashboardService.ts:450:      Logger.error('Failed to build dashboard overview:', error);
+src/services/jobs/orderJobs.ts:5:  Logger.info('Order delivery email watchdog sweep started');
+src/services/jobs/orderJobs.ts:8:    Logger.info('Order delivery email watchdog sweep completed', result);
+src/services/jobs/orderJobs.ts:10:    Logger.error('Order delivery email watchdog sweep failed:', error);
+src/services/notificationService.ts:73:      Logger.error('Failed to create notification:', error);
+src/services/notificationService.ts:113:      Logger.error('Failed to create notifications:', error);
+src/services/notificationService.ts:168:      Logger.error('Failed to list notifications:', error);
+src/services/notificationService.ts:205:      Logger.error('Failed to mark notifications read:', error);
+src/services/notificationService.ts:240:      Logger.error('Failed to clear notifications:', error);
+src/services/pinResetService.ts:147:      Logger.error('Failed to confirm PIN reset:', error);
+src/services/pinResetService.ts:154:          Logger.error(
+src/services/jobs/authJobs.ts:37:  Logger.info(
+src/services/jobs/authJobs.ts:46:  Logger.info('Email verification sync started');
+src/services/jobs/authJobs.ts:66:      Logger.info('Email verification sync complete', {
+src/services/jobs/authJobs.ts:102:        Logger.warn('Email verification lookup failed', {
+src/services/jobs/authJobs.ts:133:    Logger.info('Email verification sync complete', {
+src/services/jobs/authJobs.ts:138:    Logger.error('Email verification sync failed:', error);
+src/routes/admin/payments.ts:104:        Logger.error('Error listing payments:', error);
+src/routes/admin/payments.ts:153:        Logger.error('Error cancelling Antom payment:', error);
+src/routes/admin/payments.ts:188:        Logger.error('Error starting payment monitoring:', error);
+src/routes/admin/payments.ts:223:        Logger.error('Error stopping payment monitoring:', error);
+src/routes/admin/payments.ts:255:        Logger.error('Error getting monitoring dashboard:', error);
+src/routes/admin/payments.ts:275:        Logger.error('Error getting FX diagnostics:', error);
+src/routes/admin/payments.ts:322:        Logger.error('Error getting pending payments:', error);
+src/routes/admin/payments.ts:394:        Logger.error('Error in manual credit allocation:', error);
+src/routes/admin/payments.ts:448:        Logger.error('Error in manual payment retry:', error);
+src/routes/admin/payments.ts:486:        Logger.error('Error getting pending refunds:', error);
+src/routes/admin/payments.ts:544:        Logger.error('Error getting all refunds:', error);
+src/routes/admin/payments.ts:606:        Logger.error('Error approving refund:', error);
+src/routes/admin/payments.ts:665:        Logger.error('Error rejecting refund:', error);
+src/routes/admin/payments.ts:740:        Logger.error('Error in manual refund:', error);
+src/routes/admin/payments.ts:772:        Logger.error('Error getting refund statistics:', error);
+src/routes/admin/payments.ts:807:        Logger.error('Error resetting metrics:', error);
+src/routes/admin/payments.ts:844:        Logger.error('Error during cleanup:', error);
+src/routes/admin/payments.ts:880:        Logger.error('Admin payment health check failed:', error);
+src/services/cacheService.ts:44:      Logger.error(`Cache GET error for key "${key}":`, error);
+src/services/cacheService.ts:67:      Logger.error(`Cache SET error for key "${key}":`, error);
+src/services/cacheService.ts:78:      Logger.error(`Cache DEL error for key "${key}":`, error);
+src/services/cacheService.ts:89:      Logger.error(`Cache EXISTS error for key "${key}":`, error);
+src/services/cacheService.ts:100:      Logger.error(
+src/services/cacheService.ts:115:      Logger.error(
+src/services/cacheService.ts:135:      Logger.error(`Cache HGETALL error for key "${key}":`, error);
+src/services/cacheService.ts:146:      Logger.error(`Cache EXPIRE error for key "${key}":`, error);
+src/services/cacheService.ts:156:      Logger.error(`Cache TTL error for key "${key}":`, error);
+src/services/cacheService.ts:166:      Logger.error('Cache FLUSHDB error:', error);
+src/services/cacheService.ts:177:      Logger.error(`Cache MGET error for keys "${keys.join(', ')}":`, error);
+src/services/cacheService.ts:204:      Logger.error('Cache MSET error:', error);
+src/services/cacheService.ts:214:      Logger.error(`Cache INCREMENT error for key "${key}":`, error);
+src/services/cacheService.ts:224:      Logger.error(`Cache DECREMENT error for key "${key}":`, error);
+src/routes/admin/notifications.ts:107:            Logger.error('Admin announcement batch failed:', {
+src/routes/admin/notifications.ts:153:        Logger.error('Admin announcement failed:', error);
+src/services/guestCheckoutService.ts:56:      Logger.warn(
+src/services/guestCheckoutService.ts:107:    Logger.warn('Failed to build branded guest claim email HTML', { error });
+src/services/guestCheckoutService.ts:178:          Logger.warn('Guest identity already linked to a different user', {
+src/services/guestCheckoutService.ts:190:      Logger.error('Failed to ensure guest identity:', error);
+src/services/guestCheckoutService.ts:266:          Logger.warn('Guest claim email failed to send', {
+src/services/guestCheckoutService.ts:280:      Logger.error('Failed to issue guest claim token:', error);
+src/services/guestCheckoutService.ts:309:      Logger.error('Failed to consume guest claim token:', error);
+src/services/guestCheckoutService.ts:455:            Logger.warn('Skipping optional guest-claim table reassignment', {
+src/services/guestCheckoutService.ts:470:            Logger.warn('Optional guest-claim table reassignment failed', {
+src/services/guestCheckoutService.ts:673:          Logger.warn('Failed to send post-claim order instructions email', {
+src/services/guestCheckoutService.ts:691:      Logger.error('Failed to claim guest identity:', error);
+src/services/guestCheckoutService.ts:698:          Logger.error('Failed to rollback guest claim', rollbackError);
+src/services/guestCheckoutService.ts:1164:      Logger.error('Failed to upsert guest draft order:', error);
+src/services/guestCheckoutService.ts:1171:          Logger.error('Failed to rollback guest draft order', rollbackError);
+src/routes/admin/overview.ts:58:        Logger.error('Admin overview metrics failed:', error);
+src/services/pinService.ts:79:      Logger.error('Failed to get PIN status:', error);
+src/services/pinService.ts:132:      Logger.error('Failed to set PIN:', error);
+src/services/pinService.ts:250:      Logger.error('Failed to verify PIN:', error);
+src/services/pinService.ts:261:          Logger.error(
+src/services/pinService.ts:296:      Logger.error('Failed to issue PIN token:', error);
+src/services/pinService.ts:326:      Logger.error('Failed to consume PIN token:', error);
+src/routes/admin/credits.ts:45:        Logger.error('Admin list balances failed:', error);
+src/routes/admin/credits.ts:130:        Logger.error('Admin list credit transactions failed:', error);
+src/routes/admin/credits.ts:214:        Logger.error('Admin add credits failed:', error);
+src/routes/admin/credits.ts:291:        Logger.error('Admin withdraw credits failed:', error);
+src/routes/admin/subscriptions.ts:67:        Logger.error('Admin list subscriptions failed:', error);
+src/routes/admin/subscriptions.ts:191:        Logger.error('Admin renewal fulfillment lookup failed:', error);
+src/routes/admin/subscriptions.ts:293:        Logger.error('Admin update subscription failed:', error);
+src/routes/admin/subscriptions.ts:378:        Logger.error('Admin update subscription status failed:', error);
+src/routes/admin/subscriptions.ts:446:        Logger.error('Admin get subscription credentials failed:', error);
+src/routes/admin/subscriptions.ts:526:        Logger.error('Admin reveal selection credentials failed:', error);
+src/routes/admin/subscriptions.ts:629:        Logger.error('Admin update subscription credentials failed:', error);
+src/routes/subscriptions.ts:437:    Logger.error('Failed to list product category assignments:', error);
+src/routes/subscriptions.ts:840:    Logger.error('Failed to create missing price admin task:', error);
+src/routes/subscriptions.ts:881:    Logger.error('Failed to create missing plan code admin task:', error);
+src/routes/subscriptions.ts:923:    Logger.error('Failed to create missing term admin task:', error);
+src/routes/subscriptions.ts:965:    Logger.error(
+src/routes/subscriptions.ts:1006:        Logger.info('Fetching available subscription plans', {
+src/routes/subscriptions.ts:1066:          Logger.error('Catalog term lookup returned no terms for listings', {
+src/routes/subscriptions.ts:1078:            Logger.warn('Catalog term lookup unavailable; admin task created', {
+src/routes/subscriptions.ts:1139:            Logger.warn('Active product missing service_type', {
+src/routes/subscriptions.ts:1148:            Logger.warn('Active variant missing plan code', {
+src/routes/subscriptions.ts:1164:            Logger.warn('Active variant missing term options', {
+src/routes/subscriptions.ts:1274:            Logger.warn('Fixed product missing service_type', {
+src/routes/subscriptions.ts:1302:            Logger.warn('Fixed product missing pricing fields', {
+src/routes/subscriptions.ts:1377:            Logger.warn('Catalog listings missing price; admin tasks created', {
+src/routes/subscriptions.ts:1388:            Logger.warn(
+src/routes/subscriptions.ts:1402:            Logger.warn('Catalog listings missing terms; admin tasks created', {
+src/routes/subscriptions.ts:1414:        Logger.error('Failed to fetch available plans:', error);
+src/routes/subscriptions.ts:1494:        Logger.error('Add to cart tracking failed:', error);
+src/routes/subscriptions.ts:1627:        Logger.error('Event tracking failed:', error);
+src/routes/subscriptions.ts:1643:        Logger.info('Fetching available products', {
+src/routes/subscriptions.ts:1702:          Logger.error(
+src/routes/subscriptions.ts:1717:            Logger.warn('Catalog term lookup unavailable; admin task created', {
+src/routes/subscriptions.ts:1755:            Logger.warn('Active product missing service_type', {
+src/routes/subscriptions.ts:2084:        Logger.error('Failed to fetch product listings:', error);
+src/routes/subscriptions.ts:2161:          Logger.warn('Invalid upgrade options configuration', {
+src/routes/subscriptions.ts:2286:          Logger.warn('Ambiguous product listing variant configuration', {
+src/routes/subscriptions.ts:2330:            Logger.warn('Ambiguous product listing term configuration', {
+src/routes/subscriptions.ts:2445:        Logger.error('Failed to fetch product detail:', error);
+src/routes/subscriptions.ts:2610:        Logger.error('Failed to generate cart pricing preview:', error);
+src/routes/subscriptions.ts:2637:        Logger.info('Fetching related plans', { serviceType, limit, exclude });
+src/routes/subscriptions.ts:2705:        Logger.error('Failed to fetch related plans:', error);
+src/routes/subscriptions.ts:2750:        Logger.info('Validating purchase eligibility', {
+src/routes/subscriptions.ts:2799:          Logger.error('Invalid upgrade options configuration', {
+src/routes/subscriptions.ts:2953:        Logger.error('Purchase validation failed:', error);
+src/routes/subscriptions.ts:3008:        Logger.info('Processing subscription purchase', {
+src/routes/subscriptions.ts:3044:          Logger.error('Invalid upgrade options configuration', {
+src/routes/subscriptions.ts:3248:            Logger.error('Failed to reserve coupon during purchase:', error);
+src/routes/subscriptions.ts:3258:                Logger.error(
+src/routes/subscriptions.ts:3338:          Logger.error('Credit deduction failed', {
+src/routes/subscriptions.ts:3399:          Logger.error('Subscription creation failed, refunding credits', {
+src/routes/subscriptions.ts:3467:            Logger.warn('Failed to send order payment confirmation email', {
+src/routes/subscriptions.ts:3473:          Logger.warn('Order payment confirmation email call failed', {
+src/routes/subscriptions.ts:3515:          Logger.warn(
+src/routes/subscriptions.ts:3524:        Logger.info('Subscription purchased successfully', {
+src/routes/subscriptions.ts:3546:        Logger.error('Purchase flow error:', error);
+src/routes/subscriptions.ts:3602:        Logger.error('Failed to fetch upgrade selection state:', error);
+src/routes/subscriptions.ts:3662:          Logger.error('Invalid upgrade options snapshot', {
+src/routes/subscriptions.ts:3730:        Logger.error('Manual monthly acknowledgement failed:', error);
+src/routes/subscriptions.ts:3840:          Logger.error('Invalid upgrade options snapshot', {
+src/routes/subscriptions.ts:3980:        Logger.error('Upgrade selection submission failed:', error);
+src/routes/subscriptions.ts:4052:        Logger.info('Fetching user subscriptions', { userId, query });
+src/routes/subscriptions.ts:4206:            Logger.warn(
+src/routes/subscriptions.ts:4233:        Logger.error('Failed to fetch user subscriptions:', error);
+src/routes/subscriptions.ts:4275:        Logger.info('Fetching subscription by ID', {
+src/routes/subscriptions.ts:4296:        Logger.error('Failed to fetch subscription:', error);
+src/routes/subscriptions.ts:4333:      Logger.info('Deprecated auto-renew endpoint requested', {
+src/routes/subscriptions.ts:4375:      Logger.info('Deprecated auto-renew endpoint requested', {
+src/routes/subscriptions.ts:4412:      Logger.info('Deprecated auto-renew endpoint requested', {
+src/routes/subscriptions.ts:4449:      Logger.info('Deprecated auto-renew endpoint requested', {
+src/routes/subscriptions.ts:4486:      Logger.info('Deprecated manual renewal endpoint requested', {
+src/routes/subscriptions.ts:4523:      Logger.info('Deprecated manual renewal endpoint requested', {
+src/routes/subscriptions.ts:4609:        Logger.info('Cancelling subscription', {
+src/routes/subscriptions.ts:4637:        Logger.error('Failed to cancel subscription:', error);
+src/routes/subscriptions.ts:4666:        Logger.error('Health check failed:', error);
+src/services/catalogService.ts:614:      Logger.error('Failed to list product category assignments:', error);
+src/services/catalogService.ts:893:      Logger.error('Failed to list product sub-category assignments:', error);
+src/services/catalogService.ts:1385:      Logger.error('Failed to create product:', error);
+src/services/catalogService.ts:1702:      Logger.error('Failed to update product:', error);
+src/services/catalogService.ts:1779:      Logger.error('Failed to fetch product by id:', error);
+src/services/catalogService.ts:1850:      Logger.error('Failed to fetch product by slug:', error);
+src/services/catalogService.ts:1932:      Logger.error('Failed to fetch product by service type:', error);
+src/services/catalogService.ts:1946:      Logger.error('Failed to fetch product label by id:', error);
+src/services/catalogService.ts:1999:      Logger.error('Failed to update product label:', error);
+src/services/catalogService.ts:2013:      Logger.error('Failed to fetch product variant by id:', error);
+src/services/catalogService.ts:2027:      Logger.error('Failed to fetch product media by id:', error);
+src/services/catalogService.ts:2059:      Logger.error('Failed to load product detail:', error);
+src/services/catalogService.ts:2151:      Logger.error('Failed to list products:', error);
+src/services/catalogService.ts:2218:      Logger.error('Failed to list product sub-categories:', error);
+src/services/catalogService.ts:2281:      Logger.error('Failed to fetch product sub-category by slug:', error);
+src/services/catalogService.ts:2347:      Logger.error('Failed to create product sub-category:', error);
+src/services/catalogService.ts:2376:      Logger.error('Failed to create product variant:', error);
+src/services/catalogService.ts:2404:      Logger.error('Failed to create product variant term:', error);
+src/services/catalogService.ts:2469:      Logger.error('Failed to update product variant:', error);
+src/services/catalogService.ts:2512:      Logger.error('Failed to delete product variant:', error);
+src/services/catalogService.ts:2573:      Logger.error('Failed to update product variant term:', error);
+src/services/catalogService.ts:2590:      Logger.error('Failed to delete product variant term:', error);
+src/services/catalogService.ts:2609:      Logger.error('Failed to list product variants:', error);
+src/services/catalogService.ts:2754:      Logger.error('Failed to list active catalog listings:', error);
+src/services/catalogService.ts:2842:      Logger.error('Failed to list active fixed products:', error);
+src/services/catalogService.ts:2886:      Logger.error('Failed to list product variants (admin):', error);
+src/services/catalogService.ts:2925:      Logger.error('Failed to list product variant terms:', error);
+src/services/catalogService.ts:2945:      Logger.error('Failed to list product variant terms for product:', error);
+src/services/catalogService.ts:2980:      Logger.error('Failed to list variant terms for variants:', error);
+src/services/catalogService.ts:3040:        Logger.warn(
+src/services/catalogService.ts:3090:      Logger.error(
+src/services/catalogService.ts:3180:      Logger.error('Failed to fetch variant with product:', error);
+src/services/catalogService.ts:3209:      Logger.error(
+src/services/catalogService.ts:3235:      Logger.error('Failed to fetch variant term:', error);
+src/services/catalogService.ts:3249:      Logger.error('Failed to fetch variant term by id:', error);
+src/services/catalogService.ts:3304:      Logger.error('Failed to create price history entry:', error);
+src/services/catalogService.ts:3381:      Logger.error('Failed to set current price entry:', error);
+src/services/catalogService.ts:3388:          Logger.error(
+src/services/catalogService.ts:3438:      Logger.error('Failed to list price history:', error);
+src/services/catalogService.ts:3457:      Logger.error('Failed to create product label:', error);
+src/services/catalogService.ts:3485:      Logger.error('Failed to list product labels:', error);
+src/services/catalogService.ts:3503:      Logger.error('Failed to list product labels:', error);
+src/services/catalogService.ts:3534:      Logger.error('Failed to attach product label:', error);
+src/services/catalogService.ts:3563:      Logger.error('Failed to detach product label:', error);
+src/services/catalogService.ts:3591:      Logger.error('Failed to create product media:', error);
+src/services/catalogService.ts:3627:      Logger.error('Failed to list product media:', error);
+src/services/catalogService.ts:3688:      Logger.error('Failed to update product media:', error);
+src/services/catalogService.ts:3717:      Logger.error('Failed to fetch current price:', error);
+src/services/catalogService.ts:3754:      Logger.error('Failed to fetch current price for currency:', error);
+src/services/catalogService.ts:3785:      Logger.error('Failed to fetch snapshot price for currency:', error);
+src/services/catalogService.ts:3830:      Logger.error('Failed to list current prices for currency:', error);
+src/services/catalogService.ts:3870:      Logger.error(
+src/services/catalogService.ts:3906:      Logger.error(
+src/services/catalogService.ts:3954:      Logger.error(
+src/services/catalogService.ts:4000:      Logger.error(
+src/routes/newsletter.ts:82:        Logger.error('Newsletter subscribe failed:', error);
+src/routes/admin/newsletter.ts:70:        Logger.error('Admin list newsletter subscribers failed:', error);
+src/services/paymentFailureService.ts:77:      Logger.info(`Handling payment failure: ${paymentId}`, { status, reason });
+src/services/paymentFailureService.ts:109:      Logger.error(`Error handling payment failure for ${paymentId}:`, error);
+src/services/paymentFailureService.ts:120:      Logger.warn(`Monitoring failure for payment ${paymentId}: ${error}`);
+src/services/paymentFailureService.ts:129:      Logger.error(`Error handling monitoring failure for ${paymentId}:`, err);
+src/services/paymentFailureService.ts:176:      Logger.error(`Error getting payment info for ${paymentId}:`, error);
+src/services/paymentFailureService.ts:229:      Logger.error(
+src/services/paymentFailureService.ts:309:      Logger.info(
+src/services/paymentFailureService.ts:329:          Logger.info(
+src/services/paymentFailureService.ts:339:        Logger.warn(
+src/services/paymentFailureService.ts:354:      Logger.error(
+src/services/paymentFailureService.ts:367:      Logger.info(
+src/services/paymentFailureService.ts:382:      Logger.error(
+src/services/paymentFailureService.ts:395:      Logger.error(
+src/services/paymentFailureService.ts:414:      Logger.error(
+src/services/paymentFailureService.ts:427:      Logger.info(`Cleaning up failed payment: ${failureData.paymentId}`);
+src/services/paymentFailureService.ts:444:      Logger.error(
+src/services/paymentFailureService.ts:567:        Logger.info(`Cleared failure record for payment ${paymentId}`, {
+src/services/paymentFailureService.ts:572:      Logger.error(`Error clearing failure record for ${paymentId}:`, error);
+src/services/paymentFailureService.ts:605:      Logger.error(
+src/services/paymentFailureService.ts:636:      Logger.error('Error logging failure notification:', error);
+src/services/paymentFailureService.ts:708:      Logger.error('Error getting failed payments:', error);
+src/services/paymentFailureService.ts:719:      Logger.info(
+src/services/paymentFailureService.ts:740:      Logger.error(`Error in manual retry for ${paymentId}:`, error);
+src/services/paymentFailureService.ts:754:      Logger.error(`Error getting failure record for ${paymentId}:`, error);
+src/services/paymentFailureService.ts:767:      Logger.error('Payment failure service health check failed:', error);
+src/services/paymentFailureService.ts:793:      Logger.info(`Cleaned up ${cleanedCount} old failure records`);
+src/services/paymentFailureService.ts:796:      Logger.error('Error cleaning up old failures:', error);
+src/services/userService.ts:66:          Logger.warn(
+src/services/userService.ts:98:          Logger.warn('Failed to fetch session count for user:', userId, error);
+src/services/userService.ts:107:      Logger.error('Get user profile error:', error);
+src/services/userService.ts:230:        Logger.info(`User profile updated: ${userId} by ${updatedBy}`);
+src/services/userService.ts:245:            Logger.error(
+src/services/userService.ts:254:      Logger.error('Update user profile error:', error);
+src/services/userService.ts:333:          Logger.info(
+src/services/userService.ts:349:            Logger.info(
+src/services/userService.ts:353:            Logger.error('Failed to invalidate user sessions:', sessionError);
+src/services/userService.ts:357:        Logger.info(
+src/services/userService.ts:374:            Logger.error(
+src/services/userService.ts:383:      Logger.error('Update user status error:', error);
+src/services/userService.ts:399:      Logger.error('Update last login error:', error);
+src/services/userService.ts:412:      Logger.error('Get user sessions error:', error);
+src/services/userService.ts:440:      Logger.info(`User account marked as deleted: ${userId} by ${deletedBy}`);
+src/services/userService.ts:447:      Logger.error('Delete user account error:', error);
+src/services/userService.ts:475:      Logger.error('Check user active status error:', error);
+src/services/userService.ts:498:      Logger.error('Get user by email error:', error);
+src/routes/bis.ts:68:        Logger.error('BIS inquiry submission failed:', error);
+src/routes/admin/next.ts:62:    Logger.warn('Failed to load retryable payment failure records', { error });
+src/routes/admin/next.ts:159:        Logger.error('Admin-next orders list failed:', error);
+src/routes/admin/next.ts:313:        Logger.error('Admin-next order detail failed:', error);
+src/routes/admin/next.ts:390:        Logger.error('Admin-next subscriptions failed:', error);
+src/routes/admin/next.ts:471:        Logger.error('Admin-next subscription detail failed:', error);
+src/routes/admin/next.ts:532:        Logger.error('Admin-next payments failed:', error);
+src/routes/admin/next.ts:576:        Logger.error('Admin-next payment detail failed:', error);
+src/routes/admin/next.ts:659:        Logger.error('Admin-next slim users failed:', error);
+src/routes/admin/next.ts:696:        Logger.error('Admin-next newsletter coupons failed:', error);
+src/routes/admin/next.ts:724:        Logger.error('Admin-next announcements history failed:', error);
+src/routes/admin/next.ts:802:        Logger.error('Admin-next search failed:', error);
+src/services/sessionService.ts:100:      Logger.error('Error creating session:', error);
+src/services/sessionService.ts:115:        Logger.error(`Invalid encrypted session data for session ${sessionId}`);
+src/services/sessionService.ts:125:      Logger.error(`Error getting session ${sessionId}:`, error);
+src/services/sessionService.ts:157:      Logger.error(`Error updating session ${sessionId}:`, error);
+src/services/sessionService.ts:186:      Logger.error(`Error deleting session ${sessionId}:`, error);
+src/services/sessionService.ts:208:      Logger.error(`Error refreshing session ${sessionId}:`, error);
+src/services/sessionService.ts:261:      Logger.error('Error cleaning up expired sessions:', error);
+src/services/sessionService.ts:298:      Logger.error(`Error getting user sessions for ${userId}:`, error);
+src/services/sessionService.ts:335:      Logger.error(`Error deleting user sessions for ${userId}:`, error);
+src/services/sessionService.ts:345:      Logger.error('Error getting session count:', error);
+src/services/sessionService.ts:380:            Logger.error('Error parsing session data:', parseError);
+src/services/sessionService.ts:387:      Logger.error('Error getting active user count:', error);
+src/services/sessionService.ts:433:      Logger.error(`Error validating session ${sessionId}:`, error);
+src/services/sessionService.ts:478:            Logger.error(
+src/services/sessionService.ts:488:      Logger.error(`Error getting user sessions info for ${userId}:`, error);
+src/services/sessionService.ts:525:      Logger.error(`Error enforcing session limit for user ${userId}:`, error);
+src/services/sessionService.ts:577:      Logger.error(
+src/services/upgradeSelectionService.ts:75:      Logger.error('Failed to ensure upgrade selection row', {
+src/services/upgradeSelectionService.ts:101:      Logger.warn('Failed to mark selection as resolved', {
+src/services/upgradeSelectionService.ts:124:      Logger.error('Failed to fetch upgrade selection', {
+src/services/upgradeSelectionService.ts:151:      Logger.error('Failed to fetch upgrade selection for user', {
+src/services/upgradeSelectionService.ts:210:      Logger.error('Failed to submit upgrade selection', {
+src/services/upgradeSelectionService.ts:246:      Logger.error('Failed to acknowledge manual monthly upgrade', {
+src/services/upgradeSelectionService.ts:270:      Logger.warn('Failed to mark selection reminder', {
+src/services/upgradeSelectionService.ts:291:      Logger.warn('Failed to update selection credentials value', {
+src/routes/admin/tasks.ts:200:        Logger.error('Admin list tasks failed:', error);
+src/routes/admin/tasks.ts:265:        Logger.error('Admin list prelaunch reward tasks failed:', error);
+src/routes/admin/tasks.ts:321:        Logger.error('Admin update prelaunch reward task failed:', error);
+src/routes/admin/tasks.ts:377:        Logger.error('Admin update prelaunch reward task failed:', error);
+src/routes/admin/tasks.ts:470:        Logger.error('Admin task credential view failed:', error);
+src/routes/admin/tasks.ts:565:        Logger.error('Admin confirm task payment failed:', error);
+src/routes/admin/tasks.ts:714:            Logger.warn('Failed to create renewal notification', {
+src/routes/admin/tasks.ts:737:        Logger.error('Admin confirm renewal failed:', error);
+src/routes/admin/tasks.ts:816:        Logger.error('Admin complete task failed:', error);
+src/routes/admin/tasks.ts:886:        Logger.error('Admin start task failed:', error);
+src/routes/admin/tasks.ts:968:        Logger.error('Admin move task to issues failed:', error);
+src/routes/admin/tasks.ts:1053:        Logger.error('Admin move task to queue failed:', error);
+src/routes/admin/fulfillment.ts:213:        Logger.error('Admin fulfillment queue failed:', error);
+src/routes/admin/fulfillment.ts:342:        Logger.error('Admin fulfillment order detail failed:', error);
+src/routes/admin/fulfillment.ts:447:        Logger.error('Admin MMU detail failed:', error);
+src/routes/admin/fulfillment.ts:476:        Logger.error('Admin fulfillment overview failed:', error);
+src/services/orderRiskService.ts:270:      Logger.warn('Failed to capture order request context for risk checks', {
+src/services/orderRiskService.ts:493:      Logger.warn('MaxMind risk evaluation failed, continuing fail-open', {
+src/services/orderRiskService.ts:897:      Logger.error('Failed to load order context for risk evaluation', {
+src/services/orderRiskService.ts:934:      Logger.warn('Failed to load prior order baseline for risk evaluation', {
+src/services/orderRiskService.ts:968:      Logger.warn('Failed to load refund history for risk evaluation', {
+src/services/orderRiskService.ts:1003:      Logger.warn('Failed to load historical risk signals', {
+src/services/orderRiskService.ts:1107:      Logger.warn('Failed to persist MaxMind risk assessment', {
+src/services/orderRiskService.ts:1166:      Logger.warn('Failed to create MaxMind verification task', {
+src/services/couponService.ts:228:      Logger.error('Failed to list coupons:', error);
+src/services/couponService.ts:299:      Logger.error('Failed to create coupon:', error);
+src/services/couponService.ts:388:      Logger.error('Failed to update coupon:', error);
+src/services/couponService.ts:407:      Logger.error('Failed to delete coupon:', error);
+src/services/couponService.ts:702:      Logger.error('Failed to finalize coupon redemption:', error);
+src/services/couponService.ts:722:      Logger.error('Failed to void coupon redemption:', error);
+src/services/couponService.ts:743:      Logger.warn('Failed to expire stale coupon reservations', {
+src/services/auditLogService.ts:60:      Logger.error('Failed to record admin audit log:', error);
+src/services/auditLogService.ts:93:      Logger.error('Failed to record credential reveal audit log:', error);
+src/services/auditLogService.ts:117:    Logger.error('Admin audit logging failed:', error);
+src/services/auditLogService.ts:138:    Logger.error('Credential reveal audit logging failed:', error);
+src/services/paymentMethodService.ts:49:          Logger.warn('Payment method ownership mismatch', {
+src/services/paymentMethodService.ts:137:      Logger.error('Failed to upsert payment method:', error);
+src/services/paymentMethodService.ts:144:          Logger.error(
+src/services/paymentMethodService.ts:169:      Logger.error('Failed to set default payment method:', error);
+src/services/paymentMethodService.ts:188:      Logger.error('Failed to fetch payment method:', error);
+src/services/paymentMethodService.ts:209:      Logger.error('Failed to fetch default payment method:', error);
+src/services/paymentMethodService.ts:228:      Logger.error('Failed to update payment method status:', error);
+src/routes/admin/bis.ts:67:        Logger.error('Admin list BIS inquiries failed:', error);
+src/routes/admin/bis.ts:100:        Logger.error('Admin get BIS inquiry failed:', error);
+src/routes/admin/bis.ts:149:        Logger.error('Admin update BIS inquiry failed:', error);
+src/services/paymentEventRepository.ts:36:      Logger.error('Failed to record payment event', {
+src/services/emailService.ts:170:      Logger.info('Email dispatch (console mode)', {
+src/services/emailService.ts:219:          Logger.error('Resend API email failed', {
+src/services/emailService.ts:231:        Logger.error('Resend API email failed', error);
+src/services/emailService.ts:266:      Logger.error('Email dispatch failed:', error);
+src/services/orderItemUpgradeSelectionService.ts:78:      Logger.error('Failed to upsert order item upgrade selection', {
+src/services/orderItemUpgradeSelectionService.ts:102:      Logger.error('Failed to fetch order item upgrade selection', {
+src/services/orderItemUpgradeSelectionService.ts:133:      Logger.error('Failed to list order item upgrade selections', {
+src/services/subscriptionRenewalService.ts:282:    Logger.info('Renewal cycle resolved', {
+src/services/bisService.ts:49:      Logger.error('Failed to create BIS inquiry:', error);
+src/services/bisService.ts:135:      Logger.error('Failed to update BIS inquiry status:', error);
+src/routes/admin/rewards.ts:137:        Logger.error('Admin list referral rewards failed:', error);
+src/routes/admin/rewards.ts:241:        Logger.error('Admin list pre-launch rewards failed:', error);
+src/routes/admin/rewards.ts:476:            Logger.error('Admin redeem referral reward failed:', error);
+src/routes/admin/rewards.ts:486:                Logger.error(
+src/routes/admin/rewards.ts:583:        Logger.error('Admin redeem referral reward failed:', error);
+src/routes/admin/rewards.ts:810:            Logger.error('Admin redeem pre-launch reward failed:', error);
+src/routes/admin/rewards.ts:820:                Logger.error(
+src/routes/admin/rewards.ts:915:        Logger.error('Admin redeem pre-launch reward failed:', error);
+src/routes/admin/orders.ts:195:    Logger.warn('Failed to auto-complete fulfillment task', {
+src/routes/admin/orders.ts:288:        Logger.error('Admin list orders failed:', error);
+src/routes/admin/orders.ts:314:        Logger.error('Admin list order items failed:', error);
+src/routes/admin/orders.ts:385:        Logger.error('Admin deliver order item failed:', error);
+src/routes/admin/orders.ts:471:        Logger.error('Admin deliver activation instructions failed:', error);
+src/routes/admin/orders.ts:577:        Logger.error('Admin deliver activation link failed:', error);
+src/routes/admin/orders.ts:689:        Logger.error('Admin restart activation failed:', error);
+src/routes/admin/orders.ts:877:        Logger.error('Admin order fulfillment fetch failed:', error);
+src/routes/admin/orders.ts:963:        Logger.error('Admin manual mark-paid failed:', error);
+src/routes/admin/orders.ts:1110:        Logger.error('Admin update order status failed:', error);
+src/routes/admin/orders.ts:1178:        Logger.error('Admin order risk recheck failed:', error);
+src/routes/admin/orders.ts:1275:        Logger.error('Admin order replay delivery failed:', error);
+src/services/refundService.ts:263:      Logger.info(`Initiating refund request for payment ${paymentId}`, {
+src/services/refundService.ts:320:      Logger.error(`Error initiating refund for payment ${paymentId}:`, error);
+src/services/refundService.ts:400:      Logger.error('Error validating refund request:', error);
+src/services/refundService.ts:467:      Logger.info(`Created refund request ${refundId}`, {
+src/services/refundService.ts:481:      Logger.error('Error creating refund request:', error);
+src/services/refundService.ts:488:          Logger.error(
+src/services/refundService.ts:505:      Logger.info(`Approving refund ${refundId} by admin ${adminUserId}`);
+src/services/refundService.ts:552:      Logger.error(`Error approving refund ${refundId}:`, error);
+src/services/refundService.ts:567:      Logger.info(`Rejecting refund ${refundId} by admin ${adminUserId}`);
+src/services/refundService.ts:617:      Logger.error(`Error rejecting refund ${refundId}:`, error);
+src/services/refundService.ts:630:      Logger.info(`Processing approved refund ${refund.id}`);
+src/services/refundService.ts:739:      Logger.info(`Successfully completed refund ${refund.id}`, {
+src/services/refundService.ts:751:      Logger.error(`Error processing refund ${refund.id}:`, error);
+src/services/refundService.ts:808:      Logger.error(`Error updating refund status for ${refundId}:`, error);
+src/services/refundService.ts:842:      Logger.error(`Error getting refund ${refundId}:`, error);
+src/services/refundService.ts:862:      Logger.error(`Error getting refund for payment ${paymentId}:`, error);
+src/services/refundService.ts:887:      Logger.error(`Error getting refunds for user ${userId}:`, error);
+src/services/refundService.ts:908:      Logger.error('Error getting pending refunds:', error);
+src/services/refundService.ts:939:      Logger.error('Error getting all refunds:', error);
+src/services/refundService.ts:954:      Logger.error(`Error caching refund ${refund.id}:`, error);
+src/services/refundService.ts:1009:      Logger.error(
+src/services/refundService.ts:1034:      Logger.error(
+src/services/refundService.ts:1068:      Logger.info(`Manual refund initiated by admin ${adminUserId}`, {
+src/services/refundService.ts:1130:      Logger.error('Error in manual refund:', error);
+src/services/refundService.ts:1151:      Logger.error('Refund service health check failed:', error);
+src/services/refundService.ts:1172:      Logger.info(`Cleaned up ${result.rows.length} old refund records`);
+src/services/refundService.ts:1175:      Logger.error('Error cleaning up old refunds:', error);
+src/services/refundService.ts:1230:      Logger.error('Error getting refund statistics:', error);
+src/services/creditAllocationService.ts:74:      Logger.info(`Starting credit allocation for payment ${paymentId}`, {
+src/services/creditAllocationService.ts:167:        Logger.info(
+src/services/creditAllocationService.ts:182:      Logger.error(`Error allocating credits for payment ${paymentId}:`, error);
+src/services/creditAllocationService.ts:198:        Logger.warn(
+src/services/creditAllocationService.ts:230:        Logger.warn(
+src/services/creditAllocationService.ts:268:      Logger.error(
+src/services/creditAllocationService.ts:386:      Logger.error('Error validating allocation:', error);
+src/services/creditAllocationService.ts:514:      Logger.error('Error in atomic credit allocation:', error);
+src/services/creditAllocationService.ts:521:          Logger.error(
+src/services/creditAllocationService.ts:552:      Logger.error(
+src/services/creditAllocationService.ts:565:      Logger.error(`Error clearing balance cache for user ${userId}:`, error);
+src/services/creditAllocationService.ts:578:      Logger.info(`Credit allocation notification should be sent`, {
+src/services/creditAllocationService.ts:602:      Logger.error('Error sending credit allocation notification:', error);
+src/services/creditAllocationService.ts:619:      Logger.info(
+src/services/creditAllocationService.ts:755:        Logger.warn(
+src/services/creditAllocationService.ts:790:      Logger.error('Error in manual credit allocation:', error);
+src/services/creditAllocationService.ts:798:            Logger.error(
+src/services/creditAllocationService.ts:868:      Logger.error(
+src/services/creditAllocationService.ts:889:      Logger.error('Credit allocation service health check failed:', error);
+src/services/creditAllocationService.ts:927:      Logger.error('Error getting pending allocations:', error);
+src/services/orderEntitlementService.ts:202:      Logger.error('Failed to upsert order entitlement', {
+src/services/orderEntitlementService.ts:231:      Logger.error('Failed to list order entitlements', {
+src/services/orderEntitlementService.ts:263:      Logger.error('Failed to fetch order entitlement', {
+src/services/orderEntitlementService.ts:288:      Logger.error('Failed to update order entitlement credentials', {
+src/services/paymentRepository.ts:222:      Logger.error('Failed to update payment status in payments table:', error);
+src/services/paymentRepository.ts:253:      Logger.error('Failed to fetch payment by order id', {
+src/services/paymentRepository.ts:296:      Logger.error('Failed to fetch payment by id:', error);
+src/services/paymentRepository.ts:319:      Logger.error('Failed to fetch payment by provider_payment_id:', error);
+src/services/paymentRepository.ts:348:      Logger.error(
+src/services/paymentRepository.ts:381:      Logger.error('Failed to list pending Stripe renewal payments:', error);
+src/routes/orders.ts:605:        Logger.error('Orders list failed:', error);
+src/routes/orders.ts:1112:        Logger.error('Order subscription lookup failed:', error);
+src/routes/orders.ts:1300:        Logger.error('Order subscriptions lookup failed:', error);
+src/routes/orders.ts:1354:        Logger.error('Order entitlements lookup failed:', error);
+src/services/tiktokEventsService.ts:441:      Logger.warn('TikTok Events API: missing user data, skipping event', {
+src/services/tiktokEventsService.ts:477:        Logger.warn('TikTok Events API request failed', {
+src/services/tiktokEventsService.ts:484:      Logger.warn('TikTok Events API request error', {
+src/services/auth.ts:238:        Logger.info(`PostgreSQL user record created for: ${registeredEmail}`);
+src/services/auth.ts:240:        Logger.error('Failed to create PostgreSQL user record:', dbError);
+src/services/auth.ts:250:          Logger.error(
+src/services/auth.ts:281:        Logger.error('Failed to send account confirmation email', {
+src/services/auth.ts:293:          Logger.error(
+src/services/auth.ts:302:          Logger.error(
+src/services/auth.ts:321:      Logger.error('Registration error:', error);
+src/services/auth.ts:380:        Logger.warn('Failed to load user during email confirmation:', dbError);
+src/services/auth.ts:407:          Logger.error(
+src/services/auth.ts:431:        Logger.warn('Failed to update email verification timestamp', {
+src/services/auth.ts:465:        Logger.warn('Failed to update last login after confirmation', error);
+src/services/auth.ts:475:      Logger.error('Email confirmation error:', error);
+src/services/auth.ts:540:        Logger.warn('Failed to fetch user data from PostgreSQL:', error);
+src/services/auth.ts:551:          Logger.error('Failed to verify account status during login:', error);
+src/services/auth.ts:587:      Logger.info('🔐 [AUTH] User logged in:', {
+src/services/auth.ts:598:        Logger.warn('Failed to update last login timestamp:', error);
+src/services/auth.ts:621:      Logger.error('Login error:', error);
+src/services/auth.ts:640:          Logger.info(`Logged out from ${deletedCount} sessions`);
+src/services/auth.ts:650:      Logger.error('Logout error:', error);
+src/services/auth.ts:682:        Logger.warn(
+src/services/auth.ts:717:      Logger.info('🔄 [AUTH SERVICE] Refresh user object:', {
+src/services/auth.ts:740:      Logger.error('Session refresh error:', error);
+src/services/auth.ts:772:        Logger.warn(
+src/services/auth.ts:805:      Logger.info('✅ [AUTH SERVICE] Validate user object:', {
+src/services/auth.ts:820:      Logger.error('Session validation error:', error);
+src/services/auth.ts:832:      Logger.error('Get user sessions error:', error);
+src/services/auth.ts:852:      Logger.error('Revoke session error:', error);
+src/services/auth.ts:880:      Logger.error('Change password error:', error);
+src/services/auth.ts:908:        Logger.error('Failed to lookup user during password reset:', error);
+src/services/auth.ts:940:        Logger.error('Password reset request failed:', error);
+src/services/auth.ts:949:      Logger.error('Password reset request error:', error);
+src/services/auth.ts:999:        Logger.error(
+src/services/auth.ts:1029:        Logger.error('Password reset update failed:', updateError);
+src/services/auth.ts:1040:      Logger.error('Password reset confirmation error:', error);
+src/services/auth.ts:1088:      Logger.error('Update last login error:', error);
+src/services/auth.ts:1096:      Logger.info(`Cleaned up ${cleanedCount} expired sessions`);
+src/services/auth.ts:1098:      Logger.error('Auth cleanup error:', error);
+src/routes/payments.ts:439:        Logger.error('Error creating payment quote:', error);
+src/routes/payments.ts:570:          Logger.error('Invalid upgrade options configuration', {
+src/routes/payments.ts:817:            Logger.error('Failed to reserve coupon during checkout:', error);
+src/routes/payments.ts:827:                Logger.error(
+src/routes/payments.ts:1033:            Logger.warn(
+src/routes/payments.ts:1063:              Logger.warn('Failed to send order payment confirmation email', {
+src/routes/payments.ts:1069:            Logger.warn('Order payment confirmation email call failed', {
+src/routes/payments.ts:1169:        Logger.error('Error creating checkout:', error);
+src/routes/payments.ts:1270:        Logger.error('Error cancelling checkout:', error);
+src/routes/payments.ts:1295:        Logger.info(`Creating payment for user ${user.userId}`, {
+src/routes/payments.ts:1306:          Logger.error(
+src/routes/payments.ts:1346:        Logger.error('Error creating payment:', error);
+src/routes/payments.ts:1365:          Logger.warn('Invalid Pay4bit callback payload', {
+src/routes/payments.ts:1381:        Logger.error('Pay4bit callback error:', error);
+src/routes/payments.ts:1427:        Logger.error('Payop IPN error:', error);
+src/routes/payments.ts:1487:        Logger.error('Antom webhook error:', error);
+src/routes/payments.ts:1532:        Logger.error('Stripe webhook error:', error);
+src/routes/payments.ts:1562:          Logger.error(
+src/routes/payments.ts:1611:          Logger.warn('Missing PayPal webhook signature headers', {
+src/routes/payments.ts:1637:        Logger.error('PayPal webhook error:', error);
+src/routes/payments.ts:1679:        Logger.error('Error getting payment status:', error);
+src/routes/payments.ts:1708:          Logger.error('Missing NOWPayments webhook signature');
+src/routes/payments.ts:1716:          Logger.error('Missing NOWPayments webhook raw body');
+src/routes/payments.ts:1729:          Logger.error('Invalid NOWPayments webhook signature', {
+src/routes/payments.ts:1740:        Logger.info(`Received webhook for payment ${payload.payment_id}`, {
+src/routes/payments.ts:1749:          Logger.error(
+src/routes/payments.ts:1757:        Logger.error('Error processing webhook:', error);
+src/routes/payments.ts:1771:        Logger.error('Error getting supported currencies:', error);
+src/routes/payments.ts:1821:        Logger.info(
+src/routes/payments.ts:1824:        Logger.info('[PAYMENT HISTORY] First transaction:', history[0]);
+src/routes/payments.ts:1835:        Logger.error('Error fetching payment history:', error);
+src/routes/payments.ts:1866:        Logger.error('Error getting payment estimate:', error);
+src/routes/payments.ts:1896:        Logger.error('Error getting minimum deposit amount:', error);
+src/routes/payments.ts:1951:        Logger.error('Error getting payment history:', error);
+src/routes/payments.ts:2014:        Logger.error('Error refreshing payment status:', error);
+src/routes/payments.ts:2072:        Logger.error('Error retrying payment:', error);
+src/routes/payments.ts:2095:        Logger.error('Error getting monitoring status:', error);
+src/routes/payments.ts:2168:        Logger.error('Error initiating refund:', error);
+src/routes/payments.ts:2213:        Logger.error('Error getting user refunds:', error);
+src/routes/payments.ts:2256:        Logger.error('Error getting refund:', error);
+src/routes/payments.ts:2299:        Logger.error('Payment health check failed:', error);
+src/services/jwtService.ts:43:      Logger.error('Error generating JWT tokens:', error);
+src/services/jwtService.ts:112:      Logger.error('Error refreshing token:', error);
+src/services/jwtService.ts:124:      Logger.error('Error decoding token:', error);
+src/services/jwtService.ts:134:      Logger.error('Error getting token expiry:', error);
+src/services/jwtService.ts:147:      Logger.error('Error checking token expiry:', error);
+src/services/jwtService.ts:160:      Logger.error('Error calculating time until expiry:', error);
+src/services/paymentService.ts:621:        Logger.warn('Skipping PayPal line items due to amount mismatch', {
+src/services/paymentService.ts:703:      Logger.warn('Failed to resolve account email for PayPal checkout', {
+src/services/paymentService.ts:941:        Logger.error('Missing service metadata for order item', {
+src/services/paymentService.ts:1049:        Logger.error('Failed to create subscription for order item', {
+src/services/paymentService.ts:1089:        Logger.warn('Failed to upsert order entitlement for order item', {
+src/services/paymentService.ts:1199:    Logger.error('Payment succeeded but fulfillment entities were incomplete', {
+src/services/paymentService.ts:1415:        Logger.warn('Manual mark-paid confirmation email failed', {
+src/services/paymentService.ts:1595:        Logger.warn(
+src/services/paymentService.ts:1653:          Logger.warn('Failed to update Stripe customer email', {
+src/services/paymentService.ts:1700:      Logger.error('Stripe payment order not found', { orderId, paymentId });
+src/services/paymentService.ts:1705:      Logger.warn('Stripe payment order not pending', {
+src/services/paymentService.ts:1740:      Logger.error('Stripe payment amount mismatch', {
+src/services/paymentService.ts:1756:      Logger.error('Stripe payment currency mismatch', {
+src/services/paymentService.ts:1823:      Logger.info('Ignoring Stripe event due to status regression', {
+src/services/paymentService.ts:1861:      Logger.info('Ignoring Stripe payment_intent event for session checkout', {
+src/services/paymentService.ts:1982:          Logger.error('Stripe renewal subscription not found', {
+src/services/paymentService.ts:2009:            Logger.error('Stripe renewal missing cycle end date', {
+src/services/paymentService.ts:2024:            Logger.info('Stripe renewal already processed', {
+src/services/paymentService.ts:2057:            Logger.error('Stripe renewal update failed', {
+src/services/paymentService.ts:2071:            Logger.info('Stripe renewal skipped', {
+src/services/paymentService.ts:2123:          Logger.warn('Invalid upgrade options in Stripe metadata', {
+src/services/paymentService.ts:2195:              Logger.warn(
+src/services/paymentService.ts:2206:          Logger.error('Failed to create subscription after Stripe success', {
+src/services/paymentService.ts:2278:          Logger.error('Stripe renewal subscription not found', {
+src/services/paymentService.ts:2287:          Logger.info('Stripe renewal ignored for inactive subscription', {
+src/services/paymentService.ts:2371:          Logger.error('Stripe renewal subscription not found', {
+src/services/paymentService.ts:2380:          Logger.info('Stripe renewal ignored for inactive subscription', {
+src/services/paymentService.ts:2460:      Logger.error('Stripe session missing order reference', {
+src/services/paymentService.ts:2467:      Logger.info('Ignoring Stripe session event', {
+src/services/paymentService.ts:2487:      Logger.error('Stripe session lock acquisition failed', {
+src/services/paymentService.ts:2498:        Logger.error('Stripe session order not found', { orderId });
+src/services/paymentService.ts:2503:        Logger.info('Stripe session order already processed', {
+src/services/paymentService.ts:2518:        Logger.error('Stripe session amount mismatch', {
+src/services/paymentService.ts:2541:        Logger.error('Stripe session currency mismatch', {
+src/services/paymentService.ts:2681:          Logger.warn('Failed to send order payment confirmation email', {
+src/services/paymentService.ts:2687:        Logger.warn('Order payment confirmation email call failed', {
+src/services/paymentService.ts:2762:      Logger.error('NOWPayments invoice missing order reference', {
+src/services/paymentService.ts:2778:      Logger.warn('Ignoring NOWPayments status regression for order invoice', {
+src/services/paymentService.ts:2828:      Logger.error('NOWPayments invoice lock acquisition failed', {
+src/services/paymentService.ts:2839:        Logger.error('NOWPayments invoice order not found', { orderId });
+src/services/paymentService.ts:2844:        Logger.info('NOWPayments order already processed', {
+src/services/paymentService.ts:2910:          Logger.warn('Failed to send order payment confirmation email', {
+src/services/paymentService.ts:2916:        Logger.warn('Order payment confirmation email call failed', {
+src/services/paymentService.ts:2944:        Logger.warn('Rejected PayPal webhook due to invalid signature', {
+src/services/paymentService.ts:2993:          Logger.warn('Failed to fetch PayPal order while processing webhook', {
+src/services/paymentService.ts:3009:        Logger.info('Duplicate PayPal webhook ignored', {
+src/services/paymentService.ts:3024:          Logger.error('PayPal completion webhook missing order context', {
+src/services/paymentService.ts:3037:          Logger.error('PayPal webhook checkout confirmation failed', {
+src/services/paymentService.ts:3057:          Logger.info('PayPal cancellation webhook missing order context', {
+src/services/paymentService.ts:3071:          Logger.error('PayPal webhook cancellation reconciliation failed', {
+src/services/paymentService.ts:3082:      Logger.info('Ignoring unsupported PayPal webhook event', {
+src/services/paymentService.ts:3090:      Logger.error('PayPal webhook handling failed:', error);
+src/services/paymentService.ts:3101:        Logger.error('Stripe webhook missing signature header');
+src/services/paymentService.ts:3118:        Logger.error('Stripe webhook signature verification failed:', err);
+src/services/paymentService.ts:3149:          Logger.info('Duplicate Stripe session event ignored', {
+src/services/paymentService.ts:3164:        Logger.info(
+src/services/paymentService.ts:3180:        Logger.error('Stripe payment not found in repository', { paymentId });
+src/services/paymentService.ts:3192:        Logger.info('Duplicate Stripe payment_intent event ignored', {
+src/services/paymentService.ts:3207:        Logger.error('Stripe webhook lock acquisition failed', {
+src/services/paymentService.ts:3230:      Logger.error('Stripe webhook handling failed:', error);
+src/services/paymentService.ts:3249:      Logger.error('Stripe reconcile lock acquisition failed', {
+src/services/paymentService.ts:3263:        Logger.error('Stripe payment not found during reconciliation', {
+src/services/paymentService.ts:3284:      Logger.error('Stripe payment reconciliation failed', {
+src/services/paymentService.ts:3315:        Logger.error('Stripe session reconciliation order mismatch', {
+src/services/paymentService.ts:3334:      Logger.warn('Failed to reconcile Stripe checkout session for order', {
+src/services/paymentService.ts:3394:          Logger.warn('Failed to cancel Stripe renewal payment intent', {
+src/services/paymentService.ts:3403:    Logger.info('Stripe renewal payment cleanup complete', {
+src/services/paymentService.ts:3459:        Logger.warn('Failed to expire Stripe checkout session', {
+src/services/paymentService.ts:3478:        Logger.warn('Failed to retrieve Stripe checkout session', {
+src/services/paymentService.ts:3511:      Logger.warn('Failed to fetch Stripe payment status for checkout cancel', {
+src/services/paymentService.ts:3560:          Logger.warn('Failed to cancel Stripe checkout intent', {
+src/services/paymentService.ts:3843:      Logger.warn('Failed to reconcile PayPal order during checkout cancel', {
+src/services/paymentService.ts:3976:        Logger.warn('Failed to sweep stale checkout', {
+src/services/paymentService.ts:4018:        Logger.warn('Failed to sweep stale Payop/Antom checkout', {
+src/services/paymentService.ts:4181:      Logger.warn('TikTok Purchase skipped for order without user identity', {
+src/services/paymentService.ts:4360:        Logger.warn('Falling back to cached Payop method list', {
+src/services/paymentService.ts:4655:    Logger.warn('Antom card payment declined', {
+src/services/paymentService.ts:4942:      Logger.warn('Failed to release Antom order for retry', {
+src/services/paymentService.ts:5016:      Logger.warn('Antom inquiry failed during checkout status reconcile', {
+src/services/paymentService.ts:5042:      Logger.error('Antom inquiry amount mismatch', {
+src/services/paymentService.ts:5059:      Logger.warn('Ignoring Antom status regression after success', {
+src/services/paymentService.ts:5195:      Logger.warn(
+src/services/paymentService.ts:5220:      Logger.warn('Payop checkout status reconciliation mismatch', {
+src/services/paymentService.ts:5255:      Logger.warn(
+src/services/paymentService.ts:5283:      Logger.warn('Payop checkout status reconciliation transaction mismatch', {
+src/services/paymentService.ts:5508:      Logger.warn(
+src/services/paymentService.ts:5524:      Logger.error(
+src/services/paymentService.ts:5718:      Logger.warn('Failed to resolve order id from PayPal payment reference', {
+src/services/paymentService.ts:5827:      Logger.error('Pay4bit renewal subscription not found', {
+src/services/paymentService.ts:5856:      Logger.error('Pay4bit renewal missing cycle end date', {
+src/services/paymentService.ts:5872:      Logger.info('Pay4bit renewal already processed', {
+src/services/paymentService.ts:5909:      Logger.error('Pay4bit renewal update failed', {
+src/services/paymentService.ts:5923:      Logger.info('Pay4bit renewal skipped', {
+src/services/paymentService.ts:5950:      Logger.warn('Failed to link Pay4bit renewal payment to subscription', {
+src/services/paymentService.ts:6013:      Logger.warn('Failed to read Pay4bit callback cache', {
+src/services/paymentService.ts:6038:      Logger.warn('Failed to write Pay4bit callback cache', {
+src/services/paymentService.ts:6137:      Logger.warn('Failed to persist Pay4bit callback response metadata', {
+src/services/paymentService.ts:6265:      Logger.error('Pay4bit PAY lock acquisition failed', {
+src/services/paymentService.ts:6277:        Logger.error('Pay4bit PAY order not found', {
+src/services/paymentService.ts:6289:        Logger.warn('Pay4bit PAY ignored for non-payable order', {
+src/services/paymentService.ts:6363:          Logger.warn('Failed to send order payment confirmation email', {
+src/services/paymentService.ts:6369:        Logger.warn('Order payment confirmation email call failed', {
+src/services/paymentService.ts:6411:      Logger.error('PayPal capture lock acquisition failed', {
+src/services/paymentService.ts:6423:        Logger.error('PayPal capture order not found', {
+src/services/paymentService.ts:6435:        Logger.warn('PayPal capture ignored for non-payable order', {
+src/services/paymentService.ts:6504:          Logger.warn('Failed to send order payment confirmation email', {
+src/services/paymentService.ts:6510:        Logger.warn('Order payment confirmation email call failed', {
+src/services/paymentService.ts:6552:      Logger.error('Payop capture lock acquisition failed', {
+src/services/paymentService.ts:6564:        Logger.error('Payop order not found while processing payment', {
+src/services/paymentService.ts:6576:        Logger.warn('Payop success ignored for non-payable order', {
+src/services/paymentService.ts:6659:          Logger.warn('Failed to send order payment confirmation email', {
+src/services/paymentService.ts:6665:        Logger.warn('Order payment confirmation email call failed', {
+src/services/paymentService.ts:6714:      Logger.error('Antom capture lock acquisition failed', {
+src/services/paymentService.ts:6726:        Logger.error('Antom order not found while processing payment', {
+src/services/paymentService.ts:6738:        Logger.warn('Antom success ignored for non-payable order', {
+src/services/paymentService.ts:6892:          Logger.warn('Failed to send order payment confirmation email', {
+src/services/paymentService.ts:6898:        Logger.warn('Order payment confirmation email call failed', {
+src/services/paymentService.ts:6957:        Logger.warn(
+src/services/paymentService.ts:7024:            Logger.warn('Failed to reuse existing PayPal order', {
+src/services/paymentService.ts:7129:      Logger.info('PayPal checkout session created', {
+src/services/paymentService.ts:7145:        Logger.error('PayPal checkout session creation failed', {
+src/services/paymentService.ts:7152:        Logger.error('PayPal checkout session creation failed', {
+src/services/paymentService.ts:7264:        Logger.error('PayPal capture amount mismatch', {
+src/services/paymentService.ts:7284:        Logger.error('PayPal capture currency mismatch', {
+src/services/paymentService.ts:7329:        Logger.warn(
+src/services/paymentService.ts:7442:      Logger.info('PayPal checkout confirmed', {
+src/services/paymentService.ts:7516:        Logger.warn('Failed to persist PayPal wallet failure metadata', {
+src/services/paymentService.ts:7524:        Logger.error('Failed to confirm PayPal checkout session', {
+src/services/paymentService.ts:7533:        Logger.error('Failed to confirm PayPal checkout session', {
+src/services/paymentService.ts:7660:      Logger.error('Failed to resolve Antom checkout options', {
+src/services/paymentService.ts:7720:        Logger.warn(
+src/services/paymentService.ts:7816:        Logger.warn('Antom payment session creation returned non-success', {
+src/services/paymentService.ts:7874:      Logger.info('Antom checkout session created', {
+src/services/paymentService.ts:7893:      Logger.error('Failed to create Antom checkout session', {
+src/services/paymentService.ts:8037:      Logger.error('Failed to resolve Antom checkout status', {
+src/services/paymentService.ts:8074:        Logger.warn('Rejected Antom webhook with missing signature headers', {
+src/services/paymentService.ts:8092:        Logger.warn('Rejected Antom webhook with invalid signature', {
+src/services/paymentService.ts:8104:        Logger.warn(
+src/services/paymentService.ts:8115:        Logger.warn('Antom webhook ignored because payment was not found', {
+src/services/paymentService.ts:8140:        Logger.error('Antom webhook amount mismatch', {
+src/services/paymentService.ts:8168:        Logger.warn('Ignoring Antom webhook status regression after success', {
+src/services/paymentService.ts:8257:      Logger.error('Unhandled Antom webhook failure', { error });
+src/services/paymentService.ts:8324:      Logger.error('Antom payment cancellation failed', {
+src/services/paymentService.ts:8401:      Logger.error('Antom refund failed', {
+src/services/paymentService.ts:8513:      Logger.error('Failed to resolve Payop checkout options', {
+src/services/paymentService.ts:8587:        Logger.warn(
+src/services/paymentService.ts:8799:      Logger.info('Payop checkout session created', {
+src/services/paymentService.ts:8818:      Logger.error('Failed to create Payop checkout session', {
+src/services/paymentService.ts:8930:      Logger.error('Failed to resolve Payop checkout status', {
+src/services/paymentService.ts:8974:        Logger.warn(
+src/services/paymentService.ts:9051:      Logger.error('Failed to create Pay4bit checkout session', {
+src/services/paymentService.ts:9131:      Logger.error('Failed to confirm Pay4bit checkout session', {
+src/services/paymentService.ts:9153:        Logger.warn('Rejected Payop IPN from untrusted IP', {
+src/services/paymentService.ts:9216:        Logger.warn('Payop IPN ignored because order was not found', {
+src/services/paymentService.ts:9259:        Logger.error('Payop IPN missing expected charge metadata', {
+src/services/paymentService.ts:9283:        Logger.error('Payop IPN verification failed', {
+src/services/paymentService.ts:9327:        Logger.error('Payop IPN verification mismatch', {
+src/services/paymentService.ts:9351:        Logger.warn('Ignoring Payop status regression after success', {
+src/services/paymentService.ts:9481:      Logger.error('Unhandled Payop IPN failure', {
+src/services/paymentService.ts:9801:        Logger.warn(
+src/services/paymentService.ts:9866:          Logger.warn('Failed to reuse existing Stripe session', {
+src/services/paymentService.ts:9960:      Logger.error('Failed to create Stripe checkout session', error);
+src/services/paymentService.ts:10022:        Logger.warn(
+src/services/paymentService.ts:10194:      Logger.error('Failed to create NOWPayments order invoice', error);
+src/services/paymentService.ts:10302:      Logger.error('Failed to resolve NOWPayments minimum for order', {
+src/services/paymentService.ts:10469:          Logger.error('Failed to refund credits after order update failure', {
+src/services/paymentService.ts:10476:        Logger.error('Failed to update order after credits checkout', {
+src/services/paymentService.ts:10511:          Logger.error('Failed to refund credits after fulfillment failure', {
+src/services/paymentService.ts:10532:          Logger.warn('Failed to send order payment confirmation email', {
+src/services/paymentService.ts:10538:        Logger.warn('Order payment confirmation email call failed', {
+src/services/paymentService.ts:10553:      Logger.error('Failed to complete checkout order with credits', {
+src/services/paymentService.ts:10620:      Logger.error('Failed to confirm Stripe checkout session', {
+src/services/paymentService.ts:10829:      Logger.error('Error creating Stripe payment:', error);
+src/services/paymentService.ts:10879:        Logger.warn(
+src/services/paymentService.ts:10900:        Logger.error('NOWPayments currency validation failed:', error);
+src/services/paymentService.ts:10996:          Logger.error('Error getting payment estimate:', error);
+src/services/paymentService.ts:11054:        Logger.error(
+src/services/paymentService.ts:11065:        Logger.error(
+src/services/paymentService.ts:11076:        Logger.error('NOWPayments payment missing/invalid pay_amount:', {
+src/services/paymentService.ts:11189:            Logger.warn('Failed to enqueue payment for monitoring', error);
+src/services/paymentService.ts:11193:      Logger.info(`Created payment for user ${userId}`, {
+src/services/paymentService.ts:11210:      Logger.error('Error creating payment:', error);
+src/services/paymentService.ts:11241:            Logger.error(
+src/services/paymentService.ts:11263:        Logger.debug(`Payment status cache hit: ${paymentId}`);
+src/services/paymentService.ts:11270:      Logger.info(`Fetching payment status`, {
+src/services/paymentService.ts:11298:        Logger.warn(`Payment not found in database`, { paymentId, userId });
+src/services/paymentService.ts:11307:          Logger.error(
+src/services/paymentService.ts:11390:          Logger.info(`Attempting to fetch from NOWPayments API: ${paymentId}`);
+src/services/paymentService.ts:11394:          Logger.info(`Retrieved from NOWPayments API`, {
+src/services/paymentService.ts:11402:            Logger.warn(
+src/services/paymentService.ts:11431:          Logger.error(`Failed to fetch from NOWPayments API:`, apiError);
+src/services/paymentService.ts:11438:      Logger.info(`Payment found in database`, {
+src/services/paymentService.ts:11486:      Logger.error('Error getting payment status:', error);
+src/services/paymentService.ts:11532:        Logger.error(
+src/services/paymentService.ts:11549:        Logger.warn('Ignoring NOWPayments status regression in sync', {
+src/services/paymentService.ts:11642:          Logger.error('Invalid USD amount for NOWPayments sync allocation', {
+src/services/paymentService.ts:11665:          Logger.info(`Successfully synced payment from NOWPayments`, {
+src/services/paymentService.ts:11676:          Logger.error('Credit allocation failed during NOWPayments sync', {
+src/services/paymentService.ts:11689:        Logger.info(`Synced payment status from NOWPayments`, {
+src/services/paymentService.ts:11700:      Logger.error('Error syncing payment from NOWPayments:', error);
+src/services/paymentService.ts:11707:          Logger.error(
+src/services/paymentService.ts:11761:        Logger.info('Duplicate NOWPayments webhook ignored', {
+src/services/paymentService.ts:11813:        Logger.error(`Payment not found for webhook: ${payload.payment_id}`, {
+src/services/paymentService.ts:11829:        Logger.warn('Ignoring NOWPayments status regression in webhook', {
+src/services/paymentService.ts:11920:          Logger.error('Invalid USD amount for webhook allocation', {
+src/services/paymentService.ts:11948:          Logger.error('Credit allocation failed for webhook payment', {
+src/services/paymentService.ts:11962:      Logger.info(`Processed webhook for payment ${payment.id}`, {
+src/services/paymentService.ts:11977:      Logger.error('Error processing webhook:', error);
+src/services/paymentService.ts:11984:          Logger.error(
+src/services/paymentService.ts:12067:                    Logger.warn(
+src/services/paymentService.ts:12095:      Logger.error('Error getting payment history:', error);
+src/services/paymentService.ts:12114:        Logger.warn(
+src/services/paymentService.ts:12128:        Logger.warn('Fetched NOWPayments currencies failed sanity check', {
+src/services/paymentService.ts:12137:              Logger.warn(
+src/services/paymentService.ts:12160:        Logger.warn(
+src/services/paymentService.ts:12165:      Logger.info(
+src/services/paymentService.ts:12170:      Logger.error('Error getting supported currencies:', error);
+src/services/paymentService.ts:12177:            Logger.warn(
+src/services/paymentService.ts:12195:      Logger.warn(
+src/services/paymentService.ts:12217:      Logger.warn(
+src/services/paymentService.ts:12229:      Logger.debug(
+src/services/paymentService.ts:12263:      Logger.warn(
+src/services/paymentService.ts:12271:    Logger.debug(
+src/services/paymentService.ts:12539:      Logger.error('Error getting minimum deposit:', error);
+src/services/paymentService.ts:12561:      Logger.error('Error getting payment estimate:', error);
+src/services/paymentService.ts:12600:        Logger.warn(
+src/services/paymentService.ts:12639:      Logger.error('Error refreshing payment status:', error);
+src/services/paymentService.ts:12652:      Logger.error('Error caching payment:', error);
+src/services/paymentService.ts:12665:      Logger.error('Error clearing payment cache:', error);
+src/services/paymentService.ts:12681:      Logger.error('Payment service health check failed:', error);
+src/routes/dashboard.ts:414:        Logger.error('Dashboard overview failed:', error);
+src/routes/dashboard.ts:611:        Logger.error('Prelaunch rewards fetch failed:', error);
+src/routes/dashboard.ts:814:        Logger.error('Prelaunch reward claim failed:', error);
+src/routes/dashboard.ts:1074:            Logger.error('Failed to rollback voucher claim', rollbackError);
+src/routes/dashboard.ts:1077:        Logger.error('Voucher claim failed:', error);
+src/routes/notifications.ts:84:        Logger.error('Notifications list failed:', error);
+src/routes/notifications.ts:138:        Logger.error('Notifications mark read failed:', error);
+src/routes/notifications.ts:194:        Logger.error('Notifications clear failed:', error);
+src/utils/nowpaymentsClient.ts:48:    Logger.info('NOWPayments client initialized', {
+src/utils/nowpaymentsClient.ts:57:        Logger.warn(
+src/utils/nowpaymentsClient.ts:61:      Logger.warn(
+src/utils/nowpaymentsClient.ts:65:      Logger.info('NOWPayments client running in PRODUCTION mode');
+src/utils/nowpaymentsClient.ts:87:      Logger.debug(
+src/utils/nowpaymentsClient.ts:100:          Logger.error(`NOWPayments API error:`, {
+src/utils/nowpaymentsClient.ts:117:      Logger.debug(`NOWPayments API response:`, {
+src/utils/nowpaymentsClient.ts:128:        Logger.error(`NOWPayments API request failed:`, error);
+src/utils/nowpaymentsClient.ts:150:        Logger.warn('Falling back to basic currencies endpoint', {
+src/utils/nowpaymentsClient.ts:158:      Logger.debug('NOWPayments currencies API response:', response);
+src/utils/nowpaymentsClient.ts:168:        Logger.error('Unexpected currencies API response format:', response);
+src/utils/nowpaymentsClient.ts:172:      Logger.error('Error fetching currencies:', error);
+src/utils/nowpaymentsClient.ts:183:      Logger.debug('NOWPayments currencies-full API response:', response);
+src/utils/nowpaymentsClient.ts:198:      Logger.error('Unexpected currencies-full API response format:', response);
+src/utils/nowpaymentsClient.ts:204:          Logger.warn(
+src/utils/nowpaymentsClient.ts:213:      Logger.error('Error fetching currencies-full:', error);
+src/utils/nowpaymentsClient.ts:273:    Logger.info('Creating NOWPayments invoice:', {
+src/utils/nowpaymentsClient.ts:290:    Logger.info('Creating NOWPayments direct payment:', {
+src/utils/nowpaymentsClient.ts:345:      Logger.error('Error verifying IPN signature:', error);
+src/utils/nowpaymentsClient.ts:353:      Logger.info('Starting NOWPayments health check...');
+src/utils/nowpaymentsClient.ts:357:      Logger.debug('NOWPayments API status:', status);
+src/utils/nowpaymentsClient.ts:361:      Logger.debug(
+src/utils/nowpaymentsClient.ts:366:        Logger.error('NOWPayments health check failed: no currencies returned');
+src/utils/nowpaymentsClient.ts:378:        Logger.warn(
+src/utils/nowpaymentsClient.ts:383:      Logger.info('NOWPayments health check passed successfully');
+src/utils/nowpaymentsClient.ts:386:      Logger.error('NOWPayments health check failed:', error);
+src/utils/nowpaymentsClient.ts:419:      Logger.info('NOWPayments configuration validation:', {
+src/utils/nowpaymentsClient.ts:434:      Logger.error(errorMessage, error);
+src/utils/nowpaymentsClient.ts:512:      Logger.error('Error getting currency info:', error);
+src/scripts/backfillCredentialEncryption.ts:40:  Logger.info('Credential backfill completed', {
+src/scripts/backfillCredentialEncryption.ts:55:  Logger.info('Credential encryption backfill started');
+src/scripts/backfillCredentialEncryption.ts:60:    Logger.error('Database connection failed; aborting backfill');
+src/scripts/backfillCredentialEncryption.ts:82:    Logger.error('Credential backfill failed', { error });
+src/scripts/backfillCredentialEncryption.ts:88:  Logger.info('Credential encryption backfill finished');
+src/scripts/backfillCredentialEncryption.ts:92:  Logger.error('Unhandled credential backfill error', { error });
+src/routes/checkout.ts:710:        Logger.error('Guest identity creation failed:', error);
+src/routes/checkout.ts:834:        Logger.error('Guest draft creation failed:', error);
+src/routes/checkout.ts:953:          Logger.error(
+src/routes/checkout.ts:1035:      Logger.error('Card session creation failed:', error);
+src/routes/checkout.ts:1151:      Logger.error('Card session confirmation failed:', error);
+src/routes/checkout.ts:1370:        Logger.error('NOWPayments invoice creation failed:', error);
+src/routes/checkout.ts:1487:        Logger.error('NOWPayments minimum lookup failed:', error);
+src/routes/checkout.ts:1710:        Logger.error('Credits checkout completion failed:', error);
+src/routes/checkout.ts:1811:        Logger.error('Antom options lookup failed:', error);
+src/routes/checkout.ts:1981:        Logger.error('Antom session creation failed:', error);
+src/routes/checkout.ts:2073:        Logger.error('Antom status lookup failed:', error);
+src/routes/checkout.ts:2174:        Logger.error('Payop options lookup failed:', error);
+src/routes/checkout.ts:2357:        Logger.error('Payop session creation failed:', error);
+src/routes/checkout.ts:2441:        Logger.error('Payop status lookup failed:', error);
+src/routes/checkout.ts:2540:        Logger.error('Guest claim failed:', error);
+src/services/newsletterService.ts:197:      Logger.error('Newsletter subscription failed:', error);
+src/services/newsletterService.ts:207:          Logger.error(
+src/services/newsletterService.ts:236:          Logger.warn('Failed to update newsletter coupon sent timestamp', {
+src/services/newsletterService.ts:242:        Logger.warn('Newsletter coupon email failed to send', {
+src/services/newsletterService.ts:375:      Logger.warn('Failed to resolve coupon expiry', { couponId, error });
+src/scripts/runSubscriptionNormalization.ts:18:  Logger.info('Subscription normalization started', { includeRenewals });
+src/scripts/runSubscriptionNormalization.ts:24:    Logger.error('Database connection failed; aborting normalization');
+src/scripts/runSubscriptionNormalization.ts:31:    Logger.warn('Redis connection failed; continuing without cache clears', {
+src/scripts/runSubscriptionNormalization.ts:43:    Logger.error('Subscription normalization failed', { error });
+src/scripts/runSubscriptionNormalization.ts:49:      Logger.warn('Failed to disconnect Redis cleanly', { error });
+src/scripts/runSubscriptionNormalization.ts:54:  Logger.info('Subscription normalization complete');
+src/scripts/runSubscriptionNormalization.ts:58:  Logger.error('Unhandled normalization error', { error });
+src/services/orderService.ts:390:      Logger.warn('Failed to fetch user email for order delivery', {
+src/services/orderService.ts:407:      Logger.warn('Failed to determine guest user status for order email', {
+src/services/orderService.ts:586:      Logger.warn('Failed to load subscriptions for delivered order email', {
+src/services/orderService.ts:674:      Logger.warn('Failed to append order metadata', {
+src/services/orderService.ts:753:      Logger.warn('Failed to send order delivery email', {
+src/services/orderService.ts:913:      Logger.warn('Failed to generate claim token for delivered guest order', {
+src/services/orderService.ts:953:        Logger.warn(
+src/services/orderService.ts:1279:        Logger.warn('Failed to generate claim token for payment confirmation', {
+src/services/orderService.ts:1352:      Logger.warn('Failed to send order payment confirmation email', {
+src/services/orderService.ts:1374:      Logger.warn('Failed to mark payment confirmation email metadata', {
+src/services/orderService.ts:1408:      Logger.warn('Failed to resend order delivery email', {
+src/services/orderService.ts:1456:      Logger.warn('Failed to schedule delivery email watchdog', {
+src/services/orderService.ts:1500:      Logger.warn('Failed to create delivery email escalation task', {
+src/services/orderService.ts:1735:      Logger.error('Failed to create order with items:', error);
+src/services/orderService.ts:1742:          Logger.error(
+src/services/orderService.ts:1760:      Logger.error('Failed to create order with items in transaction:', error);
+src/services/orderService.ts:1821:          Logger.warn('Failed to create order notification', {
+src/services/orderService.ts:1842:          Logger.warn('Failed to record delivery evidence', {
+src/services/orderService.ts:1863:          Logger.warn('Failed to send order delivery email', {
+src/services/orderService.ts:1875:      Logger.error('Failed to update order status:', error);
+src/services/orderService.ts:2015:          Logger.warn('Failed to create order notification', {
+src/services/orderService.ts:2041:          Logger.warn('Failed to record delivery evidence', {
+src/services/orderService.ts:2062:          Logger.warn('Failed to send order delivery email', {
+src/services/orderService.ts:2074:      Logger.error('Failed to update order payment:', error);
+src/services/orderService.ts:2092:      Logger.error('Failed to check paid order status:', error);
+src/services/orderService.ts:2157:      Logger.error('Failed to list orders:', error);
+src/services/orderService.ts:2267:      Logger.error('Failed to list user orders:', error);
+src/services/orderService.ts:2290:      Logger.error('Failed to list order items:', error);
+src/services/orderService.ts:2306:      Logger.error('Failed to fetch order:', error);
+src/services/orderService.ts:2325:      Logger.error('Failed to fetch order by checkout session key:', error);
+src/services/orderService.ts:2362:      Logger.error('Failed to fetch order with items:', error);
+src/scripts/disableAutoRenewCutover.ts:103:  Logger.info('Milestone 5 auto-renew cutover script started', {
+src/scripts/disableAutoRenewCutover.ts:111:    Logger.error('Database connection failed; aborting cutover script');
+src/scripts/disableAutoRenewCutover.ts:118:    Logger.info('Milestone 5 auto-renew cutover summary', {
+src/scripts/disableAutoRenewCutover.ts:123:    Logger.error('Milestone 5 auto-renew cutover failed', { error });
+src/scripts/disableAutoRenewCutover.ts:129:  Logger.info('Milestone 5 auto-renew cutover script complete', {
+src/scripts/disableAutoRenewCutover.ts:135:  Logger.error('Unhandled auto-renew cutover script error', { error });
+src/utils/encryption.ts:45:      Logger.error('Error encrypting data:', error);
+src/utils/encryption.ts:67:      Logger.error('Error decrypting data:', error);
+src/config/redis.ts:62:      Logger.info(`${this.label} Redis connection established`);
+src/config/redis.ts:66:      Logger.info(`${this.label} Redis client ready`);
+src/config/redis.ts:70:      Logger.error(`${this.label} Redis connection error:`, error);
+src/config/redis.ts:74:      Logger.info(`${this.label} Redis connection closed`);
+src/config/redis.ts:78:      Logger.info(`${this.label} Redis reconnecting...`);
+src/config/redis.ts:84:      Logger.error(`Failed to connect to ${this.label} Redis:`, connectError);
+src/utils/redisHelper.ts:68:      Logger.error(`Error getting keys by pattern "${pattern}":`, error);
+src/utils/redisHelper.ts:115:      Logger.error(`Error getting key info for "${key}":`, error);
+src/utils/redisHelper.ts:139:      Logger.error(`Error deleting keys by pattern "${pattern}":`, error);
+src/utils/redisHelper.ts:172:      Logger.error(`Error acquiring lock for resource "${resource}":`, error);
+src/utils/redisHelper.ts:196:      Logger.error(`Error releasing lock for resource "${resource}":`, error);
+src/utils/redisHelper.ts:221:      Logger.error(`Error extending lock for resource "${resource}":`, error);
+src/utils/redisHelper.ts:291:      Logger.error('Error executing batch operations:', error);
+src/utils/redisHelper.ts:318:      Logger.error(
+src/utils/redisHelper.ts:345:      Logger.error(
+src/utils/redisHelper.ts:379:      Logger.error('Error getting memory usage:', error);
+src/utils/redisHelper.ts:410:      Logger.error('Error getting connection info:', error);
+src/scripts/replayNowPaymentsOrder.ts:236:  Logger.info('Bootstrapped synthetic NOWPayments payment record', {
+src/scripts/replayNowPaymentsOrder.ts:343:  Logger.info(prefix, {
+src/scripts/replayNowPaymentsOrder.ts:360:    Logger.info('Skipping payment replay because order is already processed', {
+src/scripts/replayNowPaymentsOrder.ts:376:      Logger.info(
+src/scripts/replayNowPaymentsOrder.ts:389:  Logger.info('Prepared synthetic NOWPayments webhook payload', {
+src/scripts/replayNowPaymentsOrder.ts:399:    Logger.info('Dry run enabled; payment replay was not executed', {
+src/scripts/replayNowPaymentsOrder.ts:415:  Logger.info('Payment replay completed', {
+src/scripts/replayNowPaymentsOrder.ts:433:    Logger.info('Dry run enabled; delivery flow was not executed', {
+src/scripts/replayNowPaymentsOrder.ts:452:    Logger.info('Replayed delivery for already delivered order', {
+src/scripts/replayNowPaymentsOrder.ts:485:    Logger.info('Delivery flow completed', {
+src/scripts/replayNowPaymentsOrder.ts:503:  Logger.info('Replay NOWPayments order script started', {
+src/scripts/replayNowPaymentsOrder.ts:526:    Logger.info('Claim-email eligibility snapshot', {
+src/scripts/replayNowPaymentsOrder.ts:533:      Logger.info('Resolved NOWPayments payment record', {
+src/scripts/replayNowPaymentsOrder.ts:541:      Logger.info(
+src/scripts/replayNowPaymentsOrder.ts:562:  Logger.info('Replay NOWPayments order script finished', {
+src/scripts/replayNowPaymentsOrder.ts:568:  Logger.error('Replay NOWPayments order script failed', {
+src/utils/logger.ts:82:      console.log(
+src/utils/logger.ts:91:      console.warn(
+src/utils/logger.ts:100:      console.error(
+src/utils/logger.ts:109:      console.debug(
+src/scripts/sendEmailTemplatePreviews.ts:29:  console.log(`[SENT] ${email.subject}`);
+src/scripts/sendEmailTemplatePreviews.ts:200:  console.log(`Sending email template previews to ${to}...`);
+src/scripts/sendEmailTemplatePreviews.ts:211:  console.log('[SENT] [Preview] Auth - Reset your password (service method)');
+src/scripts/sendEmailTemplatePreviews.ts:218:  console.log('All preview emails sent successfully.');
+src/scripts/sendEmailTemplatePreviews.ts:222:  console.error('Failed to send preview emails:', error);
+src/middleware/errorHandler.ts:73:    request.log.error(error, 'Internal server error');
+src/middleware/errorHandler.ts:75:    request.log.warn(error, 'Client error');
+src/tests/redis.test.ts:435:      console.log(`GET performance: ${averageTime.toFixed(2)}ms average`);
+src/tests/redis.test.ts:455:      console.log(`SET performance: ${averageTime.toFixed(2)}ms average`);
+src/tests/redis.test.ts:474:      console.log(`Concurrent operations (${concurrency}): ${elapsed}ms`);
+src/tests/redis.test.ts:523:      console.log(
+src/middleware/paymentMiddleware.ts:18:    Logger.warn(`Payment rate limit exceeded for IP: ${clientIp}`, {
+src/middleware/paymentMiddleware.ts:35:    Logger.warn(`Payment quote rate limit exceeded for IP: ${clientIp}`, {
+src/middleware/paymentMiddleware.ts:84:            Logger.error('Missing webhook signature');
+src/middleware/paymentMiddleware.ts:101:            Logger.error('Invalid webhook signature', {
+src/middleware/paymentMiddleware.ts:110:          Logger.debug('Webhook signature validated successfully');
+src/middleware/paymentMiddleware.ts:112:          Logger.error('Error validating webhook signature:', error);
+src/middleware/paymentMiddleware.ts:172:        Logger.error('Error validating payment amount:', error);
+src/middleware/paymentMiddleware.ts:203:          Logger.info(`User with high balance creating payment`, {
+src/middleware/paymentMiddleware.ts:213:        Logger.error('Error checking user balance:', error);
+src/middleware/paymentMiddleware.ts:236:          Logger.info('Payment operation completed', {
+src/middleware/paymentMiddleware.ts:249:          Logger.info('Webhook processed', {
+src/middleware/paymentMiddleware.ts:258:        Logger.error('Error in audit logging:', error);
+src/middleware/paymentMiddleware.ts:298:        Logger.error('Payment endpoint error:', {
+src/middleware/rateLimitMiddleware.ts:98:    Logger.info(
+src/middleware/rateLimitMiddleware.ts:107:          Logger.debug(`Rate limit check for key: ${key}`);
+src/middleware/rateLimitMiddleware.ts:111:            Logger.error('Redis client not ready for rate limiting');
+src/middleware/rateLimitMiddleware.ts:169:          Logger.error('Rate limit middleware error:', error);
+src/middleware/rateLimitMiddleware.ts:194:            Logger.error('Rate limit response hook error:', error);
+src/middleware/rateLimitMiddleware.ts:217:      Logger.debug(`Rate limit check for key: ${key}`);
+src/middleware/rateLimitMiddleware.ts:221:        Logger.error('Redis client not ready for rate limiting');
+src/middleware/rateLimitMiddleware.ts:277:      Logger.error('Rate limit handler error:', error);
+src/middleware/authMiddleware.ts:47:          Logger.warn('Failed to revoke session for inactive user', error);
+src/middleware/authMiddleware.ts:64:    Logger.error('Failed to verify account status:', error);
+src/middleware/authMiddleware.ts:185:          request.log.info(
+src/middleware/authMiddleware.ts:235:    Logger.debug('Auth token source', {
+src/middleware/authMiddleware.ts:242:    Logger.debug('Auth cookie presence', {
+src/middleware/authMiddleware.ts:247:      Logger.warn('No auth token found in cookies or headers');
+src/middleware/authMiddleware.ts:260:      Logger.warn('Invalid auth token', { error: tokenValidation.error });
+src/middleware/authMiddleware.ts:310:        Logger.warn(
+src/middleware/authMiddleware.ts:341:    Logger.debug('User authenticated', {
+src/middleware/authMiddleware.ts:402:      Logger.warn(
+src/tests/subscriptionReminderJobs.test.ts:381:    expect(mockLogger.error).not.toHaveBeenCalled();
+src/middleware/sessionMiddleware.ts:119:                Logger.error('Error refreshing token:', refreshError);
+src/middleware/sessionMiddleware.ts:124:          Logger.error('Session middleware error:', error);
+src/middleware/creditMiddleware.ts:190:    Logger.info('Credit operation completed', auditData);
+src/tests/emailServiceConsole.test.ts:32:    expect(Logger.info).toHaveBeenCalledWith(
+src/tests/emailServiceConsole.test.ts:40:    const loggedText = (Logger.info as jest.Mock).mock.calls[0][1].text;
+src/tests/fxJobsStaleAlert.test.ts:56:    expect(Logger.error).toHaveBeenCalledWith(
+src/tests/startupHygiene.test.ts:26:    const fallbackWarnings = (Logger.warn as jest.Mock).mock.calls.filter(
+src/tests/startupHygiene.test.ts:50:    expect(Logger.info).toHaveBeenCalledWith('Background jobs are disabled');
+src/tests/startupHygiene.test.ts:92:    const skipLogs = (Logger.info as jest.Mock).mock.calls.filter(
+src/tests/startupHygiene.test.ts:98:    expect(Logger.warn).not.toHaveBeenCalledWith(
+src/config/database.ts:35:          Logger.warn(
+src/config/database.ts:44:    Logger.error('Unexpected error on idle client', err);
+src/config/database.ts:57:    Logger.info(
+src/config/database.ts:63:    Logger.error('Database connection failed:', error);

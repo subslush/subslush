@@ -23,6 +23,7 @@ const dbEnv = {
 const productId = '00000000-0000-4000-8000-000000010000';
 const sixMonthProductId = '00000000-0000-4000-8000-000000010100';
 const sixMonthVariantId = '00000000-0000-4000-8000-000000010101';
+const fixedProductId = '00000000-0000-4000-8000-000000010200';
 const variantIds = {
   first: '00000000-0000-4000-8000-000000010001',
   second: '00000000-0000-4000-8000-000000010002',
@@ -96,7 +97,8 @@ const createGuestIdentity = async (email: string): Promise<string> => {
 const createDraft = async (params: {
   email: string;
   items: Array<{
-    variant_id: string;
+    variant_id?: string;
+    product_id?: string;
     term_months: number;
     auto_renew: boolean;
   }>;
@@ -161,6 +163,25 @@ describe('Multi-item pricing locks (fresh PostgreSQL, real checkout route)', () 
        VALUES ($1, 'Six month listing', 'six-month-listing', 'qa', 'USD', 6, 0, 'active', '{}'::jsonb)`,
       [sixMonthProductId]
     );
+    await databasePool.query(
+      `INSERT INTO products
+        (id, name, slug, service_type, default_currency, duration_months,
+         fixed_price_cents, fixed_price_currency, status, metadata)
+       VALUES ($1, 'Fixed Product 12 Months', 'fixed-product-12-months', 'qa',
+               'USD', 12, 8999, 'USD', 'active',
+               '{"delivery_format_label":"Account credentials"}'::jsonb)`,
+      [fixedProductId]
+    );
+    expect(
+      (
+        await catalogService.setCurrentFixedProductPrice({
+          product_id: fixedProductId,
+          duration_months: 12,
+          price_cents: 8999,
+          currency: 'USD',
+        })
+      ).success
+    ).toBe(true);
     await databasePool.query(
       `INSERT INTO product_variants
         (id, product_id, name, variant_code, service_plan, is_active)
@@ -486,6 +507,114 @@ describe('Multi-item pricing locks (fresh PostgreSQL, real checkout route)', () 
     ]);
   });
 
+  it('purchases a fixed product by product id and replays fulfillment without a variant', async () => {
+    const draftResponse = await createDraft({
+      email: 'fixed-product-identity@pricing-lock.test',
+      items: [
+        {
+          product_id: fixedProductId,
+          term_months: 12,
+          auto_renew: false,
+        },
+      ],
+    });
+    expect(draftResponse.statusCode).toBe(200);
+    const draft = draftResponse.json().data;
+    expect(draft.pricing.items).toEqual([
+      expect.objectContaining({
+        product_id: fixedProductId,
+        variant_id: fixedProductId,
+        term_months: 12,
+        final_total_cents: 8999,
+      }),
+    ]);
+
+    const webhookParams = {
+      orderId: draft.order_id,
+      paymentIntentId: 'pi_fixed_product_identity',
+      sessionId: 'cs_fixed_product_identity',
+      amountTotal: 8999,
+    };
+    expect((await completeStripeCheckout(webhookParams)).statusCode).toBe(200);
+    expect((await completeStripeCheckout(webhookParams)).statusCode).toBe(200);
+
+    const lifecycle = await databasePool.query(
+      `SELECT oi.product_id AS order_product_id,
+              oi.product_variant_id AS order_variant_id,
+              oi.product_name_snapshot,
+              oi.duration_months_snapshot,
+              oi.unit_price_cents,
+              oi.total_price_cents,
+              oi.currency,
+              s.product_id AS subscription_product_id,
+              s.product_variant_id AS subscription_variant_id,
+              s.product_name_snapshot AS subscription_name_snapshot,
+              p.product_id AS payment_product_id,
+              pi.product_id AS payment_item_product_id,
+              oe.product_id AS entitlement_product_id,
+              COUNT(DISTINCT s.id)::int AS subscription_count,
+              COUNT(DISTINCT oe.id)::int AS entitlement_count
+       FROM order_items oi
+       JOIN subscriptions s ON s.order_item_id = oi.id
+       JOIN payments p ON p.order_id = oi.order_id
+       JOIN payment_items pi ON pi.payment_id = p.id AND pi.order_item_id = oi.id
+       JOIN order_entitlements oe ON oe.order_item_id = oi.id
+       WHERE oi.order_id = $1
+       GROUP BY oi.id, s.product_id, s.product_variant_id,
+                s.product_name_snapshot, p.product_id, pi.product_id, oe.product_id`,
+      [draft.order_id]
+    );
+    expect(lifecycle.rows).toEqual([
+      expect.objectContaining({
+        order_product_id: fixedProductId,
+        order_variant_id: null,
+        product_name_snapshot: 'Fixed Product 12 Months',
+        duration_months_snapshot: 12,
+        unit_price_cents: 8999,
+        total_price_cents: 8999,
+        currency: 'USD',
+        subscription_product_id: fixedProductId,
+        subscription_variant_id: null,
+        subscription_name_snapshot: 'Fixed Product 12 Months',
+        payment_product_id: fixedProductId,
+        payment_item_product_id: fixedProductId,
+        entitlement_product_id: fixedProductId,
+        subscription_count: 1,
+        entitlement_count: 1,
+      }),
+    ]);
+
+    await databasePool.query(
+      `UPDATE products
+       SET name = 'Renamed Fixed Product', status = 'inactive'
+       WHERE id = $1`,
+      [fixedProductId]
+    );
+    const retiredHistory = await databasePool.query(
+      `SELECT oi.product_name_snapshot AS order_name,
+              s.product_name_snapshot AS subscription_name,
+              oi.duration_months_snapshot,
+              oi.unit_price_cents,
+              oi.currency
+       FROM order_items oi
+       JOIN subscriptions s ON s.order_item_id = oi.id
+       WHERE oi.order_id = $1`,
+      [draft.order_id]
+    );
+    expect(retiredHistory.rows).toEqual([
+      {
+        order_name: 'Fixed Product 12 Months',
+        subscription_name: 'Fixed Product 12 Months',
+        duration_months_snapshot: 12,
+        unit_price_cents: 8999,
+        currency: 'USD',
+      },
+    ]);
+    await expect(
+      databasePool.query('DELETE FROM products WHERE id = $1', [fixedProductId])
+    ).rejects.toThrow();
+  });
+
   it('alerts and suppresses confirmation when paid fulfillment entities are incomplete', async () => {
     const draftResponse = await createDraft({
       email: 'fulfillment-atomicity@pricing-lock.test',
@@ -696,7 +825,10 @@ describe('Multi-item pricing locks (fresh PostgreSQL, real checkout route)', () 
       ],
     });
     expect(response.statusCode).toBe(400);
-    expect(response.json().message).toBe('price unavailable');
+    expect(response.json()).toMatchObject({
+      code: 'PRICE_UNAVAILABLE',
+      message: 'No current price is available in the requested currency.',
+    });
   });
 
   it('rejects mixed settlement currencies with an explicit error', async () => {

@@ -76,8 +76,10 @@ export const subscriptionRenewalService = {
 
     const insertResult = await db.query(
       `INSERT INTO subscription_renewals
-        (subscription_id, cycle_end_date, status, invoice_payment_id)
-       VALUES ($1, $2, 'pending', $3)
+        (subscription_id, product_id, cycle_end_date, status, invoice_payment_id)
+       SELECT s.id, s.product_id, $2, 'pending', $3
+       FROM subscriptions s
+       WHERE s.id = $1
        ON CONFLICT (subscription_id, cycle_end_date) DO NOTHING
        RETURNING id, status`,
       [params.subscriptionId, cycleKey, params.paymentId ?? null]
@@ -118,6 +120,10 @@ export const subscriptionRenewalService = {
         `UPDATE subscription_renewals
          SET status = 'pending',
              invoice_payment_id = COALESCE(invoice_payment_id, $3),
+             product_id = COALESCE(
+               product_id,
+               (SELECT s.product_id FROM subscriptions s WHERE s.id = $1)
+             ),
              updated_at = NOW()
          WHERE subscription_id = $1 AND cycle_end_date = $2
          RETURNING id, status`,
@@ -156,6 +162,10 @@ export const subscriptionRenewalService = {
       `UPDATE subscription_renewals
        SET status = 'processing',
            invoice_payment_id = COALESCE(invoice_payment_id, $3),
+           product_id = COALESCE(
+             product_id,
+             (SELECT s.product_id FROM subscriptions s WHERE s.id = $1)
+           ),
            updated_at = NOW()
        WHERE subscription_id = $1
          AND cycle_end_date = $2
@@ -175,8 +185,10 @@ export const subscriptionRenewalService = {
 
     const insertResult = await db.query(
       `INSERT INTO subscription_renewals
-        (subscription_id, cycle_end_date, status, invoice_payment_id)
-       VALUES ($1, $2, 'processing', $3)
+        (subscription_id, product_id, cycle_end_date, status, invoice_payment_id)
+       SELECT s.id, s.product_id, $2, 'processing', $3
+       FROM subscriptions s
+       WHERE s.id = $1
        ON CONFLICT (subscription_id, cycle_end_date) DO NOTHING
        RETURNING id, status`,
       [params.subscriptionId, cycleKey, params.paymentId ?? null]

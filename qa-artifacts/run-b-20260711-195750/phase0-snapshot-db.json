@@ -1,0 +1,26 @@
+[
+  {
+    "product_id": "9cba9694-b34d-49de-8cd7-fe4d2d947730",
+    "name": "QA-B2 AI Tool",
+    "variant_id": "a8cca186-6fbf-4750-8c79-7dee0f8016fa",
+    "price_id": "a2f78e34-4f3a-4c61-9046-54504fe4efdf",
+    "snapshot_id": "42b192aa-c728-4a07-a11b-dd65b9b2ec11",
+    "snapshot_status": "succeeded"
+  },
+  {
+    "product_id": "73687c87-8018-4b35-8dd3-866d4ded59ca",
+    "name": "QA-B2 Link Product",
+    "variant_id": "b619c54d-e1cc-413c-b332-92f52a06a65a",
+    "price_id": "43bc6b48-8474-4eec-8104-9d78245b72cb",
+    "snapshot_id": "90cd2cf0-b9ca-4d73-b941-26c05b3562e2",
+    "snapshot_status": "succeeded"
+  },
+  {
+    "product_id": "6d6cb1c1-e3a0-4b98-8beb-b1f60a7a08cc",
+    "name": "QA-B2 Streaming",
+    "variant_id": "1e72ee05-1282-4d04-aae0-27b4c3281dd6",
+    "price_id": "15c64786-bf4d-4b61-b507-c1cc6a2cdb32",
+    "snapshot_id": "5e0d6c67-7a43-497e-836c-2c89eb4fdb80",
+    "snapshot_status": "succeeded"
+  }
+]

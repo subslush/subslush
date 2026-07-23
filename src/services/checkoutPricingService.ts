@@ -1,5 +1,5 @@
 import { couponService, normalizeCouponCode } from './couponService';
-import { resolveVariantPricing } from './variantPricingService';
+import { resolveSellableProduct } from './sellableProductService';
 import { resolvePricingLockContext } from './pricingLockService';
 import {
   createErrorResult,
@@ -17,7 +17,9 @@ import type { Product, ProductVariant } from '../types/catalog';
 import type { PoolClient } from 'pg';
 
 export type CheckoutPricingItemInput = {
-  variant_id: string;
+  variant_id?: string | null | undefined;
+  product_id?: string | null | undefined;
+  pricing_snapshot_id?: string | null | undefined;
   term_months?: number | null | undefined;
   auto_renew?: boolean | null | undefined;
   selection_type?:
@@ -36,8 +38,9 @@ export type CheckoutPricingItem = {
   variant: ProductVariant;
   productVariantId: string | null;
   planCode: string;
-  catalogMode: 'variant' | 'fixed_product';
+  catalogMode: 'legacy_variant' | 'fixed_product';
   pricingSnapshotId: string;
+  catalogPricingSnapshotId: string;
   termMonths: number;
   currency: string;
   basePriceCents: number;
@@ -73,11 +76,6 @@ export type CheckoutPricingResult = {
   normalizedCouponCode?: string | null;
 };
 
-const normalizeTermMonths = (value?: number | null): number => {
-  if (!Number.isFinite(value)) return 1;
-  return Math.max(1, Math.floor(value as number));
-};
-
 export class CheckoutPricingService {
   async priceDraft(params: {
     items: CheckoutPricingItemInput[];
@@ -94,22 +92,42 @@ export class CheckoutPricingService {
     const pricingItems: CheckoutPricingItem[] = [];
 
     for (const item of params.items) {
-      const termMonths = normalizeTermMonths(item.term_months ?? null);
-      const pricingResult = await resolveVariantPricing({
-        variantId: item.variant_id,
+      const requestedProductId =
+        typeof item.product_id === 'string' ? item.product_id.trim() : null;
+      const legacyVariantId =
+        typeof item.variant_id === 'string' ? item.variant_id.trim() : null;
+      const pricingResult = await resolveSellableProduct({
+        context: 'checkout_pricing_item',
+        productId: requestedProductId,
+        legacyVariantId,
         currency: normalizedCurrency,
-        termMonths,
+        durationMonths: item.term_months ?? null,
+        expectedPricingSnapshotId: item.pricing_snapshot_id ?? null,
       });
 
       if (!pricingResult.ok) {
-        return createErrorResult(pricingResult.error);
+        return createErrorResult(pricingResult.code);
       }
 
-      const { product, variant, snapshot } = pricingResult.data;
+      const { product, snapshot } = pricingResult.data;
+      const variant: ProductVariant = pricingResult.data.legacyVariant ?? {
+        id: product.id,
+        product_id: product.id,
+        name: product.name,
+        variant_code: null,
+        description: product.description ?? null,
+        service_plan: product.slug,
+        is_active: true,
+        sort_order: 0,
+        metadata: product.metadata ?? null,
+        created_at: product.created_at,
+        updated_at: product.updated_at,
+      };
       const isFixedProductPricing =
         pricingResult.data.catalogMode === 'fixed_product';
       const lockContext = await resolvePricingLockContext({
-        variantId: pricingResult.data.productVariantId || item.variant_id,
+        variantId:
+          pricingResult.data.legacyVariantId || pricingResult.data.productId,
         displayCurrency: normalizedCurrency,
         displayPrice: pricingResult.data.price,
       });
@@ -135,10 +153,14 @@ export class CheckoutPricingService {
         input: item,
         product,
         variant,
-        productVariantId: pricingResult.data.productVariantId,
-        planCode: pricingResult.data.planCode,
-        catalogMode: pricingResult.data.catalogMode,
+        productVariantId: pricingResult.data.legacyVariantId,
+        planCode: pricingResult.data.itemCode,
+        catalogMode:
+          pricingResult.data.catalogMode === 'fixed_product'
+            ? 'fixed_product'
+            : 'legacy_variant',
         pricingSnapshotId: lockContext.snapshotId,
+        catalogPricingSnapshotId: pricingResult.data.pricingSnapshotId,
         termMonths: snapshot.termMonths,
         currency: normalizedCurrency,
         basePriceCents: snapshot.basePriceCents,

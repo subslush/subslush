@@ -123,11 +123,35 @@ export interface FixedProductPriceHistory {
 
 export interface ProductDetail {
   product: Product;
+  /** Legacy records are returned read-only for the classic admin UI. */
   variants: ProductVariant[];
   labels: ProductLabel[];
   media: ProductMedia[];
+  /** Legacy variant-backed price history. */
   price_history: PriceHistory[];
+  fixed_price_history: FixedProductPriceHistory[];
+  legacy_compatibility: LegacyCatalogCompatibility;
   variant_terms?: ProductVariantTerm[];
+}
+
+export interface LegacyCatalogCompatibility {
+  variant_count: number;
+  active_variant_count: number;
+  term_count: number;
+  price_history_count: number;
+  subscription_count: number;
+  order_item_count: number;
+  payment_count: number;
+  credit_transaction_count: number;
+  fixed_catalog_preferred: boolean;
+}
+
+export interface FixedCatalogRecoveryResult {
+  product_id: string;
+  already_product_only: boolean;
+  deactivated_variant_count: number;
+  deactivated_variant_ids: string[];
+  compatibility: LegacyCatalogCompatibility;
 }
 
 export interface CatalogListing {
@@ -186,6 +210,13 @@ export interface ListVariantTermFilters {
 export interface ListPriceHistoryFilters {
   product_variant_id?: string;
   product_id?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ListFixedProductPriceHistoryFilters {
+  product_id: string;
+  currency?: string;
   limit?: number;
   offset?: number;
 }
@@ -286,5 +317,15 @@ export interface CreatePriceHistoryInput {
   currency: string;
   starts_at?: Date;
   ends_at?: Date | null;
+  metadata?: Record<string, any> | null;
+}
+
+export interface SetCurrentFixedProductPriceInput {
+  product_id: string;
+  duration_months?: number;
+  price_cents: number;
+  currency: string;
+  comparison_price_cents?: number | null;
+  starts_at?: Date;
   metadata?: Record<string, any> | null;
 }

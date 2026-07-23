@@ -1,9 +1,9 @@
 import Fastify from 'fastify';
 import { subscriptionRoutes } from '../routes/subscriptions';
-import { resolveVariantPricing } from '../services/variantPricingService';
+import { resolveSellableProduct } from '../services/sellableProductService';
 
-jest.mock('../services/variantPricingService', () => ({
-  resolveVariantPricing: jest.fn(),
+jest.mock('../services/sellableProductService', () => ({
+  resolveSellableProduct: jest.fn(),
 }));
 jest.mock('../middleware/rateLimitMiddleware', () => ({
   createRateLimitHandler: jest.fn(() => async () => {}),
@@ -13,9 +13,8 @@ jest.mock('../middleware/authMiddleware', () => ({
 }));
 jest.mock('../utils/logger');
 
-const mockResolveVariantPricing = resolveVariantPricing as jest.MockedFunction<
-  typeof resolveVariantPricing
->;
+const mockResolveSellableProduct =
+  resolveSellableProduct as jest.MockedFunction<typeof resolveSellableProduct>;
 
 describe('Subscription cart pricing preview route', () => {
   beforeEach(() => {
@@ -23,9 +22,15 @@ describe('Subscription cart pricing preview route', () => {
   });
 
   it('returns repriced cart items in the requested currency', async () => {
-    mockResolveVariantPricing.mockResolvedValue({
+    mockResolveSellableProduct.mockResolvedValue({
       ok: true,
       data: {
+        product: { id: 'product-1' },
+        productId: 'product-1',
+        legacyVariantId: 'variant-1',
+        durationMonths: 1,
+        pricingSnapshotId: 'snapshot-1',
+        catalogMode: 'legacy_variant',
         snapshot: {
           totalPriceCents: 4614,
         },
@@ -55,10 +60,12 @@ describe('Subscription cart pricing preview route', () => {
     await app.close();
 
     expect(response.statusCode).toBe(200);
-    expect(mockResolveVariantPricing).toHaveBeenCalledWith({
-      variantId: 'variant-1',
+    expect(mockResolveSellableProduct).toHaveBeenCalledWith({
+      context: 'cart_pricing_preview',
+      productId: null,
+      legacyVariantId: 'variant-1',
       currency: 'SEK',
-      termMonths: 1,
+      durationMonths: 1,
     });
 
     const body = response.json();
@@ -67,19 +74,27 @@ describe('Subscription cart pricing preview route', () => {
       {
         cart_item_id: 'cart-item-1',
         variant_id: 'variant-1',
+        product_id: 'product-1',
+        duration_months: 1,
         term_months: 1,
         quantity: 2,
+        unit_price_cents: 4614,
+        line_total_cents: 9228,
         unit_price: 46.14,
         line_total: 92.28,
         currency: 'SEK',
+        pricing_snapshot_id: 'snapshot-1',
+        catalog_mode: 'legacy_variant',
       },
     ]);
+    expect(response.headers.deprecation).toBe('true');
   });
 
   it('returns skipped items when pricing cannot be resolved', async () => {
-    mockResolveVariantPricing.mockResolvedValue({
+    mockResolveSellableProduct.mockResolvedValue({
       ok: false,
-      error: 'price_unavailable',
+      code: 'PRICE_UNAVAILABLE',
+      message: 'No current price is available in the requested currency.',
     } as any);
 
     const app = Fastify();
@@ -108,8 +123,11 @@ describe('Subscription cart pricing preview route', () => {
     expect(body.data.skipped_items).toEqual([
       {
         cart_item_id: 'cart-item-2',
+        product_id: null,
         variant_id: 'variant-2',
-        reason: 'price_unavailable',
+        code: 'PRICE_UNAVAILABLE',
+        message: 'No current price is available in the requested currency.',
+        reason: 'PRICE_UNAVAILABLE',
       },
     ]);
   });

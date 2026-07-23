@@ -1,0 +1,17 @@
+[
+  {
+    "variant_name": "SMOKE-1783704190769 Variant",
+    "snapshot_id": "76c918ab-ef66-4615-b4e2-ca8096114d47",
+    "status": "succeeded"
+  },
+  {
+    "variant_name": "SMOKE-1783704081515 Variant",
+    "snapshot_id": "ded1379d-a2c8-4f22-a5e3-c27917f28f86",
+    "status": "succeeded"
+  },
+  {
+    "variant_name": "SMOKE-1783703926184 Variant",
+    "snapshot_id": "ce72ba62-085b-4e43-8714-11b7be696139",
+    "status": "succeeded"
+  }
+]

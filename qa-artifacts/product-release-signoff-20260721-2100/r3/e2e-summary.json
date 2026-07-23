@@ -1,0 +1,24 @@
+{
+  "total": 24,
+  "pass": 14,
+  "fail": 10,
+  "blocked": 0,
+  "defects": [
+    {
+      "id": "QA-REL-D01",
+      "severity": "Critical",
+      "category": "Product defect",
+      "reproducibility": "100%",
+      "scope": "All browser checkout methods",
+      "summary": "Checkout has no rendered legal-consent controls, so Continue to payment is blocked.",
+      "evidence": [
+        "matrix.jsonl#CHK-001",
+        "screenshots/chk-001-consent-block.png",
+        "frontend/src/routes/checkout/+page.svelte"
+      ],
+      "retest_status": "Not fixed; open"
+    }
+  ],
+  "browser_console_errors": 2,
+  "api_5xx": 0
+}

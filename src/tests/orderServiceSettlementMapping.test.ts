@@ -35,8 +35,13 @@ describe('OrderService settlement/snapshot mapping', () => {
     const itemRow = {
       id: '6f940913-5ad6-4763-b31c-10b44f7f86f5',
       order_id: orderRow.id,
+      product_id: '11111111-1111-4111-8111-111111111111',
       product_variant_id: '753575b5-b8b7-4d84-95a1-c27ffefec3fc',
-      product_name: 'Premium',
+      product_name_snapshot: 'Premium at purchase',
+      product_slug_snapshot: 'premium-monthly',
+      duration_months_snapshot: 1,
+      fulfillment_config_snapshot: { delivery_format_label: 'Credentials' },
+      catalog_mode_snapshot: 'fixed_product',
       variant_name: 'Monthly',
       quantity: 1,
       unit_price_cents: 1899,
@@ -78,7 +83,13 @@ describe('OrderService settlement/snapshot mapping', () => {
       },
       [
         {
+          product_id: itemRow.product_id,
           product_variant_id: itemRow.product_variant_id,
+          product_name_snapshot: itemRow.product_name_snapshot,
+          product_slug_snapshot: itemRow.product_slug_snapshot,
+          duration_months_snapshot: itemRow.duration_months_snapshot,
+          fulfillment_config_snapshot: itemRow.fulfillment_config_snapshot,
+          catalog_mode_snapshot: itemRow.catalog_mode_snapshot,
           quantity: 1,
           unit_price_cents: 1899,
           currency: 'EUR',
@@ -107,9 +118,18 @@ describe('OrderService settlement/snapshot mapping', () => {
     expect(result.data.items[0]?.settlement_total_price_cents).toBe(
       itemRow.settlement_total_price_cents
     );
+    expect(result.data.items[0]?.product_id).toBe(itemRow.product_id);
+    expect(result.data.items[0]?.product_name).toBe(
+      itemRow.product_name_snapshot
+    );
 
     const sqlUsed = String((mockClient.query as jest.Mock).mock.calls[0]?.[0]);
     expect(sqlUsed).toContain('pricing_snapshot_id');
     expect(sqlUsed).toContain('settlement_total_cents');
+    const itemSql = String((mockClient.query as jest.Mock).mock.calls[1]?.[0]);
+    const itemParams = (mockClient.query as jest.Mock).mock.calls[1]?.[1];
+    expect(itemSql).toContain('product_id');
+    expect(itemSql).toContain('product_name_snapshot');
+    expect(itemParams).toContain(itemRow.product_id);
   });
 });

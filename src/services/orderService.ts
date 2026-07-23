@@ -22,6 +22,7 @@ import { orderComplianceEvidenceService } from './orderComplianceEvidenceService
 import { paymentRepository } from './paymentRepository';
 import { env } from '../config/environment';
 import { formatSubscriptionDisplayName } from '../utils/subscriptionHelpers';
+import { resolveDurableProductIdentity } from '../utils/productIdentity';
 
 const TRUSTPILOT_ORDER_DELIVERY_BCC =
   'subslush.com+f9542772d6@invite.trustpilot.com';
@@ -70,12 +71,25 @@ function mapOrder(row: any): Order {
 }
 
 function mapOrderItem(row: any): OrderItem {
+  const identity = resolveDurableProductIdentity({
+    context: 'order_item_read',
+    recordId: row.id,
+    explicitProductId: row.product_id,
+    variantProductId: row.legacy_variant_product_id,
+  });
   return {
     id: row.id,
     order_id: row.order_id,
+    product_id: identity.productId,
     product_variant_id: row.product_variant_id,
-    product_name: row.product_name ?? null,
+    product_name: row.product_name_snapshot ?? row.product_name ?? null,
     variant_name: row.variant_name ?? null,
+    product_name_snapshot: row.product_name_snapshot ?? null,
+    product_slug_snapshot: row.product_slug_snapshot ?? null,
+    duration_months_snapshot: row.duration_months_snapshot ?? null,
+    fulfillment_config_snapshot:
+      parseMetadata(row.fulfillment_config_snapshot) ?? null,
+    catalog_mode_snapshot: row.catalog_mode_snapshot ?? null,
     product_logo_key: row.product_logo_key ?? null,
     quantity: row.quantity,
     unit_price_cents: row.unit_price_cents,
@@ -562,10 +576,10 @@ export class OrderService {
                s.service_plan,
                s.term_months,
                pv.name AS variant_name,
-               p.name AS product_name
+               COALESCE(s.product_name_snapshot, p.name) AS product_name
         FROM subscriptions s
         LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-        LEFT JOIN products p ON p.id = pv.product_id
+        LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
         WHERE s.order_id = $1
         ORDER BY s.created_at ASC
         `,
@@ -1057,13 +1071,13 @@ export class OrderService {
       `SELECT s.id,
               s.delivery_email_sent_at,
               s.activation_handshake_state,
-              COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+              COALESCE(oi.product_name_snapshot, p.name, oi.metadata->>'product_name') AS product_name,
               COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
               oi.term_months
        FROM subscriptions s
        LEFT JOIN order_items oi ON oi.id = s.order_item_id
        LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.product_variant_id, s.product_variant_id)
-       LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+       LEFT JOIN products p ON p.id = COALESCE(s.product_id, oi.product_id, pv.product_id)
        WHERE s.order_id = $1
          AND s.id = $2`,
       [params.orderId, params.subscriptionId]
@@ -1464,6 +1478,7 @@ export class OrderService {
       const result = await pool.query(
         `INSERT INTO admin_tasks (
            subscription_id,
+           product_id,
            user_id,
            order_id,
            task_type,
@@ -1473,7 +1488,11 @@ export class OrderService {
            task_category,
            sla_due_at
          )
-         SELECT NULL, $1, $2, 'support', $3, 'high', $4, $5, $3
+         SELECT NULL,
+                (SELECT CASE WHEN COUNT(DISTINCT product_id) = 1
+                        THEN (ARRAY_AGG(DISTINCT product_id))[1] END
+                 FROM order_items WHERE order_id = $2),
+                $1, $2, 'support', $3, 'high', $4, $5, $3
          WHERE NOT EXISTS (
            SELECT 1
            FROM admin_tasks
@@ -1656,19 +1675,31 @@ export class OrderService {
     for (const item of items) {
       const itemResult = await client.query(
         `INSERT INTO order_items (
-          order_id, product_variant_id, quantity, unit_price_cents,
+          order_id, product_id, product_variant_id, product_name_snapshot,
+          product_slug_snapshot, duration_months_snapshot,
+          fulfillment_config_snapshot, catalog_mode_snapshot,
+          quantity, unit_price_cents,
           base_price_cents, discount_percent, term_months, currency, total_price_cents,
           settlement_currency, settlement_unit_price_cents, settlement_base_price_cents,
           settlement_coupon_discount_cents, settlement_total_price_cents, description,
           metadata, auto_renew, coupon_discount_cents
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9,
-          $10, $11, $12, $13, $14, $15, $16, $17, $18
+          $1, $2, $3, $4, $5, $6, $7, $8,
+          $9, $10, $11, $12, $13, $14, $15,
+          $16, $17, $18, $19, $20, $21, $22, $23, $24
         )
         RETURNING *`,
         [
           order.id,
+          item.product_id ?? null,
           item.product_variant_id || null,
+          item.product_name_snapshot ?? null,
+          item.product_slug_snapshot ?? null,
+          item.duration_months_snapshot ?? item.term_months ?? null,
+          item.fulfillment_config_snapshot
+            ? JSON.stringify(item.fulfillment_config_snapshot)
+            : null,
+          item.catalog_mode_snapshot ?? null,
           item.quantity,
           item.unit_price_cents,
           item.base_price_cents ?? null,
@@ -2234,10 +2265,11 @@ export class OrderService {
           `
           SELECT oi.*,
                  pv.name AS variant_name,
-                 p.name AS product_name
+                 COALESCE(oi.product_name_snapshot, p.name) AS product_name,
+                 pv.product_id AS legacy_variant_product_id
           FROM order_items oi
           LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
-          LEFT JOIN products p ON p.id = pv.product_id
+          LEFT JOIN products p ON p.id = COALESCE(oi.product_id, pv.product_id)
           WHERE oi.order_id = ANY($1::uuid[])
           ORDER BY oi.created_at ASC
           `,
@@ -2271,10 +2303,11 @@ export class OrderService {
         `
         SELECT oi.*,
                pv.name AS variant_name,
-               p.name AS product_name
+               COALESCE(oi.product_name_snapshot, p.name) AS product_name,
+               pv.product_id AS legacy_variant_product_id
         FROM order_items oi
         LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
-        LEFT JOIN products p ON p.id = pv.product_id
+        LEFT JOIN products p ON p.id = COALESCE(oi.product_id, pv.product_id)
         WHERE oi.order_id = $1
         ORDER BY oi.created_at ASC
         `,
@@ -2338,11 +2371,12 @@ export class OrderService {
         `
         SELECT oi.*,
                COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
-               COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+               COALESCE(oi.product_name_snapshot, p.name, oi.metadata->>'product_name') AS product_name,
+               pv.product_id AS legacy_variant_product_id,
                p.logo_key AS product_logo_key
         FROM order_items oi
         LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
-        LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+        LEFT JOIN products p ON p.id = COALESCE(oi.product_id, pv.product_id)
         WHERE oi.order_id = $1
         ORDER BY oi.created_at ASC
         `,

@@ -1,0 +1,11 @@
+{
+  "email": "qa-b1-newsletter-1783760625155@example.test",
+  "status": 200,
+  "body": {
+    "message": "Thanks for subscribing! Check your email for your 12% off coupon.",
+    "data": {
+      "alreadySubscribed": false,
+      "emailSent": true
+    }
+  }
+}

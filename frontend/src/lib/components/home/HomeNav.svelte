@@ -907,8 +907,12 @@
 		const selectedHref = activeOfferHref;
 		const selectedCurrency =
 			normalizeCurrencyCode(activeOfferProduct.currency) || ($currency as SupportedCurrency);
-		const variantId = (activeOfferProduct.variant_id || activeOfferProduct.product_id || '').trim();
-		if (!variantId) {
+		const productId = activeOfferProduct.product_id.trim();
+		const legacyVariantId =
+			activeOfferProduct.catalog_mode === 'legacy_variant'
+				? (activeOfferProduct.variant_id || '').trim()
+				: '';
+		if (!productId) {
 			return;
 		}
 		const termMonthsRaw = Number(activeOfferProduct.from_term_months);
@@ -923,18 +927,22 @@
 			activeMegaCategory.key
 		);
 		cart.addItem({
-			id: `${variantId}|${termMonths}|no-renew`,
+			id: `${productId}|${termMonths}|no-renew`,
 			serviceType: activeMegaCategory.key,
 			serviceName: selectedLabel,
 			subCategory: activeOfferProduct.sub_category || undefined,
 			plan: `${termMonths} month${termMonths === 1 ? '' : 's'}`,
-			price: activeOfferProduct.from_price,
+			price:
+				activeOfferProduct.actual_price ??
+				activeOfferProduct.price_cents / 100,
 			currency: selectedCurrency,
 			quantity: 1,
-			description: `Quick add from ${activeMegaCategory.label} mega menu`,
-			features: [`Source: ${selectedHref}`],
-			variantId,
+				description: `Quick add from ${activeMegaCategory.label} mega menu`,
+				features: [`Source: ${selectedHref}`],
+				productId,
+				variantId: legacyVariantId || undefined,
 			termMonths,
+			pricingSnapshotId: activeOfferProduct.pricing_snapshot_id,
 			autoRenew: false
 		});
 		cartSidebar.open();
@@ -1087,7 +1095,7 @@
 
 		trackAddToCart(currencyCode, price, [analyticsItem], eventId);
 		void subscriptionService.trackAddToCart({
-			contentId: product.slug || product.product_id || product.variant_id || itemId,
+			contentId: product.product_id || product.slug || product.variant_id || itemId,
 			contentName: itemName,
 			contentCategory: category,
 			price,

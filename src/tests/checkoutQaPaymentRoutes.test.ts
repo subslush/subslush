@@ -52,6 +52,8 @@ const mockPaymentService = paymentService as unknown as {
 const mockEnv = env as unknown as {
   NODE_ENV: 'test' | 'production';
   QA_PAYMENT_ENABLED: boolean;
+  ANTOM_ENABLED: boolean;
+  PAYOP_ENABLED: boolean;
 };
 
 describe('Checkout QA payment route', () => {
@@ -63,6 +65,8 @@ describe('Checkout QA payment route', () => {
     jest.clearAllMocks();
     mockEnv.NODE_ENV = 'test';
     mockEnv.QA_PAYMENT_ENABLED = true;
+    mockEnv.ANTOM_ENABLED = false;
+    mockEnv.PAYOP_ENABLED = false;
     mockOrderService.getOrderByCheckoutSessionKey.mockResolvedValue({
       id: orderId,
       user_id: userId,
@@ -162,5 +166,30 @@ describe('Checkout QA payment route', () => {
     expect(enabledResponse.statusCode).toBe(200);
     expect(enabledResponse.json().data).toEqual({ enabled: true });
     expect(disabledResponse.statusCode).toBe(404);
+  });
+
+  it('publishes provider capabilities without exposing provider secrets', async () => {
+    mockEnv.ANTOM_ENABLED = true;
+    mockEnv.PAYOP_ENABLED = false;
+    const app = Fastify();
+    await app.register(checkoutRoutes, { prefix: '/checkout' });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/checkout/payment-capabilities',
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.json().data).toEqual({
+      antom_enabled: true,
+      payop_enabled: false,
+      nowpayments_enabled: true,
+      qa_payment_enabled: true,
+    });
+    expect(response.body).not.toContain('secret');
+    expect(response.body).not.toContain('token');
   });
 });

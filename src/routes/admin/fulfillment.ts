@@ -96,10 +96,10 @@ export async function adminFulfillmentRoutes(
                  s.status AS subscription_status,
                  s.activation_handshake_state,
                  s.delivered_at,
-                 COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+                 COALESCE(s.product_name_snapshot, oi.product_name_snapshot, p.name, oi.metadata->>'product_name') AS product_name,
                  COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                  oi.term_months,
-                 p.metadata AS product_metadata,
+                 COALESCE(s.fulfillment_config_snapshot, oi.fulfillment_config_snapshot, p.metadata) AS product_metadata,
                  t.id AS task_id,
                  t.task_type,
                  t.due_date,
@@ -113,7 +113,7 @@ export async function adminFulfillmentRoutes(
           JOIN subscriptions s ON s.order_id = o.id
           LEFT JOIN order_items oi ON oi.id = s.order_item_id
           LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.product_variant_id, s.product_variant_id)
-          LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+          LEFT JOIN products p ON p.id = COALESCE(s.product_id, oi.product_id, pv.product_id)
           LEFT JOIN users u ON u.id = o.user_id
           LEFT JOIN admin_tasks t ON t.subscription_id = s.id AND t.completed_at IS NULL
           LEFT JOIN subscription_upgrade_selections sel ON sel.subscription_id = s.id
@@ -251,7 +251,9 @@ export async function adminFulfillmentRoutes(
         if (!order) return ErrorResponses.notFound(reply, 'Order not found');
 
         const itemsResult = await pool.query(
-          `SELECT s.id, s.user_id, s.order_id, s.order_item_id, s.product_variant_id,
+          `SELECT s.id, s.user_id, s.order_id, s.order_item_id, s.product_id, s.product_variant_id,
+                  s.product_name_snapshot, s.product_slug_snapshot,
+                  s.duration_months_snapshot, s.currency_snapshot,
                   s.service_type, s.service_plan, s.status, s.term_months,
                   s.term_start_at, s.start_date, s.end_date, s.renewal_date,
                   s.auto_renew, s.next_billing_at, s.renewal_method,
@@ -259,11 +261,11 @@ export async function adminFulfillmentRoutes(
                   s.delivered_by, s.delivery_email_sent_at,
                   s.activation_handshake_state,
                   (s.credentials_encrypted IS NOT NULL) AS subscription_credentials_on_file,
-                  COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+                  COALESCE(s.product_name_snapshot, oi.product_name_snapshot, p.name, oi.metadata->>'product_name') AS product_name,
                   COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                   oi.term_months, oi.total_price_cents AS order_item_total_cents,
                   oi.currency AS order_item_currency,
-                  oi.metadata AS item_metadata, p.metadata AS product_metadata,
+                  oi.metadata AS item_metadata, COALESCE(s.fulfillment_config_snapshot, oi.fulfillment_config_snapshot, p.metadata) AS product_metadata,
                   sel.selection_type, sel.account_identifier,
                   (sel.credentials_encrypted IS NOT NULL) AS selection_credentials_on_file,
                   open_task.id AS task_id,
@@ -285,7 +287,7 @@ export async function adminFulfillmentRoutes(
            FROM subscriptions s
            LEFT JOIN order_items oi ON oi.id = s.order_item_id
            LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.product_variant_id, s.product_variant_id)
-           LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+           LEFT JOIN products p ON p.id = COALESCE(s.product_id, oi.product_id, pv.product_id)
            LEFT JOIN subscription_upgrade_selections sel ON sel.subscription_id = s.id
            LEFT JOIN LATERAL (
              SELECT t.id, t.task_type, t.is_issue, t.due_date, t.created_at

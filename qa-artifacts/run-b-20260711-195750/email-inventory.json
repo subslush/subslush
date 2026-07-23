@@ -1,0 +1,107 @@
+[
+  {
+    "time": "2026-07-11T18:04:55.063Z",
+    "to": "qa-b2-guest-1783792954184@example.test",
+    "subject": "Your SubSlush order is confirmed",
+    "classification": "order confirmation",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:07:03.670Z",
+    "to": "qa-b2-guest-1783792954184@example.test",
+    "subject": "Your QA-B2 Streaming QA-B2 Streaming Plan - 6 months is ready",
+    "classification": "per-item delivery",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:07:04.060Z",
+    "to": "qa-b2-guest-1783792954184@example.test",
+    "subject": "Your QA-B2 AI Tool QA-B2 AI Annual - 12 months is ready",
+    "classification": "per-item delivery",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:07:51.959Z",
+    "to": "qa-b2-guest-1783792954184@example.test",
+    "subject": "Your QA-B2 Link Product QA-B2 Link Annual - 12 months is ready",
+    "classification": "per-item delivery",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:08:29.323Z",
+    "to": "qa-b2-guest-1783792954184@example.test",
+    "subject": "Confirm your SubSlush email",
+    "classification": "account verification",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:12:40.084Z",
+    "to": "qa-b2-guest-1783792954184@example.test",
+    "subject": "Your SubSlush order is now linked to your account",
+    "classification": "guest claim",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:22:51.410Z",
+    "to": "qa-b2-guest-1783792954184@example.test",
+    "subject": "Your activation link is ready",
+    "classification": "per-item activation-link ready",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:22:52.861Z",
+    "to": "qa-b2-guest-1783792954184@example.test",
+    "subject": "Confirm when you are ready to activate",
+    "classification": "activation restart",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:22:53.909Z",
+    "to": "qa-b2-guest-1783792954184@example.test",
+    "subject": "Your activation link is ready",
+    "classification": "per-item activation-link ready",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:27:06.833Z",
+    "to": "qa-b2-pending-1783793071420@example.test",
+    "subject": "Your SubSlush order is confirmed",
+    "classification": "order confirmation",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:27:07.354Z",
+    "to": "qa-b2-pending-1783793071420@example.test",
+    "subject": "Your QA-B2 Streaming QA-B2 Streaming Plan - 1 month is ready",
+    "classification": "per-item delivery",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:27:07.382Z",
+    "to": "qa-b2-pending-1783793071420@example.test",
+    "subject": "Action required: claim your delivered SubSlush order",
+    "classification": "guest delivered-claim notice",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:42:11.034Z",
+    "to": "qa-b2-newsletter-1783795328754@example.test",
+    "subject": "Your 12% off first-order coupon from SubSlush",
+    "classification": "newsletter coupon",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:45:00.705Z",
+    "to": "qa-b2-guest-1783792954184@example.test",
+    "subject": "Your SubSlush order is confirmed",
+    "classification": "order confirmation",
+    "activationSecretInEmail": false
+  },
+  {
+    "time": "2026-07-11T18:49:14.065Z",
+    "to": "qa-b2-guest-1783792954184@example.test",
+    "subject": "Your SubSlush order is delivered",
+    "classification": "legacy single-item order delivery",
+    "activationSecretInEmail": false
+  }
+]

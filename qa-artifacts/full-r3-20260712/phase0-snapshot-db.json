@@ -1,0 +1,26 @@
+[
+  {
+    "product_id": "d42c565f-1b82-4ef6-a2d4-eef02b4f113d",
+    "name": "QA-R3 AI Tool",
+    "variant_id": "0a3b6e10-37c1-421f-b3f3-98cfc14a4a50",
+    "price_id": "7e863cd9-78cc-4a57-a284-8663402dd41f",
+    "snapshot_id": "396be059-ce1f-484d-8e19-a79dcc6b0005",
+    "snapshot_status": "succeeded"
+  },
+  {
+    "product_id": "07226263-3f9c-49bb-badd-627c7c45024d",
+    "name": "QA-R3 Link Product",
+    "variant_id": "f7acc6b3-0332-40a1-bf3d-a0501311cce7",
+    "price_id": "e44dde56-59e1-4471-a158-eee42e57a42a",
+    "snapshot_id": "3d5e3444-ea60-41cd-be3c-32c22c58b568",
+    "snapshot_status": "succeeded"
+  },
+  {
+    "product_id": "c53f21db-5e6d-4d0b-8c9e-3d696e88ee4f",
+    "name": "QA-R3 Streaming",
+    "variant_id": "3737b41f-0a61-48e0-847d-36c4df6a5aa8",
+    "price_id": "a7a17871-6011-4a03-a07d-86400ffccc76",
+    "snapshot_id": "8c1ca247-ca1d-4752-854d-a5ba1e8dfefe",
+    "snapshot_status": "succeeded"
+  }
+]

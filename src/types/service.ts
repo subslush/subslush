@@ -65,6 +65,7 @@ export type FailureHandlingResult = ServiceResult<FailureHandlingData>;
 // Refund specific result types
 export interface RefundData {
   refundId: string;
+  productId?: string | null;
   amount: number;
   status:
     | 'pending'
@@ -84,6 +85,7 @@ export type RefundResult = ServiceResult<RefundData>;
 export interface RefundRequestData {
   id: string;
   userId: string;
+  productId?: string | null;
   amount: number;
   reason: string;
   status:

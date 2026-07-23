@@ -68,7 +68,10 @@ export const PAYOP_METHODS: readonly PayopConfiguredMethod[] = [
     title: 'PayDo',
     type: 'ewallet',
     supportsInternational: true,
-    supportedCountries: [],
+    // PayDo is international. Keep the United States in the selectable-country
+    // catalogue as well: an empty list here would otherwise hide it unless the
+    // request happened to originate from a US IP address.
+    supportedCountries: ['US'],
     processingCurrencies: ['EUR', 'AUD', 'CAD', 'GBP', 'USD', 'DKK'],
     fee: {
       fixedEurCents: 30,

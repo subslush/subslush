@@ -45,6 +45,7 @@ interface RenewalCandidate {
   term_months?: number | null;
   currency?: string | null;
   order_id?: string | null;
+  product_id?: string | null;
   product_variant_id?: string | null;
   product_name?: string | null;
   variant_name?: string | null;
@@ -330,7 +331,7 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
     `
       SELECT
         s.*,
-        p.name as product_name,
+        COALESCE(s.product_name_snapshot, p.name) as product_name,
         pv.name as variant_name,
         o.metadata as order_metadata,
         o.currency as order_currency,
@@ -346,7 +347,7 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
         oi.discount_percent as item_discount_percent
       FROM subscriptions s
       LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-      LEFT JOIN products p ON p.id = pv.product_id
+      LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
       LEFT JOIN orders o ON o.id = s.order_id
       LEFT JOIN LATERAL (
         SELECT unit_price_cents, currency, term_months, base_price_cents, discount_percent
@@ -513,6 +514,7 @@ export async function runSubscriptionRenewalSweep(): Promise<void> {
         },
         {
           ...(candidate.order_id ? { orderId: candidate.order_id } : {}),
+          ...(candidate.product_id ? { productId: candidate.product_id } : {}),
           ...(candidate.product_variant_id
             ? { productVariantId: candidate.product_variant_id }
             : {}),
@@ -875,11 +877,11 @@ export async function runSubscriptionReminderSweep(
                s.service_plan,
                s.end_date,
                s.term_months,
-               p.name AS product_name,
+               COALESCE(s.product_name_snapshot, p.name) AS product_name,
                pv.name AS variant_name
         FROM subscriptions s
         LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-        LEFT JOIN products p ON p.id = pv.product_id
+        LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
         WHERE s.status = 'active'
           AND COALESCE(s.auto_renew, FALSE) = FALSE
           AND s.cancellation_requested_at IS NULL
@@ -1040,8 +1042,8 @@ async function ensureSelectionIssueTask(params: {
 
   await pool.query(
     `INSERT INTO admin_tasks
-      (subscription_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at, is_issue)
-     SELECT $1, $2, $3, 'support', $4, 'high', $5, 'selection_pending', $6, TRUE
+      (subscription_id, product_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at, is_issue)
+     SELECT $1, (SELECT product_id FROM subscriptions WHERE id = $1), $2, $3, 'support', $4, 'high', $5, 'selection_pending', $6, TRUE
      WHERE NOT EXISTS (
        SELECT 1
        FROM admin_tasks
@@ -1316,8 +1318,8 @@ export async function runManualMonthlyUpgradeSweep(
 
       await pool.query(
         `INSERT INTO admin_tasks
-          (subscription_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at, mmu_cycle_index, mmu_cycle_total)
-         VALUES ($1, $2, $3, 'manual_monthly_upgrade', $4, 'medium', $5, 'manual_monthly_upgrade', $6, $7, $8)`,
+          (subscription_id, product_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at, mmu_cycle_index, mmu_cycle_total)
+         SELECT $1, (SELECT product_id FROM subscriptions WHERE id = $1), $2, $3, 'manual_monthly_upgrade', $4, 'medium', $5, 'manual_monthly_upgrade', $6, $7, $8`,
         [
           row.subscription_id,
           row.user_id,

@@ -1,0 +1,26 @@
+[
+  {
+    "product_id": "7a5ba660-d52d-4a3a-b15d-652932899929",
+    "name": "QA-B1 AI Tool",
+    "variant_id": "2119cf9b-6b8b-4492-bd19-9311d2f4fdad",
+    "price_id": "9054e7f1-6bf8-49b9-8a74-f4144eddd3c5",
+    "snapshot_id": "e264255b-ea7d-4704-bd31-8c7036ada25a",
+    "snapshot_status": "succeeded"
+  },
+  {
+    "product_id": "5e220741-d926-45cf-a40e-39dc3674aabe",
+    "name": "QA-B1 Link Product",
+    "variant_id": "cdf7afec-195f-4c05-901b-92d0d9971192",
+    "price_id": "4c907dd8-4671-4e0d-bfe1-c337f7d1f12f",
+    "snapshot_id": "1d7594af-404d-4114-bd2e-e32426b3d6c6",
+    "snapshot_status": "succeeded"
+  },
+  {
+    "product_id": "36920bc8-0477-4bd3-8a0e-e18acf1db130",
+    "name": "QA-B1 Streaming",
+    "variant_id": "7827f724-79d9-4663-9b15-4c2496360fba",
+    "price_id": "dab8507e-2e80-467e-b9a1-d8a7589d98f7",
+    "snapshot_id": "83351ac4-9ce0-4abf-8770-54bf35502e16",
+    "snapshot_status": "succeeded"
+  }
+]

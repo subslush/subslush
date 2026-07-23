@@ -674,11 +674,11 @@ export async function adminTaskRoutes(fastify: FastifyInstance): Promise<void> {
                   s.user_id,
                   s.service_type,
                   s.service_plan,
-                  p.name AS product_name,
+                  COALESCE(s.product_name_snapshot, p.name) AS product_name,
                   pv.name AS variant_name
            FROM subscriptions s
            LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-           LEFT JOIN products p ON p.id = pv.product_id
+           LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
            WHERE s.id = $1`,
           [task.subscription_id]
         );

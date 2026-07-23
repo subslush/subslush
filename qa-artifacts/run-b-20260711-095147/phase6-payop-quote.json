@@ -1,0 +1,14 @@
+[dotenv@17.2.2] injecting env (95) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+[dotenv@17.2.2] injecting env (0) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+{
+  "mixedHeader": null,
+  "mixedLineSnapshots": [
+    "83351ac4-9ce0-4abf-8770-54bf35502e16",
+    "e264255b-ea7d-4704-bd31-8c7036ada25a",
+    "1d7594af-404d-4114-bd2e-e32426b3d6c6"
+  ],
+  "mixedQuotes": [],
+  "legacyHeader": "83351ac4-9ce0-4abf-8770-54bf35502e16",
+  "legacyLineSnapshot": null,
+  "legacyQuotes": []
+}

@@ -1,0 +1,66 @@
+{
+  "email": "qa-b2-guest-1783792954184@example.test",
+  "draftStatus": 200,
+  "body": {
+    "data": {
+      "checkout_session_key": "aa832e4446e1d836e718ae935339cefe226cb5313cf61f66",
+      "order_id": "367a279a-fbfe-4fd6-9da3-870fa7354b9f",
+      "pricing": {
+        "items": [
+          {
+            "variant_id": "1e72ee05-1282-4d04-aae0-27b4c3281dd6",
+            "product_id": "6d6cb1c1-e3a0-4b98-8beb-b1f60a7a08cc",
+            "product_name": "QA-B2 Streaming",
+            "service_type": "streaming",
+            "variant_name": "QA-B2 Streaming Plan",
+            "service_plan": "Streaming",
+            "pricing_snapshot_id": "7b269f6c-ad64-4363-9edf-5184bd634038",
+            "term_months": 6,
+            "currency": "USD",
+            "base_price_cents": 4900,
+            "discount_percent": 0,
+            "term_subtotal_cents": 29400,
+            "term_discount_cents": 0,
+            "term_total_cents": 29400,
+            "coupon_discount_cents": 0,
+            "final_total_cents": 29400,
+            "settlement_currency": "USD",
+            "settlement_base_price_cents": 4900,
+            "settlement_term_subtotal_cents": 29400,
+            "settlement_term_discount_cents": 0,
+            "settlement_term_total_cents": 29400,
+            "settlement_coupon_discount_cents": 0,
+            "settlement_final_total_cents": 29400
+          }
+        ],
+        "pricing_snapshot_id": "7b269f6c-ad64-4363-9edf-5184bd634038",
+        "display_currency": "USD",
+        "settlement_currency": "USD",
+        "order_subtotal_cents": 29400,
+        "order_discount_cents": 0,
+        "order_coupon_discount_cents": 0,
+        "order_total_cents": 29400,
+        "order_settlement_total_cents": 29400,
+        "normalized_coupon_code": null
+      }
+    }
+  },
+  "state": {
+    "email": "qa-b2-guest-1783792954184@example.test",
+    "guestIdentityId": "94d07c8f-f0ed-45a3-871b-f31cab473beb",
+    "checkoutSessionKey": "aa832e4446e1d836e718ae935339cefe226cb5313cf61f66",
+    "orderId": "367a279a-fbfe-4fd6-9da3-870fa7354b9f",
+    "appliedCouponCode": null,
+    "selectedPaymentCountry": null,
+    "selectedTaxResidence": "outside_eu",
+    "selectedPaymentProvider": "antom",
+    "selectedAntomOptionId": "cards",
+    "selectedPayopMethodId": null,
+    "legalConsent": {
+      "immediateFulfillmentConsent": true,
+      "termsPolicyConsent": true
+    }
+  },
+  "orderId": "367a279a-fbfe-4fd6-9da3-870fa7354b9f",
+  "url": "http://127.0.0.1:3000/checkout/payment"
+}

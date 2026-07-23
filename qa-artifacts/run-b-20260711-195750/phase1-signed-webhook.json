@@ -1,0 +1,22 @@
+{
+  "request": {
+    "id": "evt_QA_B2_1783793094945",
+    "object": "event",
+    "type": "checkout.session.completed",
+    "data": {
+      "object": {
+        "id": "cs_evt_QA_B2_1783793094945",
+        "object": "checkout.session",
+        "payment_intent": "pi_evt_QA_B2_1783793094945",
+        "amount_total": 270600,
+        "currency": "usd",
+        "metadata": {
+          "order_id": "f1a571a5-64e7-48ad-891e-ff2ded33696c"
+        }
+      }
+    }
+  },
+  "signature_header": "t=1783793094,v1=<redacted>",
+  "status": 200,
+  "response": "{\"received\":true}"
+}

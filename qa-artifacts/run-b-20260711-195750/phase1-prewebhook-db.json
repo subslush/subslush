@@ -1,0 +1,33 @@
+{
+  "primary": {
+    "id": "f1a571a5-64e7-48ad-891e-ff2ded33696c",
+    "total_cents": 270600,
+    "status": "cart",
+    "pricing_snapshot_id": null
+  },
+  "reservation": [
+    {
+      "id": "344c8a4c-f81f-4c65-a9a5-365631d310d2",
+      "status": "reserved",
+      "code": "QA-B2-TEST15"
+    }
+  ],
+  "items": [
+    {
+      "term_months": 6,
+      "item_snapshot": "5e0d6c67-7a43-497e-836c-2c89eb4fdb80",
+      "variant_snapshot": "5e0d6c67-7a43-497e-836c-2c89eb4fdb80"
+    },
+    {
+      "term_months": 12,
+      "item_snapshot": "42b192aa-c728-4a07-a11b-dd65b9b2ec11",
+      "variant_snapshot": "42b192aa-c728-4a07-a11b-dd65b9b2ec11"
+    },
+    {
+      "term_months": 12,
+      "item_snapshot": "90cd2cf0-b9ca-4d73-b941-26c05b3562e2",
+      "variant_snapshot": "90cd2cf0-b9ca-4d73-b941-26c05b3562e2"
+    }
+  ],
+  "pass": true
+}

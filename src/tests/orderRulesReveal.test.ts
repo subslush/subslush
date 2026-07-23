@@ -215,4 +215,58 @@ describe('Order strict-rules acceptance and reveal', () => {
       mockEvidenceService.recordCredentialRevealEvidence
     ).not.toHaveBeenCalled();
   });
+
+  it('enforces the purchase snapshot after current catalog rules are disabled', async () => {
+    const mockQuery = jest.fn(async (sql: string) => {
+      if (
+        sql.includes('FROM orders o') &&
+        sql.includes('JOIN subscriptions s')
+      ) {
+        return {
+          rows: [
+            {
+              order_id: 'order-1',
+              user_id: 'user-1',
+              contact_email: 'user@example.com',
+              subscription_id: subscriptionId,
+              order_item_id: 'item-1',
+              credentials_encrypted: 'secret',
+              product_metadata: sql.includes('s.fulfillment_config_snapshot')
+                ? strictMetadata
+                : { upgrade_options: { strict_rules: false } },
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM order_compliance_evidence_logs')) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+    mockGetDatabasePool.mockReturnValue({ query: mockQuery } as any);
+    const app = await register();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/orders/order-1/items/${subscriptionId}/reveal`,
+    });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).not.toContain('secret');
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'COALESCE(\n              s.fulfillment_config_snapshot'
+      ),
+      ['order-1', 'user-1', subscriptionId]
+    );
+    expect(mockLogCredentialRevealAttempt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        success: false,
+        failureReason: 'strict_rules_not_accepted',
+      })
+    );
+  });
 });

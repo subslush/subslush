@@ -152,6 +152,7 @@ export class CreditService {
     metadata?: Record<string, any>,
     context?: {
       orderId?: string;
+      productId?: string;
       productVariantId?: string;
       priceCents?: number;
       basePriceCents?: number;
@@ -228,6 +229,9 @@ export class CreditService {
       if (context?.orderId !== undefined) {
         transaction.orderId = context.orderId;
       }
+      if (context?.productId !== undefined) {
+        transaction.productId = context.productId;
+      }
       if (context?.productVariantId !== undefined) {
         transaction.productVariantId = context.productVariantId;
       }
@@ -262,11 +266,11 @@ export class CreditService {
       await client.query(
         `INSERT INTO credit_transactions
          (id, user_id, type, amount, balance_before, balance_after, description, metadata,
-          created_at, updated_at, order_id, product_variant_id, price_cents, currency,
+          created_at, updated_at, order_id, product_id, product_variant_id, price_cents, currency,
           auto_renew, next_billing_at, renewal_method, status_reason,
           referral_reward_id, pre_launch_reward_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                 $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+                 $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
         [
           transaction.id,
           transaction.userId,
@@ -279,6 +283,7 @@ export class CreditService {
           transaction.createdAt,
           transaction.updatedAt,
           context?.orderId || null,
+          context?.productId || null,
           context?.productVariantId || null,
           context?.priceCents ?? null,
           this.normalizeCurrency(context?.currency),
@@ -345,6 +350,7 @@ export class CreditService {
     metadata?: Record<string, any>,
     context?: {
       orderId?: string;
+      productId?: string;
       productVariantId?: string;
       priceCents?: number;
       basePriceCents?: number;
@@ -377,6 +383,7 @@ export class CreditService {
     metadata?: Record<string, any>,
     context?: {
       orderId?: string;
+      productId?: string;
       productVariantId?: string;
       priceCents?: number;
       basePriceCents?: number;
@@ -409,6 +416,7 @@ export class CreditService {
     metadata?: Record<string, any>,
     context?: {
       orderId?: string;
+      productId?: string;
       productVariantId?: string;
       priceCents?: number;
       basePriceCents?: number;
@@ -493,6 +501,9 @@ export class CreditService {
       if (context?.orderId !== undefined) {
         transaction.orderId = context.orderId;
       }
+      if (context?.productId !== undefined) {
+        transaction.productId = context.productId;
+      }
       if (context?.productVariantId !== undefined) {
         transaction.productVariantId = context.productVariantId;
       }
@@ -527,11 +538,11 @@ export class CreditService {
       await client.query(
         `INSERT INTO credit_transactions
          (id, user_id, type, amount, balance_before, balance_after, description, metadata,
-          created_at, updated_at, order_id, product_variant_id, price_cents, currency,
+          created_at, updated_at, order_id, product_id, product_variant_id, price_cents, currency,
           auto_renew, next_billing_at, renewal_method, status_reason,
           referral_reward_id, pre_launch_reward_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                 $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+                 $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
         [
           transaction.id,
           transaction.userId,
@@ -544,6 +555,7 @@ export class CreditService {
           transaction.createdAt,
           transaction.updatedAt,
           context?.orderId || null,
+          context?.productId || null,
           context?.productVariantId || null,
           context?.priceCents ?? null,
           this.normalizeCurrency(context?.currency),
@@ -623,6 +635,7 @@ export class CreditService {
     metadata?: Record<string, any>,
     context?: {
       orderId?: string;
+      productId?: string;
       productVariantId?: string;
       priceCents?: number;
       basePriceCents?: number;
@@ -708,6 +721,9 @@ export class CreditService {
       if (context?.orderId !== undefined) {
         transaction.orderId = context.orderId;
       }
+      if (context?.productId !== undefined) {
+        transaction.productId = context.productId;
+      }
       if (context?.productVariantId !== undefined) {
         transaction.productVariantId = context.productVariantId;
       }
@@ -742,11 +758,11 @@ export class CreditService {
       await client.query(
         `INSERT INTO credit_transactions
          (id, user_id, type, amount, balance_before, balance_after, description, metadata,
-          created_at, updated_at, order_id, product_variant_id, price_cents, currency,
+          created_at, updated_at, order_id, product_id, product_variant_id, price_cents, currency,
           auto_renew, next_billing_at, renewal_method, status_reason,
           referral_reward_id, pre_launch_reward_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                 $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+                 $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
         [
           transaction.id,
           transaction.userId,
@@ -759,6 +775,7 @@ export class CreditService {
           transaction.createdAt,
           transaction.updatedAt,
           context?.orderId || null,
+          context?.productId || null,
           context?.productVariantId || null,
           context?.priceCents ?? null,
           this.normalizeCurrency(context?.currency),
@@ -826,7 +843,8 @@ export class CreditService {
       let sql = `
         SELECT id, user_id, type, amount, balance_before, balance_after,
                description, metadata, created_at, updated_at,
-               payment_id, payment_status, payment_provider, payment_currency, payment_amount
+               payment_id, payment_status, payment_provider, payment_currency, payment_amount,
+               order_id, product_id, product_variant_id, price_cents, currency
         FROM credit_transactions
         WHERE user_id = $1
       `;
@@ -886,6 +904,15 @@ export class CreditService {
           row.payment_amount !== null && row.payment_amount !== undefined
             ? parseFloat(row.payment_amount)
             : null,
+        ...(row.order_id ? { orderId: row.order_id } : {}),
+        ...(row.product_id ? { productId: row.product_id } : {}),
+        ...(row.product_variant_id
+          ? { productVariantId: row.product_variant_id }
+          : {}),
+        ...(row.price_cents !== null && row.price_cents !== undefined
+          ? { priceCents: parseInt(row.price_cents, 10) }
+          : {}),
+        ...(row.currency ? { currency: row.currency } : {}),
         createdAt: new Date(row.created_at),
         updatedAt: new Date(row.updated_at),
       }));
@@ -926,7 +953,8 @@ export class CreditService {
       let sql = `
         SELECT id, user_id, type, amount, balance_before, balance_after,
                description, metadata, created_at, updated_at,
-               payment_id, payment_status, payment_provider, payment_currency, payment_amount
+               payment_id, payment_status, payment_provider, payment_currency, payment_amount,
+               order_id, product_id, product_variant_id, price_cents, currency
         FROM credit_transactions
         WHERE id = $1
       `;
@@ -961,6 +989,15 @@ export class CreditService {
           row.payment_amount !== null && row.payment_amount !== undefined
             ? parseFloat(row.payment_amount)
             : null,
+        ...(row.order_id ? { orderId: row.order_id } : {}),
+        ...(row.product_id ? { productId: row.product_id } : {}),
+        ...(row.product_variant_id
+          ? { productVariantId: row.product_variant_id }
+          : {}),
+        ...(row.price_cents !== null && row.price_cents !== undefined
+          ? { priceCents: parseInt(row.price_cents, 10) }
+          : {}),
+        ...(row.currency ? { currency: row.currency } : {}),
         createdAt: new Date(row.created_at),
         updatedAt: new Date(row.updated_at),
       };

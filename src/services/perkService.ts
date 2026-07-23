@@ -257,10 +257,10 @@ export class PerkService {
 
         const subscriptionInfo = await client.query(
           `SELECT COALESCE(pv.name, s.service_plan) AS variant_name,
-                  COALESCE(p.name, s.service_type) AS product_name
+                  COALESCE(s.product_name_snapshot, p.name, s.service_type) AS product_name
            FROM subscriptions s
            LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-           LEFT JOIN products p ON p.id = pv.product_id
+           LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
            WHERE s.id = $1`,
           [subscriptionId]
         );

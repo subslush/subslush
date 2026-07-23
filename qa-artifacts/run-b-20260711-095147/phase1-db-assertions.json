@@ -1,0 +1,54 @@
+{
+  "order": {
+    "id": "b4c15ca5-c4ec-4970-8467-2acd1963da6d",
+    "status": "in_process",
+    "subtotal_cents": 292200,
+    "discount_cents": 0,
+    "total_cents": 270600,
+    "header_snapshot": null
+  },
+  "items": [
+    {
+      "id": "9aa529bb-117e-4836-af79-29dbc1ae8e13",
+      "term_months": 6,
+      "coupon_discount_cents": 0,
+      "item_snapshot": "83351ac4-9ce0-4abf-8770-54bf35502e16",
+      "variant_snapshot": "83351ac4-9ce0-4abf-8770-54bf35502e16"
+    },
+    {
+      "id": "85450778-1f15-4f79-9a7c-dcfe93fdb637",
+      "term_months": 12,
+      "coupon_discount_cents": 21600,
+      "item_snapshot": "e264255b-ea7d-4704-bd31-8c7036ada25a",
+      "variant_snapshot": "e264255b-ea7d-4704-bd31-8c7036ada25a"
+    },
+    {
+      "id": "767efa33-433e-4aea-adf3-3919cd97f63c",
+      "term_months": 12,
+      "coupon_discount_cents": 0,
+      "item_snapshot": "1d7594af-404d-4114-bd2e-e32426b3d6c6",
+      "variant_snapshot": "1d7594af-404d-4114-bd2e-e32426b3d6c6"
+    }
+  ],
+  "subscription_count": 3,
+  "task_count": 3,
+  "coupon": {
+    "status": "redeemed",
+    "reserved_at": "2026-07-11T08:16:47.932Z",
+    "redeemed_at": "2026-07-11T08:17:19.023Z",
+    "code": "QA-B1-TEST15",
+    "max_redemptions": 5,
+    "redemptions_used": 2
+  },
+  "payments": [
+    {
+      "id": "113d889c-ffa2-4c61-ae5d-b40994ce8de1",
+      "status": "succeeded",
+      "provider": "stripe",
+      "provider_payment_id": "pi_evt_QA_B1_1783757838901",
+      "amount": "2706.00000000",
+      "currency": "usd"
+    }
+  ],
+  "pass": true
+}

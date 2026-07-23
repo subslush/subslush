@@ -20,6 +20,12 @@ export interface ServicePlanDetails {
   plan: ServicePlan;
   variant_id?: string;
   product_id?: string;
+  catalog_mode?: 'fixed_product' | 'legacy_variant';
+  duration_months?: number | null;
+  price_cents?: number;
+  comparison_price_cents?: number | null;
+  pricing_snapshot_id?: string;
+  availability?: 'available';
   product_slug?: string;
   productSlug?: string;
   product_name?: string;
@@ -40,14 +46,18 @@ export interface ServicePlanDetails {
 
 // Request types
 export interface ValidatePurchaseRequest {
-  variant_id: string;
+  product_id: string;
+  variant_id?: string | null;
   duration_months?: number;
+  pricing_snapshot_id?: string | null;
   coupon_code?: string;
 }
 
 export interface PurchaseRequest {
-  variant_id: string;
+  product_id: string;
+  variant_id?: string | null;
   duration_months?: number;
+  pricing_snapshot_id?: string | null;
   auto_renew?: boolean;
   coupon_code?: string;
 }
@@ -70,7 +80,8 @@ export interface AddToCartTrackResponse {
 
 export interface CartPricingPreviewItemRequest {
   cart_item_id: string;
-  variant_id: string;
+  variant_id?: string | null;
+  product_id?: string | null;
   term_months?: number | null;
   quantity?: number | null;
 }
@@ -82,17 +93,26 @@ export interface CartPricingPreviewRequest {
 
 export interface CartPricingPreviewItemResponse {
   cart_item_id: string;
-  variant_id: string;
+  variant_id: string | null;
+  product_id: string;
+  duration_months: number;
   term_months: number;
   quantity: number;
+  unit_price_cents: number;
+  line_total_cents: number;
   unit_price: number;
   line_total: number;
   currency: string;
+  pricing_snapshot_id: string;
+  catalog_mode: 'fixed_product' | 'legacy_variant';
 }
 
 export interface CartPricingPreviewSkippedItem {
   cart_item_id: string;
-  variant_id: string;
+  product_id?: string | null;
+  variant_id?: string | null;
+  code: string;
+  message: string;
   reason: string;
 }
 
@@ -157,11 +177,31 @@ export interface PurchaseResponse {
 export interface AvailablePlansResponse {
   services: Record<ServiceType, ServicePlanDetails[]>;
   total_plans: number;
+  catalog_diagnostics?: CatalogDiagnostic[];
+}
+
+export interface CatalogDiagnostic {
+  code:
+    | 'missing_service_type'
+    | 'missing_plan_code'
+    | 'legacy_terms_unavailable'
+    | 'price_unavailable'
+    | 'invalid_fixed_catalog';
+  product_id: string;
+  listing_id: string;
+  catalog_mode: 'legacy_variant' | 'fixed_product';
+  message: string;
 }
 
 export interface ProductListing {
   product_id: string;
   variant_id?: string | null;
+  catalog_mode: 'fixed_product' | 'legacy_variant';
+  duration_months: number;
+  price_cents: number;
+  comparison_price_cents?: number | null;
+  pricing_snapshot_id: string;
+  availability: 'available';
   slug: string;
   name: string;
   description: string;
@@ -185,6 +225,7 @@ export interface ProductListing {
 export interface AvailableProductsResponse {
   products: ProductListing[];
   total_products: number;
+  catalog_diagnostics?: CatalogDiagnostic[];
 }
 
 export interface ProductTermOption {
@@ -205,7 +246,23 @@ export interface ProductVariantOption {
   badges?: string[];
   base_price: number;
   currency: string;
+  duration_months?: number | null;
+  price_cents?: number | null;
+  comparison_price_cents?: number | null;
+  pricing_snapshot_id?: string | null;
   term_options: ProductTermOption[];
+}
+
+export interface ProductOffer {
+  product_id: string;
+  variant_id?: string | null;
+  duration_months: number;
+  price_cents: number;
+  comparison_price_cents?: number | null;
+  currency: string;
+  pricing_snapshot_id: string;
+  availability: 'available';
+  catalog_mode: 'fixed_product' | 'legacy_variant';
 }
 
 export interface ProductDetail {
@@ -220,6 +277,8 @@ export interface ProductDetail {
     category?: string | null;
     sub_category?: string | null;
     duration_months?: number | null;
+    fixed_price_cents?: number | null;
+    fixed_price_currency?: string | null;
     terms_conditions?: string[] | null;
     termsConditions?: string[] | null;
     upgrade_options?: UpgradeOptions | null;
@@ -239,6 +298,7 @@ export interface ProductDetail {
     extraFeatures?: string[] | null;
   };
   variants: ProductVariantOption[];
+  offer: ProductOffer;
   country_code?: string | null;
 }
 
@@ -351,7 +411,15 @@ export interface Subscription {
   activation_link_delivered_at?: string | null;
   order_id?: string | null;
   order_item_id?: string | null;
+  product_id?: string | null;
   product_variant_id?: string | null;
+  product_name_snapshot?: string | null;
+  product_slug_snapshot?: string | null;
+  duration_months_snapshot?: number | null;
+  unit_price_cents_snapshot?: number | null;
+  total_price_cents_snapshot?: number | null;
+  currency_snapshot?: string | null;
+  fulfillment_config_snapshot?: Record<string, unknown> | null;
   created_at: string;
   updated_at?: string;
 }

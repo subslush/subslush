@@ -1,0 +1,613 @@
+{
+  "probe": "01-inverse-claim-visibility",
+  "started_at": "2026-07-11T07:32:43.529Z",
+  "steps": {
+    "create-strict-product": {
+      "status": 201,
+      "body": {
+        "message": "Product created",
+        "data": {
+          "id": "2b839e13-cfdf-411e-87de-3b1e2854451e",
+          "name": "QA-A3-1783755163533 strict",
+          "slug": "qa-a3-1783755163533-strict",
+          "description": null,
+          "service_type": "qa_a3",
+          "logo_key": null,
+          "category": null,
+          "sub_category": null,
+          "default_currency": "USD",
+          "max_subscriptions": null,
+          "duration_months": null,
+          "fixed_price_cents": null,
+          "fixed_price_currency": null,
+          "status": "inactive",
+          "metadata": {
+            "upgrade_options": {
+              "strict_rules": true,
+              "strict_rules_text": "QA-A3-1783755163533 rules",
+              "strict_rules_version": 1,
+              "activation_link_handshake": true,
+              "activation_instructions_template": "QA-A3-1783755163533 instructions"
+            }
+          },
+          "created_at": "2026-07-11T07:32:43.589Z",
+          "updated_at": "2026-07-11T07:32:43.589Z"
+        }
+      }
+    },
+    "create-variant": {
+      "status": 201,
+      "body": {
+        "message": "Variant created",
+        "data": {
+          "id": "48efcd81-7128-4839-bfdd-1768d148e89d",
+          "product_id": "2b839e13-cfdf-411e-87de-3b1e2854451e",
+          "name": "QA-A3-1783755163533 variant",
+          "variant_code": "QA-A3-1783755163533-V",
+          "description": null,
+          "service_plan": "qa",
+          "is_active": true,
+          "sort_order": 0,
+          "metadata": null,
+          "created_at": "2026-07-11T07:32:43.639Z",
+          "updated_at": "2026-07-11T07:32:43.639Z"
+        }
+      }
+    },
+    "create-term": {
+      "status": 201,
+      "body": {
+        "message": "Variant term created",
+        "data": {
+          "id": "ed4d4886-815e-4f65-bccb-eb976ddd02f2",
+          "product_variant_id": "48efcd81-7128-4839-bfdd-1768d148e89d",
+          "months": 6,
+          "discount_percent": "0.00",
+          "is_active": true,
+          "is_recommended": false,
+          "sort_order": 0,
+          "metadata": null,
+          "created_at": "2026-07-11T07:32:43.654Z",
+          "updated_at": "2026-07-11T07:32:43.654Z"
+        }
+      }
+    },
+    "publish-price": {
+      "status": 201,
+      "body": {
+        "message": "Current price set",
+        "data": {
+          "id": "8bf0ec40-afbc-4311-bf17-216da21d62e7",
+          "product_variant_id": "48efcd81-7128-4839-bfdd-1768d148e89d",
+          "price_cents": 1000,
+          "currency": "USD",
+          "starts_at": "2026-07-11T07:32:43.667Z",
+          "ends_at": null,
+          "metadata": {
+            "source": "catalog_current_price",
+            "snapshot_id": "2054f187-0e5f-4b38-8a62-2e0c251636ec",
+            "settlement_currency": "USD"
+          },
+          "created_at": "2026-07-11T07:32:43.667Z"
+        }
+      }
+    },
+    "activate-product": {
+      "status": 200,
+      "body": {
+        "message": "Product updated",
+        "data": {
+          "id": "2b839e13-cfdf-411e-87de-3b1e2854451e",
+          "name": "QA-A3-1783755163533 strict",
+          "slug": "qa-a3-1783755163533-strict",
+          "description": null,
+          "service_type": "qa_a3",
+          "logo_key": null,
+          "category": null,
+          "sub_category": null,
+          "default_currency": "USD",
+          "max_subscriptions": null,
+          "duration_months": null,
+          "fixed_price_cents": null,
+          "fixed_price_currency": null,
+          "status": "active",
+          "metadata": {
+            "upgrade_options": {
+              "strict_rules": true,
+              "strict_rules_text": "QA-A3-1783755163533 rules",
+              "strict_rules_version": 1,
+              "activation_link_handshake": true,
+              "activation_instructions_template": "QA-A3-1783755163533 instructions"
+            }
+          },
+          "created_at": "2026-07-11T07:32:43.589Z",
+          "updated_at": "2026-07-11T07:32:43.702Z"
+        }
+      }
+    },
+    "identity-qa-a3-1783755163533-inverse@example.test": {
+      "status": 200,
+      "body": {
+        "data": {
+          "guest_identity_id": "751bf5db-53f6-4559-a496-6f9c94b010d3"
+        }
+      }
+    },
+    "draft-qa-a3-1783755163533-inverse@example.test": {
+      "status": 200,
+      "body": {
+        "data": {
+          "checkout_session_key": "3a2699baf9e3f80fa4bd4d6a72200979847430ed2b8b3d14",
+          "order_id": "df633a9e-9fe4-4544-8acf-8190a9065bfe",
+          "pricing": {
+            "items": [
+              {
+                "variant_id": "48efcd81-7128-4839-bfdd-1768d148e89d",
+                "product_id": "2b839e13-cfdf-411e-87de-3b1e2854451e",
+                "product_name": "QA-A3-1783755163533 strict",
+                "service_type": "qa_a3",
+                "variant_name": "QA-A3-1783755163533 variant",
+                "service_plan": "qa",
+                "pricing_snapshot_id": "2054f187-0e5f-4b38-8a62-2e0c251636ec",
+                "term_months": 6,
+                "currency": "USD",
+                "base_price_cents": 1000,
+                "discount_percent": 0,
+                "term_subtotal_cents": 6000,
+                "term_discount_cents": 0,
+                "term_total_cents": 6000,
+                "coupon_discount_cents": 0,
+                "final_total_cents": 6000,
+                "settlement_currency": "USD",
+                "settlement_base_price_cents": 1000,
+                "settlement_term_subtotal_cents": 6000,
+                "settlement_term_discount_cents": 0,
+                "settlement_term_total_cents": 6000,
+                "settlement_coupon_discount_cents": 0,
+                "settlement_final_total_cents": 6000
+              }
+            ],
+            "pricing_snapshot_id": "2054f187-0e5f-4b38-8a62-2e0c251636ec",
+            "display_currency": "USD",
+            "settlement_currency": "USD",
+            "order_subtotal_cents": 6000,
+            "order_discount_cents": 0,
+            "order_coupon_discount_cents": 0,
+            "order_total_cents": 6000,
+            "order_settlement_total_cents": 6000,
+            "normalized_coupon_code": null
+          }
+        }
+      }
+    },
+    "signed-webhook-inverse": {
+      "status": 200,
+      "body": {
+        "received": true
+      }
+    },
+    "paid-order-detail": {
+      "status": 200,
+      "body": {
+        "data": {
+          "order": {
+            "id": "df633a9e-9fe4-4544-8acf-8190a9065bfe",
+            "user_id": "cbab9248-a4a2-43fb-ab4a-ed639063960e",
+            "status": "in_process",
+            "status_reason": "payment_succeeded",
+            "currency": "USD",
+            "subtotal_cents": 6000,
+            "discount_cents": 0,
+            "total_cents": 6000,
+            "paid_with_credits": false,
+            "auto_renew": false,
+            "payment_provider": "stripe",
+            "payment_reference": "pi_QA_A3_inverse_1783755163779",
+            "metadata": {
+              "checkout_source": "guest",
+              "display_currency": "USD",
+              "guest_identity_id": "751bf5db-53f6-4559-a496-6f9c94b010d3",
+              "display_total_cents": 6000,
+              "pricing_snapshot_id": "2054f187-0e5f-4b38-8a62-2e0c251636ec",
+              "settlement_currency": "USD",
+              "settlement_total_cents": 6000,
+              "payment_confirmation_email_sent_at": "2026-07-11T07:32:44.002Z"
+            },
+            "created_at": "2026-07-11T07:32:43.724Z",
+            "updated_at": "2026-07-11T07:32:44.002Z",
+            "term_months": null,
+            "coupon_id": null,
+            "coupon_code": null,
+            "coupon_discount_cents": 0,
+            "contact_email": "qa-a3-1783755163533-inverse@example.test",
+            "checkout_session_key": "3a2699baf9e3f80fa4bd4d6a72200979847430ed2b8b3d14",
+            "checkout_mode": "session",
+            "stripe_session_id": "cs_QA_A3_inverse_1783755163779",
+            "pricing_snapshot_id": "2054f187-0e5f-4b38-8a62-2e0c251636ec",
+            "settlement_currency": "USD",
+            "settlement_total_cents": 6000,
+            "account_email": "guest+751bf5db-53f6-4559-a496-6f9c94b010d3@guest.local",
+            "account_status": "active",
+            "display_name": null,
+            "last_login": null,
+            "is_guest": true,
+            "guest_claimed_at": null
+          },
+          "customer": {
+            "account_email": "guest+751bf5db-53f6-4559-a496-6f9c94b010d3@guest.local",
+            "delivery_email": "qa-a3-1783755163533-inverse@example.test",
+            "status": "active",
+            "display_name": null,
+            "last_login": null,
+            "guest": true,
+            "guest_claimed_at": null
+          },
+          "items": [
+            {
+              "order_item_id": "7cc3c02a-0a97-40a5-a282-849c0b470353",
+              "product_name": "QA-A3-1783755163533 strict",
+              "variant_name": "QA-A3-1783755163533 variant",
+              "term_months": 6,
+              "total_price_cents": 6000,
+              "currency": "USD",
+              "coupon_discount_cents": 0,
+              "subscription_id": "4d9c233a-c4d7-4115-b511-d9b4450c8778",
+              "status": "pending",
+              "delivered_at": null,
+              "delivery_email_sent_at": null,
+              "activation_handshake_state": "none",
+              "product_metadata": {
+                "upgrade_options": {
+                  "strict_rules": true,
+                  "strict_rules_text": "QA-A3-1783755163533 rules",
+                  "strict_rules_version": 1,
+                  "activation_link_handshake": true,
+                  "activation_instructions_template": "QA-A3-1783755163533 instructions"
+                }
+              }
+            }
+          ],
+          "payments": [
+            {
+              "id": "f1d99547-c7b5-4301-b527-b5cdf10c34bb",
+              "provider": "stripe",
+              "provider_payment_id": "pi_QA_A3_inverse_1783755163779",
+              "status": "succeeded",
+              "provider_status": "succeeded",
+              "amount": "60.00000000",
+              "currency": "usd",
+              "created_at": "2026-07-11T07:32:43.807Z",
+              "updated_at": "2026-07-11T07:32:43.813Z",
+              "expires_at": null,
+              "payment_ref": "pi_QA_A3_inverse_1783755163779",
+              "amount_cents": 6000
+            }
+          ],
+          "payment_events": [
+            {
+              "id": "ac1b7445-142c-4c5e-acf9-cb8898ec6def",
+              "provider": "stripe",
+              "event_id": "evt_QA_A3_inverse_1783755163779",
+              "event_type": "checkout.session.completed",
+              "payment_id": null,
+              "created_at": "2026-07-11T07:32:43.790Z"
+            }
+          ],
+          "evidence": [],
+          "emails": {
+            "order_delivery_sent_at": null,
+            "item_delivery_sent": []
+          },
+          "guest_claim": {
+            "needed": true,
+            "claimed_at": null,
+            "tokens": [
+              {
+                "id": "3115c0bc-77dc-430b-9ff4-ba5d08e63f0b",
+                "expires_at": "2026-07-14T07:32:43.997Z",
+                "used_at": null,
+                "created_at": "2026-07-11T07:32:43.997Z"
+              }
+            ]
+          },
+          "open_fulfillment": [
+            {
+              "id": "217ea0cf-b9f7-4f52-b349-53fa6dabc0ef",
+              "subscription_id": "4d9c233a-c4d7-4115-b511-d9b4450c8778",
+              "task_type": "credential_provision",
+              "due_date": "2026-07-14T07:32:43.837Z",
+              "is_issue": false
+            }
+          ]
+        }
+      }
+    },
+    "save-credentials": {
+      "status": 200,
+      "body": {
+        "message": "Subscription credentials updated",
+        "data": {
+          "id": "4d9c233a-c4d7-4115-b511-d9b4450c8778",
+          "user_id": "cbab9248-a4a2-43fb-ab4a-ed639063960e",
+          "service_type": "qa_a3",
+          "service_plan": "qa",
+          "start_date": "2026-07-11T07:32:43.826Z",
+          "term_start_at": null,
+          "end_date": "2027-01-11T08:32:43.826Z",
+          "renewal_date": "2027-01-04T08:32:43.826Z",
+          "status": "pending",
+          "metadata": {
+            "auto_renew": false
+          },
+          "order_id": "df633a9e-9fe4-4544-8acf-8190a9065bfe",
+          "order_item_id": "7cc3c02a-0a97-40a5-a282-849c0b470353",
+          "product_variant_id": "48efcd81-7128-4839-bfdd-1768d148e89d",
+          "product_name": null,
+          "variant_name": null,
+          "price_cents": 6000,
+          "base_price_cents": 1000,
+          "discount_percent": 0,
+          "term_months": 6,
+          "currency": "USD",
+          "auto_renew": false,
+          "next_billing_at": null,
+          "renewal_method": "stripe",
+          "billing_payment_method_id": null,
+          "auto_renew_enabled_at": null,
+          "auto_renew_disabled_at": null,
+          "status_reason": "payment_succeeded",
+          "delivered_at": null,
+          "delivered_by": null,
+          "delivery_email_sent_at": null,
+          "activation_handshake_state": "none",
+          "activation_instructions_delivered_at": null,
+          "activation_customer_ready_at": null,
+          "activation_link_delivered_at": null,
+          "activation_handshake_restarted_at": null,
+          "cancellation_requested_at": null,
+          "cancellation_reason": null,
+          "referral_reward_id": null,
+          "pre_launch_reward_id": null,
+          "created_at": "2026-07-11T07:32:43.828Z"
+        }
+      }
+    },
+    "deliver": {
+      "status": 200,
+      "body": {
+        "message": "Order item delivered",
+        "data": {
+          "order_id": "df633a9e-9fe4-4544-8acf-8190a9065bfe",
+          "subscription_id": "4d9c233a-c4d7-4115-b511-d9b4450c8778",
+          "order_status": "delivered"
+        }
+      }
+    },
+    "register-Inverse": {
+      "status": 202,
+      "body": {
+        "message": "Registration successful. Please verify your email before logging in.",
+        "user": {
+          "id": "e38f12db-a4c0-4811-ac4e-f774b3f9fc16",
+          "email": "qa-a3-1783755163533-inverse@example.test",
+          "role": "user",
+          "firstName": "QA",
+          "lastName": "Inverse",
+          "createdAt": "2026-07-11T07:32:44.511481Z"
+        },
+        "requiresEmailVerification": true
+      }
+    },
+    "claim": {
+      "status": 200,
+      "body": {
+        "data": {
+          "guest_identity_id": "751bf5db-53f6-4559-a496-6f9c94b010d3",
+          "reassigned": true,
+          "already_claimed": false
+        }
+      }
+    },
+    "dashboard-orders-list": {
+      "status": 200,
+      "body": {
+        "data": {
+          "orders": [
+            {
+              "id": "df633a9e-9fe4-4544-8acf-8190a9065bfe",
+              "user_id": "e38f12db-a4c0-4811-ac4e-f774b3f9fc16",
+              "status": "delivered",
+              "status_reason": "order_delivered",
+              "currency": "USD",
+              "subtotal_cents": 6000,
+              "discount_cents": 0,
+              "coupon_id": null,
+              "coupon_code": null,
+              "coupon_discount_cents": 0,
+              "total_cents": 6000,
+              "pricing_snapshot_id": "2054f187-0e5f-4b38-8a62-2e0c251636ec",
+              "settlement_currency": "USD",
+              "settlement_total_cents": 6000,
+              "term_months": null,
+              "paid_with_credits": false,
+              "auto_renew": false,
+              "contact_email": "qa-a3-1783755163533-inverse@example.test",
+              "checkout_session_key": "3a2699baf9e3f80fa4bd4d6a72200979847430ed2b8b3d14",
+              "checkout_mode": "session",
+              "stripe_session_id": "cs_QA_A3_inverse_1783755163779",
+              "payment_provider": "stripe",
+              "payment_reference": "pi_QA_A3_inverse_1783755163779",
+              "metadata": {
+                "checkout_source": "guest",
+                "display_currency": "USD",
+                "guest_identity_id": "751bf5db-53f6-4559-a496-6f9c94b010d3",
+                "display_total_cents": 6000,
+                "pricing_snapshot_id": "2054f187-0e5f-4b38-8a62-2e0c251636ec",
+                "settlement_currency": "USD",
+                "settlement_total_cents": 6000,
+                "order_delivered_email_sent_at": "2026-07-11T07:32:44.106Z",
+                "order_delivery_email_last_error": null,
+                "order_delivery_email_last_reason": null,
+                "order_delivery_email_last_result": "success",
+                "order_delivery_email_last_context": "status_update",
+                "payment_confirmation_email_sent_at": "2026-07-11T07:32:44.002Z",
+                "order_delivery_email_last_attempt_at": "2026-07-11T07:32:44.106Z"
+              },
+              "created_at": "2026-07-11T07:32:43.724Z",
+              "updated_at": "2026-07-11T07:32:44.107Z",
+              "items": [
+                {
+                  "id": "7cc3c02a-0a97-40a5-a282-849c0b470353",
+                  "order_id": "df633a9e-9fe4-4544-8acf-8190a9065bfe",
+                  "product_variant_id": "48efcd81-7128-4839-bfdd-1768d148e89d",
+                  "product_name": "QA-A3-1783755163533 strict",
+                  "variant_name": "QA-A3-1783755163533 variant",
+                  "product_logo_key": null,
+                  "quantity": 1,
+                  "unit_price_cents": 6000,
+                  "base_price_cents": 1000,
+                  "discount_percent": "0.00",
+                  "term_months": 6,
+                  "auto_renew": false,
+                  "coupon_discount_cents": 0,
+                  "currency": "USD",
+                  "total_price_cents": 6000,
+                  "settlement_currency": "USD",
+                  "settlement_unit_price_cents": 6000,
+                  "settlement_base_price_cents": 1000,
+                  "settlement_coupon_discount_cents": 0,
+                  "settlement_total_price_cents": 6000,
+                  "description": "Subscription: qa_a3 qa (6 months)",
+                  "metadata": {
+                    "product_id": "2b839e13-cfdf-411e-87de-3b1e2854451e",
+                    "catalog_mode": "variant",
+                    "service_plan": "qa",
+                    "service_type": "qa_a3",
+                    "duration_months": 6,
+                    "upgrade_options": {
+                      "strict_rules": true,
+                      "allow_new_account": false,
+                      "allow_own_account": false,
+                      "strict_rules_text": "QA-A3-1783755163533 rules",
+                      "strict_rules_version": 1,
+                      "manual_monthly_upgrade": false,
+                      "activation_link_handshake": true,
+                      "activation_instructions_template": "QA-A3-1783755163533 instructions"
+                    },
+                    "base_price_cents": 1000,
+                    "discount_percent": 0,
+                    "term_total_cents": 6000,
+                    "final_total_cents": 6000,
+                    "total_price_cents": 6000,
+                    "product_variant_id": "48efcd81-7128-4839-bfdd-1768d148e89d",
+                    "pricing_snapshot_id": "2054f187-0e5f-4b38-8a62-2e0c251636ec",
+                    "settlement_currency": "USD",
+                    "term_discount_cents": 0,
+                    "term_subtotal_cents": 6000,
+                    "pricing_reference_id": "48efcd81-7128-4839-bfdd-1768d148e89d",
+                    "settlement_base_price_cents": 1000,
+                    "settlement_term_total_cents": 6000,
+                    "settlement_total_price_cents": 6000,
+                    "settlement_term_discount_cents": 0,
+                    "settlement_term_subtotal_cents": 6000,
+                    "settlement_coupon_discount_cents": 0
+                  },
+                  "created_at": "2026-07-11T07:32:43.724Z"
+                }
+              ],
+              "payment_method_badge": {
+                "type": "stripe",
+                "label": "Stripe"
+              }
+            }
+          ],
+          "pagination": {
+            "limit": 100,
+            "offset": 0,
+            "total": 1,
+            "hasMore": false
+          }
+        }
+      }
+    },
+    "dashboard-order-subscriptions": {
+      "status": 200,
+      "body": {
+        "data": {
+          "subscriptions": [
+            {
+              "id": "4d9c233a-c4d7-4115-b511-d9b4450c8778",
+              "user_id": "e38f12db-a4c0-4811-ac4e-f774b3f9fc16",
+              "service_type": "qa_a3",
+              "service_plan": "qa",
+              "start_date": "2026-07-11T07:32:44.056Z",
+              "term_start_at": "2026-07-11T07:32:44.056Z",
+              "end_date": "2027-01-11T08:32:44.056Z",
+              "renewal_date": "2027-01-04T08:32:44.056Z",
+              "status": "active",
+              "metadata": {
+                "auto_renew": false
+              },
+              "order_id": "df633a9e-9fe4-4544-8acf-8190a9065bfe",
+              "order_item_id": "7cc3c02a-0a97-40a5-a282-849c0b470353",
+              "product_variant_id": "48efcd81-7128-4839-bfdd-1768d148e89d",
+              "product_name": "QA-A3-1783755163533 strict",
+              "variant_name": "QA-A3-1783755163533 variant",
+              "price_cents": 6000,
+              "base_price_cents": 1000,
+              "discount_percent": 0,
+              "term_months": 6,
+              "currency": "USD",
+              "auto_renew": false,
+              "next_billing_at": null,
+              "renewal_method": "stripe",
+              "billing_payment_method_id": null,
+              "auto_renew_enabled_at": null,
+              "auto_renew_disabled_at": null,
+              "status_reason": "QA-A3 inverse claim delivery",
+              "delivered_at": "2026-07-11T07:32:44.056Z",
+              "delivered_by": "c0dac6b4-c082-4fb6-9cd2-b6bc154160e2",
+              "delivery_email_sent_at": "2026-07-11T07:32:44.078Z",
+              "activation_handshake_state": "none",
+              "activation_instructions_delivered_at": null,
+              "activation_customer_ready_at": null,
+              "activation_link_delivered_at": null,
+              "activation_handshake_restarted_at": null,
+              "cancellation_requested_at": null,
+              "cancellation_reason": null,
+              "referral_reward_id": null,
+              "pre_launch_reward_id": null,
+              "created_at": "2026-07-11T07:32:43.828Z",
+              "product_options": {
+                "allow_new_account": false,
+                "allow_own_account": false,
+                "manual_monthly_upgrade": false,
+                "activation_link_handshake": true,
+                "activation_instructions_template": "QA-A3-1783755163533 instructions",
+                "strict_rules": true,
+                "strict_rules_text": "QA-A3-1783755163533 rules",
+                "strict_rules_version": 1
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "claim_email_evidence": {
+    "full_console_email_retained_in": "backend.log",
+    "token_length": 64
+  },
+  "db_state": [
+    {
+      "order_id": "df633a9e-9fe4-4544-8acf-8190a9065bfe",
+      "user_id": "e38f12db-a4c0-4811-ac4e-f774b3f9fc16",
+      "email": "qa-a3-1783755163533-inverse@example.test",
+      "is_guest": false,
+      "subscription_id": "4d9c233a-c4d7-4115-b511-d9b4450c8778",
+      "subscription_user_id": "e38f12db-a4c0-4811-ac4e-f774b3f9fc16"
+    }
+  ],
+  "finished_at": "2026-07-11T07:32:44.616Z",
+  "result": "PASS"
+}

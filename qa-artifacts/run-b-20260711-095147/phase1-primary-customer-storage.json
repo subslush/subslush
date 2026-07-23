@@ -1,0 +1,83 @@
+{
+  "cookies": [
+    {
+      "name": "preferred_currency",
+      "value": "USD",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1815293807,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ttp",
+      "value": "3GLjacZrIYbVW7KTdmfM6vefYNe",
+      "domain": ".tiktok.com",
+      "path": "/",
+      "expires": 1791533807.505296,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_tt_enable_cookie",
+      "value": "1",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791533807,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ttp",
+      "value": "01KX840837W2D2Z33326ADCMA9_.tt.3",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791533807,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ttcsid",
+      "value": "1783757807726::fkoAF-bGkVmwSs6CRLih.1.1783757807988.0::1.-496.0::176.2.1265.796::0.0.0",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791533807,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ttcsid_D8OLRUJC77UDGOQMBSF0",
+      "value": "1783757807724::uG1DpcUn17tTYchnMCyx.1.1783757807988.0",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791533807,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://127.0.0.1:3000",
+      "localStorage": [
+        {
+          "name": "subslush_cart",
+          "value": "[{\"id\":\"7827f724-79d9-4663-9b15-4c2496360fba|6|no-renew|upgrade_own_account\",\"serviceType\":\"streaming\",\"serviceName\":\"QA-B1 Streaming\",\"plan\":\"QA-B1 Streaming Plan\",\"price\":294,\"currency\":\"USD\",\"quantity\":1,\"description\":\"\",\"features\":[],\"variantId\":\"7827f724-79d9-4663-9b15-4c2496360fba\",\"termMonths\":6,\"autoRenew\":false,\"upgradeSelectionType\":\"upgrade_own_account\",\"ownAccountCredentialRequirement\":\"email_and_password\",\"manualMonthlyAcknowledged\":true},{\"id\":\"2119cf9b-6b8b-4492-bd19-9311d2f4fdad|12|no-renew|upgrade_new_account\",\"serviceType\":\"ai_tool\",\"serviceName\":\"QA-B1 AI Tool\",\"plan\":\"QA-B1 AI Annual\",\"price\":1440,\"currency\":\"USD\",\"quantity\":1,\"description\":\"\",\"features\":[],\"variantId\":\"2119cf9b-6b8b-4492-bd19-9311d2f4fdad\",\"termMonths\":12,\"autoRenew\":false,\"upgradeSelectionType\":\"upgrade_new_account\",\"manualMonthlyAcknowledged\":true},{\"id\":\"cdf7afec-195f-4c05-901b-92d0d9971192|12|no-renew|upgrade_new_account\",\"serviceType\":\"activation_link\",\"serviceName\":\"QA-B1 Link Product\",\"plan\":\"QA-B1 Link Annual\",\"price\":1188,\"currency\":\"USD\",\"quantity\":1,\"description\":\"\",\"features\":[],\"variantId\":\"cdf7afec-195f-4c05-901b-92d0d9971192\",\"termMonths\":12,\"autoRenew\":false,\"upgradeSelectionType\":\"upgrade_new_account\",\"manualMonthlyAcknowledged\":false}]"
+        },
+        {
+          "name": "checkout_draft_state",
+          "value": "{\"email\":\"qa-b1-final-1783757806872@example.test\",\"guestIdentityId\":\"f6d601f4-54d6-498b-948f-a70b9a16a6ec\",\"checkoutSessionKey\":\"5d72c8ee1d0e594dc37fb7814fc193493b333e5a7e766b8a\",\"orderId\":\"b4c15ca5-c4ec-4970-8467-2acd1963da6d\",\"appliedCouponCode\":\"qa-b1-test15\",\"selectedPaymentCountry\":null,\"selectedTaxResidence\":null,\"selectedPaymentProvider\":null,\"selectedAntomOptionId\":null,\"selectedPayopMethodId\":null,\"legalConsent\":{\"immediateFulfillmentConsent\":false,\"termsPolicyConsent\":false}}"
+        },
+        {
+          "name": "preferred_currency",
+          "value": "USD"
+        }
+      ]
+    }
+  ]
+}

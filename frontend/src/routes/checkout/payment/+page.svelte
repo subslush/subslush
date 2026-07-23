@@ -25,6 +25,7 @@
 	import HomeNav from '$lib/components/home/HomeNav.svelte';
 	import Footer from '$lib/components/home/Footer.svelte';
 	import { checkoutService } from '$lib/api/checkout.js';
+	import { paymentService } from '$lib/api/payments.js';
 	import { auth } from '$lib/stores/auth.js';
 	import type {
 		CheckoutDraftLegalConsentState,
@@ -35,8 +36,10 @@
 	import type {
 		CheckoutAntomOptionQuote,
 		CheckoutAntomResidence,
+		CheckoutNowPaymentsMinimumResponse,
 		CheckoutPayopMethodQuote
 	} from '$lib/types/checkout.js';
+	import type { Currency } from '$lib/types/payment.js';
 	import { formatCurrency, normalizeCurrencyCode } from '$lib/utils/currency.js';
 	import {
 		trackAddPaymentInfo,
@@ -90,7 +93,7 @@
 	let taxResidences: CheckoutAntomResidence[] = [];
 	let selectedTaxResidenceOption: CheckoutAntomResidence = defaultTaxResidence;
 	let selectedTaxResidenceLabel = 'Outside the EU | 0%';
-	let selectedProvider: 'antom' | 'payop' | 'qa' | null = null;
+	let selectedProvider: 'antom' | 'payop' | 'nowpayments' | 'qa' | null = null;
 	let selectedAntomOptionId: CheckoutAntomOptionQuote['option_id'] | null = null;
 	let selectedMethodId: number | null = null;
 	let selectedAntomOption: CheckoutAntomOptionQuote | null = null;
@@ -110,6 +113,16 @@
 	let taxTriggerElement: HTMLButtonElement | null = null;
 	let qaPaymentCompleted = false;
 	let qaPaymentEnabled = false;
+	let antomEnabled = false;
+	let payopEnabled = false;
+	let nowpaymentsEnabled = false;
+	let cryptoCurrenciesLoading = false;
+	let cryptoCurrenciesError = '';
+	let cryptoCurrencies: Currency[] = [];
+	let selectedCryptoCurrency = '';
+	let cryptoMinimumLoading = false;
+	let cryptoMinimumError = '';
+	let cryptoMinimum: CheckoutNowPaymentsMinimumResponse | null = null;
 
 	const resolveCountryLabel = (countryCode: string | null | undefined): string => {
 		const normalized = (countryCode || '').trim().toUpperCase();
@@ -205,6 +218,103 @@
 		selectedMethodId = null;
 		actionError = '';
 		persistDraftState();
+	};
+
+	const normalizeCryptoCurrency = (currency?: string | null): string =>
+		(currency || '').trim().toLowerCase();
+
+	const cryptoCurrencyLabel = (currency: Currency): string => {
+		const code = currency.code.trim().toUpperCase();
+		const network = (currency.network || currency.networkCode || '').trim();
+		return network ? `${code} · ${network}` : currency.name || code;
+	};
+
+	const sortCryptoCurrencies = (currencies: Currency[]): Currency[] => {
+		const priority = ['usdc', 'usdt', 'btc', 'eth'];
+		return [...currencies].sort((left, right) => {
+			const leftCode = normalizeCryptoCurrency(left.code);
+			const rightCode = normalizeCryptoCurrency(right.code);
+			const leftPriority = priority.indexOf(leftCode);
+			const rightPriority = priority.indexOf(rightCode);
+			const normalizedLeftPriority = leftPriority < 0 ? Number.MAX_SAFE_INTEGER : leftPriority;
+			const normalizedRightPriority = rightPriority < 0 ? Number.MAX_SAFE_INTEGER : rightPriority;
+			return (
+				normalizedLeftPriority - normalizedRightPriority ||
+				cryptoCurrencyLabel(left).localeCompare(cryptoCurrencyLabel(right))
+			);
+		});
+	};
+
+	const refreshCryptoMinimum = async (): Promise<void> => {
+		const accessPayload = getAccessPayload();
+		const payCurrency = normalizeCryptoCurrency(selectedCryptoCurrency);
+		if (!nowpaymentsEnabled || !accessPayload || !payCurrency) {
+			cryptoMinimum = null;
+			cryptoMinimumError = '';
+			return;
+		}
+
+		cryptoMinimumLoading = true;
+		cryptoMinimumError = '';
+		try {
+			const response = await checkoutService.getNowPaymentsMinimum({
+				...accessPayload,
+				pay_currency: payCurrency
+			});
+			cryptoMinimum = response;
+			displayCurrency = response.price_currency;
+			displayTotalCents = Math.round(response.order_total_amount * 100);
+		} catch (error) {
+			cryptoMinimum = null;
+			cryptoMinimumError =
+				error instanceof Error ? error.message : 'Unable to confirm the minimum crypto payment.';
+		} finally {
+			cryptoMinimumLoading = false;
+		}
+	};
+
+	const loadCryptoCurrencies = async (): Promise<void> => {
+		if (!nowpaymentsEnabled || cryptoCurrenciesLoading) {
+			return;
+		}
+		if (cryptoCurrencies.length > 0) {
+			await refreshCryptoMinimum();
+			return;
+		}
+
+		cryptoCurrenciesLoading = true;
+		cryptoCurrenciesError = '';
+		try {
+			const seen = new Set<string>();
+			cryptoCurrencies = sortCryptoCurrencies(
+				(await paymentService.getSupportedCurrencies()).filter((currency) => {
+					const code = normalizeCryptoCurrency(currency.code);
+					if (!code || seen.has(code)) {
+						return false;
+					}
+					seen.add(code);
+					return true;
+				})
+			);
+			if (!cryptoCurrencies.some((currency) => normalizeCryptoCurrency(currency.code) === normalizeCryptoCurrency(selectedCryptoCurrency))) {
+				selectedCryptoCurrency = cryptoCurrencies[0]?.code || '';
+			}
+			await refreshCryptoMinimum();
+		} catch (error) {
+			cryptoCurrenciesError =
+				error instanceof Error ? error.message : 'Unable to load cryptocurrency options.';
+		} finally {
+			cryptoCurrenciesLoading = false;
+		}
+	};
+
+	const selectNowPayments = (): void => {
+		selectedProvider = 'nowpayments';
+		selectedAntomOptionId = null;
+		selectedMethodId = null;
+		actionError = '';
+		persistDraftState();
+		void loadCryptoCurrencies();
 	};
 
 	const openTaxModal = (): void => {
@@ -347,7 +457,8 @@
 			appliedCouponCode,
 			selectedPaymentCountry: selectedCountry,
 			selectedTaxResidence,
-			selectedPaymentProvider: selectedProvider === 'qa' ? null : selectedProvider,
+			selectedPaymentProvider:
+				selectedProvider === 'antom' || selectedProvider === 'payop' ? selectedProvider : null,
 			selectedAntomOptionId,
 			selectedPayopMethodId: selectedMethodId,
 			legalConsent
@@ -402,14 +513,18 @@
 
 		try {
 			const [antomResult, payopResult] = await Promise.allSettled([
-				checkoutService.getAntomOptions({
-					...accessPayload,
-					residence_id: options?.taxResidenceId ?? selectedTaxResidence
-				}),
-				checkoutService.getPayopOptions({
-					...accessPayload,
-					country_code: options?.countryCode ?? selectedCountry ?? null
-				})
+				antomEnabled
+					? checkoutService.getAntomOptions({
+							...accessPayload,
+							residence_id: options?.taxResidenceId ?? selectedTaxResidence
+						})
+					: Promise.resolve(null),
+				payopEnabled
+					? checkoutService.getPayopOptions({
+							...accessPayload,
+							country_code: options?.countryCode ?? selectedCountry ?? null
+						})
+					: Promise.resolve(null)
 			]);
 
 			if (requestId !== requestCounter) {
@@ -419,7 +534,7 @@
 			let antomLoaded = false;
 			let payopLoaded = false;
 
-			if (antomResult.status === 'fulfilled') {
+			if (antomResult.status === 'fulfilled' && antomResult.value) {
 				const response = antomResult.value;
 				antomLoaded = true;
 				antomOptions = response.options;
@@ -439,7 +554,7 @@
 				}
 			}
 
-			if (payopResult.status === 'fulfilled') {
+			if (payopResult.status === 'fulfilled' && payopResult.value) {
 				const response = payopResult.value;
 				payopLoaded = true;
 				orderId = response.order_id;
@@ -467,8 +582,15 @@
 			const currentPayopSelection =
 				selectedProvider === 'payop' &&
 				methods.some((method) => method.method_id === selectedMethodId);
+			const currentNowPaymentsSelection =
+				selectedProvider === 'nowpayments' && nowpaymentsEnabled;
 
-			if (!currentAntomSelection && !currentPayopSelection && selectedProvider !== 'qa') {
+			if (
+				!currentAntomSelection &&
+				!currentPayopSelection &&
+				!currentNowPaymentsSelection &&
+				selectedProvider !== 'qa'
+			) {
 				if (antomOptions.length > 0) {
 					selectedProvider = 'antom';
 					selectedAntomOptionId = antomOptions[0]?.option_id ?? null;
@@ -477,6 +599,11 @@
 					selectedProvider = 'payop';
 					selectedMethodId = selectedMethodId ?? methods[0]?.method_id ?? null;
 					selectedAntomOptionId = null;
+				} else if (nowpaymentsEnabled) {
+					selectedProvider = 'nowpayments';
+					selectedAntomOptionId = null;
+					selectedMethodId = null;
+					void loadCryptoCurrencies();
 				} else if (qaPaymentEnabled) {
 					selectedProvider = 'qa';
 					selectedAntomOptionId = null;
@@ -488,7 +615,7 @@
 				}
 			}
 
-			if (!antomLoaded && !payopLoaded) {
+			if (!antomLoaded && !payopLoaded && !nowpaymentsEnabled && !qaPaymentEnabled) {
 				const antomMessage =
 					antomResult.status === 'rejected' && antomResult.reason instanceof Error
 						? antomResult.reason.message
@@ -560,6 +687,7 @@
 		if (
 			(selectedProvider === 'antom' && !chosenAntomOption) ||
 			(selectedProvider === 'payop' && !chosenPayopMethod) ||
+			(selectedProvider === 'nowpayments' && !normalizeCryptoCurrency(selectedCryptoCurrency)) ||
 			!selectedProvider
 		) {
 			actionError = 'Please choose an available payment method.';
@@ -582,7 +710,9 @@
 			const paymentTrackingKey =
 				selectedProvider === 'antom' && chosenAntomOption
 					? `antom_${chosenAntomOption.option_id}`
-					: `payop_${chosenPayopMethod?.method_id ?? 'unknown'}`;
+					: selectedProvider === 'nowpayments'
+						? `nowpayments_${normalizeCryptoCurrency(selectedCryptoCurrency)}`
+						: `payop_${chosenPayopMethod?.method_id ?? 'unknown'}`;
 			const addPaymentInfoEventId = trackingBase
 				? `${trackingBase}_add_payment_info_${paymentTrackingKey}`
 				: undefined;
@@ -601,6 +731,45 @@
 				orderId = response.order_id;
 				qaPaymentCompleted = true;
 				persistDraftState();
+				return;
+			}
+			if (selectedProvider === 'nowpayments') {
+				await refreshCryptoMinimum();
+				if (!cryptoMinimum) {
+					actionError = cryptoMinimumError || 'Unable to confirm the minimum crypto payment.';
+					return;
+				}
+				if (!cryptoMinimum.meets_minimum) {
+					actionError = 'This order is below the minimum amount for the selected cryptocurrency.';
+					return;
+				}
+
+				const response = await checkoutService.createNowPaymentsInvoice({
+					...accessPayload,
+					pay_currency: normalizeCryptoCurrency(selectedCryptoCurrency),
+					add_payment_info_event_id: addPaymentInfoEventId ?? null,
+					legal_consent
+				});
+				orderId = response.order_id;
+				persistDraftState();
+				const analyticsItems: AnalyticsItem[] = summaryItems.map((item, index) => ({
+					item_id: item.order_item_id,
+					item_name: item.label,
+					price: item.total_cents / 100,
+					currency: item.currency,
+					quantity: 1,
+					index
+				}));
+				if (analyticsItems.length > 0) {
+					trackAddPaymentInfo(
+						paymentTrackingKey,
+						summaryCurrency,
+						Number((summaryTotalCents / 100).toFixed(2)),
+						analyticsItems,
+						addPaymentInfoEventId
+					);
+				}
+				window.location.assign(response.invoice_url);
 				return;
 			}
 			const response =
@@ -652,7 +821,7 @@
 		antomOptions.find((option) => option.option_id === selectedAntomOptionId) ?? null;
 
 	$: selectedTaxResidenceOption = resolveTaxResidenceForDisplay(
-		selectedProvider === 'qa' ? null : selectedProvider,
+		selectedProvider === 'antom' || selectedProvider === 'payop' ? selectedProvider : null,
 		selectedAntomOption,
 		selectedTaxResidence,
 		taxResidences
@@ -667,16 +836,22 @@
 	$: summaryCurrency =
 		selectedProvider === 'antom' && selectedAntomOption
 			? selectedAntomOption.currency
+			: selectedProvider === 'nowpayments' && cryptoMinimum
+				? cryptoMinimum.price_currency
 			: selectedMethod?.processing_currency || displayCurrency;
 
 	$: summarySubtotalCents =
 		selectedProvider === 'antom' && selectedAntomOption
 			? selectedAntomOption.subtotal_cents
+			: selectedProvider === 'nowpayments' && cryptoMinimum
+				? Math.round(cryptoMinimum.order_total_amount * 100)
 			: (selectedMethod?.processing_subtotal_cents ?? displayTotalCents);
 
 	$: summaryFeeCents =
 		selectedProvider === 'antom' && selectedAntomOption
 			? selectedAntomOption.service_fee_cents
+			: selectedProvider === 'nowpayments'
+				? null
 			: (selectedMethod?.processing_fee_cents ?? null);
 
 	$: summaryTaxCents =
@@ -693,7 +868,7 @@
 					...item,
 					currency: selectedAntomOption.currency
 				}))
-			: selectedMethod
+		: selectedMethod
 				? selectedMethod.items.map((item) => ({
 						...item,
 						currency: selectedMethod.processing_currency
@@ -734,8 +909,15 @@
 		}
 
 		try {
-			qaPaymentEnabled = (await checkoutService.getQaPaymentConfig()).enabled === true;
+			const capabilities = await checkoutService.getPaymentCapabilities();
+			antomEnabled = capabilities.antom_enabled === true;
+			payopEnabled = capabilities.payop_enabled === true;
+			nowpaymentsEnabled = capabilities.nowpayments_enabled === true;
+			qaPaymentEnabled = capabilities.qa_payment_enabled === true;
 		} catch {
+			antomEnabled = false;
+			payopEnabled = false;
+			nowpaymentsEnabled = false;
 			qaPaymentEnabled = false;
 		}
 
@@ -859,7 +1041,7 @@
 										</button>
 									{/if}
 								</div>
-							{:else if antomOptions.length === 0 && methods.length === 0 && !qaPaymentEnabled}
+							{:else if antomOptions.length === 0 && methods.length === 0 && !nowpaymentsEnabled && !qaPaymentEnabled}
 								<div class="p-4">
 									<div
 										class="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 text-sm text-slate-600"
@@ -872,6 +1054,79 @@
 							{:else}
 								<div class="p-4">
 									<div class="space-y-3">
+										{#if nowpaymentsEnabled}
+											<button
+												type="button"
+												data-testid="nowpayments-payment-option"
+												class={`w-full rounded-2xl border px-4 py-4 text-left transition ${
+													selectedProvider === 'nowpayments'
+														? 'border-fuchsia-300 bg-fuchsia-50/40 shadow-sm'
+														: 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+												}`}
+												on:click={selectNowPayments}
+											>
+												<div class="flex items-start gap-3">
+													<div
+														class={`mt-1 h-4 w-4 rounded-full border ${
+															selectedProvider === 'nowpayments'
+																? 'border-fuchsia-500 ring-4 ring-fuchsia-100'
+																: 'border-slate-300'
+														}`}
+													></div>
+													<div class="min-w-0 flex-1">
+														<p class="text-sm font-semibold text-slate-900">Pay with cryptocurrency</p>
+														<p class="mt-1 text-xs text-slate-500">
+															Choose a coin and network. You will complete payment securely through NOWPayments.
+														</p>
+													</div>
+													<span class="text-xs font-semibold text-slate-700">Crypto</span>
+												</div>
+											</button>
+
+											{#if selectedProvider === 'nowpayments'}
+												<div class="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4">
+													<label class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500" for="nowpayments-currency">
+														Cryptocurrency and network
+													</label>
+													{#if cryptoCurrenciesLoading}
+														<div class="mt-2 inline-flex items-center gap-2 text-xs text-slate-500">
+															<Loader2 class="h-4 w-4 animate-spin" />
+															Loading cryptocurrency options...
+														</div>
+													{:else if cryptoCurrenciesError}
+														<p class="mt-2 text-xs text-rose-600">{cryptoCurrenciesError}</p>
+													{:else}
+														<select
+															id="nowpayments-currency"
+															class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+															bind:value={selectedCryptoCurrency}
+															on:change={() => {
+																cryptoMinimum = null;
+																cryptoMinimumError = '';
+																void refreshCryptoMinimum();
+															}}
+														>
+															{#each cryptoCurrencies as currency}
+																<option value={currency.code}>{cryptoCurrencyLabel(currency)}</option>
+															{/each}
+														</select>
+													{/if}
+
+													{#if cryptoMinimumLoading}
+														<div class="mt-2 inline-flex items-center gap-2 text-xs text-slate-500">
+															<Loader2 class="h-3.5 w-3.5 animate-spin" />
+															Checking the minimum payment amount...
+														</div>
+													{:else if cryptoMinimumError}
+														<p class="mt-2 text-xs text-rose-600">{cryptoMinimumError}</p>
+													{:else if cryptoMinimum && !cryptoMinimum.meets_minimum}
+														<p class="mt-2 text-xs text-amber-700">
+															This order is below the minimum amount for {selectedCryptoCurrency.toUpperCase()}. Choose another cryptocurrency or add more items.
+														</p>
+													{/if}
+												</div>
+											{/if}
+										{/if}
 										{#if qaPaymentEnabled}
 											<button
 												type="button"
@@ -1233,7 +1488,14 @@
 								void handleContinueToProvider();
 							}}
 							disabled={
-								!(selectedProvider === 'qa' || selectedAntomOption || selectedMethod) ||
+								!(
+									selectedProvider === 'qa' ||
+									selectedAntomOption ||
+									selectedMethod ||
+									(selectedProvider === 'nowpayments' &&
+										Boolean(normalizeCryptoCurrency(selectedCryptoCurrency)) &&
+										!cryptoMinimumLoading)
+								) ||
 								creatingSession ||
 								refreshingMethods ||
 								loading ||

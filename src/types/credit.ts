@@ -19,6 +19,7 @@ export interface CreditTransaction {
   paymentCurrency?: string | null;
   paymentAmount?: number | null;
   orderId?: string;
+  productId?: string;
   productVariantId?: string;
   priceCents?: number;
   currency?: string;

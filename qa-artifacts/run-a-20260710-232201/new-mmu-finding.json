@@ -1,0 +1,17 @@
+{
+  "subscription_id": "1c052bbf-165f-4d59-9319-78fee1ebe9c1",
+  "order_id": "99ae7177-e743-437c-9322-6983cba63192",
+  "customer_email": "guest+4663b540-8758-462f-a479-174b0b7f0719@guest.local",
+  "purchased_term_months": 6,
+  "interval_months": 1,
+  "immutable_anchor_currently_stored": "2026-07-10T21:28:58.584Z",
+  "inferred_initial_delivery_anchor": "2026-07-10T21:28:58.584Z",
+  "first_completed_task_created_at": "2026-07-10T21:28:58.934Z",
+  "completed_cycles": 1,
+  "highest_completed_cycle_index": 1,
+  "projected_total_months_if_unfixed": 11,
+  "projected_excess_months_if_unfixed": 5,
+  "flags": [
+    "repeat_schedule_can_overdeliver_by_5_months"
+  ]
+}

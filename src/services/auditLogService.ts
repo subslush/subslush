@@ -75,9 +75,11 @@ class AuditLogService {
 
       await pool.query(
         `INSERT INTO credential_reveal_audit_logs
-         (user_id, subscription_id, success, failure_reason, metadata,
+         (user_id, subscription_id, product_id, success, failure_reason, metadata,
           ip_address, user_agent, request_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         SELECT $1, $2, s.product_id, $3, $4, $5, $6, $7, $8
+         FROM (SELECT 1) seed
+         LEFT JOIN subscriptions s ON s.id = $2`,
         [
           entry.userId || null,
           entry.subscriptionId || null,

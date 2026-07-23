@@ -1,0 +1,123 @@
+{
+  "cookies": [
+    {
+      "name": "auth_token",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJmYzc4ZmZlYi1hYTliLTQyZmItODI2Ny1kNDQzMjViMmYyMjYiLCJlbWFpbCI6InFhLWIyLWd1ZXN0LTE3ODM3OTI5NTQxODRAZXhhbXBsZS50ZXN0Iiwicm9sZSI6InVzZXIiLCJpYXQiOjE3ODM3OTM4MzgsImV4cCI6MTc4MzgwMTAzOCwiYXVkIjoic3Vic2NyaXB0aW9uLXBsYXRmb3JtLXVzZXJzIiwiaXNzIjoic3Vic2NyaXB0aW9uLXBsYXRmb3JtIn0.e7L_fiHqN4SrihLT1czHTaqRt44pCeAtqda_nhWCd7U",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "csrf_token",
+      "value": "qa-b2-csrf",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "preferred_currency",
+      "value": "USD",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1815330174,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "profile_cache",
+      "value": "eyJpZCI6ImZjNzhmZmViLWFhOWItNDJmYi04MjY3LWQ0NDMyNWIyZjIyNiIsImVtYWlsIjoicWEtYjItZ3Vlc3QtMTc4Mzc5Mjk1NDE4NEBleGFtcGxlLnRlc3QiLCJyb2xlIjoidXNlciIsImRpc3BsYXlOYW1lIjpudWxsfQ%3D%3D",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1783794471.793228,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Strict"
+    },
+    {
+      "name": "_ttp",
+      "value": "3GMvIZ0wWx1avYn7anAFCBAkr2N",
+      "domain": ".tiktok.com",
+      "path": "/",
+      "expires": 1791570174.353251,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_tt_enable_cookie",
+      "value": "1",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791570174,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ttp",
+      "value": "01KX96P0DZV7515RK9DMQJTCEN_.tt.3",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791570174,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "crisp-client%2Fsession%2F68cb8ad9-b3c8-43e9-9bac-0634574c7a83",
+      "value": "session_83efda24-00aa-4432-bd53-fcdc52a07766",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1799562174,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ttcsid",
+      "value": "1783794172358::cH47f17Y8XF6tD7hfUMD.1.1783794174587.0::1.1768.2021::1114.2.233.744::0.0.0",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791570174,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ttcsid_D8OLRUJC77UDGOQMBSF0",
+      "value": "1783794172357::J_8r_7nHnAcLEkrVDg7v.1.1783794174587.1",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791570174,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://127.0.0.1:3000",
+      "localStorage": [
+        {
+          "name": "crisp-client/session/68cb8ad9-b3c8-43e9-9bac-0634574c7a83",
+          "value": "session_83efda24-00aa-4432-bd53-fcdc52a07766"
+        },
+        {
+          "name": "crisp-client/session/68cb8ad9-b3c8-43e9-9bac-0634574c7a83:e",
+          "value": "1783809942631"
+        },
+        {
+          "name": "preferred_currency",
+          "value": "USD"
+        }
+      ]
+    }
+  ]
+}

@@ -1132,6 +1132,7 @@ export class OrderRiskService {
       await getDatabasePool().query(
         `INSERT INTO admin_tasks (
            subscription_id,
+           product_id,
            user_id,
            order_id,
            task_type,
@@ -1142,7 +1143,13 @@ export class OrderRiskService {
            sla_due_at,
            is_issue
          )
-         SELECT NULL, $1, $2, $3, NOW() + ($4)::interval, $5, $6, $7,
+         SELECT NULL,
+                (SELECT CASE WHEN COUNT(DISTINCT COALESCE(oi.product_id, pv.product_id)) = 1
+                        THEN (ARRAY_AGG(DISTINCT COALESCE(oi.product_id, pv.product_id)))[1] END
+                 FROM order_items oi
+                 LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
+                 WHERE oi.order_id = $2),
+                $1, $2, $3, NOW() + ($4)::interval, $5, $6, $7,
                 NOW() + ($4)::interval, TRUE
          WHERE NOT EXISTS (
            SELECT 1

@@ -1,0 +1,1 @@
+{"status":"healthy","timestamp":"2026-07-12T23:21:24.133Z","uptime":22.107972544,"database":{"status":"connected"},"redis":{"status":"connected","latency":1.224889},"redisRateLimit":{"status":"connected","latency":0.781515},"memory":{"rss":261177344,"heapTotal":37351424,"heapUsed":34438368,"external":149720442,"arrayBuffers":150399682},"version":"v22.19.0"}

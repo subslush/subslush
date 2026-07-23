@@ -5,7 +5,9 @@ export interface CheckoutIdentityResponse {
 }
 
 export interface CheckoutDraftItemInput {
-  variant_id: string;
+  variant_id?: string | null;
+  product_id?: string | null;
+  pricing_snapshot_id?: string | null;
   term_months?: number | null;
   auto_renew?: boolean | null;
   selection_type?: UpgradeSelectionType | null;
@@ -28,10 +30,15 @@ export interface CheckoutPricingSummaryItem {
   variant_id: string;
   product_id: string;
   product_name: string;
+  duration_months: number;
+  unit_price_cents: number;
+  total_price_cents: number;
+  catalog_mode: 'fixed_product' | 'legacy_variant';
   service_type?: string | null;
   variant_name?: string | null;
   service_plan?: string | null;
   pricing_snapshot_id: string;
+  catalog_pricing_snapshot_id: string;
   term_months: number;
   currency: string;
   base_price_cents: number;
@@ -156,6 +163,13 @@ export interface CheckoutQaCompleteResponse {
 
 export interface CheckoutQaPaymentConfigResponse {
   enabled: boolean;
+}
+
+export interface CheckoutPaymentCapabilitiesResponse {
+  antom_enabled: boolean;
+  payop_enabled: boolean;
+  nowpayments_enabled: boolean;
+  qa_payment_enabled: boolean;
 }
 
 export interface CheckoutNowPaymentsInvoiceRequest {

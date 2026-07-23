@@ -1,0 +1,25 @@
+{
+  "probe": "03-expiry-release-reuse",
+  "started_at": "2026-07-11T07:38:43.964Z",
+  "steps": {
+    "reverify-completed-attempt": {
+      "status": 200,
+      "body": {
+        "released": {
+          "order_id": "0bb327e7-e363-4d27-9803-752d40be3b59",
+          "redemption_status": "voided",
+          "order_status": "cancelled",
+          "payment_status": "expired"
+        },
+        "reused": {
+          "order_id": "499ee6e6-5e28-4e48-bdcf-722359b8f045",
+          "redemption_status": "reserved",
+          "order_status": "cart",
+          "payment_status": null
+        }
+      }
+    }
+  },
+  "finished_at": "2026-07-11T07:38:43.986Z",
+  "result": "PASS"
+}

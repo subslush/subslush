@@ -178,4 +178,40 @@ describe('public product listing term resolution', () => {
       })
     );
   });
+
+  it('prefers complete fixed fields when an accidental active variant still exists', async () => {
+    const fixedProduct = {
+      ...product(12),
+      fixed_price_cents: 12000,
+      fixed_price_currency: 'USD',
+    };
+    mockCatalogService.getProductBySlug.mockResolvedValue(fixedProduct as any);
+    mockCatalogService.getProductById.mockResolvedValue(fixedProduct as any);
+    mockCatalogService.listVariants.mockResolvedValue([variant] as any);
+    mockCatalogService.getCurrentFixedProductPriceForCurrency.mockResolvedValue(
+      null
+    );
+    const app = Fastify();
+    await app.register(subscriptionRoutes, { prefix: '/subscriptions' });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/subscriptions/products/term-listing',
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.variants).toEqual([
+      expect.objectContaining({
+        id: 'product-1',
+        plan_code: 'term-listing',
+        term_options: [
+          expect.objectContaining({ months: 12, total_price: 120 }),
+        ],
+      }),
+    ]);
+    expect(
+      mockCatalogService.listVariantTermsForVariants
+    ).not.toHaveBeenCalled();
+  });
 });

@@ -1,0 +1,1 @@
+{"error":"Bad Request","message":"checkout_session_key or order_id is required","code":"INVALID_REQUEST"}

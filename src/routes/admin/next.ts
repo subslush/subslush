@@ -7,6 +7,10 @@ import { ErrorResponses, SuccessResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
 import { formatMmuCoverageLabel } from '../../utils/mmuSchedule';
 import { parseJsonValue } from '../../utils/json';
+import {
+  getLegacyVariantCompatibilityMetrics,
+  LEGACY_VARIANT_SUNSET,
+} from '../../utils/catalogApiCompatibility';
 
 type QueryParams = Record<string, string | number | boolean | undefined>;
 
@@ -65,6 +69,23 @@ const getRetryablePaymentIds = async (): Promise<Set<string>> => {
 };
 
 export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
+  fastify.get(
+    '/catalog-compatibility',
+    { preHandler: [authPreHandler, adminPreHandler] },
+    async (_request: FastifyRequest, reply: FastifyReply) =>
+      SuccessResponses.ok(reply, {
+        legacy_variant: {
+          ...getLegacyVariantCompatibilityMetrics(),
+          sunset: LEGACY_VARIANT_SUNSET,
+          metric_scope: 'current_process',
+          authoritative_log_events: [
+            'catalog_api_legacy_variant_used',
+            'catalog_api_legacy_identifier_conflict',
+          ],
+        },
+      })
+  );
+
   fastify.get(
     '/orders',
     {
@@ -189,8 +210,8 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
           openWork,
         ] = await Promise.all([
           pool.query(
-            `SELECT oi.id AS order_item_id,
-                      COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+            `SELECT oi.id AS order_item_id, oi.product_id,
+                      COALESCE(oi.product_name_snapshot, p.name, oi.metadata->>'product_name') AS product_name,
                       COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                       oi.term_months,
                       oi.total_price_cents,
@@ -201,17 +222,17 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
                       s.delivered_at,
                       s.delivery_email_sent_at,
                       s.activation_handshake_state,
-                      p.metadata AS product_metadata
+                      COALESCE(oi.fulfillment_config_snapshot, p.metadata) AS product_metadata
                FROM order_items oi
                LEFT JOIN subscriptions s ON s.order_item_id = oi.id
                LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
-               LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+               LEFT JOIN products p ON p.id = COALESCE(oi.product_id, pv.product_id)
                WHERE oi.order_id = $1
                ORDER BY oi.created_at ASC, oi.id ASC`,
             [orderId]
           ),
           pool.query(
-            `SELECT id, provider, provider_payment_id, status, provider_status,
+            `SELECT id, product_id, provider, provider_payment_id, status, provider_status,
                       amount, currency, created_at, updated_at, expires_at
                FROM payments
                WHERE order_id = $1
@@ -232,6 +253,7 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
                       cr.ip_address,
                       cr.user_agent,
                       cr.subscription_id::text AS subject_id,
+                      cr.product_id,
                       cr.metadata
                FROM credential_reveal_audit_logs cr
                JOIN subscriptions s ON s.id = cr.subscription_id
@@ -243,6 +265,7 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
                       e.ip_address,
                       NULL AS user_agent,
                       e.order_id::text AS subject_id,
+                      e.product_id,
                       e.metadata
                FROM order_compliance_evidence_logs e
                WHERE e.order_id = $1
@@ -258,7 +281,7 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
             [order.contact_email]
           ),
           pool.query(
-            `SELECT t.id, t.subscription_id, t.task_type, t.due_date, t.is_issue
+            `SELECT t.id, t.subscription_id, t.product_id, t.task_type, t.due_date, t.is_issue
                FROM admin_tasks t
                WHERE t.order_id = $1 AND t.completed_at IS NULL
                ORDER BY t.created_at ASC`,
@@ -332,12 +355,12 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
         } = request.query as QueryParams;
         const params: any[] = [];
         let sql = `
-          SELECT s.id, s.order_id, s.user_id, s.status, s.service_type, s.service_plan,
+          SELECT s.id, s.order_id, s.user_id, s.product_id, s.status, s.service_type, s.service_plan,
                  s.term_months, s.term_start_at, s.start_date, s.end_date, s.renewal_date,
                  s.created_at, s.delivered_at, s.activation_handshake_state,
                  u.email AS customer_email,
                  COALESCE(o.contact_email, '') AS delivery_email,
-                 COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+                 COALESCE(s.product_name_snapshot, oi.product_name_snapshot, p.name, oi.metadata->>'product_name') AS product_name,
                  COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                  t.id AS task_id, t.task_type, t.due_date, t.completed_at, t.is_issue,
                  t.mmu_cycle_index, t.mmu_cycle_total,
@@ -349,7 +372,7 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
           LEFT JOIN orders o ON o.id = s.order_id
           LEFT JOIN order_items oi ON oi.id = s.order_item_id
           LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.product_variant_id, s.product_variant_id)
-          LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+          LEFT JOIN products p ON p.id = COALESCE(s.product_id, oi.product_id, pv.product_id)
           LEFT JOIN LATERAL (
             SELECT *
             FROM admin_tasks at
@@ -367,7 +390,7 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
                     OR s.order_id::text ILIKE $${params.length}
                     OR COALESCE(u.email, '') ILIKE $${params.length}
                     OR COALESCE(o.contact_email, '') ILIKE $${params.length}
-                    OR COALESCE(p.name, oi.metadata->>'product_name', '') ILIKE $${params.length}
+                    OR COALESCE(s.product_name_snapshot, oi.product_name_snapshot, p.name, oi.metadata->>'product_name', '') ILIKE $${params.length}
                     OR COALESCE(pv.name, oi.metadata->>'variant_name', '') ILIKE $${params.length})`;
         }
         if (status && status !== 'all') {
@@ -407,7 +430,9 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
         const { subscriptionId } = request.params as { subscriptionId: string };
         const pool = getDatabasePool();
         const detail = await pool.query(
-          `SELECT s.id, s.user_id, s.order_id, s.order_item_id, s.product_variant_id,
+          `SELECT s.id, s.user_id, s.order_id, s.order_item_id, s.product_id, s.product_variant_id,
+                  s.product_name_snapshot, s.product_slug_snapshot,
+                  s.duration_months_snapshot, s.currency_snapshot,
                   s.service_type, s.service_plan, s.status, s.term_months,
                   s.term_start_at, s.start_date, s.end_date, s.renewal_date,
                   s.auto_renew, s.next_billing_at, s.renewal_method,
@@ -415,7 +440,7 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
                   s.delivered_at, s.delivered_by, s.delivery_email_sent_at,
                   s.activation_handshake_state,
                   u.email AS customer_email, o.contact_email,
-                  COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+                  COALESCE(s.product_name_snapshot, oi.product_name_snapshot, p.name, oi.metadata->>'product_name') AS product_name,
                   COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                   sel.selection_type, sel.account_identifier,
                   sel.submitted_at, sel.locked_at, sel.upgrade_options_snapshot,
@@ -426,7 +451,7 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
            LEFT JOIN orders o ON o.id = s.order_id
            LEFT JOIN order_items oi ON oi.id = s.order_item_id
            LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.product_variant_id, s.product_variant_id)
-           LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+           LEFT JOIN products p ON p.id = COALESCE(s.product_id, oi.product_id, pv.product_id)
            LEFT JOIN subscription_upgrade_selections sel ON sel.subscription_id = s.id
            WHERE s.id = $1`,
           [subscriptionId]
@@ -618,14 +643,14 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
             [userIds]
           ),
           pool.query(
-            `SELECT s.id, s.user_id, s.order_id, s.status, s.term_months,
+            `SELECT s.id, s.user_id, s.order_id, s.product_id, s.status, s.term_months,
                     s.start_date, s.end_date,
-                    COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+                    COALESCE(s.product_name_snapshot, oi.product_name_snapshot, p.name, oi.metadata->>'product_name') AS product_name,
                     COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name
              FROM subscriptions s
              LEFT JOIN order_items oi ON oi.id = s.order_item_id
              LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.product_variant_id, s.product_variant_id)
-             LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+             LEFT JOIN products p ON p.id = COALESCE(s.product_id, oi.product_id, pv.product_id)
              WHERE s.user_id = ANY($1::uuid[])
              ORDER BY s.created_at DESC
              LIMIT 50`,
@@ -775,18 +800,18 @@ export async function adminNextRoutes(fastify: FastifyInstance): Promise<void> {
           ),
           pool.query(
             `SELECT s.id::text AS id, 'subscription' AS type,
-                    COALESCE(p.name, oi.metadata->>'product_name', s.service_type, s.id::text) AS label,
+                    COALESCE(s.product_name_snapshot, oi.product_name_snapshot, p.name, oi.metadata->>'product_name', s.service_type, s.id::text) AS label,
                     COALESCE(u.email, s.order_id::text, '') AS description,
                     '/admin-next/subscriptions?subscription=' || s.id::text AS href
              FROM subscriptions s
              LEFT JOIN users u ON u.id = s.user_id
              LEFT JOIN order_items oi ON oi.id = s.order_item_id
              LEFT JOIN product_variants pv ON pv.id = COALESCE(oi.product_variant_id, s.product_variant_id)
-             LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+             LEFT JOIN products p ON p.id = COALESCE(s.product_id, oi.product_id, pv.product_id)
              WHERE s.id::text ILIKE $1
                 OR COALESCE(u.email, '') ILIKE $1
                 OR COALESCE(s.order_id::text, '') ILIKE $1
-                OR COALESCE(p.name, oi.metadata->>'product_name', '') ILIKE $1
+                OR COALESCE(s.product_name_snapshot, oi.product_name_snapshot, p.name, oi.metadata->>'product_name', '') ILIKE $1
                 OR COALESCE(pv.name, oi.metadata->>'variant_name', '') ILIKE $1
              ORDER BY s.created_at DESC
              LIMIT 5`,

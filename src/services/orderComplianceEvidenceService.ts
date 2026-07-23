@@ -31,6 +31,8 @@ type RecordCredentialRevealEvidenceInput = {
 
 type RecordGenericEvidenceInput = {
   orderId: string;
+  orderItemId?: string | null;
+  productId?: string | null;
   eventType:
     | 'item_delivery'
     | 'activation_customer_ready'
@@ -82,7 +84,7 @@ class OrderComplianceEvidenceService {
     const pool = getDatabasePool();
     const result = await pool.query(
       `SELECT id,
-              metadata->>'product_name' AS product_name,
+              COALESCE(product_name_snapshot, metadata->>'product_name') AS product_name,
               metadata->>'variant_name' AS variant_name,
               description
        FROM order_items
@@ -110,6 +112,7 @@ class OrderComplianceEvidenceService {
       await pool.query(
         `INSERT INTO order_compliance_evidence_logs (
            order_id,
+           product_id,
            user_id,
            event_type,
            customer_email,
@@ -120,6 +123,9 @@ class OrderComplianceEvidenceService {
          )
          SELECT
            $1,
+           (SELECT CASE WHEN COUNT(DISTINCT oi.product_id) = 1
+                   THEN (ARRAY_AGG(DISTINCT oi.product_id))[1] END
+            FROM order_items oi WHERE oi.order_id = $1),
            COALESCE($2, o.user_id),
            'paypal_payment_capture',
            COALESCE($3, o.contact_email),
@@ -167,6 +173,7 @@ class OrderComplianceEvidenceService {
       await pool.query(
         `INSERT INTO order_compliance_evidence_logs (
            order_id,
+           product_id,
            user_id,
            event_type,
            customer_email,
@@ -176,6 +183,9 @@ class OrderComplianceEvidenceService {
          )
          SELECT
            $1,
+           (SELECT CASE WHEN COUNT(DISTINCT oi.product_id) = 1
+                   THEN (ARRAY_AGG(DISTINCT oi.product_id))[1] END
+            FROM order_items oi WHERE oi.order_id = $1),
            COALESCE($2, o.user_id),
            'order_delivery',
            COALESCE($3, o.contact_email),
@@ -211,6 +221,7 @@ class OrderComplianceEvidenceService {
       await pool.query(
         `INSERT INTO order_compliance_evidence_logs (
            order_id,
+           product_id,
            user_id,
            event_type,
            customer_email,
@@ -220,6 +231,9 @@ class OrderComplianceEvidenceService {
          )
          SELECT
            $1,
+           (SELECT CASE WHEN COUNT(DISTINCT oi.product_id) = 1
+                   THEN (ARRAY_AGG(DISTINCT oi.product_id))[1] END
+            FROM order_items oi WHERE oi.order_id = $1),
            COALESCE($2, o.user_id),
            'credential_reveal',
            COALESCE($3, o.contact_email),
@@ -260,6 +274,8 @@ class OrderComplianceEvidenceService {
       await pool.query(
         `INSERT INTO order_compliance_evidence_logs (
            order_id,
+           order_item_id,
+           product_id,
            user_id,
            event_type,
            customer_email,
@@ -271,18 +287,31 @@ class OrderComplianceEvidenceService {
          )
          SELECT
            $1,
-           COALESCE($2, o.user_id),
-           $3,
-           COALESCE($4, o.contact_email),
+           oi.id,
+           CASE
+             WHEN $3::uuid IS NOT NULL AND EXISTS (
+               SELECT 1 FROM order_items owned_item
+               WHERE owned_item.order_id = o.id
+                 AND owned_item.product_id = $3::uuid
+             ) THEN $3::uuid
+             ELSE oi.product_id
+           END,
+           COALESCE($4, o.user_id),
            $5,
-           $6::jsonb,
+           COALESCE($6, o.contact_email),
            $7,
            $8::jsonb,
-           $9::jsonb
+           $9,
+           $10::jsonb,
+           $11::jsonb
          FROM orders o
+         LEFT JOIN order_items oi
+           ON oi.id = $2::uuid AND oi.order_id = o.id
          WHERE o.id = $1`,
         [
           input.orderId,
+          input.orderItemId || null,
+          input.productId || null,
           input.userId || null,
           input.eventType,
           normalizedCustomerEmail,

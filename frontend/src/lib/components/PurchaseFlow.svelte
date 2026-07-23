@@ -144,13 +144,13 @@
   };
 
   const buildCheckoutKey = (params: {
-    variantId?: string | null;
+    productId?: string | null;
     duration?: number | null;
     currency?: string | null;
     autoRenew?: boolean;
     couponCode?: string | null;
   }): string | null => {
-    if (!params.variantId) return null;
+    if (!params.productId) return null;
     const duration = Number.isFinite(params.duration)
       ? Math.max(1, Math.floor(params.duration as number))
       : 1;
@@ -160,7 +160,7 @@
     const normalizedCurrency = normalizeCurrencyCode(params.currency) || 'USD';
     const autoRenewFlag = params.autoRenew ? '1' : '0';
     return [
-      params.variantId,
+      params.productId,
       duration.toString(),
       normalizedCurrency,
       autoRenewFlag,
@@ -204,7 +204,7 @@
   $: creditsCostLabel = creditsRequired ?? totalCost;
   $: balancePageHref = $user?.id ? ROUTES.CREDITS : ROUTES.AUTH.REGISTER;
   $: currentCheckoutKey = buildCheckoutKey({
-    variantId: selectedPlan?.variant_id,
+    productId: selectedPlan?.product_id,
     duration: selectedDuration,
     currency: resolvedCurrency,
     autoRenew,
@@ -295,11 +295,11 @@
 
   $: closeDisabled = stage === 'processing' && !processingError;
 
-  $: if (paymentMethod === 'credits' && selectedPlan?.variant_id) {
+  $: if (paymentMethod === 'credits' && selectedPlan?.product_id) {
     void refreshCreditsQuote();
   }
 
-  $: if (selectedPlan?.variant_id) {
+  $: if (selectedPlan?.product_id) {
     void refreshPricingQuote();
   }
 
@@ -625,7 +625,7 @@
 
   async function startCardCheckout() {
     const snapshotKey = buildCheckoutKey({
-      variantId: selectedPlan?.variant_id,
+      productId: selectedPlan?.product_id,
       duration: selectedDuration,
       currency: resolvedCurrency,
       autoRenew,
@@ -635,15 +635,21 @@
     isProcessing = true;
     errorMessage = '';
 
-    if (!selectedPlan.variant_id) {
+    if (!selectedPlan.product_id) {
       errorMessage = 'Please select a subscription option.';
       isProcessing = false;
       return;
     }
 
     const payload: CheckoutRequest = {
-      variant_id: selectedPlan.variant_id,
+      product_id: selectedPlan.product_id,
+      ...(selectedPlan.catalog_mode === 'legacy_variant' && selectedPlan.variant_id
+        ? { variant_id: selectedPlan.variant_id }
+        : {}),
       duration_months: selectedDuration,
+      ...(pricingQuote?.catalog_pricing_snapshot_id
+        ? { pricing_snapshot_id: pricingQuote.catalog_pricing_snapshot_id }
+        : {}),
       payment_method: 'card',
       auto_renew: false,
       currency: resolvedCurrency,
@@ -693,7 +699,7 @@
       return;
     }
 
-    if (!selectedPlan.variant_id) {
+    if (!selectedPlan.product_id) {
       errorMessage = 'Please select a subscription option.';
       return;
     }
@@ -710,8 +716,14 @@
         creditsQuote?.canPurchase === false || creditsQuote?.requiredCredits !== null
           ? creditsQuote
           : await subscriptionService.validatePurchase({
-              variant_id: selectedPlan.variant_id,
+              product_id: selectedPlan.product_id,
+              ...(selectedPlan.catalog_mode === 'legacy_variant' && selectedPlan.variant_id
+                ? { variant_id: selectedPlan.variant_id }
+                : {}),
               duration_months: selectedDuration,
+              ...(pricingQuote?.catalog_pricing_snapshot_id
+                ? { pricing_snapshot_id: pricingQuote.catalog_pricing_snapshot_id }
+                : {}),
               ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})
             });
 
@@ -729,8 +741,14 @@
       }
 
       const purchase = await subscriptionService.purchaseSubscription({
-        variant_id: selectedPlan.variant_id,
+        product_id: selectedPlan.product_id,
+        ...(selectedPlan.catalog_mode === 'legacy_variant' && selectedPlan.variant_id
+          ? { variant_id: selectedPlan.variant_id }
+          : {}),
         duration_months: selectedDuration,
+        ...(pricingQuote?.catalog_pricing_snapshot_id
+          ? { pricing_snapshot_id: pricingQuote.catalog_pricing_snapshot_id }
+          : {}),
         auto_renew: false,
         ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})
       });
@@ -771,12 +789,12 @@
       creditsQuote = null;
       return;
     }
-    if (!selectedPlan?.variant_id) {
+    if (!selectedPlan?.product_id) {
       creditsQuote = null;
       return;
     }
     const couponKey = appliedCouponCode ? appliedCouponCode.toLowerCase() : '';
-    const quoteKey = `${selectedPlan.variant_id}:${selectedDuration}:${couponKey}`;
+    const quoteKey = `${selectedPlan.product_id}:${selectedDuration}:${couponKey}`;
     if (!force && quoteKey === lastCreditsQuoteKey && creditsQuote) {
       return;
     }
@@ -785,11 +803,17 @@
     creditsQuoteMessage = '';
     try {
       const validation = await subscriptionService.validatePurchase({
-        variant_id: selectedPlan.variant_id,
+        product_id: selectedPlan.product_id,
+        ...(selectedPlan.catalog_mode === 'legacy_variant' && selectedPlan.variant_id
+          ? { variant_id: selectedPlan.variant_id }
+          : {}),
         duration_months: selectedDuration,
+        ...(pricingQuote?.catalog_pricing_snapshot_id
+          ? { pricing_snapshot_id: pricingQuote.catalog_pricing_snapshot_id }
+          : {}),
         ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})
       });
-      const currentKey = `${selectedPlan.variant_id}:${selectedDuration}:${couponKey}`;
+      const currentKey = `${selectedPlan.product_id}:${selectedDuration}:${couponKey}`;
       if (currentKey !== quoteKey) {
         return;
       }
@@ -834,7 +858,7 @@
   }
 
   async function refreshPricingQuote(force = false) {
-    if (!selectedPlan?.variant_id) {
+    if (!selectedPlan?.product_id) {
       pricingQuote = null;
       return;
     }
@@ -847,7 +871,7 @@
     }
 
     const couponKey = appliedCouponCode ? appliedCouponCode.toLowerCase() : '';
-    const quoteKey = `${selectedPlan.variant_id}:${selectedDuration}:${resolvedCurrency}:${couponKey}`;
+    const quoteKey = `${selectedPlan.product_id}:${selectedDuration}:${resolvedCurrency}:${couponKey}`;
     if (!force && quoteKey === lastPricingQuoteKey && pricingQuote) {
       return;
     }
@@ -855,7 +879,10 @@
     pricingQuoteLoading = true;
     try {
       const response = await paymentService.getQuote({
-        variant_id: selectedPlan.variant_id,
+        product_id: selectedPlan.product_id,
+        ...(selectedPlan.catalog_mode === 'legacy_variant' && selectedPlan.variant_id
+          ? { variant_id: selectedPlan.variant_id }
+          : {}),
         duration_months: selectedDuration,
         currency: resolvedCurrency,
         ...(appliedCouponCode ? { coupon_code: appliedCouponCode } : {})

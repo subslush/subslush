@@ -1,0 +1,10 @@
+{
+  "newsletter": {
+    "email": "qa-b2-newsletter-1783795328754@example.test",
+    "code": "NEWSLETTER12-DEC03065",
+    "starts_at": "2026-07-11T18:42:11.026Z",
+    "ends_at": "2026-07-14T18:42:11.026Z",
+    "redeemed": 0
+  },
+  "visible": true
+}

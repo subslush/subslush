@@ -1,18 +1,16 @@
-import { catalogService } from './catalogService';
-import { normalizeCurrencyCode } from '../utils/currency';
-import { fxDisplayPricingService } from './fx/fxDisplayPricingService';
-import {
-  computeTermPricing,
-  computeFixedTermPricing,
-  type TermPricingSnapshot,
-} from '../utils/termPricing';
+import { resolveSellableProduct } from './sellableProductService';
 import type {
+  PriceHistory,
   Product,
   ProductVariant,
   ProductVariantTerm,
-  PriceHistory,
 } from '../types/catalog';
+import type { TermPricingSnapshot } from '../utils/termPricing';
 
+/**
+ * Legacy pricing adapter. Canonical callers must use resolveSellableProduct.
+ * This remains only for callers that still provide one overloaded variant_id.
+ */
 type PricingResolutionData = {
   product: Product;
   variant: ProductVariant;
@@ -36,6 +34,15 @@ export type PricingResolutionResult =
   | { ok: true; data: PricingResolutionData }
   | { ok: false; error: PricingResolutionError };
 
+const mapError = (code: string): PricingResolutionError => {
+  if (code === 'UNSUPPORTED_CURRENCY') return 'invalid_currency';
+  if (code === 'INVALID_DURATION') return 'term_unavailable';
+  if (code === 'PRICE_UNAVAILABLE' || code === 'STALE_PRICE') {
+    return 'price_unavailable';
+  }
+  return 'variant_not_found';
+};
+
 export async function resolveVariantPricing(params: {
   variantId: string;
   currency: string;
@@ -43,240 +50,58 @@ export async function resolveVariantPricing(params: {
   requireActive?: boolean;
   atDate?: Date;
 }): Promise<PricingResolutionResult> {
-  const normalizedCurrency = normalizeCurrencyCode(params.currency);
-  if (!normalizedCurrency) {
-    return { ok: false, error: 'invalid_currency' };
-  }
+  const result = await resolveSellableProduct({
+    context: 'legacy_variant_pricing_adapter',
+    legacyVariantId: params.variantId,
+    currency: params.currency,
+    durationMonths: params.termMonths,
+    ...(params.requireActive !== undefined
+      ? { requireActive: params.requireActive }
+      : {}),
+    ...(params.atDate ? { atDate: params.atDate } : {}),
+  });
+  if (!result.ok) return { ok: false, error: mapError(result.code) };
 
-  const listing = await catalogService.getVariantWithProduct(params.variantId);
-  if (listing) {
-    if (params.requireActive !== false) {
-      if (listing.product.status !== 'active' || !listing.variant.is_active) {
-        return { ok: false, error: 'inactive' };
-      }
-    }
-
-    const term = await catalogService.getVariantTerm(
-      params.variantId,
-      params.termMonths,
-      true
-    );
-    if (!term) {
-      return { ok: false, error: 'term_unavailable' };
-    }
-
-    let price = await catalogService.getCurrentPriceForCurrency({
-      variantId: params.variantId,
-      currency: normalizedCurrency,
-      ...(params.atDate ? { atDate: params.atDate } : {}),
-    });
-    if (!price && normalizedCurrency !== 'USD') {
-      const usdPrice = await catalogService.getCurrentPriceForCurrency({
-        variantId: params.variantId,
-        currency: 'USD',
-        ...(params.atDate ? { atDate: params.atDate } : {}),
-      });
-      const usdPriceCents = usdPrice
-        ? Number(usdPrice.price_cents)
-        : Number.NaN;
-      if (usdPrice && Number.isInteger(usdPriceCents) && usdPriceCents >= 0) {
-        const convertedPrice =
-          await fxDisplayPricingService.convertUsdCentsToDisplayCurrency({
-            usdCents: usdPriceCents,
-            currency: normalizedCurrency,
-          });
-        if (convertedPrice) {
-          price = {
-            ...usdPrice,
-            price_cents: convertedPrice.priceCents,
-            currency: convertedPrice.currency,
-            metadata: {
-              ...(usdPrice?.metadata || {}),
-              ...convertedPrice.metadata,
-              source: 'price_history_usd_fx_fallback',
-              base_currency: 'USD',
-              base_price_cents: usdPriceCents,
-            },
-          };
-        }
-      }
-    }
-    if (!price) {
-      return { ok: false, error: 'price_unavailable' };
-    }
-
-    const snapshot = computeTermPricing({
-      basePriceCents: Number(price.price_cents),
-      termMonths: term.months,
-      discountPercent: term.discount_percent ?? 0,
-    });
-
-    const planCode =
-      listing.variant.service_plan ||
-      listing.variant.variant_code ||
-      listing.product.slug;
-
-    return {
-      ok: true,
-      data: {
-        product: listing.product,
-        variant: listing.variant,
-        term,
-        price,
-        currency: normalizedCurrency,
-        snapshot,
-        productVariantId: listing.variant.id,
-        planCode,
-        catalogMode: 'variant',
-      },
-    };
-  }
-
-  const product = await catalogService.getProductById(params.variantId);
-  if (!product) {
-    return { ok: false, error: 'variant_not_found' };
-  }
-
-  if (params.requireActive !== false && product.status !== 'active') {
-    return { ok: false, error: 'inactive' };
-  }
-
-  const durationMonths = Number(product.duration_months);
-  const fixedPriceCents = Number(product.fixed_price_cents);
-  const fixedPriceCurrency = normalizeCurrencyCode(
-    product.fixed_price_currency
-  );
-  if (
-    !Number.isInteger(durationMonths) ||
-    durationMonths <= 0 ||
-    !Number.isInteger(fixedPriceCents) ||
-    fixedPriceCents < 0 ||
-    !fixedPriceCurrency
-  ) {
-    return { ok: false, error: 'variant_not_found' };
-  }
-
-  if (params.termMonths !== durationMonths) {
-    return { ok: false, error: 'term_unavailable' };
-  }
-
+  const { data } = result;
   const now = params.atDate ?? new Date();
-  const publishedPrice =
-    await catalogService.getCurrentFixedProductPriceForCurrency({
-      productId: product.id,
-      currency: normalizedCurrency,
-      ...(params.atDate ? { atDate: params.atDate } : {}),
-    });
-  const publishedPriceCents = publishedPrice
-    ? Number(publishedPrice.price_cents)
-    : Number.NaN;
-  const publishedCurrency = normalizeCurrencyCode(publishedPrice?.currency);
-
-  let resolvedPriceCents = Number.NaN;
-  let resolvedCurrency = normalizedCurrency;
-  let resolvedPriceMetadata: Record<string, unknown> | null = null;
-
-  if (
-    Number.isInteger(publishedPriceCents) &&
-    publishedPriceCents >= 0 &&
-    publishedCurrency === normalizedCurrency
-  ) {
-    resolvedPriceCents = publishedPriceCents;
-    resolvedCurrency = publishedCurrency;
-    resolvedPriceMetadata = {
-      source: 'product_fixed_price_history',
-      catalog_mode: 'fixed_product',
-      product_id: product.id,
-      ...(publishedPrice?.metadata || {}),
-    };
-  } else if (fixedPriceCurrency === normalizedCurrency) {
-    resolvedPriceCents = fixedPriceCents;
-    resolvedCurrency = fixedPriceCurrency;
-    resolvedPriceMetadata = {
-      source: 'products.fixed_price',
-      catalog_mode: 'fixed_product',
-      product_id: product.id,
-    };
-  } else if (fixedPriceCurrency === 'USD') {
-    const convertedPrice =
-      await fxDisplayPricingService.convertUsdCentsToDisplayCurrency({
-        usdCents: fixedPriceCents,
-        currency: normalizedCurrency,
-      });
-    if (convertedPrice) {
-      resolvedPriceCents = convertedPrice.priceCents;
-      resolvedCurrency = convertedPrice.currency;
-      resolvedPriceMetadata = {
-        ...convertedPrice.metadata,
-        source: 'products.fixed_price_fx_fallback',
-        catalog_mode: 'fixed_product',
-        product_id: product.id,
-        base_currency: fixedPriceCurrency,
-        base_price_cents: fixedPriceCents,
-      };
-    }
-  } else {
-    return { ok: false, error: 'price_unavailable' };
-  }
-
-  if (!Number.isInteger(resolvedPriceCents) || !resolvedCurrency) {
-    return { ok: false, error: 'price_unavailable' };
-  }
-
-  const syntheticVariant: ProductVariant = {
-    id: product.id,
-    product_id: product.id,
-    name: product.name,
+  const variant: ProductVariant = data.legacyVariant ?? {
+    id: data.product.id,
+    product_id: data.product.id,
+    name: data.product.name,
     variant_code: null,
-    description: product.description ?? null,
-    service_plan: product.slug,
+    description: data.product.description ?? null,
+    service_plan: data.product.slug,
     is_active: true,
     sort_order: 0,
-    metadata: product.metadata ?? null,
-    created_at: product.created_at,
-    updated_at: product.updated_at,
+    metadata: data.product.metadata ?? null,
+    created_at: data.product.created_at,
+    updated_at: data.product.updated_at,
   };
-  const syntheticTerm: ProductVariantTerm = {
-    id: product.id,
-    product_variant_id: product.id,
-    months: durationMonths,
+  const term: ProductVariantTerm = data.legacyTerm ?? {
+    id: data.product.id,
+    product_variant_id: data.product.id,
+    months: data.durationMonths,
     discount_percent: 0,
     is_active: true,
     is_recommended: true,
     sort_order: 0,
     metadata: null,
-    created_at: product.created_at,
-    updated_at: product.updated_at,
+    created_at: data.product.created_at ?? now,
+    updated_at: data.product.updated_at ?? now,
   };
-  const syntheticPrice: PriceHistory = {
-    id: product.id,
-    product_variant_id: product.id,
-    price_cents: resolvedPriceCents,
-    currency: resolvedCurrency,
-    starts_at: now,
-    ends_at: null,
-    metadata: resolvedPriceMetadata,
-    created_at: now,
-  };
-
-  const snapshot = computeFixedTermPricing({
-    termTotalCents: resolvedPriceCents,
-    termMonths: durationMonths,
-    basePriceCents: resolvedPriceCents,
-  });
-
   return {
     ok: true,
     data: {
-      product,
-      variant: syntheticVariant,
-      term: syntheticTerm,
-      price: syntheticPrice,
-      currency: normalizedCurrency,
-      snapshot,
-      productVariantId: null,
-      planCode: product.slug,
-      catalogMode: 'fixed_product',
+      product: data.product,
+      variant,
+      term,
+      price: data.price,
+      currency: data.currency,
+      snapshot: data.snapshot,
+      productVariantId: data.legacyVariantId,
+      planCode: data.itemCode,
+      catalogMode:
+        data.catalogMode === 'fixed_product' ? 'fixed_product' : 'variant',
     },
   };
 }

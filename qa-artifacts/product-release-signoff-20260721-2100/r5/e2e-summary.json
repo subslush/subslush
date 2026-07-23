@@ -1,0 +1,9 @@
+{
+  "total": 27,
+  "pass": 25,
+  "fail": 2,
+  "blocked": 0,
+  "defects": [],
+  "browser_console_errors": 2,
+  "api_5xx": 1
+}

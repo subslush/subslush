@@ -1,0 +1,1 @@
+https://qdwabbvhkbxasfnyhkce.supabase.co/auth/v1/verify?token=38be57dff73d829213e1b71b3c7e3f0706aee10a48a6964aa620751d&type=signup&redirect_to=https://subslush.com

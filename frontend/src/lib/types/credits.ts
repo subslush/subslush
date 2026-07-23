@@ -21,6 +21,11 @@ export interface CreditTransaction {
   paymentProvider?: string | null;
   paymentCurrency?: string | null;
   paymentAmount?: number | null;
+  orderId?: string | null;
+  productId?: string | null;
+  productVariantId?: string | null;
+  priceCents?: number | null;
+  currency?: string | null;
   createdAt: string;
   updatedAt: string;
 }

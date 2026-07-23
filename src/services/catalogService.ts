@@ -12,6 +12,8 @@ import {
   ProductMedia,
   PriceHistory,
   FixedProductPriceHistory,
+  FixedCatalogRecoveryResult,
+  LegacyCatalogCompatibility,
   ProductDetail,
   CatalogListing,
   CreateProductLabelInput,
@@ -25,6 +27,8 @@ import {
   CreatePriceHistoryInput,
   ListVariantFilters,
   ListPriceHistoryFilters,
+  ListFixedProductPriceHistoryFilters,
+  SetCurrentFixedProductPriceInput,
   CreateVariantTermInput,
   UpdateVariantTermInput,
   ListVariantTermFilters,
@@ -41,6 +45,12 @@ import {
   normalizeUpgradeOptions,
   validateUpgradeOptions,
 } from '../utils/upgradeOptions';
+import {
+  isPublishableFixedCatalog,
+  validateFixedComparisonPrice,
+  validateFixedCatalogDraft,
+  validatePublishableFixedCatalog,
+} from '../utils/fixedCatalog';
 
 function parseMetadata(value: any): Record<string, any> | null {
   if (value === null || value === undefined) return null;
@@ -132,36 +142,6 @@ function normalizeIntegerOrNull(value: unknown): number | null {
     return null;
   }
   return Math.trunc(numeric);
-}
-
-function validateFixedCatalogFields(input: {
-  durationMonths: number | null;
-  fixedPriceCents: number | null;
-  fixedPriceCurrency: string | null;
-}): string | null {
-  const { durationMonths, fixedPriceCents, fixedPriceCurrency } = input;
-  if (
-    durationMonths !== null &&
-    (!Number.isInteger(durationMonths) || durationMonths <= 0)
-  ) {
-    return 'duration_months must be a positive integer';
-  }
-
-  if (
-    fixedPriceCents !== null &&
-    (!Number.isInteger(fixedPriceCents) || fixedPriceCents < 0)
-  ) {
-    return 'fixed_price_cents must be a non-negative integer';
-  }
-
-  if (
-    (fixedPriceCents === null && fixedPriceCurrency !== null) ||
-    (fixedPriceCents !== null && fixedPriceCurrency === null)
-  ) {
-    return 'fixed_price_cents and fixed_price_currency must be set together';
-  }
-
-  return null;
 }
 
 function parseStringArray(value: unknown): string[] {
@@ -1247,13 +1227,36 @@ export class CatalogService {
         return createErrorResult('Unsupported fixed_price_currency');
       }
 
-      const fixedFieldValidation = validateFixedCatalogFields({
-        durationMonths,
-        fixedPriceCents,
-        fixedPriceCurrency,
+      const fixedFieldValidation = validateFixedCatalogDraft({
+        duration_months: input.duration_months,
+        fixed_price_cents: input.fixed_price_cents,
+        fixed_price_currency: input.fixed_price_currency,
       });
-      if (fixedFieldValidation) {
-        return createErrorResult(fixedFieldValidation);
+      if (!fixedFieldValidation.valid) {
+        return createErrorResult(
+          fixedFieldValidation.message || 'Invalid fixed catalog fields'
+        );
+      }
+      const comparisonValidation = validateFixedComparisonPrice(
+        fixedPriceCents,
+        input.metadata?.['comparison_price_cents']
+      );
+      if (!comparisonValidation.valid) {
+        return createErrorResult(
+          comparisonValidation.message || 'Invalid comparison price'
+        );
+      }
+      if (input.status === 'active') {
+        const publishValidation = validatePublishableFixedCatalog({
+          duration_months: durationMonths,
+          fixed_price_cents: fixedPriceCents,
+          fixed_price_currency: fixedPriceCurrency,
+        });
+        if (!publishValidation.valid) {
+          return createErrorResult(
+            publishValidation.message || 'Fixed catalog fields are incomplete'
+          );
+        }
       }
 
       const pool = getDatabasePool();
@@ -1295,7 +1298,7 @@ export class CatalogService {
             durationMonths,
             fixedPriceCents,
             fixedPriceCurrency,
-            input.status || 'active',
+            input.status || 'inactive',
             input.metadata ? JSON.stringify(input.metadata) : null,
           ]
         );
@@ -1346,7 +1349,7 @@ export class CatalogService {
 
         if (
           fixedPriceCents !== null &&
-          fixedPriceCents >= 0 &&
+          fixedPriceCents > 0 &&
           fixedPriceCurrency
         ) {
           const snapshotId = await this.createManualPricingSnapshot(client);
@@ -1358,12 +1361,21 @@ export class CatalogService {
               created.id,
               fixedPriceCents,
               fixedPriceCurrency,
-              JSON.stringify(
-                pricingLockMetadata({
+              JSON.stringify({
+                ...pricingLockMetadata({
                   snapshotId,
                   source: 'catalog_fixed_product_create',
-                })
-              ),
+                }),
+                ...(input.metadata?.['comparison_price_cents'] !== undefined
+                  ? {
+                      comparison_price_cents:
+                        input.metadata['comparison_price_cents'],
+                      comparison_price_currency:
+                        input.metadata['comparison_price_currency'] ||
+                        fixedPriceCurrency,
+                    }
+                  : {}),
+              }),
             ]
           );
         }
@@ -1425,6 +1437,14 @@ export class CatalogService {
         updates.duration_months !== undefined ||
         updates.fixed_price_cents !== undefined ||
         updates.fixed_price_currency !== undefined;
+      const fixedPriceUpdatesProvided =
+        updates.fixed_price_cents !== undefined ||
+        updates.fixed_price_currency !== undefined;
+      let fixedPriceChanged = false;
+      const effectiveMetadata =
+        updates.metadata !== undefined
+          ? updates.metadata
+          : existingProduct.metadata;
       let normalizedFixedPriceCurrency: string | null | undefined;
 
       if (updates.name !== undefined) {
@@ -1507,6 +1527,24 @@ export class CatalogService {
         values.push(updates.metadata ? JSON.stringify(updates.metadata) : null);
       }
 
+      if (fixedPriceUpdatesProvided) {
+        const resolvedFixedPriceCents =
+          updates.fixed_price_cents !== undefined
+            ? normalizeIntegerOrNull(updates.fixed_price_cents)
+            : normalizeIntegerOrNull(existingProduct.fixed_price_cents);
+        const resolvedFixedPriceCurrency =
+          updates.fixed_price_currency !== undefined
+            ? (normalizedFixedPriceCurrency ?? null)
+            : normalizeCurrencyCode(existingProduct.fixed_price_currency) ||
+              null;
+        fixedPriceChanged =
+          resolvedFixedPriceCents !==
+            normalizeIntegerOrNull(existingProduct.fixed_price_cents) ||
+          resolvedFixedPriceCurrency !==
+            (normalizeCurrencyCode(existingProduct.fixed_price_currency) ||
+              null);
+      }
+
       if (fixedFieldUpdatesProvided) {
         const durationMonths =
           updates.duration_months !== undefined
@@ -1522,13 +1560,52 @@ export class CatalogService {
             : normalizeCurrencyCode(existingProduct.fixed_price_currency) ||
               null;
 
-        const fixedFieldValidation = validateFixedCatalogFields({
-          durationMonths,
-          fixedPriceCents,
-          fixedPriceCurrency,
+        const fixedFieldValidation = validateFixedCatalogDraft({
+          duration_months: durationMonths,
+          fixed_price_cents: fixedPriceCents,
+          fixed_price_currency: fixedPriceCurrency,
         });
-        if (fixedFieldValidation) {
-          return createErrorResult(fixedFieldValidation);
+        if (!fixedFieldValidation.valid) {
+          return createErrorResult(
+            fixedFieldValidation.message || 'Invalid fixed catalog fields'
+          );
+        }
+      }
+
+      if (fixedPriceUpdatesProvided) {
+        const comparisonValidation = validateFixedComparisonPrice(
+          updates.fixed_price_cents !== undefined
+            ? updates.fixed_price_cents
+            : existingProduct.fixed_price_cents,
+          effectiveMetadata?.['comparison_price_cents']
+        );
+        if (!comparisonValidation.valid) {
+          return createErrorResult(
+            comparisonValidation.message || 'Invalid comparison price'
+          );
+        }
+      }
+
+      const resultingStatus = updates.status ?? existingProduct.status;
+      if (resultingStatus === 'active') {
+        const publishValidation = validatePublishableFixedCatalog({
+          duration_months:
+            updates.duration_months !== undefined
+              ? updates.duration_months
+              : existingProduct.duration_months,
+          fixed_price_cents:
+            updates.fixed_price_cents !== undefined
+              ? updates.fixed_price_cents
+              : existingProduct.fixed_price_cents,
+          fixed_price_currency:
+            updates.fixed_price_currency !== undefined
+              ? updates.fixed_price_currency
+              : existingProduct.fixed_price_currency,
+        });
+        if (!publishValidation.valid) {
+          return createErrorResult(
+            publishValidation.message || 'Fixed catalog fields are incomplete'
+          );
         }
       }
 
@@ -1624,7 +1701,7 @@ export class CatalogService {
           );
         }
 
-        if (fixedFieldUpdatesProvided) {
+        if (fixedPriceChanged) {
           const resolvedFixedPriceCents =
             updates.fixed_price_cents !== undefined
               ? normalizeIntegerOrNull(updates.fixed_price_cents)
@@ -1642,17 +1719,14 @@ export class CatalogService {
              WHERE product_id = $2
                AND starts_at < COALESCE($1::timestamp, NOW())
                AND (ends_at IS NULL OR ends_at > COALESCE($1::timestamp, NOW()))
-               AND (
-                 $3::text IS NULL
-                 OR UPPER(currency) = $3
-               )`,
-            [now, productId, resolvedFixedPriceCurrency]
+              `,
+            [now, productId]
           );
 
           if (
             Number.isInteger(resolvedFixedPriceCents) &&
             resolvedFixedPriceCents !== null &&
-            resolvedFixedPriceCents >= 0 &&
+            resolvedFixedPriceCents > 0 &&
             resolvedFixedPriceCurrency
           ) {
             const snapshotId = await this.createManualPricingSnapshot(client);
@@ -1672,6 +1746,16 @@ export class CatalogService {
                     source: 'admin_product_update',
                   }),
                   updated_fields: Object.keys(updates || {}),
+                  ...(effectiveMetadata?.['comparison_price_cents'] !==
+                  undefined
+                    ? {
+                        comparison_price_cents:
+                          effectiveMetadata['comparison_price_cents'],
+                        comparison_price_currency:
+                          effectiveMetadata['comparison_price_currency'] ||
+                          resolvedFixedPriceCurrency,
+                      }
+                    : {}),
                 }),
               ]
             );
@@ -2038,14 +2122,23 @@ export class CatalogService {
         return createErrorResult('Product not found');
       }
 
-      const [variants, labels, media, priceHistory, variantTerms] =
-        await Promise.all([
-          this.listVariantsForAdmin({ product_id: productId }),
-          this.listProductLabels(productId),
-          this.listMedia({ product_id: productId }),
-          this.listPriceHistory({ product_id: productId }),
-          this.listVariantTermsForProduct(productId),
-        ]);
+      const [
+        variants,
+        labels,
+        media,
+        priceHistory,
+        fixedPriceHistory,
+        variantTerms,
+        legacyCompatibility,
+      ] = await Promise.all([
+        this.listVariantsForAdmin({ product_id: productId }),
+        this.listProductLabels(productId),
+        this.listMedia({ product_id: productId }),
+        this.listPriceHistory({ product_id: productId }),
+        this.listFixedProductPriceHistory({ product_id: productId }),
+        this.listVariantTermsForProduct(productId),
+        this.getLegacyCatalogCompatibility(productId),
+      ]);
 
       return createSuccessResult({
         product,
@@ -2053,11 +2146,148 @@ export class CatalogService {
         labels,
         media,
         price_history: priceHistory,
+        fixed_price_history: fixedPriceHistory,
+        legacy_compatibility: legacyCompatibility,
         variant_terms: variantTerms,
       });
     } catch (error) {
       Logger.error('Failed to load product detail:', error);
       return createErrorResult('Failed to load product detail');
+    }
+  }
+
+  private async queryLegacyCatalogCompatibility(
+    productId: string,
+    queryable: { query: (text: string, values?: any[]) => Promise<any> }
+  ): Promise<LegacyCatalogCompatibility> {
+    const result = await queryable.query(
+      `WITH legacy_variants AS (
+         SELECT id, is_active
+         FROM product_variants
+         WHERE product_id = $1
+       )
+       SELECT
+         (SELECT COUNT(*)::int FROM legacy_variants) AS variant_count,
+         (SELECT COUNT(*)::int FROM legacy_variants WHERE is_active = TRUE) AS active_variant_count,
+         (SELECT COUNT(*)::int FROM product_variant_terms WHERE product_variant_id IN (SELECT id FROM legacy_variants)) AS term_count,
+         (SELECT COUNT(*)::int FROM price_history WHERE product_variant_id IN (SELECT id FROM legacy_variants)) AS price_history_count,
+         (SELECT COUNT(*)::int FROM subscriptions WHERE product_variant_id IN (SELECT id FROM legacy_variants)) AS subscription_count,
+         (SELECT COUNT(*)::int FROM order_items WHERE product_variant_id IN (SELECT id FROM legacy_variants)) AS order_item_count,
+         (SELECT COUNT(*)::int FROM payments WHERE product_variant_id IN (SELECT id FROM legacy_variants)) AS payment_count,
+         (SELECT COUNT(*)::int FROM credit_transactions WHERE product_variant_id IN (SELECT id FROM legacy_variants)) AS credit_transaction_count`,
+      [productId]
+    );
+    const row = result.rows[0] || {};
+    const productResult = await queryable.query(
+      `SELECT duration_months, fixed_price_cents, fixed_price_currency
+       FROM products
+       WHERE id = $1`,
+      [productId]
+    );
+    const product = productResult.rows[0] || {};
+    return {
+      variant_count: Number(row.variant_count || 0),
+      active_variant_count: Number(row.active_variant_count || 0),
+      term_count: Number(row.term_count || 0),
+      price_history_count: Number(row.price_history_count || 0),
+      subscription_count: Number(row.subscription_count || 0),
+      order_item_count: Number(row.order_item_count || 0),
+      payment_count: Number(row.payment_count || 0),
+      credit_transaction_count: Number(row.credit_transaction_count || 0),
+      fixed_catalog_preferred: isPublishableFixedCatalog(product),
+    };
+  }
+
+  async getLegacyCatalogCompatibility(
+    productId: string
+  ): Promise<LegacyCatalogCompatibility> {
+    try {
+      return await this.queryLegacyCatalogCompatibility(
+        productId,
+        getDatabasePool()
+      );
+    } catch (error) {
+      Logger.error('Failed to inspect legacy catalog compatibility:', error);
+      return {
+        variant_count: 0,
+        active_variant_count: 0,
+        term_count: 0,
+        price_history_count: 0,
+        subscription_count: 0,
+        order_item_count: 0,
+        payment_count: 0,
+        credit_transaction_count: 0,
+        fixed_catalog_preferred: false,
+      };
+    }
+  }
+
+  async recoverProductOnlyCatalog(
+    productId: string
+  ): Promise<ServiceResult<FixedCatalogRecoveryResult>> {
+    const pool = getDatabasePool();
+    const client = await pool.connect();
+    let transactionOpen = false;
+    try {
+      await client.query('BEGIN');
+      transactionOpen = true;
+      const productResult = await client.query(
+        `SELECT * FROM products WHERE id = $1 FOR UPDATE`,
+        [productId]
+      );
+      if (productResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult('Product not found');
+      }
+
+      const product = mapProduct(productResult.rows[0]);
+      const validation = validatePublishableFixedCatalog(product);
+      if (!validation.valid) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult(
+          validation.message || 'Fixed catalog fields are incomplete'
+        );
+      }
+
+      await client.query(
+        `SELECT id FROM product_variants WHERE product_id = $1 FOR UPDATE`,
+        [productId]
+      );
+      const updateResult = await client.query(
+        `UPDATE product_variants
+         SET is_active = FALSE, updated_at = NOW()
+         WHERE product_id = $1
+           AND is_active = TRUE
+         RETURNING id`,
+        [productId]
+      );
+      const compatibility = await this.queryLegacyCatalogCompatibility(
+        productId,
+        client
+      );
+
+      await client.query('COMMIT');
+      transactionOpen = false;
+      return createSuccessResult({
+        product_id: productId,
+        already_product_only: (updateResult.rowCount ?? 0) === 0,
+        deactivated_variant_count: updateResult.rowCount ?? 0,
+        deactivated_variant_ids: updateResult.rows.map(row => String(row.id)),
+        compatibility,
+      });
+    } catch (error) {
+      if (transactionOpen) await client.query('ROLLBACK');
+      Logger.error(
+        'Failed to recover product-only catalog configuration:',
+        error
+      );
+      return createErrorResult(
+        'Failed to recover product-only catalog configuration'
+      );
+    } finally {
+      client.release();
     }
   }
 
@@ -2657,6 +2887,13 @@ export class CatalogService {
         JOIN product_variants pv ON pv.product_id = p.id
         WHERE p.status = 'active'
           AND pv.is_active = TRUE
+          -- A complete fixed catalog configuration is canonical. Legacy rows
+          -- remain readable by ID but must not shadow the fixed listing.
+          AND (
+            p.duration_months > 0
+            AND p.fixed_price_cents > 0
+            AND p.fixed_price_currency IS NOT NULL
+          ) IS NOT TRUE
       `;
 
       const normalizedServiceType = normalizeServiceType(filters?.service_type);
@@ -2771,14 +3008,21 @@ export class CatalogService {
       let sql = `
         SELECT p.*
         FROM products p
-        LEFT JOIN product_variants pv
-          ON pv.product_id = p.id
-         AND pv.is_active = TRUE
         WHERE p.status = 'active'
-          AND p.duration_months IS NOT NULL
-          AND p.fixed_price_cents IS NOT NULL
-          AND p.fixed_price_currency IS NOT NULL
-          AND pv.id IS NULL
+          -- Include fixed products that are complete as well as malformed or
+          -- transitional product-only rows. The public mapper validates each
+          -- row independently and emits a structured diagnostic when omitted.
+          AND (
+            p.duration_months IS NOT NULL
+            OR p.fixed_price_cents IS NOT NULL
+            OR p.fixed_price_currency IS NOT NULL
+            OR NOT EXISTS (
+              SELECT 1
+              FROM product_variants pv_fixed_probe
+              WHERE pv_fixed_probe.product_id = p.id
+                AND pv_fixed_probe.is_active = TRUE
+            )
+          )
       `;
 
       const normalizedServiceType = normalizeServiceType(filters?.service_type);
@@ -3437,6 +3681,251 @@ export class CatalogService {
     } catch (error) {
       Logger.error('Failed to list price history:', error);
       return [];
+    }
+  }
+
+  async listFixedProductPriceHistory(
+    filters: ListFixedProductPriceHistoryFilters
+  ): Promise<FixedProductPriceHistory[]> {
+    try {
+      const pool = getDatabasePool();
+      const params: any[] = [filters.product_id];
+      let sql = `SELECT *
+                 FROM product_fixed_price_history
+                 WHERE product_id = $1`;
+      if (filters.currency) {
+        const currency = normalizeCurrencyCode(filters.currency);
+        if (!currency) return [];
+        params.push(currency);
+        sql += ` AND UPPER(currency) = $${params.length}`;
+      }
+      sql += ' ORDER BY starts_at DESC, created_at DESC';
+      if (filters.limit) {
+        params.push(filters.limit);
+        sql += ` LIMIT $${params.length}`;
+      }
+      if (filters.offset) {
+        params.push(filters.offset);
+        sql += ` OFFSET $${params.length}`;
+      }
+      const result = await pool.query(sql, params);
+      return result.rows.map(mapFixedProductPriceHistory);
+    } catch (error) {
+      Logger.error('Failed to list fixed product price history:', error);
+      return [];
+    }
+  }
+
+  async setCurrentFixedProductPrice(
+    input: SetCurrentFixedProductPriceInput
+  ): Promise<ServiceResult<FixedProductPriceHistory>> {
+    const durationMonths =
+      input.duration_months === undefined
+        ? null
+        : Number(input.duration_months);
+    const priceCents = Number(input.price_cents);
+    const comparisonPriceCents =
+      input.comparison_price_cents === null ||
+      input.comparison_price_cents === undefined
+        ? null
+        : Number(input.comparison_price_cents);
+    const currency = normalizeCurrencyCode(input.currency);
+    if (!Number.isInteger(priceCents) || priceCents <= 0) {
+      return createErrorResult(
+        'Fixed price must be a positive whole number of cents.'
+      );
+    }
+    if (
+      input.duration_months !== undefined &&
+      (!Number.isInteger(durationMonths) || Number(durationMonths) <= 0)
+    ) {
+      return createErrorResult(
+        'Duration must be a positive whole number of months.'
+      );
+    }
+    if (!currency) {
+      return createErrorResult('Fixed price currency is not supported.');
+    }
+    const currencyValidation = validateFixedCatalogDraft({
+      fixed_price_cents: priceCents,
+      fixed_price_currency: currency,
+    });
+    if (!currencyValidation.valid) {
+      return createErrorResult(
+        currencyValidation.message || 'Invalid fixed price currency.'
+      );
+    }
+    if (
+      comparisonPriceCents !== null &&
+      (!Number.isInteger(comparisonPriceCents) ||
+        comparisonPriceCents <= priceCents)
+    ) {
+      return createErrorResult(
+        'Comparison price must be a whole number of cents greater than the current price.'
+      );
+    }
+
+    const pool = getDatabasePool();
+    const client = await pool.connect();
+    let transactionOpen = false;
+    try {
+      await client.query('BEGIN');
+      transactionOpen = true;
+      const productResult = await client.query(
+        `SELECT * FROM products WHERE id = $1 FOR UPDATE`,
+        [input.product_id]
+      );
+      if (productResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult('Product not found');
+      }
+
+      const product = mapProduct(productResult.rows[0]);
+      const fixedValidation = validatePublishableFixedCatalog({
+        duration_months:
+          input.duration_months === undefined
+            ? product.duration_months
+            : durationMonths,
+        fixed_price_cents: priceCents,
+        fixed_price_currency: currency,
+      });
+      if (!fixedValidation.valid) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return createErrorResult(
+          fixedValidation.message || 'Fixed catalog fields are incomplete.'
+        );
+      }
+      const metadata: Record<string, any> = { ...(product.metadata || {}) };
+      delete metadata['comparisonPriceCents'];
+      delete metadata['compare_at_price_cents'];
+      delete metadata['compareAtPriceCents'];
+      delete metadata['comparisonPriceCurrency'];
+      delete metadata['compare_at_price_currency'];
+      delete metadata['compareAtPriceCurrency'];
+      if (comparisonPriceCents === null) {
+        delete metadata['comparison_price_cents'];
+        delete metadata['comparison_price_currency'];
+      } else {
+        metadata['comparison_price_cents'] = comparisonPriceCents;
+        metadata['comparison_price_currency'] = currency;
+      }
+
+      const startsAt = input.starts_at || null;
+      const currentPriceResult = await client.query(
+        `SELECT *
+         FROM product_fixed_price_history
+         WHERE product_id = $1
+           AND starts_at <= COALESCE($2::timestamp, NOW())
+           AND (
+             ends_at IS NULL
+             OR ends_at > COALESCE($2::timestamp, NOW())
+           )
+         ORDER BY starts_at DESC, created_at DESC
+         LIMIT 1`,
+        [input.product_id, startsAt]
+      );
+      const currentPrice = currentPriceResult.rows[0]
+        ? mapFixedProductPriceHistory(currentPriceResult.rows[0])
+        : null;
+      const currentComparisonRaw = product.metadata?.['comparison_price_cents'];
+      const currentComparison =
+        Number.isInteger(Number(currentComparisonRaw)) &&
+        Number(currentComparisonRaw) > 0
+          ? Number(currentComparisonRaw)
+          : null;
+      const currentDuration = normalizeIntegerOrNull(product.duration_months);
+      const requestedDuration =
+        input.duration_months === undefined
+          ? currentDuration
+          : normalizeIntegerOrNull(input.duration_months);
+      const metadataChangeRequested = Boolean(
+        input.metadata && Object.keys(input.metadata).length > 0
+      );
+      const commercialTermsUnchanged =
+        !startsAt &&
+        !metadataChangeRequested &&
+        normalizeIntegerOrNull(product.fixed_price_cents) === priceCents &&
+        normalizeCurrencyCode(product.fixed_price_currency) === currency &&
+        currentDuration === requestedDuration &&
+        currentComparison === comparisonPriceCents &&
+        currentPrice?.price_cents === priceCents &&
+        normalizeCurrencyCode(currentPrice?.currency) === currency;
+
+      if (commercialTermsUnchanged && currentPrice) {
+        await client.query('COMMIT');
+        transactionOpen = false;
+        return createSuccessResult(currentPrice);
+      }
+
+      await client.query(
+        `UPDATE product_fixed_price_history
+         SET ends_at = COALESCE($1::timestamp, NOW())
+         WHERE product_id = $2
+           AND starts_at < COALESCE($1::timestamp, NOW())
+           AND (ends_at IS NULL OR ends_at > COALESCE($1::timestamp, NOW()))`,
+        [startsAt, input.product_id]
+      );
+      await client.query(
+        `UPDATE products
+         SET fixed_price_cents = $2,
+             fixed_price_currency = $3,
+             default_currency = COALESCE(default_currency, $3),
+             metadata = $4,
+             duration_months = COALESCE($5, duration_months),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [
+          input.product_id,
+          priceCents,
+          currency,
+          JSON.stringify(metadata),
+          durationMonths,
+        ]
+      );
+
+      const snapshotId = await this.createManualPricingSnapshot(client);
+      const result = await client.query(
+        `INSERT INTO product_fixed_price_history
+          (product_id, price_cents, currency, starts_at, ends_at, metadata)
+         VALUES ($1, $2, $3, COALESCE($4::timestamp, NOW()), NULL, $5)
+         RETURNING *`,
+        [
+          input.product_id,
+          priceCents,
+          currency,
+          startsAt,
+          JSON.stringify({
+            ...pricingLockMetadata({
+              metadata: input.metadata,
+              snapshotId,
+              source: 'catalog_fixed_product_current_price',
+            }),
+            ...(comparisonPriceCents !== null
+              ? {
+                  comparison_price_cents: comparisonPriceCents,
+                  comparison_price_currency: currency,
+                }
+              : {}),
+          }),
+        ]
+      );
+      await this.alignFixedCurrentPriceSnapshot({
+        client,
+        productId: input.product_id,
+        at: startsAt,
+        snapshotId,
+      });
+      await client.query('COMMIT');
+      transactionOpen = false;
+      return createSuccessResult(mapFixedProductPriceHistory(result.rows[0]));
+    } catch (error) {
+      if (transactionOpen) await client.query('ROLLBACK');
+      Logger.error('Failed to set current fixed product price:', error);
+      return createErrorResult('Failed to set current fixed product price');
+    } finally {
+      client.release();
     }
   }
 

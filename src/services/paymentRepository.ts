@@ -8,6 +8,7 @@ import {
 } from '../types/payment';
 import { Logger } from '../utils/logger';
 import { parseJsonValue } from '../utils/json';
+import { resolveDurableProductIdentity } from '../utils/productIdentity';
 
 function getClient(client?: PoolClient): PoolClient | Pool {
   if (client) {
@@ -18,6 +19,15 @@ function getClient(client?: PoolClient): PoolClient | Pool {
 
 function mapRowToUnifiedPayment(row: any): UnifiedPayment {
   const metadata = parseJsonValue<Record<string, any>>(row.metadata, {});
+  const identity =
+    row.product_id || row.legacy_variant_product_id
+      ? resolveDurableProductIdentity({
+          context: 'payment_read',
+          recordId: row.id,
+          explicitProductId: row.product_id,
+          variantProductId: row.legacy_variant_product_id,
+        })
+      : null;
 
   const payment: UnifiedPayment = {
     id: row.id,
@@ -67,6 +77,10 @@ function mapRowToUnifiedPayment(row: any): UnifiedPayment {
 
   if (row.order_id) {
     payment.orderId = row.order_id;
+  }
+
+  if (identity?.productId) {
+    payment.productId = identity.productId;
   }
 
   if (row.product_variant_id) {
@@ -135,6 +149,7 @@ export const paymentRepository = {
         credit_transaction_id,
         expires_at,
         order_id,
+        product_id,
         product_variant_id,
         order_item_id,
         price_cents,
@@ -149,7 +164,7 @@ export const paymentRepository = {
         stripe_session_id,
         metadata
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
       RETURNING *`,
       [
         input.userId,
@@ -166,6 +181,7 @@ export const paymentRepository = {
         input.creditTransactionId || null,
         input.expiresAt || null,
         input.orderId || null,
+        input.productId || null,
         input.productVariantId || null,
         input.orderItemId || null,
         input.priceCents ?? null,
@@ -203,7 +219,9 @@ export const paymentRepository = {
              metadata = COALESCE($3, metadata),
              updated_at = NOW()
          WHERE provider = $4 AND provider_payment_id = $5
-         RETURNING *`,
+         RETURNING *,
+           (SELECT pv.product_id FROM product_variants pv
+            WHERE pv.id = payments.product_variant_id) AS legacy_variant_product_id`,
         [
           status,
           providerStatus || null,
@@ -234,16 +252,17 @@ export const paymentRepository = {
       const db = getClient(client);
       const params: Array<string> = [provider, orderId];
       let sql = `
-        SELECT *
-        FROM payments
-        WHERE provider = $1
-          AND order_id = $2
+        SELECT p.*, pv.product_id AS legacy_variant_product_id
+        FROM payments p
+        LEFT JOIN product_variants pv ON pv.id = p.product_variant_id
+        WHERE p.provider = $1
+          AND p.order_id = $2
       `;
       if (purpose) {
         sql += ` AND purpose = $3`;
         params.push(purpose);
       }
-      sql += ' ORDER BY created_at DESC LIMIT 1';
+      sql += ' ORDER BY p.created_at DESC LIMIT 1';
       const result = await db.query(sql, params);
       if (result.rows.length === 0) {
         return null;
@@ -283,7 +302,10 @@ export const paymentRepository = {
     try {
       const db = getClient(client);
       const result = await db.query(
-        `SELECT * FROM payments WHERE id = $1 LIMIT 1`,
+        `SELECT p.*, pv.product_id AS legacy_variant_product_id
+         FROM payments p
+         LEFT JOIN product_variants pv ON pv.id = p.product_variant_id
+         WHERE p.id = $1 LIMIT 1`,
         [paymentId]
       );
 
@@ -306,7 +328,10 @@ export const paymentRepository = {
     try {
       const pool = getClient(client);
       const result = await pool.query(
-        `SELECT * FROM payments WHERE provider = $1 AND provider_payment_id = $2`,
+        `SELECT p.*, pv.product_id AS legacy_variant_product_id
+         FROM payments p
+         LEFT JOIN product_variants pv ON pv.id = p.product_variant_id
+         WHERE p.provider = $1 AND p.provider_payment_id = $2`,
         [provider, providerPaymentId]
       );
 
@@ -328,14 +353,17 @@ export const paymentRepository = {
     try {
       const pool = getDatabasePool();
       const params: Array<string> = [providerPaymentId];
-      let sql = 'SELECT * FROM payments WHERE provider_payment_id = $1';
+      let sql = `SELECT p.*, pv.product_id AS legacy_variant_product_id
+                 FROM payments p
+                 LEFT JOIN product_variants pv ON pv.id = p.product_variant_id
+                 WHERE p.provider_payment_id = $1`;
 
       if (userId) {
-        sql += ' AND user_id = $2';
+        sql += ' AND p.user_id = $2';
         params.push(userId);
       }
 
-      sql += ' ORDER BY created_at DESC LIMIT 1';
+      sql += ' ORDER BY p.created_at DESC LIMIT 1';
 
       const result = await pool.query(sql, params);
 
@@ -363,16 +391,17 @@ export const paymentRepository = {
     try {
       const pool = getDatabasePool();
       const result = await pool.query(
-        `SELECT *
-         FROM payments
-         WHERE provider = 'stripe'
-           AND status IN ('pending', 'processing', 'requires_action', 'requires_payment_method')
+        `SELECT p.*, pv.product_id AS legacy_variant_product_id
+         FROM payments p
+         LEFT JOIN product_variants pv ON pv.id = p.product_variant_id
+         WHERE p.provider = 'stripe'
+           AND p.status IN ('pending', 'processing', 'requires_action', 'requires_payment_method')
            AND (
-             subscription_id = ANY($1::uuid[])
-             OR metadata->>'subscription_id' = ANY($2::text[])
+             p.subscription_id = ANY($1::uuid[])
+             OR p.metadata->>'subscription_id' = ANY($2::text[])
            )
-           AND (metadata->>'renewal') IN ('true', '1')
-         ORDER BY created_at DESC`,
+           AND (p.metadata->>'renewal') IN ('true', '1')
+         ORDER BY p.created_at DESC`,
         [subscriptionIds, subscriptionIds]
       );
 

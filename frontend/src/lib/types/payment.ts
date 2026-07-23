@@ -92,8 +92,11 @@ export type CheckoutPaymentMethod =
   | 'credits';
 
 export interface CheckoutRequest {
-  variant_id: string;
+  product_id: string;
+  /** @deprecated Legacy compatibility only; omit for fixed products. */
+  variant_id?: string | null;
   duration_months?: number;
+  pricing_snapshot_id?: string | null;
   payment_method?: CheckoutPaymentMethod;
   auto_renew?: boolean;
   currency?: string;
@@ -104,6 +107,12 @@ export interface CheckoutResponseCard {
   payment_method: 'card';
   payment_provider: 'paypal' | 'pay4bit' | 'payop' | 'stripe' | 'antom';
   order_id: string;
+  product_id: string;
+  /** @deprecated Legacy compatibility only. */
+  variant_id?: string | null;
+  duration_months: number;
+  catalog_mode: 'fixed_product' | 'legacy_variant';
+  catalog_pricing_snapshot_id: string;
   paymentId?: string | null;
   sessionId: string;
   sessionUrl: string;
@@ -122,6 +131,12 @@ export interface CheckoutResponseCard {
 export interface CheckoutResponseCredits {
   payment_method: 'credits';
   order_id: string;
+  product_id: string;
+  /** @deprecated Legacy compatibility only. */
+  variant_id?: string | null;
+  duration_months: number;
+  catalog_mode: 'fixed_product' | 'legacy_variant';
+  catalog_pricing_snapshot_id: string;
   pricing_snapshot_id?: string | null;
   display_currency?: string | null;
   display_total_cents?: number | null;
@@ -152,13 +167,22 @@ export interface CheckoutCancelResponse {
 }
 
 export interface PaymentQuoteRequest {
-  variant_id: string;
+  product_id: string;
+  /** @deprecated Legacy compatibility only; omit for fixed products. */
+  variant_id?: string | null;
   duration_months?: number;
+  pricing_snapshot_id?: string | null;
   currency?: string;
   coupon_code?: string;
 }
 
 export interface PaymentQuoteResponse {
+  product_id: string;
+  /** @deprecated Legacy compatibility only. */
+  variant_id?: string | null;
+  duration_months: number;
+  catalog_mode: 'fixed_product' | 'legacy_variant';
+  catalog_pricing_snapshot_id: string;
   pricing_snapshot_id?: string | null;
   display_currency?: string | null;
   settlement_currency?: string | null;

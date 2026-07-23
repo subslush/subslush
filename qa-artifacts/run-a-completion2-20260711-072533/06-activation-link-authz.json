@@ -1,0 +1,60 @@
+{
+  "probe": "06-activation-link-authz",
+  "started_at": "2026-07-11T07:39:13.293Z",
+  "steps": {
+    "admin-set-instructions-precondition": {
+      "status": 200,
+      "body": {
+        "data": {
+          "order_id": "df633a9e-9fe4-4544-8acf-8190a9065bfe",
+          "subscription_id": "4d9c233a-c4d7-4115-b511-d9b4450c8778",
+          "activation_handshake_state": "awaiting_customer"
+        }
+      }
+    },
+    "customer-ready-precondition": {
+      "status": 200,
+      "body": {
+        "data": {
+          "subscription_id": "4d9c233a-c4d7-4115-b511-d9b4450c8778",
+          "activation_handshake_state": "customer_ready"
+        }
+      }
+    },
+    "activation-link-unauthenticated": {
+      "status": 401,
+      "body": {
+        "error": "Unauthorized",
+        "message": "Authentication token required",
+        "code": "MISSING_TOKEN"
+      }
+    },
+    "activation-link-customer": {
+      "status": 403,
+      "body": {
+        "error": "Forbidden",
+        "message": "Admin access required",
+        "code": "ACCESS_DENIED"
+      }
+    },
+    "activation-link-admin": {
+      "status": 200,
+      "body": {
+        "data": {
+          "order_id": "df633a9e-9fe4-4544-8acf-8190a9065bfe",
+          "subscription_id": "4d9c233a-c4d7-4115-b511-d9b4450c8778",
+          "activation_handshake_state": "link_delivered",
+          "order_status": "delivered"
+        }
+      }
+    }
+  },
+  "after": [
+    {
+      "activation_handshake_state": "link_delivered",
+      "status": "active"
+    }
+  ],
+  "finished_at": "2026-07-11T07:39:13.433Z",
+  "result": "PASS"
+}

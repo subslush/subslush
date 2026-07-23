@@ -58,22 +58,29 @@ export const guestIdentitySchema = z.object({
 
 export type GuestIdentityInput = z.infer<typeof guestIdentitySchema>;
 
-export const guestDraftItemSchema = z.object({
-  variant_id: uuidSchema,
-  term_months: z
-    .number()
-    .int('Term months must be an integer')
-    .positive('Term months must be greater than 0')
-    .optional(),
-  auto_renew: z.boolean().optional(),
-  selection_type: z
-    .enum(['upgrade_new_account', 'upgrade_own_account'])
-    .optional()
-    .nullable(),
-  account_identifier: z.string().max(255).optional().nullable(),
-  credentials: z.string().max(4000).optional().nullable(),
-  manual_monthly_acknowledged: z.boolean().optional().nullable(),
-});
+export const guestDraftItemSchema = z
+  .object({
+    variant_id: uuidSchema.optional().nullable(),
+    product_id: uuidSchema.optional().nullable(),
+    pricing_snapshot_id: z.string().min(1).max(255).optional().nullable(),
+    term_months: z
+      .number()
+      .int('Term months must be an integer')
+      .positive('Term months must be greater than 0')
+      .optional(),
+    auto_renew: z.boolean().optional(),
+    selection_type: z
+      .enum(['upgrade_new_account', 'upgrade_own_account'])
+      .optional()
+      .nullable(),
+    account_identifier: z.string().max(255).optional().nullable(),
+    credentials: z.string().max(4000).optional().nullable(),
+    manual_monthly_acknowledged: z.boolean().optional().nullable(),
+  })
+  .refine((item): boolean => Boolean(item.product_id || item.variant_id), {
+    message: 'A product_id or legacy variant_id is required',
+    path: ['product_id'],
+  });
 
 export const guestDraftSchema = z.object({
   checkout_session_key: optionalCheckoutSessionKeySchema,

@@ -9,7 +9,7 @@ import { subscriptionService } from '../services/subscriptionService';
 import { creditService } from '../services/creditService';
 import { orderService } from '../services/orderService';
 import { orderEntitlementService } from '../services/orderEntitlementService';
-import { resolveVariantPricing } from '../services/variantPricingService';
+import { resolveSellableProduct } from '../services/sellableProductService';
 import { resolvePricingLockContext } from '../services/pricingLockService';
 import { couponService, normalizeCouponCode } from '../services/couponService';
 import {
@@ -24,6 +24,9 @@ import {
   HttpStatus,
 } from '../utils/response';
 import { Logger } from '../utils/logger';
+import { buildFulfillmentConfigSnapshot } from '../utils/productIdentity';
+import { attachLegacyVariantDeprecation } from '../utils/catalogApiCompatibility';
+import { sendSellableProductError } from '../utils/catalogApiErrors';
 import { getRequestIp } from '../utils/requestIp';
 import {
   NOWPaymentsError,
@@ -40,6 +43,7 @@ import {
   resolvePreferredCurrency,
   type SupportedCurrency,
 } from '../utils/currency';
+import { normalizeCurrencyCode } from '../utils/currency';
 import {
   computeFixedTermPricing,
   computeTermPricing,
@@ -87,7 +91,7 @@ const resolveRequestCurrency = (
 };
 
 const buildCheckoutKey = (params: {
-  variantId: string;
+  productId: string;
   durationMonths: number;
   currency: string;
   autoRenew: boolean;
@@ -100,7 +104,7 @@ const buildCheckoutKey = (params: {
   const normalizedCurrency = params.currency.trim().toUpperCase();
   const autoRenewFlag = params.autoRenew ? '1' : '0';
   return [
-    params.variantId,
+    params.productId,
     duration.toString(),
     normalizedCurrency,
     autoRenewFlag,
@@ -298,8 +302,12 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
       schema: {
         body: {
           type: 'object',
-          required: ['variant_id', 'duration_months'],
+          anyOf: [{ required: ['product_id'] }, { required: ['variant_id'] }],
           properties: {
+            product_id: {
+              type: 'string',
+              format: 'uuid',
+            },
             variant_id: {
               type: 'string',
               minLength: 1,
@@ -307,7 +315,10 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             duration_months: {
               type: 'number',
               minimum: 1,
-              default: 1,
+            },
+            pricing_snapshot_id: {
+              type: 'string',
+              minLength: 1,
             },
             currency: {
               type: 'string',
@@ -329,40 +340,51 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         const {
+          product_id,
           variant_id,
-          duration_months = 1,
+          duration_months,
+          pricing_snapshot_id,
           currency: requestedCurrency,
           coupon_code,
         } = request.body as any;
+        if (variant_id) attachLegacyVariantDeprecation(reply);
+        if (requestedCurrency && !normalizeCurrencyCode(requestedCurrency)) {
+          return sendSellableProductError(reply, 'UNSUPPORTED_CURRENCY');
+        }
 
         const preferredCurrency = resolveRequestCurrency(
           request,
           requestedCurrency
         );
 
-        const pricingResult = await resolveVariantPricing({
-          variantId: variant_id,
+        const pricingResult = await resolveSellableProduct({
+          context: 'payment_quote',
+          productId: product_id ?? null,
+          legacyVariantId: variant_id ?? null,
           currency: preferredCurrency,
-          termMonths: duration_months,
+          durationMonths: duration_months ?? null,
+          expectedPricingSnapshotId: pricing_snapshot_id ?? null,
         });
 
         if (!pricingResult.ok) {
-          if (pricingResult.error === 'term_unavailable') {
-            return ErrorResponses.badRequest(
-              reply,
-              'Selected duration is not available for this plan'
-            );
-          }
-          return ErrorResponses.badRequest(
+          return sendSellableProductError(
             reply,
-            'Subscription plan is not available'
+            pricingResult.code,
+            pricingResult.details
           );
         }
 
-        const { product, variant, price, snapshot, currency, catalogMode } =
-          pricingResult.data;
+        const {
+          product,
+          price,
+          snapshot,
+          currency,
+          catalogMode,
+          legacyVariantId,
+          pricingSnapshotId,
+        } = pricingResult.data;
         const lockContext = await resolvePricingLockContext({
-          variantId: variant.id,
+          variantId: legacyVariantId ?? product.id,
           displayCurrency: currency,
           displayPrice: price,
         });
@@ -425,6 +447,11 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         );
 
         return SuccessResponses.ok(reply, {
+          product_id: product.id,
+          variant_id: legacyVariantId,
+          duration_months: snapshot.termMonths,
+          catalog_mode: catalogMode,
+          catalog_pricing_snapshot_id: pricingSnapshotId,
           pricing_snapshot_id: lockContext.snapshotId,
           display_currency: lockContext.displayCurrency,
           settlement_currency: lockContext.settlementCurrency,
@@ -450,8 +477,12 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
       schema: {
         body: {
           type: 'object',
-          required: ['variant_id', 'duration_months'],
+          anyOf: [{ required: ['product_id'] }, { required: ['variant_id'] }],
           properties: {
+            product_id: {
+              type: 'string',
+              format: 'uuid',
+            },
             variant_id: {
               type: 'string',
               minLength: 1,
@@ -459,7 +490,10 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             duration_months: {
               type: 'number',
               minimum: 1,
-              default: 1,
+            },
+            pricing_snapshot_id: {
+              type: 'string',
+              minLength: 1,
             },
             payment_method: {
               type: 'string',
@@ -490,13 +524,19 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         const {
+          product_id,
           variant_id,
-          duration_months = 1,
+          duration_months,
+          pricing_snapshot_id,
           payment_method = 'card',
           auto_renew = false,
           currency: requestedCurrency,
           coupon_code,
         } = request.body as any;
+        if (variant_id) attachLegacyVariantDeprecation(reply);
+        if (requestedCurrency && !normalizeCurrencyCode(requestedCurrency)) {
+          return sendSellableProductError(reply, 'UNSUPPORTED_CURRENCY');
+        }
 
         const requestedPaymentMethod =
           payment_method === 'pay4bit'
@@ -525,36 +565,34 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         const pricingCurrency: SupportedCurrency =
           payment_method === 'credits' ? 'USD' : preferredCurrency;
 
-        const pricingResult = await resolveVariantPricing({
-          variantId: variant_id,
+        const pricingResult = await resolveSellableProduct({
+          context: 'payment_checkout',
+          productId: product_id ?? null,
+          legacyVariantId: variant_id ?? null,
           currency: pricingCurrency,
-          termMonths: duration_months,
+          durationMonths: duration_months ?? null,
+          expectedPricingSnapshotId: pricing_snapshot_id ?? null,
         });
 
         if (!pricingResult.ok) {
-          if (pricingResult.error === 'term_unavailable') {
-            return ErrorResponses.badRequest(
-              reply,
-              'Selected duration is not available for this plan'
-            );
-          }
-          return ErrorResponses.badRequest(
+          return sendSellableProductError(
             reply,
-            'Subscription plan is not available'
+            pricingResult.code,
+            pricingResult.details
           );
         }
 
         const {
           product,
-          variant,
-          productVariantId: resolvedProductVariantId,
+          legacyVariantId: resolvedProductVariantId,
           price: displayPrice,
           snapshot,
           currency,
           catalogMode,
+          itemCode,
         } = pricingResult.data;
         const lockContext = await resolvePricingLockContext({
-          variantId: resolvedProductVariantId || variant_id,
+          variantId: resolvedProductVariantId ?? product.id,
           displayCurrency: currency,
           displayPrice,
         });
@@ -577,7 +615,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
         const upgradeOptions = upgradeOptionsRaw;
-        const planCode = variant.service_plan || variant.variant_code;
+        const planCode = itemCode;
         if (!planCode || !product.service_type) {
           return ErrorResponses.badRequest(
             reply,
@@ -632,7 +670,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         const checkoutKey = buildCheckoutKey({
-          variantId: variant.id,
+          productId: product.id,
           durationMonths: snapshot.termMonths,
           currency,
           autoRenew: auto_renew,
@@ -698,7 +736,10 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             catalog_mode: catalogMode,
             checkout_key: checkoutKey,
             checkout_context: {
-              variant_id: variant.id,
+              product_id: product.id,
+              ...(resolvedProductVariantId
+                ? { variant_id: resolvedProductVariantId }
+                : {}),
               duration_months: snapshot.termMonths,
               currency,
               auto_renew,
@@ -717,7 +758,15 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
 
         const orderItems = [
           {
+            product_id: product.id,
             product_variant_id: productVariantId ?? null,
+            product_name_snapshot: product.name,
+            product_slug_snapshot: product.slug,
+            duration_months_snapshot: snapshot.termMonths,
+            fulfillment_config_snapshot: buildFulfillmentConfigSnapshot(
+              product.metadata
+            ),
+            catalog_mode_snapshot: catalogMode,
             quantity: 1,
             unit_price_cents: finalTotalCents,
             base_price_cents: snapshot.basePriceCents,
@@ -900,6 +949,25 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
                 validation.reason || 'Purchase not allowed'
               );
             }
+          } else {
+            const validation = await subscriptionService.canPurchaseProduct(
+              user.userId,
+              product.id
+            );
+            if (!validation.canPurchase) {
+              await orderService.updateOrderStatus(
+                order.id,
+                'cancelled',
+                validation.reason || 'purchase_not_allowed'
+              );
+              if (coupon) {
+                await couponService.voidRedemptionForOrder(order.id);
+              }
+              return ErrorResponses.badRequest(
+                reply,
+                validation.reason || 'Purchase not allowed'
+              );
+            }
           }
 
           const creditResult = await creditService.spendCredits(
@@ -914,6 +982,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
             },
             {
               orderId: order.id,
+              productId: product.id,
               ...(productVariantId ? { productVariantId } : {}),
               priceCents,
               basePriceCents: snapshot.basePriceCents,
@@ -952,7 +1021,18 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
               renewal_date: renewalDate,
               auto_renew,
               order_id: order.id,
+              order_item_id: order.items?.[0]?.id ?? null,
+              product_id: product.id,
               product_variant_id: productVariantId ?? null,
+              product_name_snapshot: product.name,
+              product_slug_snapshot: product.slug,
+              duration_months_snapshot: snapshot.termMonths,
+              unit_price_cents_snapshot: finalTotalCents,
+              total_price_cents_snapshot: finalTotalCents,
+              currency_snapshot: currency,
+              fulfillment_config_snapshot: buildFulfillmentConfigSnapshot(
+                product.metadata
+              ),
               price_cents: termTotalCents,
               base_price_cents: snapshot.basePriceCents,
               discount_percent: snapshot.discountPercent,
@@ -975,6 +1055,7 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
               { service_type: product.service_type, service_plan: planCode },
               {
                 orderId: order.id,
+                productId: product.id,
                 ...(productVariantId ? { productVariantId } : {}),
                 priceCents,
                 basePriceCents: snapshot.basePriceCents,
@@ -1015,6 +1096,12 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           const entitlement = await orderEntitlementService.upsertEntitlement({
             order_id: order.id,
             order_item_id: orderItemId,
+            product_id: product.id,
+            product_name_snapshot: product.name,
+            product_slug_snapshot: product.slug,
+            fulfillment_config_snapshot: buildFulfillmentConfigSnapshot(
+              product.metadata
+            ),
             user_id: user.userId,
             status: createdSubscription.status,
             starts_at: subscriptionStartAt,
@@ -1082,6 +1169,11 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           return SuccessResponses.created(reply, {
             payment_method: 'credits',
             order_id: order.id,
+            product_id: product.id,
+            variant_id: productVariantId,
+            duration_months: snapshot.termMonths,
+            catalog_mode: catalogMode,
+            catalog_pricing_snapshot_id: pricingResult.data.pricingSnapshotId,
             pricing_snapshot_id: lockContext.snapshotId,
             display_currency: lockContext.displayCurrency,
             display_total_cents: finalTotalCents,
@@ -1152,6 +1244,11 @@ export async function paymentRoutes(fastify: FastifyInstance): Promise<void> {
           payment_method: 'card',
           payment_provider: cardProvider,
           order_id: order.id,
+          product_id: product.id,
+          variant_id: productVariantId,
+          duration_months: snapshot.termMonths,
+          catalog_mode: catalogMode,
+          catalog_pricing_snapshot_id: pricingResult.data.pricingSnapshotId,
           paymentId: cardResult.paymentId,
           sessionId: cardResult.sessionId,
           sessionUrl: cardResult.sessionUrl,

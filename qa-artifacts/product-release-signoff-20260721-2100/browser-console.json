@@ -1,0 +1,542 @@
+[
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Component mounted"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Current auth state: {isAuthenticated: true, userEmail: qa-release-admin@example.test}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] FORCING complete user data refresh with server data"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user data: {\n  \"id\": \"10000000-0000-4000-8000-000000000001\",\n  \"email\": \"qa-release-admin@example.test\",\n  \"firstName\": null,\n  \"lastName\": null,\n  \"role\": \"user\",\n  \"displayName\": null,\n  \"status\": \"active\",\n  \"pinSetAt\": null,\n  \"createdAt\": \"2026-07-21T19:04:33.623Z\",\n  \"lastLoginAt\": null,\n  \"profileUpdatedAt\": \"2026-07-21T19:04:33.623Z\"\n}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 200, url: /api/v1/credits/balance/10000000-0000-4000-8000-000000000001}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Component mounted"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Current auth state: {isAuthenticated: true, userEmail: qa-release-admin@example.test}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] FORCING complete user data refresh with server data"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user data: {\n  \"id\": \"10000000-0000-4000-8000-000000000001\",\n  \"email\": \"qa-release-admin@example.test\",\n  \"firstName\": null,\n  \"lastName\": null,\n  \"role\": \"user\",\n  \"displayName\": null,\n  \"status\": \"active\",\n  \"pinSetAt\": null,\n  \"createdAt\": \"2026-07-21T19:04:33.623Z\",\n  \"lastLoginAt\": null,\n  \"profileUpdatedAt\": \"2026-07-21T19:04:33.623Z\"\n}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 200, url: /api/v1/credits/balance/10000000-0000-4000-8000-000000000001}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 201, url: /api/v1/admin/products}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Component mounted"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Current auth state: {isAuthenticated: true, userEmail: qa-release-admin@example.test}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] FORCING complete user data refresh with server data"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user data: {\n  \"id\": \"10000000-0000-4000-8000-000000000001\",\n  \"email\": \"qa-release-admin@example.test\",\n  \"firstName\": null,\n  \"lastName\": null,\n  \"role\": \"user\",\n  \"displayName\": null,\n  \"status\": \"active\",\n  \"pinSetAt\": null,\n  \"createdAt\": \"2026-07-21T19:04:33.623Z\",\n  \"lastLoginAt\": null,\n  \"profileUpdatedAt\": \"2026-07-21T19:04:33.623Z\"\n}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 200, url: /api/v1/credits/balance/10000000-0000-4000-8000-000000000001}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 201, url: /api/v1/admin/products}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Component mounted"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Current auth state: {isAuthenticated: true, userEmail: qa-release-admin@example.test}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] FORCING complete user data refresh with server data"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user data: {\n  \"id\": \"10000000-0000-4000-8000-000000000001\",\n  \"email\": \"qa-release-admin@example.test\",\n  \"firstName\": null,\n  \"lastName\": null,\n  \"role\": \"user\",\n  \"displayName\": null,\n  \"status\": \"active\",\n  \"pinSetAt\": null,\n  \"createdAt\": \"2026-07-21T19:04:33.623Z\",\n  \"lastLoginAt\": null,\n  \"profileUpdatedAt\": \"2026-07-21T19:04:33.623Z\"\n}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 200, url: /api/v1/credits/balance/10000000-0000-4000-8000-000000000001}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Component mounted"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Current auth state: {isAuthenticated: true, userEmail: qa-release-admin@example.test}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] FORCING complete user data refresh with server data"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user data: {\n  \"id\": \"10000000-0000-4000-8000-000000000001\",\n  \"email\": \"qa-release-admin@example.test\",\n  \"firstName\": null,\n  \"lastName\": null,\n  \"role\": \"user\",\n  \"displayName\": null,\n  \"status\": \"active\",\n  \"pinSetAt\": null,\n  \"createdAt\": \"2026-07-21T19:04:33.623Z\",\n  \"lastLoginAt\": null,\n  \"profileUpdatedAt\": \"2026-07-21T19:04:33.623Z\"\n}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 200, url: /api/v1/credits/balance/10000000-0000-4000-8000-000000000001}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 201, url: /api/v1/admin/products/56248424-4a13-46a5-b0bc-bdc652f0279c/fixed-price/current}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Component mounted"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Current auth state: {isAuthenticated: true, userEmail: qa-release-admin@example.test}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] FORCING complete user data refresh with server data"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user data: {\n  \"id\": \"10000000-0000-4000-8000-000000000001\",\n  \"email\": \"qa-release-admin@example.test\",\n  \"firstName\": null,\n  \"lastName\": null,\n  \"role\": \"user\",\n  \"displayName\": null,\n  \"status\": \"active\",\n  \"pinSetAt\": null,\n  \"createdAt\": \"2026-07-21T19:04:33.623Z\",\n  \"lastLoginAt\": null,\n  \"profileUpdatedAt\": \"2026-07-21T19:04:33.623Z\"\n}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 200, url: /api/v1/credits/balance/10000000-0000-4000-8000-000000000001}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 200, url: /api/v1/admin/products/56248424-4a13-46a5-b0bc-bdc652f0279c/fixed-catalog/recover}"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: qa-release-admin@example.test"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: null"
+  },
+  {
+    "page": "admin",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: qa-release-admin@example.test"
+  },
+  {
+    "page": "public",
+    "type": "error",
+    "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: undefined"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: null"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: undefined"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: undefined"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: undefined"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Component mounted"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Current auth state: {isAuthenticated: false, userEmail: undefined}"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 200, url: /api/v1/subscriptions/products/available}"
+  },
+  {
+    "page": "public",
+    "type": "error",
+    "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Client load, user from server: undefined"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Hydrating auth store with complete server user: null"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user firstName: undefined"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Server user lastName: undefined"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [AUTH STORE] Hydrating with user: undefined"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Component mounted"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🔐 [LAYOUT] Current auth state: {isAuthenticated: false, userEmail: undefined}"
+  },
+  {
+    "page": "public",
+    "type": "log",
+    "text": "🌐 [API CLIENT] Response success: {status: 200, url: /api/v1/subscriptions/products/available}"
+  }
+]

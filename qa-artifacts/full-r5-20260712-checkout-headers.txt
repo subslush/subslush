@@ -1,0 +1,25 @@
+HTTP/1.1 201 Created
+Content-Security-Policy: default-src 'self';style-src 'self' 'unsafe-inline';script-src 'self';img-src 'self' data: https:;base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';object-src 'none';script-src-attr 'none';upgrade-insecure-requests
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Origin-Agent-Cluster: ?1
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-DNS-Prefetch-Control: off
+X-Download-Options: noopen
+X-Frame-Options: SAMEORIGIN
+X-Permitted-Cross-Domain-Policies: none
+X-XSS-Protection: 0
+vary: Origin
+access-control-allow-credentials: true
+x-ratelimit-limit: 15
+x-ratelimit-remaining: 14
+x-ratelimit-reset: 2026-07-12T13:39:45.878Z
+x-ratelimit-window: 600000
+content-type: application/json; charset=utf-8
+content-length: 588
+Date: Sun, 12 Jul 2026 13:29:47 GMT
+Connection: keep-alive
+Keep-Alive: timeout=72
+

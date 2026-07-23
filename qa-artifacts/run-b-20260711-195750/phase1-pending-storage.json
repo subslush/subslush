@@ -1,0 +1,87 @@
+{
+  "cookies": [
+    {
+      "name": "preferred_currency",
+      "value": "USD",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1815329074,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ttp",
+      "value": "3GMt4P41pQP57ERjQ1U4sv91MhP",
+      "domain": ".tiktok.com",
+      "path": "/",
+      "expires": 1791569074.144042,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "_tt_enable_cookie",
+      "value": "1",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791569074,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ttp",
+      "value": "01KX95MFAF92MWF61BNHDQKE0S_.tt.3",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791569074,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ttcsid",
+      "value": "1783793073493::UdEhYV50Z3J01jty8_N0.1.1783793074623.0::1.844.707::776.3.1140.748::800.1.0",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791569074,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ttcsid_D8OLRUJC77UDGOQMBSF0",
+      "value": "1783793073492::OotI2g2OH1v0fVUzZAkE.1.1783793074623.1",
+      "domain": "127.0.0.1",
+      "path": "/",
+      "expires": 1791569074,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://127.0.0.1:3000",
+      "localStorage": [
+        {
+          "name": "tiktok_guest_id",
+          "value": "3d830c9f-8216-400b-a1b2-c6ff5b049ca3"
+        },
+        {
+          "name": "checkout_draft_state",
+          "value": "{\"email\":\"qa-b2-pending-1783793071420@example.test\",\"guestIdentityId\":\"9e55877c-7c14-417e-b7a5-bfa3e1c10cd4\",\"checkoutSessionKey\":\"eb3745c12c1f7e9a4435070e747d53718836574d835121a4\",\"orderId\":\"42066d1e-be37-4fe9-97b7-7237017e7697\",\"appliedCouponCode\":null,\"selectedPaymentCountry\":null,\"selectedTaxResidence\":\"outside_eu\",\"selectedPaymentProvider\":\"antom\",\"selectedAntomOptionId\":\"cards\",\"selectedPayopMethodId\":null,\"legalConsent\":{\"immediateFulfillmentConsent\":true,\"termsPolicyConsent\":true}}"
+        },
+        {
+          "name": "subslush_cart",
+          "value": "[{\"id\":\"1e72ee05-1282-4d04-aae0-27b4c3281dd6|1|no-renew|upgrade_new_account\",\"serviceType\":\"streaming\",\"serviceName\":\"QA-B2 Streaming\",\"plan\":\"QA-B2 Streaming Plan\",\"price\":49,\"currency\":\"USD\",\"quantity\":1,\"description\":\"\",\"features\":[],\"variantId\":\"1e72ee05-1282-4d04-aae0-27b4c3281dd6\",\"termMonths\":1,\"autoRenew\":false,\"upgradeSelectionType\":\"upgrade_new_account\",\"manualMonthlyAcknowledged\":true}]"
+        },
+        {
+          "name": "preferred_currency",
+          "value": "USD"
+        }
+      ]
+    }
+  ]
+}

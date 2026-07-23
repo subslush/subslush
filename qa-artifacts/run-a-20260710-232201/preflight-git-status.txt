@@ -1,0 +1,11 @@
+?? qa-artifacts/admin-next-fix-20260710/
+?? qa-artifacts/admin-next-fulfillment-fix-20260710/
+?? qa-artifacts/admin-next-smoke-20260710/
+?? qa-artifacts/admin-next-smoke-2b-final-20260710/
+?? qa-artifacts/admin-next-smoke-2c-20260710/
+?? qa-artifacts/admin-next-smoke-final-20260710/
+?? qa-artifacts/admin-next-smoke-preview-20260710-exec/
+?? qa-artifacts/run-a-20260710-232201/
+?? qa-artifacts/run-a-current-dir.txt
+?? qa-artifacts/task3-current-dir.txt
+?? qa-artifacts/task3-gate-20260710-224322/

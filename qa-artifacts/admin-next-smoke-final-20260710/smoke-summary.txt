@@ -1,0 +1,4 @@
+qa-artifacts/admin-next-smoke-final-20260710/smoke-run-1.log:products-page-interactive-ms=686
+qa-artifacts/admin-next-smoke-final-20260710/smoke-run-1.log:PASS admin-next smoke: SMOKE-1783701925071 Product -> SMOKE-1783701925071 Variant
+qa-artifacts/admin-next-smoke-final-20260710/smoke-run-2.log:products-page-interactive-ms=507
+qa-artifacts/admin-next-smoke-final-20260710/smoke-run-2.log:PASS admin-next smoke: SMOKE-1783701941422 Product -> SMOKE-1783701941422 Variant

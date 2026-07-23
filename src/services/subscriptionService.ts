@@ -44,6 +44,7 @@ import {
   validateUpgradeOptions,
 } from '../utils/upgradeOptions';
 import type { Product, ProductVariant } from '../types/catalog';
+import { resolveDurableProductIdentity } from '../utils/productIdentity';
 
 const metadataValidator = new Ajv({ allErrors: true, strict: false });
 const metadataSchemaCache = new Map<string, ValidateFunction>();
@@ -169,12 +170,110 @@ export class SubscriptionService {
     client?: PoolClient
   ): Promise<SubscriptionResult> {
     try {
+      const pool = client ?? getDatabasePool();
       Logger.info('Creating subscription', {
         userId,
         serviceType: input.service_type,
         plan: input.service_plan,
         variantId: input.product_variant_id,
+        productId: input.product_id,
       });
+
+      let productId = input.product_id ?? null;
+      let productVariantId = input.product_variant_id ?? null;
+      let productNameSnapshot = input.product_name_snapshot ?? null;
+      let productSlugSnapshot = input.product_slug_snapshot ?? null;
+      let durationMonthsSnapshot =
+        input.duration_months_snapshot ?? input.term_months ?? null;
+      let unitPriceCentsSnapshot =
+        input.unit_price_cents_snapshot ??
+        input.base_price_cents ??
+        input.price_cents ??
+        null;
+      let totalPriceCentsSnapshot =
+        input.total_price_cents_snapshot ?? input.price_cents ?? null;
+      let currencySnapshot = input.currency_snapshot ?? input.currency ?? null;
+      let fulfillmentConfigSnapshot = input.fulfillment_config_snapshot ?? null;
+
+      if (input.order_item_id) {
+        const orderItemResult = await pool.query(
+          `SELECT oi.product_id,
+                  oi.product_variant_id,
+                  oi.product_name_snapshot,
+                  oi.product_slug_snapshot,
+                  oi.duration_months_snapshot,
+                  oi.fulfillment_config_snapshot,
+                  oi.unit_price_cents,
+                  oi.total_price_cents,
+                  oi.currency,
+                  pv.product_id AS legacy_variant_product_id,
+                  metadata_product.id AS metadata_product_id
+           FROM order_items oi
+           LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
+           LEFT JOIN products metadata_product
+             ON metadata_product.id::text = oi.metadata->>'product_id'
+           WHERE oi.id = $1
+             AND ($2::uuid IS NULL OR oi.order_id = $2)
+           FOR SHARE OF oi`,
+          [input.order_item_id, input.order_id ?? null]
+        );
+        if (orderItemResult.rows.length === 0) {
+          return createErrorResult('Order item not found for subscription');
+        }
+        const orderItem = orderItemResult.rows[0];
+        const identity = resolveDurableProductIdentity({
+          context: 'subscription_create_from_order_item',
+          recordId: input.order_item_id,
+          explicitProductId: productId,
+          parentProductId: orderItem.product_id,
+          variantProductId: orderItem.legacy_variant_product_id,
+          metadataProductId: orderItem.metadata_product_id,
+        });
+        if (identity.conflict) {
+          return createErrorResult(
+            'Product identity conflicts with order item'
+          );
+        }
+        productId = identity.productId;
+        productVariantId =
+          productVariantId ?? orderItem.product_variant_id ?? null;
+        productNameSnapshot =
+          productNameSnapshot ?? orderItem.product_name_snapshot ?? null;
+        productSlugSnapshot =
+          productSlugSnapshot ?? orderItem.product_slug_snapshot ?? null;
+        durationMonthsSnapshot =
+          durationMonthsSnapshot ?? orderItem.duration_months_snapshot ?? null;
+        unitPriceCentsSnapshot =
+          unitPriceCentsSnapshot ?? orderItem.unit_price_cents ?? null;
+        totalPriceCentsSnapshot =
+          totalPriceCentsSnapshot ?? orderItem.total_price_cents ?? null;
+        currencySnapshot = currencySnapshot ?? orderItem.currency ?? null;
+        fulfillmentConfigSnapshot =
+          fulfillmentConfigSnapshot ??
+          parseJsonValue<Record<string, any> | null>(
+            orderItem.fulfillment_config_snapshot,
+            null
+          );
+      } else if (!productId && productVariantId) {
+        const listing =
+          await this.resolveCatalogListingByVariant(productVariantId);
+        const identity = resolveDurableProductIdentity({
+          context: 'subscription_create_legacy_variant',
+          recordId: productVariantId,
+          variantProductId: listing?.product.id ?? null,
+        });
+        productId = identity.productId;
+        productNameSnapshot =
+          productNameSnapshot ?? listing?.product.name ?? null;
+        productSlugSnapshot =
+          productSlugSnapshot ?? listing?.product.slug ?? null;
+      }
+
+      if (!productId) {
+        return createErrorResult(
+          'Product identity is required for subscription'
+        );
+      }
 
       // Validate business logic for legacy variant-backed subscriptions.
       // Fixed products can persist a null product_variant_id.
@@ -182,6 +281,17 @@ export class SubscriptionService {
         const validationResult = await this.canPurchaseSubscription(
           userId,
           input.product_variant_id,
+          input.metadata
+        );
+        if (!validationResult.canPurchase) {
+          return createErrorResult(
+            `Cannot purchase subscription: ${validationResult.reason}`
+          );
+        }
+      } else {
+        const validationResult = await this.canPurchaseProduct(
+          userId,
+          productId,
           input.metadata
         );
         if (!validationResult.canPurchase) {
@@ -203,8 +313,6 @@ export class SubscriptionService {
       }
 
       const subscriptionId = uuidv4();
-      const pool = client ?? getDatabasePool();
-
       const requestedStatus = input.status ?? 'pending';
       const initialStatus =
         requestedStatus === 'pending'
@@ -263,17 +371,22 @@ export class SubscriptionService {
         `INSERT INTO subscriptions (
           id, user_id, service_type, service_plan, start_date, term_start_at,
           end_date, renewal_date, credentials_encrypted, status, metadata, order_id,
-          order_item_id, product_variant_id, price_cents, base_price_cents, discount_percent,
+          order_item_id, product_id, product_variant_id,
+          product_name_snapshot, product_slug_snapshot, duration_months_snapshot,
+          unit_price_cents_snapshot, total_price_cents_snapshot, currency_snapshot,
+          fulfillment_config_snapshot,
+          price_cents, base_price_cents, discount_percent,
           term_months, currency, auto_renew, next_billing_at,
           renewal_method, billing_payment_method_id, auto_renew_enabled_at, auto_renew_disabled_at,
           status_reason, referral_reward_id, pre_launch_reward_id
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
           $7, $8, $9, $10, $11, $12,
-          $13, $14, $15, $16, $17,
-          $18, $19, $20, $21, $22,
-          $23, $24, $25, $26, $27,
-          $28
+          $13, $14, $15,
+          $16, $17, $18, $19, $20, $21, $22,
+          $23, $24, $25, $26, $27, $28, $29,
+          $30, $31, $32, $33, $34,
+          $35, $36
         )
         RETURNING *`,
         [
@@ -290,7 +403,17 @@ export class SubscriptionService {
           metadataPayload ? JSON.stringify(metadataPayload) : null,
           input.order_id || null,
           input.order_item_id || null,
-          input.product_variant_id || null,
+          productId,
+          productVariantId,
+          productNameSnapshot,
+          productSlugSnapshot,
+          durationMonthsSnapshot,
+          unitPriceCentsSnapshot,
+          totalPriceCentsSnapshot,
+          currencySnapshot,
+          fulfillmentConfigSnapshot
+            ? JSON.stringify(fulfillmentConfigSnapshot)
+            : null,
           input.price_cents ?? null,
           input.base_price_cents ?? null,
           input.discount_percent ?? null,
@@ -398,8 +521,8 @@ export class SubscriptionService {
 
       const result = await pool.query(
         `INSERT INTO admin_tasks
-          (subscription_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
-         SELECT $1, $2, $3, $4::varchar(50), $5, $6, $7, $8::varchar(50), $9
+          (subscription_id, product_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
+         SELECT $1, (SELECT product_id FROM subscriptions WHERE id = $1), $2, $3, $4::varchar(50), $5, $6, $7, $8::varchar(50), $9
          WHERE NOT EXISTS (
            SELECT 1
            FROM admin_tasks
@@ -449,8 +572,8 @@ export class SubscriptionService {
 
       const result = await pool.query(
         `INSERT INTO admin_tasks
-          (subscription_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
-         SELECT $1, $2, $3, $4::varchar(50), $5, $6, $7, $8::varchar(50), $9
+          (subscription_id, product_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
+         SELECT $1, (SELECT product_id FROM subscriptions WHERE id = $1), $2, $3, $4::varchar(50), $5, $6, $7, $8::varchar(50), $9
          WHERE NOT EXISTS (
            SELECT 1
            FROM admin_tasks
@@ -542,17 +665,19 @@ export class SubscriptionService {
       const pool = getDatabasePool();
       const query = userId
         ? `
-          SELECT s.*, p.name AS product_name, pv.name AS variant_name
+          SELECT s.*, pv.product_id AS legacy_variant_product_id,
+                 COALESCE(s.product_name_snapshot, p.name) AS product_name, pv.name AS variant_name
           FROM subscriptions s
           LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-          LEFT JOIN products p ON p.id = pv.product_id
+          LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
           WHERE s.id = $1 AND s.user_id = $2
         `
         : `
-          SELECT s.*, p.name AS product_name, pv.name AS variant_name
+          SELECT s.*, pv.product_id AS legacy_variant_product_id,
+                 COALESCE(s.product_name_snapshot, p.name) AS product_name, pv.name AS variant_name
           FROM subscriptions s
           LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-          LEFT JOIN products p ON p.id = pv.product_id
+          LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
           WHERE s.id = $1
         `;
 
@@ -700,10 +825,11 @@ export class SubscriptionService {
 
       const listParams = [...params, limit, offset];
       const listSql = `
-        SELECT s.*, p.name as product_name, pv.name as variant_name
+        SELECT s.*, pv.product_id AS legacy_variant_product_id,
+               COALESCE(s.product_name_snapshot, p.name) as product_name, pv.name as variant_name
         FROM subscriptions s
         LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-        LEFT JOIN products p ON p.id = pv.product_id
+        LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
         ${whereClause}
         ORDER BY s.created_at DESC
         LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
@@ -735,11 +861,12 @@ export class SubscriptionService {
       const params: any[] = [];
       let paramCount = 0;
       let sql = `
-        SELECT s.*, u.email as user_email,
+        SELECT s.*, pv.product_id AS legacy_variant_product_id, u.email as user_email,
                CONCAT_WS(' ', u.first_name, u.last_name) as user_full_name,
                (s.credentials_encrypted IS NOT NULL) AS has_credentials
         FROM subscriptions s
         LEFT JOIN users u ON u.id = s.user_id
+        LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
         WHERE 1=1
       `;
 
@@ -1522,6 +1649,16 @@ export class SubscriptionService {
         updateValues.push(updates.status_reason);
       }
 
+      if (updates.cancellation_requested_at !== undefined) {
+        updateFields.push(`cancellation_requested_at = $${++paramCount}`);
+        updateValues.push(updates.cancellation_requested_at);
+      }
+
+      if (updates.cancellation_reason !== undefined) {
+        updateFields.push(`cancellation_reason = $${++paramCount}`);
+        updateValues.push(updates.cancellation_reason);
+      }
+
       if (updates.price_cents !== undefined) {
         updateFields.push(`price_cents = $${++paramCount}`);
         updateValues.push(updates.price_cents);
@@ -1802,17 +1939,24 @@ export class SubscriptionService {
       await this.clearStatsCache();
 
       if (currentSub.status !== newStatus && newStatus === 'active') {
-        let productName: string | null = null;
+        let productName: string | null =
+          subscription.product_name_snapshot ?? null;
         let variantName: string | null = null;
-        if (subscription.product_variant_id) {
+        if (
+          !productName &&
+          (subscription.product_id || subscription.product_variant_id)
+        ) {
           const variantResult = await pool.query(
             `
             SELECT pv.name AS variant_name, p.name AS product_name
-            FROM product_variants pv
-            LEFT JOIN products p ON p.id = pv.product_id
-            WHERE pv.id = $1
+            FROM (SELECT $1::uuid AS product_id, $2::uuid AS variant_id) identity
+            LEFT JOIN product_variants pv ON pv.id = identity.variant_id
+            LEFT JOIN products p ON p.id = COALESCE(identity.product_id, pv.product_id)
             `,
-            [subscription.product_variant_id]
+            [
+              subscription.product_id ?? null,
+              subscription.product_variant_id ?? null,
+            ]
           );
           productName = variantResult.rows[0]?.product_name ?? null;
           variantName = variantResult.rows[0]?.variant_name ?? null;
@@ -1943,7 +2087,7 @@ export class SubscriptionService {
       };
 
       const result = await pool.query(
-        `SELECT s.*,
+        `SELECT s.*, pv.product_id AS legacy_variant_product_id,
                 o.metadata AS order_metadata,
                 o.status AS order_status,
                 o.updated_at AS order_updated_at,
@@ -1953,6 +2097,7 @@ export class SubscriptionService {
          FROM subscriptions s
          JOIN orders o ON o.id = s.order_id
          LEFT JOIN order_items oi ON oi.id = s.order_item_id
+         LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
          WHERE s.order_id = $1
            AND s.id = $2`,
         [orderId, subscriptionId]
@@ -2407,6 +2552,67 @@ export class SubscriptionService {
 
   // Business Logic
 
+  async canPurchaseProduct(
+    userId: string,
+    productId: string,
+    metadata?: SubscriptionMetadata
+  ): Promise<SubscriptionPurchaseValidation> {
+    try {
+      if (!productId) {
+        return {
+          canPurchase: false,
+          reason: 'Product is required to purchase this subscription',
+        };
+      }
+
+      const product = await catalogService.getProductById(productId);
+      if (!product || product.status !== 'active') {
+        return {
+          canPurchase: false,
+          reason: 'Product is not currently available',
+        };
+      }
+
+      const serviceType = product.service_type || 'subscription';
+      const planCode = product.slug || product.id;
+      const handlerRequired = shouldUseHandler(product.metadata);
+      const handler = handlerRequired
+        ? serviceHandlerRegistry.getHandler(serviceType)
+        : null;
+      if (handlerRequired && !handler) {
+        return {
+          canPurchase: false,
+          reason: `No handler registered for ${serviceType}`,
+        };
+      }
+
+      const metadataValidation = this.validateMetadataRules(product, metadata);
+      if (!metadataValidation.valid) {
+        return {
+          canPurchase: false,
+          reason:
+            metadataValidation.reason ||
+            'Subscription metadata does not match product rules',
+        };
+      }
+
+      if (handler && !(await handler.validatePurchase(userId, planCode))) {
+        return {
+          canPurchase: false,
+          reason: `Purchase not allowed for ${serviceType} ${planCode}`,
+        };
+      }
+
+      return { canPurchase: true };
+    } catch (error) {
+      Logger.error('Error checking product purchase eligibility:', error);
+      return {
+        canPurchase: false,
+        reason: 'Failed to validate purchase eligibility',
+      };
+    }
+  }
+
   async canPurchaseSubscription(
     userId: string,
     variantId: string,
@@ -2542,10 +2748,10 @@ export class SubscriptionService {
       const result = await pool.query(
         `SELECT COUNT(*) as count
          FROM subscriptions s
-         JOIN product_variants pv ON pv.id = s.product_variant_id
+         LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
          WHERE s.user_id = $1
            AND s.status = 'active'
-           AND pv.product_id = $2`,
+           AND COALESCE(s.product_id, pv.product_id) = $2`,
         [userId, productId]
       );
 
@@ -2559,6 +2765,7 @@ export class SubscriptionService {
              FROM subscriptions
              WHERE user_id = $1
                AND status = 'active'
+               AND product_id IS NULL
                AND product_variant_id IS NULL
                AND LOWER(service_type) = $2`,
             [userId, normalizedServiceType]
@@ -2613,6 +2820,13 @@ export class SubscriptionService {
       metadata?.auto_renew === 1 ||
       metadata?.auto_renew === '1';
 
+    const identity = resolveDurableProductIdentity({
+      context: 'subscription_read',
+      recordId: row.id,
+      explicitProductId: row.product_id,
+      variantProductId: row.legacy_variant_product_id,
+    });
+
     return {
       id: row.id,
       user_id: row.user_id,
@@ -2627,8 +2841,31 @@ export class SubscriptionService {
       metadata,
       order_id: row.order_id ?? null,
       order_item_id: row.order_item_id ?? null,
+      product_id: identity.productId,
       product_variant_id: row.product_variant_id ?? null,
-      product_name: row.product_name ?? null,
+      product_name_snapshot: row.product_name_snapshot ?? null,
+      product_slug_snapshot: row.product_slug_snapshot ?? null,
+      duration_months_snapshot:
+        row.duration_months_snapshot !== null &&
+        row.duration_months_snapshot !== undefined
+          ? parseInt(row.duration_months_snapshot, 10)
+          : null,
+      unit_price_cents_snapshot:
+        row.unit_price_cents_snapshot !== null &&
+        row.unit_price_cents_snapshot !== undefined
+          ? parseInt(row.unit_price_cents_snapshot, 10)
+          : null,
+      total_price_cents_snapshot:
+        row.total_price_cents_snapshot !== null &&
+        row.total_price_cents_snapshot !== undefined
+          ? parseInt(row.total_price_cents_snapshot, 10)
+          : null,
+      currency_snapshot: row.currency_snapshot ?? null,
+      fulfillment_config_snapshot: parseJsonValue<Record<string, any> | null>(
+        row.fulfillment_config_snapshot,
+        null
+      ),
+      product_name: row.product_name_snapshot ?? row.product_name ?? null,
       variant_name: row.variant_name ?? null,
       price_cents:
         row.price_cents !== null && row.price_cents !== undefined

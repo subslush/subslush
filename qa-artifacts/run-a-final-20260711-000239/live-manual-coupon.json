@@ -1,0 +1,262 @@
+{
+  "tag": "QA-A1-1783721478020-R",
+  "steps": {
+    "register-qa-a1-1783721478020-r-manual@example.test": {
+      "status": 202,
+      "body": {
+        "message": "Registration successful. Please verify your email before logging in.",
+        "user": {
+          "id": "a2bdcfde-dc93-4462-a001-6234acd280be",
+          "email": "qa-a1-1783721478020-r-manual@example.test",
+          "role": "user",
+          "firstName": "QA",
+          "lastName": "A1",
+          "createdAt": "2026-07-10T22:14:04.572046Z"
+        },
+        "requiresEmailVerification": true
+      }
+    },
+    "pending-checkout": {
+      "status": 201,
+      "body": {
+        "message": "Resource created successfully",
+        "data": {
+          "payment_method": "card",
+          "payment_provider": "paypal",
+          "order_id": "1f271847-2505-49d4-ba48-0ac6e9b2f96d",
+          "paymentId": "694313761L8544620",
+          "sessionId": "694313761L8544620",
+          "sessionUrl": "https://www.sandbox.paypal.com/checkoutnow?token=694313761L8544620",
+          "amount": 60,
+          "currency": "USD",
+          "pricing_snapshot_id": "5bf2f85a-75ad-4df8-bb33-10836a8b6b2d",
+          "display_currency": "USD",
+          "display_total_cents": 6000,
+          "settlement_currency": "USD",
+          "settlement_total_cents": 6000,
+          "checkoutKey": "5fdcaa6c-74a3-4436-9010-25c24b83e4b6|6|USD|0|",
+          "upgrade_options": {
+            "allow_new_account": false,
+            "allow_own_account": false,
+            "manual_monthly_upgrade": false,
+            "activation_link_handshake": true,
+            "activation_instructions_template": "QA-A1-1783721478020 instructions",
+            "strict_rules": true,
+            "strict_rules_text": "QA-A1-1783721478020 rules",
+            "strict_rules_version": 1
+          }
+        }
+      }
+    },
+    "mark-paid-empty": {
+      "status": 400,
+      "body": {
+        "error": "Bad Request",
+        "message": "Validation failed",
+        "code": "INVALID_REQUEST",
+        "details": {
+          "timestamp": "2026-07-10T22:14:06.121Z",
+          "path": "/api/v1/admin/orders/1f271847-2505-49d4-ba48-0ac6e9b2f96d/mark-paid",
+          "errors": [
+            {
+              "field": "note",
+              "message": "must NOT have fewer than 1 characters"
+            }
+          ]
+        }
+      }
+    },
+    "mark-paid-success": {
+      "status": 200,
+      "body": {
+        "message": "Order marked paid manually",
+        "data": {
+          "order_id": "1f271847-2505-49d4-ba48-0ac6e9b2f96d",
+          "status": "in_process",
+          "subscriptions_created": 1,
+          "open_tasks": 1
+        }
+      }
+    },
+    "mark-paid-again": {
+      "status": 409,
+      "body": {
+        "error": "Conflict",
+        "code": "ORDER_NOT_PENDING_PAYMENT",
+        "message": "Only pending payment orders can be marked paid manually",
+        "current_status": "in_process"
+      }
+    },
+    "coupon-create": {
+      "status": 201,
+      "body": {
+        "message": "Coupon created",
+        "data": {
+          "id": "785b92b5-ecb7-48e6-88c8-2d5d8c609259",
+          "code": "QA-A1-1783721478020-R-CAP1",
+          "code_normalized": "qa-a1-1783721478020-r-cap1",
+          "percent_off": 10,
+          "scope": "global",
+          "apply_scope": "highest_eligible_item",
+          "status": "active",
+          "starts_at": null,
+          "ends_at": null,
+          "max_redemptions": 1,
+          "redemptions_used": null,
+          "bound_user_id": null,
+          "first_order_only": false,
+          "category": null,
+          "product_id": null,
+          "term_months": null,
+          "created_at": "2026-07-10T22:14:06.200Z",
+          "updated_at": "2026-07-10T22:14:06.200Z"
+        }
+      }
+    },
+    "identity-qa-a1-1783721478020-r-coupon@example.test": {
+      "status": 200,
+      "body": {
+        "data": {
+          "guest_identity_id": "b0a6eae9-3cf6-4d34-9c24-a5a752708a17"
+        }
+      }
+    },
+    "draft-qa-a1-1783721478020-r-coupon@example.test": {
+      "status": 200,
+      "body": {
+        "data": {
+          "checkout_session_key": "622bbce2612669bbb753d4609fe27b325eb816d06a28d174",
+          "order_id": "4d946b76-2318-443e-900b-c5a84fe16efd",
+          "pricing": {
+            "items": [
+              {
+                "variant_id": "5fdcaa6c-74a3-4436-9010-25c24b83e4b6",
+                "product_id": "f18015a2-4d52-44b6-b4bb-7329bae9c976",
+                "product_name": "QA-A1-1783721478020 strict",
+                "service_type": "qa_a1",
+                "variant_name": "QA-A1-1783721478020 variant",
+                "service_plan": "qa",
+                "pricing_snapshot_id": "5bf2f85a-75ad-4df8-bb33-10836a8b6b2d",
+                "term_months": 6,
+                "currency": "USD",
+                "base_price_cents": 1000,
+                "discount_percent": 0,
+                "term_subtotal_cents": 6000,
+                "term_discount_cents": 0,
+                "term_total_cents": 6000,
+                "coupon_discount_cents": 600,
+                "final_total_cents": 5400,
+                "settlement_currency": "USD",
+                "settlement_base_price_cents": 1000,
+                "settlement_term_subtotal_cents": 6000,
+                "settlement_term_discount_cents": 0,
+                "settlement_term_total_cents": 6000,
+                "settlement_coupon_discount_cents": 600,
+                "settlement_final_total_cents": 5400
+              }
+            ],
+            "pricing_snapshot_id": "5bf2f85a-75ad-4df8-bb33-10836a8b6b2d",
+            "display_currency": "USD",
+            "settlement_currency": "USD",
+            "order_subtotal_cents": 6000,
+            "order_discount_cents": 0,
+            "order_coupon_discount_cents": 600,
+            "order_total_cents": 5400,
+            "order_settlement_total_cents": 5400,
+            "normalized_coupon_code": "qa-a1-1783721478020-r-cap1"
+          }
+        }
+      }
+    },
+    "identity-qa-a1-1783721478020-r-coupon-2@example.test": {
+      "status": 200,
+      "body": {
+        "data": {
+          "guest_identity_id": "a1ea68a8-930d-4fe1-8a96-f4608efdf98a"
+        }
+      }
+    },
+    "draft-qa-a1-1783721478020-r-coupon-2@example.test": {
+      "status": 400,
+      "body": {
+        "error": "Bad Request",
+        "message": "max redemptions",
+        "code": "INVALID_REQUEST"
+      }
+    },
+    "webhook-4d946b76-2318-443e-900b-c5a84fe16efd": {
+      "status": 200,
+      "body": {
+        "received": true
+      }
+    }
+  },
+  "manual_order": "1f271847-2505-49d4-ba48-0ac6e9b2f96d",
+  "manual_state": [
+    {
+      "status": "in_process",
+      "tasks": 1
+    }
+  ],
+  "coupon_drafts": {
+    "one": {
+      "checkout_session_key": "622bbce2612669bbb753d4609fe27b325eb816d06a28d174",
+      "order_id": "4d946b76-2318-443e-900b-c5a84fe16efd",
+      "pricing": {
+        "items": [
+          {
+            "variant_id": "5fdcaa6c-74a3-4436-9010-25c24b83e4b6",
+            "product_id": "f18015a2-4d52-44b6-b4bb-7329bae9c976",
+            "product_name": "QA-A1-1783721478020 strict",
+            "service_type": "qa_a1",
+            "variant_name": "QA-A1-1783721478020 variant",
+            "service_plan": "qa",
+            "pricing_snapshot_id": "5bf2f85a-75ad-4df8-bb33-10836a8b6b2d",
+            "term_months": 6,
+            "currency": "USD",
+            "base_price_cents": 1000,
+            "discount_percent": 0,
+            "term_subtotal_cents": 6000,
+            "term_discount_cents": 0,
+            "term_total_cents": 6000,
+            "coupon_discount_cents": 600,
+            "final_total_cents": 5400,
+            "settlement_currency": "USD",
+            "settlement_base_price_cents": 1000,
+            "settlement_term_subtotal_cents": 6000,
+            "settlement_term_discount_cents": 0,
+            "settlement_term_total_cents": 6000,
+            "settlement_coupon_discount_cents": 600,
+            "settlement_final_total_cents": 5400
+          }
+        ],
+        "pricing_snapshot_id": "5bf2f85a-75ad-4df8-bb33-10836a8b6b2d",
+        "display_currency": "USD",
+        "settlement_currency": "USD",
+        "order_subtotal_cents": 6000,
+        "order_discount_cents": 0,
+        "order_coupon_discount_cents": 600,
+        "order_total_cents": 5400,
+        "order_settlement_total_cents": 5400,
+        "normalized_coupon_code": "qa-a1-1783721478020-r-cap1"
+      }
+    },
+    "two": {
+      "error": "Bad Request",
+      "message": "max redemptions",
+      "code": "INVALID_REQUEST"
+    }
+  },
+  "coupon_before": [
+    {
+      "status": "reserved",
+      "n": 1
+    }
+  ],
+  "coupon_after": [
+    {
+      "status": "redeemed",
+      "n": 1
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "ambiguous": {
+    "activation_status": 400,
+    "activation_message": "Cannot activate product: multiple active terms; designate the listing term or keep a single active term",
+    "public_status": 404
+  },
+  "sole": {
+    "activation_status": 200,
+    "public_status": 200,
+    "public_months": [
+      6
+    ]
+  },
+  "ids": {
+    "ambiguous_product": "3d514b13-bc34-44e6-89f7-77f021f545d8",
+    "sole_product": "1bf28cfd-cd69-459a-b4ac-ea32902ffb34"
+  }
+}

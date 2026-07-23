@@ -158,12 +158,29 @@ function createFakeDatabasePool(): {
         fixed_price_currency: 'USD',
       },
     ],
-    productVariants: [{ id: 'variant-1', product_id: 'product-1', is_active: true }],
+    productVariants: [
+      { id: 'variant-1', product_id: 'product-1', is_active: true },
+      {
+        id: 'accidental-variant',
+        product_id: 'fixed-product-1',
+        is_active: true,
+      },
+    ],
     priceHistory: [
       {
         id: 'price-usd-seed',
         product_variant_id: 'variant-1',
         price_cents: 1999,
+        currency: 'USD',
+        starts_at: new Date('2026-01-01T00:00:00.000Z'),
+        ends_at: null,
+        metadata: { seed: true },
+        created_at: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      {
+        id: 'accidental-price-usd-seed',
+        product_variant_id: 'accidental-variant',
+        price_cents: 1,
         currency: 'USD',
         starts_at: new Date('2026-01-01T00:00:00.000Z'),
         ends_at: null,
@@ -197,15 +214,22 @@ function createFakeDatabasePool(): {
       return { rows: [] };
     }
 
-    if (sql.includes('INSERT INTO fx_rate_fetches') && sql.includes("'success'")) {
+    if (
+      sql.includes('INSERT INTO fx_rate_fetches') &&
+      sql.includes("'success'")
+    ) {
       const source = String(values[0] || 'currencyapi');
       const baseCurrency = String(values[1] || 'USD');
       const fetchStartedAt = toDate(values[2]);
       const fetchCompletedAt = toDate(values[3]);
       const httpStatus =
-        values[4] === null || values[4] === undefined ? null : Number(values[4]);
+        values[4] === null || values[4] === undefined
+          ? null
+          : Number(values[4]);
       const ratesCount =
-        values[5] === null || values[5] === undefined ? null : Number(values[5]);
+        values[5] === null || values[5] === undefined
+          ? null
+          : Number(values[5]);
       const metadata = parseJsonObject(values[6]);
 
       const row: FxRateFetchRow = {
@@ -234,9 +258,13 @@ function createFakeDatabasePool(): {
       const rate = Number(values[2]);
       const fetchedAt = toDate(values[3]);
       const sourceFetchId =
-        values[4] === null || values[4] === undefined ? null : String(values[4]);
+        values[4] === null || values[4] === undefined
+          ? null
+          : String(values[4]);
       const staleAfter =
-        values[5] === null || values[5] === undefined ? null : toDate(values[5]);
+        values[5] === null || values[5] === undefined
+          ? null
+          : toDate(values[5]);
       const metadata = parseJsonObject(values[6]);
 
       const key = `${baseCurrency}:${quoteCurrency}`;
@@ -279,7 +307,10 @@ function createFakeDatabasePool(): {
     }
 
     if (sql.includes('INSERT INTO pricing_publish_runs')) {
-      const triggeredBy = String(values[0]) as 'scheduler' | 'manual' | 'system';
+      const triggeredBy = String(values[0]) as
+        | 'scheduler'
+        | 'manual'
+        | 'system';
       const createdAt = new Date();
       const row: PricingPublishRunRow = {
         id: nextId('publish-run'),
@@ -303,7 +334,9 @@ function createFakeDatabasePool(): {
     ) {
       const runId = String(values[0]);
       const fetchId =
-        values[1] === null || values[1] === undefined ? null : String(values[1]);
+        values[1] === null || values[1] === undefined
+          ? null
+          : String(values[1]);
       const publishedAt = toDate(values[2]);
       const metadata = parseJsonObject(values[3]);
       updateRun(runId, {
@@ -323,9 +356,13 @@ function createFakeDatabasePool(): {
       const runId = String(values[0]);
       const status = String(values[1]) as PublishRunStatus;
       const fetchId =
-        values[2] === null || values[2] === undefined ? null : String(values[2]);
+        values[2] === null || values[2] === undefined
+          ? null
+          : String(values[2]);
       const reason =
-        values[3] === null || values[3] === undefined ? null : String(values[3]);
+        values[3] === null || values[3] === undefined
+          ? null
+          : String(values[3]);
       const metadata = parseJsonObject(values[4]);
       updateRun(runId, {
         status,
@@ -339,11 +376,17 @@ function createFakeDatabasePool(): {
     if (sql.includes('SELECT id') && sql.includes('FROM fx_rate_fetches')) {
       const latestSuccess = [...state.fxRateFetches]
         .filter(row => row.status === 'success')
-        .sort((a, b) => b.fetch_completed_at!.getTime() - a.fetch_completed_at!.getTime())[0];
+        .sort(
+          (a, b) =>
+            b.fetch_completed_at!.getTime() - a.fetch_completed_at!.getTime()
+        )[0];
       return { rows: latestSuccess ? [{ id: latestSuccess.id }] : [] };
     }
 
-    if (sql.includes('FROM fx_rate_cache') && sql.includes('quote_currency = ANY')) {
+    if (
+      sql.includes('FROM fx_rate_cache') &&
+      sql.includes('quote_currency = ANY')
+    ) {
       const baseCurrency = String(values[0]);
       const currencies = (values[1] as string[]) ?? [];
       const rows = currencies
@@ -360,7 +403,10 @@ function createFakeDatabasePool(): {
       return { rows };
     }
 
-    if (sql.includes('FROM product_variants pv') && sql.includes('FROM price_history')) {
+    if (
+      sql.includes('FROM product_variants pv') &&
+      sql.includes('FROM price_history')
+    ) {
       const currency = String(values[0]).toUpperCase();
       const atDate = toDate(values[1]);
 
@@ -369,7 +415,15 @@ function createFakeDatabasePool(): {
         .filter(variant =>
           state.products.some(
             product =>
-              product.id === variant.product_id && product.status === 'active'
+              product.id === variant.product_id &&
+              product.status === 'active' &&
+              !(
+                Number.isInteger(product.duration_months) &&
+                Number(product.duration_months) > 0 &&
+                Number.isInteger(product.fixed_price_cents) &&
+                Number(product.fixed_price_cents) > 0 &&
+                typeof product.fixed_price_currency === 'string'
+              )
           )
         )
         .map(variant => {
@@ -405,7 +459,7 @@ function createFakeDatabasePool(): {
     if (
       sql.includes('FROM products p') &&
       sql.includes('fixed_price_cents AS usd_price_cents') &&
-      sql.includes('LEFT JOIN product_variants pv')
+      sql.includes('UPPER(p.fixed_price_currency) = $1')
     ) {
       const currency = String(values[0]).toUpperCase();
 
@@ -417,15 +471,9 @@ function createFakeDatabasePool(): {
             product.duration_months !== null &&
             Number.isInteger(product.fixed_price_cents) &&
             product.fixed_price_cents !== null &&
-            product.fixed_price_cents >= 0 &&
+            product.fixed_price_cents > 0 &&
             typeof product.fixed_price_currency === 'string' &&
             product.fixed_price_currency.toUpperCase() === currency
-        )
-        .filter(
-          product =>
-            !state.productVariants.some(
-              variant => variant.product_id === product.id && variant.is_active
-            )
         )
         .map(product => ({
           product_id: product.id,
@@ -435,7 +483,10 @@ function createFakeDatabasePool(): {
       return { rows };
     }
 
-    if (sql.includes('UPDATE price_history') && sql.includes('SET ends_at = $1')) {
+    if (
+      sql.includes('UPDATE price_history') &&
+      sql.includes('SET ends_at = $1')
+    ) {
       const endsAt = toDate(values[0]);
       const variantId = String(values[1]);
       const currency = String(values[2]).toUpperCase();
@@ -619,9 +670,8 @@ describe('FX pipeline integration', () => {
       text: async () => JSON.stringify({ data: payload }),
     })) as typeof global.fetch;
 
-    const fetchResult = await fxRateService.fetchAndCacheLatestUsdRates(
-      fetchStartedAt
-    );
+    const fetchResult =
+      await fxRateService.fetchAndCacheLatestUsdRates(fetchStartedAt);
 
     expect(fetchResult.status).toBe('success');
     expect(fetchResult.fetchId).toBeTruthy();
@@ -683,7 +733,9 @@ describe('FX pipeline integration', () => {
     expect(sekPrice).toBeDefined();
     expect(sekPrice?.metadata['settlement_currency']).toBe('EUR');
 
-    const closedUsdSeed = state.priceHistory.find(row => row.id === 'price-usd-seed');
+    const closedUsdSeed = state.priceHistory.find(
+      row => row.id === 'price-usd-seed'
+    );
     expect(closedUsdSeed?.ends_at?.toISOString()).toBe(publishAt.toISOString());
 
     const activeUsdRows = state.priceHistory.filter(
@@ -693,7 +745,9 @@ describe('FX pipeline integration', () => {
         row.ends_at === null
     );
     expect(activeUsdRows).toHaveLength(1);
-    expect(activeUsdRows[0]?.starts_at.toISOString()).toBe(publishAt.toISOString());
+    expect(activeUsdRows[0]?.starts_at.toISOString()).toBe(
+      publishAt.toISOString()
+    );
 
     const fixedEurPrice = state.productFixedPriceHistory.find(
       row =>
@@ -703,7 +757,16 @@ describe('FX pipeline integration', () => {
         row.ends_at === null
     );
     expect(fixedEurPrice).toBeDefined();
-    expect(fixedEurPrice?.metadata['snapshot_id']).toBe(publishResult.snapshotId);
+    expect(fixedEurPrice?.metadata['snapshot_id']).toBe(
+      publishResult.snapshotId
+    );
     expect(fixedEurPrice?.metadata['catalog_mode']).toBe('fixed_product');
+    expect(
+      state.priceHistory.some(
+        row =>
+          row.product_variant_id === 'accidental-variant' &&
+          row.starts_at.getTime() === publishAt.getTime()
+      )
+    ).toBe(false);
   });
 });

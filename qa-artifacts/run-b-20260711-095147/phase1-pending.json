@@ -1,0 +1,10 @@
+{
+  "pendingEmail": "qa-b1-pending-1783757904373@example.test",
+  "guestIdentityId": "4b7b3d93-1c64-4016-9122-b5bc63f034cc",
+  "orderId": "9d9bf9a1-abb9-4acf-b353-ab5a30b9aa10",
+  "paymentId": "d0f85fd9-331a-49c0-8eb9-ba26e85fd173",
+  "dbOrderStatus": "pending_payment",
+  "dbPaymentStatus": "pending",
+  "status": 200,
+  "payload": {}
+}

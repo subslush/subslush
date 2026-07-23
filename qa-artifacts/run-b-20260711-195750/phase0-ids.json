@@ -1,0 +1,18 @@
+{
+  "p1": {
+    "productId": "6d6cb1c1-e3a0-4b98-8beb-b1f60a7a08cc",
+    "variantId": "1e72ee05-1282-4d04-aae0-27b4c3281dd6"
+  },
+  "p2": {
+    "productId": "9cba9694-b34d-49de-8cd7-fe4d2d947730",
+    "variantId": "a8cca186-6fbf-4750-8c79-7dee0f8016fa"
+  },
+  "p3": {
+    "productId": "73687c87-8018-4b35-8dd3-866d4ded59ca",
+    "variantId": "b619c54d-e1cc-413c-b332-92f52a06a65a"
+  },
+  "snapshotless": {
+    "productId": "7ef254ac-192c-4a91-881f-19757b4b1b02",
+    "variantId": "5c13e522-0514-4a49-a3c6-14e3512888cf"
+  }
+}

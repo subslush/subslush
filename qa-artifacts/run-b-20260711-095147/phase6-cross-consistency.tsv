@@ -1,0 +1,5 @@
+order_id	order_status	item_id	subscription_id	subscription_status	activation_handshake_state	task_status
+b4c15ca5-c4ec-4970-8467-2acd1963da6d	delivered	9aa529bb-117e-4836-af79-29dbc1ae8e13	cc378347-48c4-43ba-b6fd-f301045b3808	active	none	completed
+b4c15ca5-c4ec-4970-8467-2acd1963da6d	delivered	85450778-1f15-4f79-9a7c-dcfe93fdb637	19988bd8-93f6-4c65-ae8f-f05f57e8a191	active	none	completed
+b4c15ca5-c4ec-4970-8467-2acd1963da6d	delivered	767efa33-433e-4aea-adf3-3919cd97f63c	e3242e25-add1-4f3c-9c6a-bdd70126f393	active	customer_ready	completed
+(3 rows)

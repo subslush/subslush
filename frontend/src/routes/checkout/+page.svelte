@@ -6,7 +6,7 @@
   import Footer from '$lib/components/home/Footer.svelte';
   import ResponsiveImage from '$lib/components/common/ResponsiveImage.svelte';
   import { resolveLogoKey, resolveLogoKeyFromName } from '$lib/assets/logoRegistry.js';
-  import { cart, type CartItem } from '$lib/stores/cart.js';
+  import { cart, cartRecoveryNotice, type CartItem } from '$lib/stores/cart.js';
   import { auth, user } from '$lib/stores/auth.js';
   import { currency } from '$lib/stores/currency.js';
   import { credits } from '$lib/stores/credits.js';
@@ -818,13 +818,16 @@
   const buildDraftItems = (items: CartItem[]): CheckoutDraftItemInput[] =>
     items.flatMap(item => {
       const quantity = resolveItemQuantity(item);
-      const variantId = (item.variantId || '').trim();
-      if (!variantId) {
+      const productId = (item.productId || '').trim();
+      if (!productId) {
         return [];
       }
 
       const payload: CheckoutDraftItemInput = {
-        variant_id: variantId,
+        product_id: productId,
+        ...(item.pricingSnapshotId
+          ? { pricing_snapshot_id: item.pricingSnapshotId }
+          : {}),
         auto_renew: false,
         selection_type: item.upgradeSelectionType ?? null,
         account_identifier:
@@ -855,6 +858,7 @@
   const buildCheckoutAnalyticsItems = (items: CartItem[]): AnalyticsItem[] =>
     items.map((item, index) => ({
       item_id:
+        item.productId ||
         item.variantId ||
         `${item.serviceType || item.serviceName}-${item.plan}-${item.termMonths || 1}`,
       item_name: item.serviceName,
@@ -1000,7 +1004,8 @@
       items: items
         .map(item => ({
           id: item.id,
-          variant_id: item.variantId,
+          product_id: item.productId,
+          pricing_snapshot_id: item.pricingSnapshotId,
           term_months: item.termMonths,
           auto_renew: false,
           selection_type: item.upgradeSelectionType ?? null,
@@ -1130,7 +1135,7 @@
     const items = $cart;
     if (items.length === 0) return false;
     const invalidDraftItem = items.find(
-      item => !(typeof item.variantId === 'string' && item.variantId.trim())
+      item => !(typeof item.productId === 'string' && item.productId.trim())
     );
     if (invalidDraftItem) {
       draftError = `Cart item "${invalidDraftItem.serviceName}" is missing product details. Remove it and add it again from the product page.`;
@@ -1247,6 +1252,19 @@
         orderId = null;
         lastDraftSignature = '';
         return refreshDraft(true);
+      }
+      const errorCode =
+        typeof (error as { code?: unknown })?.code === 'string'
+          ? (error as { code: string }).code
+          : null;
+      if (errorCode === 'STALE_PRICE') {
+        cart.setItems(
+          items.map(item => ({ ...item, pricingSnapshotId: undefined }))
+        );
+        lastDraftSignature = '';
+        draftError =
+          'A product price changed. We are refreshing your cart—please review the updated total before continuing.';
+        return false;
       }
       if (appliedCouponCode) {
         couponMessage = mapCouponErrorMessage(message);
@@ -2869,6 +2887,20 @@
               <MessageSquare class="h-3.5 w-3.5" aria-hidden="true" />
               Questions? Chat with us — we're happy to help.
             </button>
+
+            {#if $cartRecoveryNotice}
+              <div
+                class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+                role="status"
+              >
+                <p>{$cartRecoveryNotice}</p>
+                <button
+                  type="button"
+                  class="mt-1 font-semibold underline underline-offset-2"
+                  on:click={cartRecoveryNotice.clear}
+                >Dismiss</button>
+              </div>
+            {/if}
 
             {#if actionError}
               <div class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">

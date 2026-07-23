@@ -40,9 +40,15 @@ export interface Order {
 export interface OrderItem {
   id: string;
   order_id: string;
+  product_id?: string | null;
   product_variant_id?: string | null;
   product_name?: string | null;
   variant_name?: string | null;
+  product_name_snapshot?: string | null;
+  product_slug_snapshot?: string | null;
+  duration_months_snapshot?: number | null;
+  fulfillment_config_snapshot?: Record<string, any> | null;
+  catalog_mode_snapshot?: 'fixed_product' | 'variant' | string | null;
   product_logo_key?: string | null;
   quantity: number;
   unit_price_cents: number;
@@ -98,7 +104,13 @@ export interface CreateOrderInput {
 }
 
 export interface CreateOrderItemInput {
+  product_id?: string | null;
   product_variant_id?: string | null;
+  product_name_snapshot?: string | null;
+  product_slug_snapshot?: string | null;
+  duration_months_snapshot?: number | null;
+  fulfillment_config_snapshot?: Record<string, any> | null;
+  catalog_mode_snapshot?: 'fixed_product' | 'variant' | string | null;
   quantity: number;
   unit_price_cents: number;
   base_price_cents?: number | null;

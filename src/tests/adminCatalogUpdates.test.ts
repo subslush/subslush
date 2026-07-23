@@ -41,6 +41,70 @@ describe('Admin catalog updates', () => {
     } as any);
   });
 
+  it('creates a fully configurable fixed product as an inactive draft', async () => {
+    mockCatalogService.createProduct.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'prod-fixed',
+        name: 'Product A — 1 Month',
+        status: 'inactive',
+        duration_months: 1,
+        fixed_price_cents: 1299,
+        fixed_price_currency: 'USD',
+      },
+    } as any);
+    const app = Fastify();
+    await app.register(adminCatalogRoutes, { prefix: '/admin' });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/products',
+      payload: {
+        name: 'Product A — 1 Month',
+        slug: 'product-a-1-month',
+        service_type: 'product-a',
+        status: 'inactive',
+        duration_months: 1,
+        fixed_price_cents: 1299,
+        fixed_price_currency: 'USD',
+      },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(201);
+    expect(mockCatalogService.createProduct).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'inactive',
+        duration_months: 1,
+        fixed_price_cents: 1299,
+        fixed_price_currency: 'USD',
+      })
+    );
+    expect(mockCatalogService.createVariant).not.toHaveBeenCalled();
+  });
+
+  it('keeps legacy variant mutation read-only for complete fixed products', async () => {
+    mockCatalogService.getProductById.mockResolvedValue({
+      id: 'prod-fixed',
+      duration_months: 1,
+      fixed_price_cents: 1299,
+      fixed_price_currency: 'USD',
+    } as any);
+    const app = Fastify();
+    await app.register(adminCatalogRoutes, { prefix: '/admin' });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/product-variants',
+      payload: { product_id: 'prod-fixed', name: 'Accidental variant' },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().message).toContain(
+      'Variants and terms are read-only for a complete fixed product'
+    );
+    expect(mockCatalogService.createVariant).not.toHaveBeenCalled();
+  });
+
   it('updates a product label', async () => {
     mockCatalogService.getLabelById.mockResolvedValue({
       id: 'label-1',
@@ -151,7 +215,7 @@ describe('Admin catalog updates', () => {
     );
   });
 
-  it('defaults duration_months to 1 when activating with fixed price fields only', async () => {
+  it('requires an explicit duration when publishing fixed price fields', async () => {
     mockCatalogService.getProductById.mockResolvedValue({
       id: 'prod-1',
       status: 'inactive',
@@ -159,17 +223,6 @@ describe('Admin catalog updates', () => {
       fixed_price_cents: null,
       fixed_price_currency: null,
     } as any);
-    mockCatalogService.updateProduct.mockResolvedValue({
-      success: true,
-      data: {
-        id: 'prod-1',
-        status: 'active',
-        duration_months: 1,
-        fixed_price_cents: 999,
-        fixed_price_currency: 'USD',
-      },
-    } as any);
-
     const app = Fastify();
     await app.register(adminCatalogRoutes, { prefix: '/admin' });
 
@@ -185,33 +238,20 @@ describe('Admin catalog updates', () => {
 
     await app.close();
 
-    expect(response.statusCode).toBe(200);
-    expect(mockCatalogService.updateProduct).toHaveBeenCalledWith(
-      'prod-1',
-      expect.objectContaining({
-        status: 'active',
-        duration_months: 1,
-        fixed_price_cents: 999,
-        fixed_price_currency: 'USD',
-      })
-    );
+    expect(response.statusCode).toBe(400);
+    expect(response.json().message).toContain('duration');
+    expect(response.json().message).toContain('A variant is not required');
+    expect(mockCatalogService.updateProduct).not.toHaveBeenCalled();
   });
 
-  it('allows activation with one active term and no separately designated listing duration', async () => {
+  it('publishes a complete fixed product without consulting variants', async () => {
     mockCatalogService.getProductById.mockResolvedValue({
       id: 'prod-1',
       status: 'inactive',
-      duration_months: null,
+      duration_months: 12,
+      fixed_price_cents: 9999,
+      fixed_price_currency: 'USD',
     } as any);
-    mockCatalogService.listVariants.mockResolvedValue([
-      { id: 'variant-1', name: 'One month', is_active: true },
-    ] as any);
-    mockCatalogService.listVariantTermsForVariants.mockResolvedValue(
-      new Map([['variant-1', [{ months: 1, is_active: true }]]]) as any
-    );
-    mockCatalogService.listCurrentPricesForCurrency.mockResolvedValue(
-      new Map([['variant-1', { price_cents: 1000 }]]) as any
-    );
     mockCatalogService.updateProduct.mockResolvedValue({
       success: true,
       data: { id: 'prod-1', status: 'active' },
@@ -233,24 +273,18 @@ describe('Admin catalog updates', () => {
       'prod-1',
       expect.objectContaining({ status: 'active' })
     );
+    expect(mockCatalogService.listVariants).not.toHaveBeenCalled();
+    expect(
+      mockCatalogService.listVariantTermsForVariants
+    ).not.toHaveBeenCalled();
   });
 
-  it('refuses activation with multiple active terms and no designated listing term', async () => {
+  it('refuses publication when only a legacy variant configuration exists', async () => {
     mockCatalogService.getProductById.mockResolvedValue({
       id: 'prod-1',
       status: 'inactive',
       duration_months: null,
     } as any);
-    mockCatalogService.listVariants.mockResolvedValue([
-      { id: 'variant-1', name: 'One month', is_active: true },
-      { id: 'variant-2', name: 'Six months', is_active: true },
-    ] as any);
-    mockCatalogService.listVariantTermsForVariants.mockResolvedValue(
-      new Map([
-        ['variant-1', [{ months: 1, is_active: true }]],
-        ['variant-2', [{ months: 6, is_active: true }]],
-      ]) as any
-    );
 
     const app = Fastify();
     await app.register(adminCatalogRoutes, { prefix: '/admin' });
@@ -264,8 +298,89 @@ describe('Admin catalog updates', () => {
     await app.close();
 
     expect(response.statusCode).toBe(400);
-    expect(response.json().message).toContain('multiple active terms');
+    expect(response.json().message).toContain('Fixed Catalog Fields');
+    expect(response.json().message).toContain('A variant is not required');
     expect(mockCatalogService.updateProduct).not.toHaveBeenCalled();
+  });
+
+  it('sets the current fixed product price with comparison history metadata', async () => {
+    mockCatalogService.getProductById.mockResolvedValue({
+      id: 'prod-1',
+      fixed_price_cents: 999,
+      fixed_price_currency: 'USD',
+    } as any);
+    mockCatalogService.setCurrentFixedProductPrice.mockResolvedValue({
+      success: true,
+      data: { id: 'fixed-price-2', product_id: 'prod-1', price_cents: 1199 },
+    } as any);
+    const app = Fastify();
+    await app.register(adminCatalogRoutes, { prefix: '/admin' });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/products/prod-1/fixed-price/current',
+      payload: {
+        duration_months: 12,
+        price_cents: 1199,
+        currency: 'USD',
+        comparison_price_cents: 1499,
+      },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(201);
+    expect(mockCatalogService.setCurrentFixedProductPrice).toHaveBeenCalledWith(
+      {
+        product_id: 'prod-1',
+        duration_months: 12,
+        price_cents: 1199,
+        currency: 'USD',
+        comparison_price_cents: 1499,
+      }
+    );
+    expect(mockLogAdminAction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: 'catalog.fixed_product_price.set_current',
+      })
+    );
+  });
+
+  it('uses the product-level recovery operation and preserves compatibility counts', async () => {
+    const compatibility = {
+      variant_count: 1,
+      active_variant_count: 1,
+      term_count: 1,
+      price_history_count: 2,
+      subscription_count: 1,
+      order_item_count: 1,
+      payment_count: 1,
+      credit_transaction_count: 0,
+      fixed_catalog_preferred: true,
+    };
+    mockCatalogService.getLegacyCatalogCompatibility.mockResolvedValue(
+      compatibility
+    );
+    mockCatalogService.recoverProductOnlyCatalog.mockResolvedValue({
+      success: true,
+      data: {
+        product_id: 'prod-1',
+        already_product_only: false,
+        deactivated_variant_count: 1,
+        deactivated_variant_ids: ['variant-1'],
+        compatibility: { ...compatibility, active_variant_count: 0 },
+      },
+    } as any);
+    const app = Fastify();
+    await app.register(adminCatalogRoutes, { prefix: '/admin' });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/admin/products/prod-1/fixed-catalog/recover',
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.deactivated_variant_count).toBe(1);
+    expect(response.json().data.compatibility.subscription_count).toBe(1);
   });
 
   it('passes category and sub-category filters when listing products', async () => {

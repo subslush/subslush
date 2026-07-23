@@ -1,0 +1,343 @@
+{
+  "migrations": {
+    "applied": 65,
+    "first_applied": "2026-07-21T19:17:27.533Z",
+    "last_applied": "2026-07-21T19:17:30.187Z"
+  },
+  "lifecycle_counts": {
+    "products": 5,
+    "fixed_products": 2,
+    "variants": 2,
+    "orders": 10,
+    "order_items": 11,
+    "subscriptions": 6,
+    "payments": 6,
+    "admin_tasks": 7,
+    "entitlements": 6,
+    "fixed_price_history": 11
+  },
+  "identity_gaps": {
+    "order_items_null_product": 0,
+    "subscriptions_null_product": 0,
+    "payments_null_product": 0,
+    "tasks_null_product": 0,
+    "entitlements_null_product": 0,
+    "orphan_variants": 0
+  },
+  "new_product_only": {
+    "item_count": 11,
+    "with_product": 11,
+    "without_variant": 11,
+    "complete_snapshots": 11
+  },
+  "audit_status": [],
+  "unresolved": [],
+  "foreign_keys": [
+    {
+      "table_name": "admin_tasks",
+      "constraint_name": "admin_tasks_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "coupons",
+      "constraint_name": "coupons_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "credential_reveal_audit_logs",
+      "constraint_name": "credential_reveal_audit_logs_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "credit_transactions",
+      "constraint_name": "credit_transactions_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "order_compliance_evidence_logs",
+      "constraint_name": "order_compliance_evidence_logs_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "order_entitlements",
+      "constraint_name": "order_entitlements_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "order_items",
+      "constraint_name": "order_items_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "payment_items",
+      "constraint_name": "payment_items_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "payment_refunds",
+      "constraint_name": "payment_refunds_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "payments",
+      "constraint_name": "payments_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "product_category_map",
+      "constraint_name": "product_category_map_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "product_fixed_price_history",
+      "constraint_name": "product_fixed_price_history_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "product_label_map",
+      "constraint_name": "product_label_map_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "product_media",
+      "constraint_name": "product_media_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "product_sub_category_map",
+      "constraint_name": "product_sub_category_map_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "product_variants",
+      "constraint_name": "product_variants_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "subscription_renewals",
+      "constraint_name": "subscription_renewals_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    },
+    {
+      "table_name": "subscriptions",
+      "constraint_name": "subscriptions_product_id_fkey",
+      "column_name": "product_id",
+      "foreign_table": "products",
+      "foreign_column": "id"
+    }
+  ],
+  "product_indexes": [
+    {
+      "tablename": "admin_tasks",
+      "indexname": "idx_admin_tasks_product_id",
+      "indexdef": "CREATE INDEX idx_admin_tasks_product_id ON public.admin_tasks USING btree (product_id)"
+    },
+    {
+      "tablename": "coupons",
+      "indexname": "idx_coupons_product",
+      "indexdef": "CREATE INDEX idx_coupons_product ON public.coupons USING btree (product_id) WHERE (product_id IS NOT NULL)"
+    },
+    {
+      "tablename": "credential_reveal_audit_logs",
+      "indexname": "idx_credential_reveal_audit_logs_product_id",
+      "indexdef": "CREATE INDEX idx_credential_reveal_audit_logs_product_id ON public.credential_reveal_audit_logs USING btree (product_id)"
+    },
+    {
+      "tablename": "credit_transactions",
+      "indexname": "idx_credit_transactions_product_id",
+      "indexdef": "CREATE INDEX idx_credit_transactions_product_id ON public.credit_transactions USING btree (product_id)"
+    },
+    {
+      "tablename": "order_compliance_evidence_logs",
+      "indexname": "idx_order_compliance_evidence_product_id",
+      "indexdef": "CREATE INDEX idx_order_compliance_evidence_product_id ON public.order_compliance_evidence_logs USING btree (product_id)"
+    },
+    {
+      "tablename": "order_entitlements",
+      "indexname": "idx_order_entitlements_product_id",
+      "indexdef": "CREATE INDEX idx_order_entitlements_product_id ON public.order_entitlements USING btree (product_id)"
+    },
+    {
+      "tablename": "order_items",
+      "indexname": "idx_order_items_product_id",
+      "indexdef": "CREATE INDEX idx_order_items_product_id ON public.order_items USING btree (product_id)"
+    },
+    {
+      "tablename": "payment_items",
+      "indexname": "idx_payment_items_product_id",
+      "indexdef": "CREATE INDEX idx_payment_items_product_id ON public.payment_items USING btree (product_id)"
+    },
+    {
+      "tablename": "payment_refunds",
+      "indexname": "idx_payment_refunds_product_id",
+      "indexdef": "CREATE INDEX idx_payment_refunds_product_id ON public.payment_refunds USING btree (product_id)"
+    },
+    {
+      "tablename": "payments",
+      "indexname": "idx_payments_product_id",
+      "indexdef": "CREATE INDEX idx_payments_product_id ON public.payments USING btree (product_id)"
+    },
+    {
+      "tablename": "product_category_map",
+      "indexname": "idx_product_category_map_primary",
+      "indexdef": "CREATE INDEX idx_product_category_map_primary ON public.product_category_map USING btree (product_id, is_primary)"
+    },
+    {
+      "tablename": "product_category_map",
+      "indexname": "idx_product_category_map_product",
+      "indexdef": "CREATE INDEX idx_product_category_map_product ON public.product_category_map USING btree (product_id)"
+    },
+    {
+      "tablename": "product_category_map",
+      "indexname": "product_category_map_pkey",
+      "indexdef": "CREATE UNIQUE INDEX product_category_map_pkey ON public.product_category_map USING btree (product_id, category_key)"
+    },
+    {
+      "tablename": "product_category_map",
+      "indexname": "uq_product_category_map_primary_per_product",
+      "indexdef": "CREATE UNIQUE INDEX uq_product_category_map_primary_per_product ON public.product_category_map USING btree (product_id) WHERE (is_primary = true)"
+    },
+    {
+      "tablename": "product_fixed_price_history",
+      "indexname": "idx_product_fixed_price_history_product_currency_start",
+      "indexdef": "CREATE INDEX idx_product_fixed_price_history_product_currency_start ON public.product_fixed_price_history USING btree (product_id, upper((currency)::text), starts_at DESC)"
+    },
+    {
+      "tablename": "product_fixed_price_history",
+      "indexname": "idx_product_fixed_price_history_product_id",
+      "indexdef": "CREATE INDEX idx_product_fixed_price_history_product_id ON public.product_fixed_price_history USING btree (product_id)"
+    },
+    {
+      "tablename": "product_fixed_price_history",
+      "indexname": "idx_product_fixed_price_history_product_start",
+      "indexdef": "CREATE INDEX idx_product_fixed_price_history_product_start ON public.product_fixed_price_history USING btree (product_id, starts_at DESC)"
+    },
+    {
+      "tablename": "product_fixed_price_history",
+      "indexname": "uq_product_fixed_price_history_product_currency_start",
+      "indexdef": "CREATE UNIQUE INDEX uq_product_fixed_price_history_product_currency_start ON public.product_fixed_price_history USING btree (product_id, currency, starts_at)"
+    },
+    {
+      "tablename": "product_identity_backfill_audit",
+      "indexname": "idx_product_identity_backfill_audit_status",
+      "indexdef": "CREATE INDEX idx_product_identity_backfill_audit_status ON public.product_identity_backfill_audit USING btree (migration_key, status, entity_table)"
+    },
+    {
+      "tablename": "product_identity_backfill_audit",
+      "indexname": "product_identity_backfill_aud_migration_key_entity_table_en_key",
+      "indexdef": "CREATE UNIQUE INDEX product_identity_backfill_aud_migration_key_entity_table_en_key ON public.product_identity_backfill_audit USING btree (migration_key, entity_table, entity_id)"
+    },
+    {
+      "tablename": "product_identity_backfill_audit",
+      "indexname": "product_identity_backfill_audit_pkey",
+      "indexdef": "CREATE UNIQUE INDEX product_identity_backfill_audit_pkey ON public.product_identity_backfill_audit USING btree (id)"
+    },
+    {
+      "tablename": "product_label_map",
+      "indexname": "product_label_map_pkey",
+      "indexdef": "CREATE UNIQUE INDEX product_label_map_pkey ON public.product_label_map USING btree (product_id, label_id)"
+    },
+    {
+      "tablename": "product_media",
+      "indexname": "idx_product_media_product_id",
+      "indexdef": "CREATE INDEX idx_product_media_product_id ON public.product_media USING btree (product_id)"
+    },
+    {
+      "tablename": "product_media",
+      "indexname": "idx_product_media_product_primary",
+      "indexdef": "CREATE INDEX idx_product_media_product_primary ON public.product_media USING btree (product_id, is_primary)"
+    },
+    {
+      "tablename": "product_media",
+      "indexname": "idx_product_media_product_sort",
+      "indexdef": "CREATE INDEX idx_product_media_product_sort ON public.product_media USING btree (product_id, sort_order)"
+    },
+    {
+      "tablename": "product_sub_category_map",
+      "indexname": "idx_product_sub_category_map_primary",
+      "indexdef": "CREATE INDEX idx_product_sub_category_map_primary ON public.product_sub_category_map USING btree (product_id, is_primary)"
+    },
+    {
+      "tablename": "product_sub_category_map",
+      "indexname": "idx_product_sub_category_map_product",
+      "indexdef": "CREATE INDEX idx_product_sub_category_map_product ON public.product_sub_category_map USING btree (product_id)"
+    },
+    {
+      "tablename": "product_sub_category_map",
+      "indexname": "product_sub_category_map_pkey",
+      "indexdef": "CREATE UNIQUE INDEX product_sub_category_map_pkey ON public.product_sub_category_map USING btree (product_id, sub_category_id)"
+    },
+    {
+      "tablename": "product_sub_category_map",
+      "indexname": "uq_product_sub_category_map_primary_per_product",
+      "indexdef": "CREATE UNIQUE INDEX uq_product_sub_category_map_primary_per_product ON public.product_sub_category_map USING btree (product_id) WHERE (is_primary = true)"
+    },
+    {
+      "tablename": "product_variants",
+      "indexname": "idx_product_variants_product_id",
+      "indexdef": "CREATE INDEX idx_product_variants_product_id ON public.product_variants USING btree (product_id)"
+    },
+    {
+      "tablename": "subscription_renewals",
+      "indexname": "idx_subscription_renewals_product_id",
+      "indexdef": "CREATE INDEX idx_subscription_renewals_product_id ON public.subscription_renewals USING btree (product_id)"
+    },
+    {
+      "tablename": "subscriptions",
+      "indexname": "idx_subscriptions_product_id",
+      "indexdef": "CREATE INDEX idx_subscriptions_product_id ON public.subscriptions USING btree (product_id)"
+    }
+  ],
+  "strict_snapshot_bypass": {
+    "order_id": "3dbc6433-1db2-4516-9053-b216f2956ef9",
+    "subscription_id": "49a31d5d-5d46-4b9e-8751-d6c4083dcf1d",
+    "direct_strict": null,
+    "nested_strict": true,
+    "current_strict": false,
+    "acceptance_count": 0,
+    "successful_reveals": 3
+  },
+  "cancellation_persistence": {
+    "id": "9ba16fa0-7c98-4498-adbc-b296b435af46",
+    "status": "active",
+    "status_reason": "cancelled_by_user",
+    "cancellation_requested_at": null,
+    "cancellation_reason": null,
+    "auto_renew": false,
+    "next_billing_at": null
+  }
+}

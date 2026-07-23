@@ -1,0 +1,30 @@
+{
+  "adminChecks": [
+    {
+      "surface": "Orders",
+      "pass": true
+    },
+    {
+      "surface": "Order file",
+      "pass": true
+    },
+    {
+      "surface": "Subscriptions",
+      "pass": true
+    },
+    {
+      "surface": "Users",
+      "pass": true
+    },
+    {
+      "surface": "Overview",
+      "pass": true
+    },
+    {
+      "surface": "Queue",
+      "pass": true
+    }
+  ],
+  "customerPass": true,
+  "dbPass": true
+}

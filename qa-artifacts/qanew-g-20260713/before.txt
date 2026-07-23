@@ -1,0 +1,2 @@
+[{"n":1}]
+[{"status":"redeemed","n":1}]

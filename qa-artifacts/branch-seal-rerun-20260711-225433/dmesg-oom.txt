@@ -1,0 +1,7 @@
+[Sun Jul 12 00:33:09 2026] node: libvips worker: potentially unexpected fatal signal 11.
+[Sun Jul 12 00:33:09 2026] node: libvips worker: potentially unexpected fatal signal 11.
+[Sun Jul 12 00:33:09 2026] libvips worker[111870]: segfault at 7f13b0001 ip 00007f18f4ccb2cb sp 00007f18e7ffe770 error 4
+[Sun Jul 12 00:33:09 2026] libvips worker[111876]: segfault at 7f13b0001 ip 00007f18f4ccb2cb sp 00007f18e4ff8770 error 4
+[Sun Jul 12 00:33:09 2026] node: libvips worker: potentially unexpected fatal signal 11.
+[Sun Jul 12 00:33:09 2026] node: libvips worker: potentially unexpected fatal signal 11.
+[Sun Jul 12 00:33:10 2026] WSL (111882 - CaptureCrash): Capturing crash for pid: 111355, executable: !home!yuri!.nvm!versions!node!v22.19.0!bin!node, signal: 11, port: 50005

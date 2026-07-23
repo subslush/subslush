@@ -108,7 +108,8 @@ class DashboardService {
           `
           SELECT id, service_type, service_plan, price_cents, currency,
                  auto_renew, next_billing_at, renewal_date, renewal_method,
-                 product_variant_id, term_months, discount_percent
+                 product_id, product_variant_id, term_months, discount_percent,
+                 total_price_cents_snapshot, currency_snapshot
           FROM subscriptions
           WHERE user_id = $1
             AND status = 'active'

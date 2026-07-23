@@ -1,0 +1,8 @@
+  61162   40290 Sl+  /home/yuri/.vscode-server/bin/fc3def6774c76082adf699d366f31a557ce5573f/node /home/yuri/.vscode-server/bin/fc3def6774c76082adf699d366f31a557ce5573f/extensions/markdown-language-features/dist/serverWorkerMain --node-ipc --clientProcessId=40290
+ 325493   40335 Ss   /bin/bash -lc /usr/bin/time -v npm run build > ../qa-artifacts/branch-seal-rerun-20260711-225433/frontend-build.log 2> ../qa-artifacts/branch-seal-rerun-20260711-225433/frontend-build-resource.log
+ 325502  325493 S    /usr/bin/time -v npm run build
+ 325504  325502 Sl   npm run build
+ 325536  325504 S    sh -c svelte-kit sync && vite build
+ 325760  325536 Sl   node /home/yuri/projects/ss/frontend/node_modules/.bin/vite build
+ 336712   40335 Ss   /bin/bash -lc ps -eo pid,ppid,stat,args | rg '(npm run build|vite build|vite preview|dist/server|src/server|chromium|chrome)' > qa-artifacts/branch-seal-rerun-20260711-225433/processes-after.txt || true
+ 336721  336712 S    rg (npm run build|vite build|vite preview|dist/server|src/server|chromium|chrome)

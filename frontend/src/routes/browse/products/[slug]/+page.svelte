@@ -43,9 +43,11 @@
 
   let product = data.product;
   let variants = data.variants || [];
+  let offer = data.offer;
 
   $: product = data.product;
   $: variants = data.variants || [];
+  $: offer = data.offer;
 
   let selectedVariant: ProductVariantOption | null = null;
   let selectedTerm: ProductTermOption | null = null;
@@ -460,14 +462,14 @@
       : 0;
 
   const buildCartItemId = (params: {
-    variantId: string;
+    productId: string;
     termMonths: number;
     autoRenew: boolean;
     selectionType?: UpgradeSelectionType | '';
   }): string => {
     const selection = params.selectionType || 'none';
     return [
-      params.variantId,
+      params.productId,
       params.termMonths,
       params.autoRenew ? 'renew' : 'no-renew',
       selection
@@ -553,7 +555,7 @@
     const eventId = buildAddToCartEventId();
     trackAddToCart(analyticsItem.currency, term.total_price, [analyticsItem], eventId);
     void subscriptionService.trackAddToCart({
-      contentId: product.slug || product.id || variant.id,
+      contentId: product.id || product.slug || variant.id,
       contentName: product.name || product.service_type || variant.display_name,
       contentCategory: product.category || product.service_type || undefined,
       price: term.total_price,
@@ -576,7 +578,7 @@
     trackCartIntent(variant, term);
     cart.addItem({
       id: buildCartItemId({
-        variantId: variant.id,
+        productId: product.id,
         termMonths: term.months,
         autoRenew: false,
         selectionType: upgradeSelectionType
@@ -591,8 +593,13 @@
       quantity: 1,
       description: variant.description,
       features: variant.features,
-      variantId: variant.id,
-      termMonths: term.months,
+      productId: product.id,
+      variantId:
+        offer?.catalog_mode === 'legacy_variant'
+          ? offer.variant_id || variant.id
+          : undefined,
+      termMonths: offer?.duration_months || term.months,
+      pricingSnapshotId: offer?.pricing_snapshot_id,
       autoRenew: false,
       upgradeSelectionType: upgradeSelectionType || null,
       ownAccountCredentialRequirement:
@@ -615,7 +622,7 @@
     trackCartIntent(variant, term);
     cart.addItem({
       id: buildCartItemId({
-        variantId: variant.id,
+        productId: product.id,
         termMonths: term.months,
         autoRenew: false,
         selectionType: upgradeSelectionType
@@ -630,8 +637,13 @@
       quantity: 1,
       description: variant.description,
       features: variant.features,
-      variantId: variant.id,
-      termMonths: term.months,
+      productId: product.id,
+      variantId:
+        offer?.catalog_mode === 'legacy_variant'
+          ? offer.variant_id || variant.id
+          : undefined,
+      termMonths: offer?.duration_months || term.months,
+      pricingSnapshotId: offer?.pricing_snapshot_id,
       autoRenew: false,
       upgradeSelectionType: upgradeSelectionType || null,
       ownAccountCredentialRequirement:
@@ -658,7 +670,7 @@
           'Product Detail'
         );
         if (analyticsItem) {
-          const contentId = product?.slug || product?.id || currentId;
+          const contentId = product?.id || product?.slug || currentId;
           const eventId = buildViewContentEventId(contentId);
           trackViewItem(analyticsItem, eventId);
           void subscriptionService.trackTikTokEvent({

@@ -8,7 +8,9 @@ export interface GuestClaimTokenResult {
 }
 
 export interface GuestDraftItemInput {
-  variant_id: string;
+  variant_id?: string | null | undefined;
+  product_id?: string | null | undefined;
+  pricing_snapshot_id?: string | null | undefined;
   term_months?: number | null | undefined;
   auto_renew?: boolean | null | undefined;
   selection_type?:
@@ -41,10 +43,15 @@ export interface CheckoutPricingSummaryItem {
   variant_id: string;
   product_id: string;
   product_name: string;
+  duration_months: number;
+  unit_price_cents: number;
+  total_price_cents: number;
+  catalog_mode: 'fixed_product' | 'legacy_variant';
   service_type?: string | null;
   variant_name?: string | null;
   service_plan?: string | null;
   pricing_snapshot_id: string;
+  catalog_pricing_snapshot_id: string;
   term_months: number;
   currency: string;
   base_price_cents: number;

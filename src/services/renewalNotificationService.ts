@@ -22,8 +22,8 @@ export async function ensureRenewalTask(params: {
 
   await pool.query(
     `INSERT INTO admin_tasks
-      (subscription_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
-     SELECT $1, $2, $3, 'renewal', $4, $5, $6, $7::varchar(50), $8
+      (subscription_id, product_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
+     SELECT $1, (SELECT product_id FROM subscriptions WHERE id = $1), $2, $3, 'renewal', $4, $5, $6, $7::varchar(50), $8
      WHERE NOT EXISTS (
        SELECT 1
        FROM admin_tasks

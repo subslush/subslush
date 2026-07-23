@@ -30,6 +30,11 @@ import {
   metaEventsService,
 } from '../services/metaEventsService';
 import { ErrorResponses, SuccessResponses, sendError } from '../utils/response';
+import {
+  isSellableProductErrorCode,
+  sendSellableProductError,
+} from '../utils/catalogApiErrors';
+import { attachLegacyVariantDeprecation } from '../utils/catalogApiCompatibility';
 import { Logger } from '../utils/logger';
 import { getRequestIp } from '../utils/requestIp';
 import { resolveCountryFromHeaders } from '../utils/currency';
@@ -704,6 +709,20 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
+  fastify.get(
+    '/payment-capabilities',
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      reply.header('Cache-Control', 'no-store');
+      return SuccessResponses.ok(reply, {
+        antom_enabled: env.ANTOM_ENABLED === true,
+        payop_enabled: env.PAYOP_ENABLED === true,
+        nowpayments_enabled: true,
+        qa_payment_enabled:
+          env.QA_PAYMENT_ENABLED === true && env.NODE_ENV !== 'production',
+      });
+    }
+  );
+
   fastify.post(
     '/identity',
     {
@@ -775,11 +794,31 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               type: 'array',
               items: {
                 type: 'object',
-                required: ['variant_id'],
+                anyOf: [
+                  { required: ['product_id'] },
+                  { required: ['variant_id'] },
+                ],
                 properties: {
                   variant_id: { type: 'string' },
+                  product_id: { type: ['string', 'null'] },
+                  pricing_snapshot_id: { type: ['string', 'null'] },
                   term_months: { type: 'number' },
                   auto_renew: { type: 'boolean' },
+                  selection_type: {
+                    type: ['string', 'null'],
+                    enum: ['upgrade_new_account', 'upgrade_own_account', null],
+                  },
+                  account_identifier: {
+                    type: ['string', 'null'],
+                    maxLength: 255,
+                  },
+                  credentials: {
+                    type: ['string', 'null'],
+                    maxLength: 4000,
+                  },
+                  manual_monthly_acknowledged: {
+                    type: ['boolean', 'null'],
+                  },
                 },
               },
             },
@@ -803,12 +842,19 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
           );
         }
 
+        if (validation.data.items.some(item => Boolean(item.variant_id))) {
+          attachLegacyVariantDeprecation(reply);
+        }
+
         const draftResult = await guestCheckoutService.upsertDraftOrder(
           validation.data
         );
 
         if (!draftResult.success) {
           const error = draftResult.error || 'Failed to create draft order';
+          if (isSellableProductErrorCode(error)) {
+            return sendSellableProductError(reply, error);
+          }
           if (
             [
               'guest_identity_not_found',
@@ -831,6 +877,12 @@ export async function checkoutRoutes(fastify: FastifyInstance): Promise<void> {
               'scope_mismatch',
               'term_mismatch',
               'zero_total',
+              'upgrade_selection_type_required',
+              'upgrade_selection_not_available',
+              'unexpected_own_account_credentials',
+              'own_account_identifier_required',
+              'own_account_credentials_required',
+              'manual_monthly_acknowledgement_required',
             ].includes(error)
           ) {
             return ErrorResponses.badRequest(reply, error.replace(/_/g, ' '));

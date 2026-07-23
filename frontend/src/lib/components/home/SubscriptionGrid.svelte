@@ -214,7 +214,7 @@
 
     trackAddToCart(currency, price, [analyticsItem], eventId);
     void subscriptionService.trackAddToCart({
-      contentId: product.slug || product.product_id || product.variant_id || itemId,
+      contentId: product.product_id || product.slug || product.variant_id || itemId,
       contentName: itemName,
       contentCategory: product.category || product.service_type || undefined,
       price,
@@ -230,8 +230,12 @@
     event.preventDefault();
     event.stopPropagation();
 
-    const variantId = (product.variant_id || product.product_id || '').trim();
-    if (!variantId) {
+    const productId = product.product_id.trim();
+    const legacyVariantId =
+      product.catalog_mode === 'legacy_variant'
+        ? (product.variant_id || '').trim()
+        : '';
+    if (!productId) {
       return;
     }
 
@@ -245,7 +249,7 @@
 
     trackQuickAddToCart(product, price, termMonths);
     cart.addItem({
-      id: `${variantId}|${termMonths}|no-renew`,
+      id: `${productId}|${termMonths}|no-renew`,
       serviceType: product.service_type || product.slug || product.name,
       serviceName: product.name,
       subCategory: product.sub_category || undefined,
@@ -254,8 +258,10 @@
       currency: product.currency,
       quantity: 1,
       description: product.description,
-      variantId,
+      productId,
+      variantId: legacyVariantId || undefined,
       termMonths,
+      pricingSnapshotId: product.pricing_snapshot_id,
       autoRenew: false
     });
     cartSidebar.open();

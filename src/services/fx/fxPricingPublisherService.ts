@@ -7,10 +7,7 @@ import {
   FX_DISPLAY_CURRENCIES,
   FX_ROUNDING_RULE_VERSION_DEFAULT,
 } from './fxConfig';
-import {
-  applyPsychologicalRounding,
-  roundedAmountToCents,
-} from './fxRounding';
+import { applyPsychologicalRounding, roundedAmountToCents } from './fxRounding';
 import { resolveSettlementCurrency } from './fxSettlement';
 
 type PublishStatus = 'succeeded' | 'failed' | 'skipped';
@@ -123,7 +120,10 @@ export class FxPricingPublisherService {
         this.loadCurrentUsdVariantBasePrices(client, now),
         this.loadCurrentUsdFixedProductBasePrices(client),
       ]);
-      if (variantBasePrices.length === 0 && fixedProductBasePrices.length === 0) {
+      if (
+        variantBasePrices.length === 0 &&
+        fixedProductBasePrices.length === 0
+      ) {
         await client.query('ROLLBACK');
         transactionOpen = false;
 
@@ -324,7 +324,10 @@ export class FxPricingPublisherService {
         try {
           await client.query('ROLLBACK');
         } catch (rollbackError) {
-          Logger.error('Failed to rollback FX publish transaction', rollbackError);
+          Logger.error(
+            'Failed to rollback FX publish transaction',
+            rollbackError
+          );
         }
       }
       client.release();
@@ -476,7 +479,12 @@ export class FxPricingPublisherService {
          LIMIT 1
        ) ph ON TRUE
        WHERE p.status = 'active'
-         AND pv.is_active = TRUE`,
+         AND pv.is_active = TRUE
+         AND (
+           p.duration_months > 0
+           AND p.fixed_price_cents > 0
+           AND p.fixed_price_currency IS NOT NULL
+         ) IS NOT TRUE`,
       [FX_BASE_CURRENCY, atDate]
     );
 
@@ -493,16 +501,12 @@ export class FxPricingPublisherService {
       `SELECT p.id AS product_id,
               p.fixed_price_cents AS usd_price_cents
        FROM products p
-       LEFT JOIN product_variants pv
-         ON pv.product_id = p.id
-        AND pv.is_active = TRUE
        WHERE p.status = 'active'
          AND p.duration_months IS NOT NULL
          AND p.fixed_price_cents IS NOT NULL
-         AND p.fixed_price_cents >= 0
+         AND p.fixed_price_cents > 0
          AND p.fixed_price_currency IS NOT NULL
-         AND UPPER(p.fixed_price_currency) = $1
-         AND pv.id IS NULL`,
+         AND UPPER(p.fixed_price_currency) = $1`,
       [FX_BASE_CURRENCY]
     );
 
@@ -612,7 +616,13 @@ export class FxPricingPublisherService {
            metadata = COALESCE(metadata, '{}'::jsonb) || $5::jsonb,
            updated_at = NOW()
        WHERE id = $1`,
-      [runId, status, latestFetchId, reason.slice(0, 1000), JSON.stringify(metadata)]
+      [
+        runId,
+        status,
+        latestFetchId,
+        reason.slice(0, 1000),
+        JSON.stringify(metadata),
+      ]
     );
   }
 }

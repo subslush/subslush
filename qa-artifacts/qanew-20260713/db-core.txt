@@ -1,0 +1,29 @@
+[
+  {
+    "id": "9dc611af-6fad-4ed6-bf3d-f2ff302dbe4f",
+    "name": "QANEW-CORE-1783900000 Product",
+    "status": "active",
+    "metadata": {
+      "info_box_text": "QANEW-CORE-1783900000 info",
+      "upgrade_options": {
+        "allow_new_account": true,
+        "allow_own_account": false
+      },
+      "activation_guide": "QANEW-CORE-1783900000 guide"
+    },
+    "logo_key": "",
+    "variant_id": "7e065924-0d79-4363-9570-886f3e6a3574",
+    "term_id": "3eb322e6-418c-4795-8b7c-3addf1822784",
+    "months": 6,
+    "discount_percent": "10.00",
+    "is_recommended": true,
+    "price_cents": 1234,
+    "price_metadata": {
+      "source": "catalog_current_price",
+      "snapshot_id": "27e21fba-6351-472b-a7fb-7bf540d24d90",
+      "settlement_currency": "USD",
+      "compare_at_price_cents": 9999
+    },
+    "snapshot_status": "succeeded"
+  }
+]

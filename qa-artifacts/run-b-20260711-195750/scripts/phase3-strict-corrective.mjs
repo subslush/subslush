@@ -1,0 +1,71 @@
+import { chromium } from '/home/yuri/projects/ss/frontend/node_modules/playwright-core/index.mjs';
+import pg from '/home/yuri/projects/ss/node_modules/pg/lib/index.js';
+import dotenv from '/home/yuri/projects/ss/node_modules/dotenv/lib/main.js';
+import fs from 'node:fs/promises';
+
+dotenv.config({ path: '/home/yuri/projects/ss/.env', quiet: true });
+const { Client } = pg;
+const artifact = '/home/yuri/projects/ss/qa-artifacts/run-b-20260711-195750';
+const baseUrl = 'http://127.0.0.1:3000';
+const orderId = 'f1a571a5-64e7-48ad-891e-ff2ded33696c';
+const p2Id = 'e869bdd6-d17e-49a2-a602-964dbec01785';
+const p3Id = '3d147a02-f654-40dc-9c88-661d8a483ca7';
+const token = (await fs.readFile(`${artifact}/customer-token.txt`, 'utf8')).trim();
+const adminToken = (await fs.readFile(`${artifact}/admin-token.txt`, 'utf8')).trim();
+const db = new Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 5432), database: process.env.DB_DATABASE, user: process.env.DB_USER, password: process.env.DB_PASSWORD });
+await db.connect();
+const record = row => fs.appendFile(`${artifact}/phase3-steps.jsonl`, `${JSON.stringify({ phase: 3, ...row })}\n`);
+const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, userAgent: 'QA-B2-Chromium-UA/1.0' });
+await context.addCookies([{ name: 'auth_token', value: token, url: `${baseUrl}/` }, { name: 'csrf_token', value: 'qa-b2-csrf', url: `${baseUrl}/` }]);
+const page = await context.newPage();
+page.setDefaultTimeout(30000);
+const dialogs = [];
+page.on('dialog', async dialog => { dialogs.push(dialog.message()); await dialog.dismiss(); });
+try {
+  await page.goto(`${baseUrl}/dashboard/orders`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  const consent = page.getByRole('button', { name: 'Reject non-essential' });
+  if (await consent.isVisible({ timeout: 3000 }).catch(() => false)) await consent.click();
+  const p2 = page.getByText('Qa B2 Ai Tool Qa B2 Ai Annual (12 months)', { exact: true }).last().locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]');
+  await p2.getByRole('button', { name: 'Reveal' }).click();
+  const rulesElement = page.getByTestId('strict-rules-text');
+  const rulesText = await rulesElement.innerText();
+  const modal = page.getByRole('heading', { name: 'Rules acknowledgement' }).locator('xpath=ancestor::div[contains(@class,"fixed")][1]');
+  const accept = modal.getByRole('button', { name: 'Accept' });
+  const initiallyDisabled = await accept.isDisabled();
+  await page.screenshot({ path: `${artifact}/screenshots/039-phase3-configured-rules-modal.png`, fullPage: true });
+  await modal.getByRole('checkbox').check();
+  const acceptResponse = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/orders/${orderId}/items/${p2Id}/accept-rules`);
+  const revealResponse = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/orders/${orderId}/items/${p2Id}/reveal`);
+  await accept.click();
+  const accepted = await acceptResponse;
+  const revealed = await revealResponse;
+  const acceptance = (await db.query(`SELECT metadata,license_account_access_evidence,ip_address FROM order_compliance_evidence_logs WHERE order_id=$1 AND event_type='strict_rules_acceptance' AND metadata->>'subscription_id'=$2 ORDER BY created_at DESC LIMIT 1`, [orderId, p2Id])).rows[0];
+  const pass = rulesText.includes('QA-B2 DISTINCTIVE RULES') && rulesText.includes('<script>alert(1)</script>') && dialogs.length === 0 && initiallyDisabled && accepted.ok() && revealed.ok() && acceptance?.metadata?.rules_version;
+  await record({ action: 'D05 corrective configured-rules/XSS browser proof', expected: 'Configured literal rules render inert; checkbox gates; version evidence is recreated', actual: `rules=${JSON.stringify(rulesText)}; dialogs=${dialogs.length}; disabled=${initiallyDisabled}; accept=${accepted.status()}; reveal=${revealed.status()}; evidence=${JSON.stringify(acceptance)}`, result: pass ? 'PASS' : 'FAIL', evidence: 'screenshots/039-phase3-configured-rules-modal.png' });
+
+  await p2.getByRole('button', { name: 'Hide' }).click();
+  const auditBefore = Number((await db.query('SELECT count(*) FROM credential_reveal_audit_logs WHERE subscription_id=$1', [p2Id])).rows[0].count);
+  const secondRevealPromise = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/orders/${orderId}/items/${p2Id}/reveal`);
+  await p2.getByRole('button', { name: 'Reveal' }).click();
+  const secondReveal = await secondRevealPromise;
+  const repeated = await page.getByRole('heading', { name: 'Rules acknowledgement' }).isVisible().catch(() => false);
+  const auditAfter = Number((await db.query('SELECT count(*) FROM credential_reveal_audit_logs WHERE subscription_id=$1', [p2Id])).rows[0].count);
+  await record({ action: 'D06 second reveal after current-version acceptance', expected: 'Modal skipped while reveal audit increments', actual: `modal=${repeated}; HTTP ${secondReveal.status()}; audit ${auditBefore}→${auditAfter}`, result: !repeated && secondReveal.ok() && auditAfter === auditBefore + 1 ? 'PASS' : 'FAIL', evidence: 'screenshots/039-phase3-configured-rules-modal.png' });
+
+  const p3State = (await db.query(`SELECT activation_handshake_state FROM subscriptions WHERE id=$1`, [p3Id])).rows[0];
+  const p3Evidence = (await db.query(`SELECT license_account_access_evidence,metadata,ip_address FROM order_compliance_evidence_logs WHERE order_id=$1 AND license_account_access_evidence->>'subscription_id'=$2 ORDER BY created_at DESC LIMIT 1`, [orderId, p3Id])).rows[0];
+  const adminContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  await adminContext.addCookies([{ name: 'auth_token', value: adminToken, url: `${baseUrl}/` }, { name: 'csrf_token', value: 'qa-b2-csrf', url: `${baseUrl}/` }]);
+  const adminPage = await adminContext.newPage();
+  await adminPage.goto(`${baseUrl}/admin-next/fulfillment?tab=awaiting_customer`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  const queueText = await adminPage.locator('body').innerText();
+  await adminPage.screenshot({ path: `${artifact}/screenshots/040-phase3-ready-queue.png`, fullPage: true });
+  const p3Pass = p3State.activation_handshake_state === 'customer_ready' && JSON.stringify(p3Evidence).includes('QA-B2-Chromium-UA/1.0') && queueText.includes(orderId.slice(0, 8));
+  await record({ action: 'P3 mandatory-checkbox readiness and admin queue surfacing', expected: 'customer_ready evidence with UA; awaiting-customer queue item ready', actual: `DB=${JSON.stringify(p3State)}; evidence=${JSON.stringify(p3Evidence)}; queue=${queueText.includes(orderId.slice(0, 8))}`, result: p3Pass ? 'PASS' : 'FAIL', evidence: 'screenshots/040-phase3-ready-queue.png' });
+  await adminContext.close();
+} finally {
+  await context.close();
+  await browser.close();
+  await db.end();
+}

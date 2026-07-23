@@ -8,6 +8,10 @@ export interface OrderEntitlement {
   id: string;
   order_id: string;
   order_item_id?: string | null;
+  product_id?: string | null;
+  product_name_snapshot?: string | null;
+  product_slug_snapshot?: string | null;
+  fulfillment_config_snapshot?: Record<string, any> | null;
   user_id: string;
   status: OrderEntitlementStatus;
   starts_at: Date;
@@ -25,6 +29,10 @@ export interface OrderEntitlement {
 export interface UpsertOrderEntitlementInput {
   order_id: string;
   order_item_id?: string | null;
+  product_id?: string | null;
+  product_name_snapshot?: string | null;
+  product_slug_snapshot?: string | null;
+  fulfillment_config_snapshot?: Record<string, any> | null;
   user_id: string;
   status?: OrderEntitlementStatus;
   starts_at: Date;

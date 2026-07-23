@@ -51,6 +51,7 @@ export interface UnifiedPayment {
   expiresAt?: Date;
   metadata?: Record<string, any>;
   orderId?: string;
+  productId?: string;
   productVariantId?: string;
   orderItemId?: string;
   priceCents?: number;
@@ -83,6 +84,7 @@ export interface CreateUnifiedPaymentInput {
   expiresAt?: Date;
   metadata?: Record<string, any>;
   orderId?: string;
+  productId?: string;
   productVariantId?: string;
   orderItemId?: string;
   priceCents?: number;

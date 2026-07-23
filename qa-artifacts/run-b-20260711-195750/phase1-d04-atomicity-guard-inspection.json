@@ -1,0 +1,20 @@
+{
+  "method": "permitted read-only guard inspection plus successful signed-webhook route",
+  "successful_path": {
+    "order_id": "f1a571a5-64e7-48ad-891e-ff2ded33696c",
+    "items": 3,
+    "subscriptions": 3,
+    "tasks": 3,
+    "confirmation_email": true
+  },
+  "guard": {
+    "source": "src/services/paymentService.ts",
+    "subscription_count_check": "created.length must equal orderItems.length",
+    "task_count_check": "distinct open fulfillment tasks must equal orderItems.length",
+    "failure_order_state": "cancelled / payment_succeeded_fulfillment_failed",
+    "operator_task": "urgent support task, category payment_fulfillment_failure, is_issue=true",
+    "coupon": "voidRedemptionForOrder(order.id)",
+    "standard_confirmation": "provider completion returns fulfillment_failed before its normal success/confirmation continuation"
+  },
+  "result": "PASS_BY_INSPECTION"
+}

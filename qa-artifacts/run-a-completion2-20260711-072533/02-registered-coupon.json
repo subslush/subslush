@@ -1,0 +1,19 @@
+{
+  "probe": "02-registered-coupon",
+  "started_at": "2026-07-11T07:36:16.777Z",
+  "steps": {
+    "reverify-completed-attempt": {
+      "status": 200,
+      "body": {
+        "order_id": "a32d93b4-bd05-43bc-8952-7d1751464c86",
+        "redemption_status": "redeemed",
+        "order_status": "in_process",
+        "payment_status": "succeeded",
+        "is_guest": false,
+        "code": "QA-A3-REG"
+      }
+    }
+  },
+  "finished_at": "2026-07-11T07:36:16.803Z",
+  "result": "PASS"
+}

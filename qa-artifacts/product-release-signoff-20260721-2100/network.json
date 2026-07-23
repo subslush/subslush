@@ -1,0 +1,290 @@
+[
+  {
+    "page": "admin",
+    "method": "GET",
+    "path": "/api/v1/credits/balance/10000000-0000-4000-8000-000000000001",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "GET",
+    "path": "/api/v1/credits/balance/10000000-0000-4000-8000-000000000001",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v1/admin/products",
+    "status": 201
+  },
+  {
+    "page": "admin",
+    "method": "GET",
+    "path": "/api/v1/credits/balance/10000000-0000-4000-8000-000000000001",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v1/admin/products",
+    "status": 201
+  },
+  {
+    "page": "admin",
+    "method": "GET",
+    "path": "/api/v1/credits/balance/10000000-0000-4000-8000-000000000001",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "GET",
+    "path": "/api/v1/credits/balance/10000000-0000-4000-8000-000000000001",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v1/admin/products/56248424-4a13-46a5-b0bc-bdc652f0279c/fixed-price/current",
+    "status": 201
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "GET",
+    "path": "/api/v1/credits/balance/10000000-0000-4000-8000-000000000001",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v1/admin/products/56248424-4a13-46a5-b0bc-bdc652f0279c/fixed-catalog/recover",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "public",
+    "method": "GET",
+    "path": "/api/v1/subscriptions/products/available",
+    "status": 200
+  },
+  {
+    "page": "public",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "public",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "public",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "public",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "admin",
+    "method": "POST",
+    "path": "/api/v2/pixel/inter",
+    "status": 200
+  },
+  {
+    "page": "public",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "public",
+    "method": "GET",
+    "path": "/api/v1/subscriptions/products/available",
+    "status": 200
+  },
+  {
+    "page": "public",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  },
+  {
+    "page": "public",
+    "method": "POST",
+    "path": "/api/v2/pixel/act",
+    "status": 200
+  },
+  {
+    "page": "public",
+    "method": "POST",
+    "path": "/api/v2/pixel",
+    "status": 200
+  }
+]

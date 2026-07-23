@@ -1,0 +1,15 @@
+{
+  "database": "ss_product_release_qa_20260721_2100_r4",
+  "adminId": "10000000-0000-4000-8000-000000000001",
+  "customerId": "10000000-0000-4000-8000-000000000002",
+  "otherCustomerId": "10000000-0000-4000-8000-000000000003",
+  "oneId": "038947e7-54b4-44a6-95bf-297810fd4a53",
+  "twelveId": "51acf6d7-1827-4fda-aa75-7cd4f63b2c24",
+  "legacy": {
+    "legacyProductId": "20000000-0000-4000-8000-000000000001",
+    "legacyVariantId": "20000000-0000-4000-8000-000000000002",
+    "accidentalVariantId": "20000000-0000-4000-8000-000000000003"
+  },
+  "apiOrderId": "842ddaa5-bdf1-46be-9113-731f2f740493",
+  "browserCheckoutOrderId": null
+}

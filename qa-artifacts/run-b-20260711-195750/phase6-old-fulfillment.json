@@ -1,0 +1,10 @@
+{
+  "order": "367a279a-fbfe-4fd6-9da3-870fa7354b9f",
+  "confirmDisabledBefore": false,
+  "enabledAfterSave": true,
+  "subjects": [
+    "Your SubSlush order is delivered"
+  ],
+  "staleCustomerPending": false,
+  "pass": false
+}

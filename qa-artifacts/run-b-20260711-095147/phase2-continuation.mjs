@@ -1,0 +1,51 @@
+import { chromium } from '/home/yuri/projects/ss/frontend/node_modules/playwright-core/index.mjs';
+import pg from '/home/yuri/projects/ss/node_modules/pg/lib/index.js';
+import dotenv from '/home/yuri/projects/ss/node_modules/dotenv/lib/main.js';
+import fs from 'node:fs/promises';
+
+dotenv.config({ path: '/home/yuri/projects/ss/.env', quiet: true });
+const { Client } = pg;
+const artifact = '/home/yuri/projects/ss/qa-artifacts/run-b-20260711-095147';
+const baseUrl = 'http://127.0.0.1:3000';
+const orderId = 'b4c15ca5-c4ec-4970-8467-2acd1963da6d';
+const p2id = '19988bd8-93f6-4c65-ae8f-f05f57e8a191';
+const p3id = 'e3242e25-add1-4f3c-9c6a-bdd70126f393';
+const token = (await fs.readFile(`${artifact}/admin-token.txt`, 'utf8')).trim();
+const db = new Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 5432), database: process.env.DB_DATABASE, user: process.env.DB_USER, password: process.env.DB_PASSWORD });
+await db.connect();
+const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+await context.addCookies([{ name: 'auth_token', value: token, url: `${baseUrl}/` }, { name: 'csrf_token', value: 'qa-b1-csrf', url: `${baseUrl}/` }]);
+const page = await context.newPage();
+page.setDefaultTimeout(20000);
+const record = row => fs.appendFile(`${artifact}/phase2-steps.jsonl`, `${JSON.stringify({ phase: 2, ...row })}\n`);
+try {
+  await page.goto(`${baseUrl}/admin-next/fulfillment/orders/${orderId}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  const consent = page.getByRole('button', { name: 'Reject non-essential' });
+  if (await consent.isVisible({ timeout: 3000 }).catch(() => false)) await consent.click();
+  const p2 = page.locator(`[id="${p2id}"]`);
+  const p2Text = await p2.innerText();
+  const rulesStrip = p2Text.includes('Strict rules product') && !p2Text.includes('QA-B1 DISTINCTIVE RULES:');
+  await p2.getByPlaceholder('Credentials / notes to save on the subscription').fill('QA-B1 P2 fulfilled access: ai-user / AiPass!123');
+  const saveP2 = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === `/api/v1/admin/subscriptions/${p2id}/credentials`);
+  await p2.getByRole('button', { name: 'Save', exact: true }).click();
+  if (!(await saveP2).ok()) throw new Error('P2 save failed');
+  const deliverP2 = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === `/api/v1/admin/orders/${orderId}/items/${p2id}/deliver`);
+  await page.locator(`[id="${p2id}"]`).getByRole('button', { name: 'Confirm delivery' }).click();
+  if (!(await deliverP2).ok()) throw new Error('P2 deliver failed');
+  const orderAfter = (await db.query('SELECT status FROM orders WHERE id=$1', [orderId])).rows[0].status;
+  await page.screenshot({ path: `${artifact}/screenshots/032-phase2-p2-delivered.png`, fullPage: true });
+  await record({ action: 'P2 strict-rules save and per-item deliver', expected: 'Rules strip separate; item delivered; order in_process', actual: `rulesStrip=${rulesStrip}; order=${orderAfter}`, result: rulesStrip && orderAfter === 'in_process' ? 'PASS' : 'FAIL', evidence: 'screenshots/032-phase2-p2-delivered.png' });
+
+  const p3 = page.locator(`[id="${p3id}"]`);
+  const initial = await p3.innerText();
+  const instructions = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === `/api/v1/admin/orders/${orderId}/items/${p3id}/activation-instructions`);
+  await p3.getByRole('button', { name: 'Deliver instructions' }).click();
+  if (!(await instructions).ok()) throw new Error('P3 instructions failed');
+  await page.getByText(/Awaiting customer\. Instructions sent/).waitFor();
+  const p3db = (await db.query('SELECT activation_handshake_state,status FROM subscriptions WHERE id=$1', [p3id])).rows[0];
+  await page.screenshot({ path: `${artifact}/screenshots/033-phase2-p3-awaiting.png`, fullPage: true });
+  await record({ action: 'P3 deliver custom activation instructions', expected: 'Template at step 1; awaiting_customer; not delivered', actual: `templatePresent=${initial.includes('QA-B1 custom instructions')}; DB=${JSON.stringify(p3db)}`, result: initial.includes('QA-B1 custom instructions') && p3db.activation_handshake_state === 'awaiting_customer' && p3db.status !== 'active' ? 'PASS' : 'FAIL', evidence: 'screenshots/033-phase2-p3-awaiting.png' });
+  const final = (await db.query(`SELECT o.status,(SELECT count(*)::int FROM subscriptions s WHERE s.order_id=o.id AND s.delivered_at IS NOT NULL) delivered FROM orders o WHERE o.id=$1`, [orderId])).rows[0];
+  await fs.writeFile(`${artifact}/phase2-db-final.json`, JSON.stringify(final, null, 2));
+} finally { await context.close(); await browser.close(); await db.end(); }

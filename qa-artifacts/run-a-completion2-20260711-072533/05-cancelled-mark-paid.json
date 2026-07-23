@@ -1,0 +1,23 @@
+{
+  "probe": "05-cancelled-mark-paid",
+  "started_at": "2026-07-11T07:39:08.066Z",
+  "steps": {
+    "cancelled-order-mark-paid": {
+      "status": 409,
+      "body": {
+        "error": "Conflict",
+        "code": "ORDER_NOT_PENDING_PAYMENT",
+        "message": "Only pending payment orders can be marked paid manually",
+        "current_status": "cancelled"
+      }
+    }
+  },
+  "after": [
+    {
+      "status": "cancelled",
+      "succeeded_payments": 0
+    }
+  ],
+  "finished_at": "2026-07-11T07:39:08.138Z",
+  "result": "PASS"
+}

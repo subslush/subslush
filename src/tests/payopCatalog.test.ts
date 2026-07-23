@@ -1,5 +1,6 @@
 import {
   getPayopMethodConfig,
+  listPayopMethodCountryOptions,
   selectPayopProcessingCurrency,
 } from '../services/payments/payopCatalog';
 
@@ -28,6 +29,10 @@ describe('Payop catalog currency selection', () => {
         paymentCountry: 'US',
       })
     ).toBe('USD');
+  });
+
+  it('always offers the United States as a selectable PayDo country', () => {
+    expect(listPayopMethodCountryOptions()).toContain('US');
   });
 
   it('falls back to CAD for Canada and GBP for United Kingdom', () => {

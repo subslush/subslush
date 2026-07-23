@@ -49,7 +49,18 @@ export interface Subscription {
   metadata?: SubscriptionMetadata;
   order_id?: string | null;
   order_item_id?: string | null;
+  product_id?: string | null;
   product_variant_id?: string | null;
+  product_name_snapshot?: string | null;
+  product_slug_snapshot?: string | null;
+  duration_months_snapshot?: number | null;
+  unit_price_cents_snapshot?: number | null;
+  total_price_cents_snapshot?: number | null;
+  currency_snapshot?: string | null;
+  fulfillment_config_snapshot?:
+    | UpgradeOptionsSnapshot
+    | Record<string, any>
+    | null;
   price_cents?: number | null;
   base_price_cents?: number | null;
   discount_percent?: number | null;
@@ -107,7 +118,15 @@ export interface CreateSubscriptionInput {
   auto_renew?: boolean;
   order_id?: string;
   order_item_id?: string | null;
+  product_id?: string | null;
   product_variant_id?: string | null;
+  product_name_snapshot?: string | null;
+  product_slug_snapshot?: string | null;
+  duration_months_snapshot?: number | null;
+  unit_price_cents_snapshot?: number | null;
+  total_price_cents_snapshot?: number | null;
+  currency_snapshot?: string | null;
+  fulfillment_config_snapshot?: Record<string, any> | null;
   price_cents?: number | null;
   base_price_cents?: number | null;
   discount_percent?: number | null;
@@ -163,6 +182,7 @@ export interface UpdateSubscriptionInput {
   currency?: string | null;
   order_id?: string | null;
   order_item_id?: string | null;
+  product_id?: string | null;
   product_variant_id?: string | null;
   referral_reward_id?: string | null;
   pre_launch_reward_id?: string | null;
@@ -190,6 +210,12 @@ export interface ServicePlanDetails {
   currency?: string;
   features: string[];
   limitations?: string[];
+  product_id?: string;
+  /** @deprecated Historical compatibility only. */
+  variant_id?: string;
+  catalog_mode?: 'fixed_product' | 'legacy_variant';
+  duration_months?: number;
+  price_cents?: number;
 }
 
 export interface SubscriptionPurchaseValidation {

@@ -1,0 +1,16 @@
+{
+  "probe": "04-legacy-reveal-bypass",
+  "started_at": "2026-07-11T07:39:01.736Z",
+  "steps": {
+    "legacy-order-level-reveal-without-acceptance": {
+      "status": 400,
+      "body": {
+        "error": "Bad Request",
+        "message": "Strict rules acceptance is required before revealing credentials",
+        "code": "INVALID_REQUEST"
+      }
+    }
+  },
+  "finished_at": "2026-07-11T07:39:01.799Z",
+  "result": "PASS"
+}

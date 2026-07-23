@@ -87,6 +87,7 @@ export const load: PageServerLoad = async ({
     return {
       product: detail.product,
       variants: detail.variants || [],
+      offer: detail.offer,
       userCredits,
       requestCountryCode: detail.country_code || null
     };

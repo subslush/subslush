@@ -61,6 +61,7 @@ import {
 import { normalizeCurrencyCode } from '../utils/currency';
 import { computeTermPricing } from '../utils/termPricing';
 import { parseJsonValue } from '../utils/json';
+import { buildFulfillmentConfigSnapshot } from '../utils/productIdentity';
 import {
   computeNextRenewalDates,
   getNextStripeRenewalAttemptDate,
@@ -90,6 +91,7 @@ import {
 
 interface StripeOrderContext {
   orderId?: string;
+  productId?: string | null;
   productVariantId?: string | null;
   productSlug?: string | null;
   priceCents?: number | null;
@@ -601,7 +603,7 @@ export class PaymentService {
         quantity: itemQuantity,
         unitAmountCents,
         description,
-        sku: item.product_variant_id ?? item.id,
+        sku: item.product_id ?? item.product_variant_id ?? item.id,
         category: 'DIGITAL_GOODS',
       });
     }
@@ -729,6 +731,34 @@ export class PaymentService {
       return;
     }
 
+    const productIds = Array.from(
+      new Set(
+        params.orderItems
+          .map(item => item.product_id ?? null)
+          .filter((productId): productId is string => !!productId)
+      )
+    );
+    if (productIds.length === 1) {
+      const productId = productIds[0] as string;
+      const identityUpdate = await client.query(
+        `UPDATE payments
+         SET product_id = COALESCE(product_id, $2),
+             updated_at = NOW()
+         WHERE id = $1
+           AND (product_id IS NULL OR product_id = $2)
+         RETURNING id`,
+        [params.paymentRecordId, productId]
+      );
+      if (identityUpdate.rows.length === 0) {
+        Logger.error('Payment product identity diverged from order items', {
+          event: 'catalog_product_identity_conflict',
+          paymentId: params.paymentRecordId,
+          productId,
+        });
+        throw new Error('payment_product_identity_conflict');
+      }
+    }
+
     const existing = await client.query(
       'SELECT 1 FROM payment_items WHERE payment_id = $1 LIMIT 1',
       [params.paymentRecordId]
@@ -738,7 +768,7 @@ export class PaymentService {
     }
 
     const values: string[] = [];
-    const args: Array<string | number> = [];
+    const args: Array<string | number | null> = [];
     let index = 0;
 
     for (const item of params.orderItems) {
@@ -784,11 +814,12 @@ export class PaymentService {
       const totalCents = Math.max(0, item.total_price_cents);
 
       values.push(
-        `($${++index}, $${++index}, $${++index}, $${++index}, $${++index})`
+        `($${++index}, $${++index}, $${++index}, $${++index}, $${++index}, $${++index})`
       );
       args.push(
         params.paymentRecordId,
         item.id,
+        item.product_id ?? null,
         subtotalCents,
         discountCents,
         totalCents
@@ -797,7 +828,7 @@ export class PaymentService {
 
     await client.query(
       `INSERT INTO payment_items
-        (payment_id, order_item_id, allocated_subtotal_cents, allocated_discount_cents, allocated_total_cents)
+        (payment_id, order_item_id, product_id, allocated_subtotal_cents, allocated_discount_cents, allocated_total_cents)
        VALUES ${values.join(', ')}`,
       args
     );
@@ -1018,7 +1049,17 @@ export class PaymentService {
         auto_renew: autoRenew,
         order_id: params.order.id,
         order_item_id: item.id,
+        product_id: item.product_id ?? null,
         product_variant_id: item.product_variant_id ?? null,
+        product_name_snapshot:
+          item.product_name_snapshot ?? item.product_name ?? null,
+        product_slug_snapshot: item.product_slug_snapshot ?? null,
+        duration_months_snapshot: item.duration_months_snapshot ?? termMonths,
+        unit_price_cents_snapshot: item.unit_price_cents,
+        total_price_cents_snapshot: item.total_price_cents,
+        currency_snapshot: item.currency ?? currency ?? null,
+        fulfillment_config_snapshot:
+          item.fulfillment_config_snapshot ?? upgradeOptions ?? null,
         price_cents: termTotalCents,
         base_price_cents: basePriceCents ?? null,
         discount_percent: discountPercent ?? null,
@@ -1069,6 +1110,21 @@ export class PaymentService {
         {
           order_id: params.order.id,
           order_item_id: item.id,
+          product_id: subscription.product_id ?? item.product_id ?? null,
+          product_name_snapshot:
+            subscription.product_name_snapshot ??
+            item.product_name_snapshot ??
+            item.product_name ??
+            null,
+          product_slug_snapshot:
+            subscription.product_slug_snapshot ??
+            item.product_slug_snapshot ??
+            null,
+          fulfillment_config_snapshot:
+            subscription.fulfillment_config_snapshot ??
+            item.fulfillment_config_snapshot ??
+            upgradeOptions ??
+            null,
           user_id: params.order.user_id,
           status: subscription.status,
           starts_at: subscriptionStartAt,
@@ -1181,8 +1237,12 @@ export class PaymentService {
     );
     await pool.query(
       `INSERT INTO admin_tasks
-        (order_id, user_id, task_type, due_date, priority, notes, task_category, sla_due_at, is_issue)
-       SELECT $1, $2, 'support', NOW(), 'urgent', $3, 'payment_fulfillment_failure', NOW(), TRUE
+        (order_id, product_id, user_id, task_type, due_date, priority, notes, task_category, sla_due_at, is_issue)
+       SELECT $1,
+              (SELECT CASE WHEN COUNT(DISTINCT product_id) = 1
+                      THEN (ARRAY_AGG(DISTINCT product_id))[1] END
+               FROM order_items WHERE order_id = $1),
+              $2, 'support', NOW(), 'urgent', $3, 'payment_fulfillment_failure', NOW(), TRUE
        WHERE NOT EXISTS (
          SELECT 1 FROM admin_tasks
          WHERE order_id = $1
@@ -1916,6 +1976,13 @@ export class PaymentService {
         mergedMetadata.product_variant_id ||
         stripeMetadata.product_variant_id ||
         null;
+      const productId =
+        payment.productId ||
+        mergedMetadata.product_id ||
+        mergedMetadata.productId ||
+        stripeMetadata.product_id ||
+        stripeMetadata.productId ||
+        null;
       const productSlug = (mergedMetadata.product_slug ||
         mergedMetadata.productSlug ||
         stripeMetadata.product_slug ||
@@ -2157,7 +2224,22 @@ export class PaymentService {
             renewal_date: renewalDate,
             auto_renew: autoRenew,
             order_id: orderId || undefined,
+            product_id: productId || undefined,
             product_variant_id: productVariantId || undefined,
+            product_name_snapshot:
+              (mergedMetadata.product_name ||
+                mergedMetadata.productName ||
+                stripeMetadata.product_name ||
+                stripeMetadata.productName) ??
+              null,
+            duration_months_snapshot: durationMonths,
+            unit_price_cents_snapshot:
+              subscriptionPriceCents ?? priceCents ?? null,
+            total_price_cents_snapshot:
+              subscriptionPriceCents ?? priceCents ?? null,
+            currency_snapshot: currency,
+            fulfillment_config_snapshot:
+              buildFulfillmentConfigSnapshot(mergedMetadata),
             price_cents: subscriptionPriceCents ?? priceCents ?? null,
             base_price_cents: basePriceCents ?? null,
             discount_percent: discountPercent ?? null,
@@ -2191,6 +2273,16 @@ export class PaymentService {
               {
                 order_id: orderId,
                 order_item_id: null,
+                product_id: createdSubscription.product_id ?? productId,
+                product_name_snapshot:
+                  createdSubscription.product_name_snapshot ?? null,
+                product_slug_snapshot:
+                  createdSubscription.product_slug_snapshot ??
+                  productSlug ??
+                  null,
+                fulfillment_config_snapshot:
+                  createdSubscription.fulfillment_config_snapshot ??
+                  buildFulfillmentConfigSnapshot(mergedMetadata),
                 user_id: payment.userId,
                 status: createdSubscription.status,
                 starts_at: subscriptionStartAt,
@@ -2733,7 +2825,10 @@ export class PaymentService {
           value: totalValue,
           currency: orderCurrency,
           contentId:
-            primaryItem?.product_variant_id || primaryItem?.id || order.id,
+            primaryItem?.product_id ||
+            primaryItem?.product_variant_id ||
+            primaryItem?.id ||
+            order.id,
           contentName:
             primaryItem?.product_name ||
             primaryItem?.variant_name ||
@@ -2743,7 +2838,7 @@ export class PaymentService {
           brand: null,
         }),
         contents: order.items.map(item => ({
-          content_id: item.product_variant_id || item.id,
+          content_id: item.product_id || item.product_variant_id || item.id,
           content_type: 'product',
           content_name: item.product_name || item.variant_name || item.id,
           quantity: item.quantity,
@@ -4147,7 +4242,7 @@ export class PaymentService {
       ? order.items.map(item => {
           const metadata = this.resolveOrderItemMetadata(item);
           return {
-            content_id: item.product_variant_id || item.id,
+            content_id: item.product_id || item.product_variant_id || item.id,
             content_type: 'product',
             content_name: this.resolveOrderItemDisplayName(item),
             content_category:
@@ -10403,6 +10498,19 @@ export class PaymentService {
               itemLabel: this.resolveOrderItemDisplayName(item),
             };
           }
+        } else if (item.product_id) {
+          const validation = await subscriptionService.canPurchaseProduct(
+            params.userId,
+            item.product_id
+          );
+          if (!validation.canPurchase) {
+            return {
+              success: false,
+              error: 'purchase_not_allowed',
+              detail: validation.reason || 'Purchase not allowed',
+              itemLabel: this.resolveOrderItemDisplayName(item),
+            };
+          }
         }
       }
 
@@ -10412,6 +10520,15 @@ export class PaymentService {
       }
 
       const amountDebited = totalCents / 100;
+      const orderProductIds = Array.from(
+        new Set(
+          order.items
+            .map(item => item.product_id ?? null)
+            .filter((productId): productId is string => !!productId)
+        )
+      );
+      const aggregateProductId =
+        orderProductIds.length === 1 ? orderProductIds[0] : null;
       const spendResult = await creditService.spendCredits(
         params.userId,
         amountDebited,
@@ -10425,6 +10542,7 @@ export class PaymentService {
         },
         {
           orderId: order.id,
+          ...(aggregateProductId ? { productId: aggregateProductId } : {}),
           priceCents: totalCents,
           currency: orderCurrency,
           autoRenew: order.auto_renew === true,
@@ -10473,6 +10591,7 @@ export class PaymentService {
           },
           {
             orderId: order.id,
+            ...(aggregateProductId ? { productId: aggregateProductId } : {}),
             priceCents: totalCents,
             currency: orderCurrency,
             autoRenew: order.auto_renew === true,
@@ -10483,6 +10602,7 @@ export class PaymentService {
         if (!refundResult.success) {
           Logger.error('Failed to refund credits after order update failure', {
             orderId: order.id,
+            ...(aggregateProductId ? { productId: aggregateProductId } : {}),
             userId: params.userId,
             transactionId: debitTransactionId,
             error: refundResult.error,
@@ -10695,6 +10815,9 @@ export class PaymentService {
       if (orderContext?.productVariantId) {
         paymentMetadata['product_variant_id'] = orderContext.productVariantId;
       }
+      if (orderContext?.productId) {
+        paymentMetadata['product_id'] = orderContext.productId;
+      }
       if (orderContext?.productSlug) {
         paymentMetadata['product_slug'] = orderContext.productSlug;
       }
@@ -10754,6 +10877,9 @@ export class PaymentService {
       if (orderContext?.orderId) {
         unifiedPaymentMetadata['order_id'] = orderContext.orderId;
       }
+      if (orderContext?.productId) {
+        unifiedPaymentMetadata['product_id'] = orderContext.productId;
+      }
       if (orderContext?.productSlug) {
         unifiedPaymentMetadata['product_slug'] = orderContext.productSlug;
       }
@@ -10774,6 +10900,10 @@ export class PaymentService {
 
       if (orderContext?.orderId) {
         unifiedPaymentInput.orderId = orderContext.orderId;
+      }
+
+      if (orderContext?.productId) {
+        unifiedPaymentInput.productId = orderContext.productId;
       }
 
       if (

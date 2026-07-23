@@ -467,11 +467,12 @@ export async function dashboardRoutes(fastify: FastifyInstance): Promise<void> {
           pool.query(
             `SELECT s.id, s.status, s.term_months, s.created_at,
                     s.term_start_at, s.start_date,
-                    s.product_variant_id, p.name AS product_name,
+                    s.product_id, s.product_variant_id,
+                    COALESCE(s.product_name_snapshot, p.name) AS product_name,
                     pv.name AS variant_name
              FROM subscriptions s
              LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-             LEFT JOIN products p ON p.id = pv.product_id
+             LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
              WHERE s.user_id = $1
              ORDER BY s.created_at ASC`,
             [userId]

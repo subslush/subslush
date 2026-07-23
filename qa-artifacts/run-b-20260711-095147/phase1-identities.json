@@ -1,0 +1,8 @@
+{
+  "guestEmail": "qa-b1-final-1783757806872@example.test",
+  "guestIdentityId": "f6d601f4-54d6-498b-948f-a70b9a16a6ec",
+  "checkoutSessionKey": "5d72c8ee1d0e594dc37fb7814fc193493b333e5a7e766b8a",
+  "primaryOrderId": "b4c15ca5-c4ec-4970-8467-2acd1963da6d",
+  "originalFailedOrderId": "4ab6b6ac-1787-4032-b1a2-16dc8c4ded54",
+  "capacityFailedOrderId": "1e108ade-246d-49c8-955b-b5473d47ecb6"
+}

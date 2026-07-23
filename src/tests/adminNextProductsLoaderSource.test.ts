@@ -16,15 +16,37 @@ describe('admin-next products loader contract', () => {
     ),
     'utf8'
   );
+  const detailLoader = fs.readFileSync(
+    path.resolve(
+      __dirname,
+      '../../frontend/src/routes/admin-next/products/[productId=uuid]/+page.server.ts'
+    ),
+    'utf8'
+  );
+  const detailPage = fs.readFileSync(
+    path.resolve(
+      __dirname,
+      '../../frontend/src/routes/admin-next/products/[productId=uuid]/+page.svelte'
+    ),
+    'utf8'
+  );
 
-  it('paginates variant requests within the backend limit', () => {
-    expect(source).toContain('const VARIANT_PAGE_SIZE = 200');
-    expect(source).toContain('offset');
-    expect(source).not.toContain('listVariants({ limit: 500 })');
+  it('does not load variant administration data', () => {
+    expect(source).not.toContain('listVariants');
+    expect(source).not.toContain('variantCounts');
+    expect(page).not.toContain('Variants & Terms');
+    expect(page).toContain('Fixed Catalog Fields');
+    expect(detailLoader).not.toContain('listVariants');
+    expect(detailLoader).not.toContain('listVariantTerms');
+    expect(detailPage).not.toMatch(/createVariant|updateVariant|deleteVariant/);
+    expect(detailPage).not.toMatch(
+      /createVariantTerm|updateVariantTerm|deleteVariantTerm/
+    );
+    expect(detailPage).not.toContain('Variants & Terms');
+    expect(detailPage).toContain('Fixed Catalog Fields');
   });
 
-  it('keeps loaded products visible when variant loading fails', () => {
-    expect(source).toContain("Couldn't load variant data — retry.");
+  it('keeps loaded products visible when the product request succeeds', () => {
     expect(source).toContain("productsResult.status === 'fulfilled'");
     expect(page).toContain('data.products.length === 0 && !data.error');
   });

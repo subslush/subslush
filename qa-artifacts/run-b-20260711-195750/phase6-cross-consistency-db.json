@@ -1,0 +1,83 @@
+{
+  "order": {
+    "id": "f1a571a5-64e7-48ad-891e-ff2ded33696c",
+    "status": "delivered",
+    "user_id": "fc78ffeb-aa9b-42fb-8267-d44325b2f226",
+    "metadata": {
+      "coupon_code": "QA-B2-TEST15",
+      "checkout_source": "guest",
+      "display_currency": "USD",
+      "guest_identity_id": "94d07c8f-f0ed-45a3-871b-f31cab473beb",
+      "coupon_apply_scope": "highest_eligible_item",
+      "coupon_percent_off": 15,
+      "display_total_cents": 270600,
+      "pricing_snapshot_id": null,
+      "settlement_currency": "USD",
+      "settlement_total_cents": 270600,
+      "delivery_email_watchdog": {
+        "status": "pending",
+        "attempts": 0,
+        "last_error": null,
+        "deadline_at": "2026-07-11T18:27:53.905Z",
+        "last_reason": null,
+        "pending_since": "2026-07-11T18:22:53.905Z",
+        "next_attempt_at": "2026-07-11T18:23:23.905Z"
+      },
+      "order_delivery_email_last_error": "multi_item_order",
+      "order_delivery_email_last_reason": "multi_item_order",
+      "order_delivery_email_last_result": "failed",
+      "order_delivery_email_last_context": "status_update",
+      "payment_confirmation_email_sent_at": "2026-07-11T18:04:55.064Z",
+      "order_delivery_email_last_attempt_at": "2026-07-11T18:22:53.903Z"
+    }
+  },
+  "subscriptions": [
+    {
+      "id": "3d147a02-f654-40dc-9c88-661d8a483ca7",
+      "status": "active",
+      "activation_handshake_state": "link_delivered",
+      "delivered_at": "2026-07-11T18:22:51.365Z"
+    },
+    {
+      "id": "e8618e2c-37a0-4661-bfe1-995125820b7b",
+      "status": "active",
+      "activation_handshake_state": "none",
+      "delivered_at": "2026-07-11T18:07:03.638Z"
+    },
+    {
+      "id": "e869bdd6-d17e-49a2-a602-964dbec01785",
+      "status": "active",
+      "activation_handshake_state": "none",
+      "delivered_at": "2026-07-11T18:07:04.038Z"
+    }
+  ],
+  "tasks": [
+    {
+      "task_type": "credential_provision",
+      "count": 3,
+      "completed": 3
+    },
+    {
+      "task_type": "manual_monthly_upgrade",
+      "count": 10,
+      "completed": 10
+    }
+  ],
+  "payment": [
+    {
+      "id": "934738ce-b5c8-4cbb-92e5-da7455abb4a8",
+      "status": "succeeded",
+      "provider": "stripe",
+      "provider_payment_id": "pi_evt_QA_B2_1783793094945"
+    }
+  ],
+  "coupon": [
+    {
+      "status": "redeemed",
+      "code": "QA-B2-TEST15",
+      "max_redemptions": 5,
+      "redemptions_used": 1
+    }
+  ],
+  "evidenceCount": 17
+}

@@ -13,10 +13,10 @@ import type {
 
 const CART_PRICING_SYNC_DEBOUNCE_MS = 120;
 
-type RepriceableCartItem = CartItem & { variantId: string };
+type RepriceableCartItem = CartItem & { productId: string };
 
 const isRepriceableCartItem = (item: CartItem): item is RepriceableCartItem =>
-  typeof item.variantId === 'string' && item.variantId.trim().length > 0;
+  typeof item.productId === 'string' && item.productId.trim().length > 0;
 
 const buildPreviewItems = (
   items: CartItem[]
@@ -25,8 +25,8 @@ const buildPreviewItems = (
     .filter(isRepriceableCartItem)
     .map(item => ({
       cart_item_id: item.id,
-      variant_id: item.variantId,
-      term_months: item.termMonths ?? 1,
+      product_id: item.productId,
+      ...(item.termMonths ? { term_months: item.termMonths } : {}),
       quantity: item.quantity
     }));
 
@@ -37,7 +37,7 @@ const buildRequestKey = (
   `${activeCurrency}|${items
     .map(
       item =>
-        `${item.cart_item_id}:${item.variant_id}:${item.term_months ?? 1}:${item.quantity ?? 1}`
+        `${item.cart_item_id}:${item.product_id ?? ''}:${item.term_months ?? 1}:${item.quantity ?? 1}`
     )
     .join('|')}`;
 
@@ -60,7 +60,8 @@ const applyPreviewToCart = (
       normalizeCurrencyCode(pricedItem.currency) || activeCurrency;
     if (
       item.price === pricedItem.unit_price &&
-      normalizeCurrencyCode(item.currency) === normalizedCurrency
+      normalizeCurrencyCode(item.currency) === normalizedCurrency &&
+      item.pricingSnapshotId === pricedItem.pricing_snapshot_id
     ) {
       return item;
     }
@@ -68,7 +69,8 @@ const applyPreviewToCart = (
     return {
       ...item,
       price: pricedItem.unit_price,
-      currency: normalizedCurrency
+      currency: normalizedCurrency,
+      pricingSnapshotId: pricedItem.pricing_snapshot_id
     };
   });
 };
@@ -139,6 +141,18 @@ export const startCartPricingSync = (): (() => void) => {
         return;
       }
 
+      const skippedIds = (preview.skipped_items ?? [])
+        .map(item => item.cart_item_id)
+        .filter(Boolean);
+      if (skippedIds.length > 0) {
+        cart.removeInvalidItems(
+          skippedIds,
+          `${skippedIds.length} cart ${skippedIds.length === 1 ? 'item is' : 'items are'} no longer available with the saved configuration. Please add ${skippedIds.length === 1 ? 'it' : 'them'} again from the catalog.`
+        );
+        lastAppliedKey = null;
+        return;
+      }
+
       const updatedItems = applyPreviewToCart(
         latestItems,
         preview,
@@ -147,7 +161,8 @@ export const startCartPricingSync = (): (() => void) => {
       const hasChanges = updatedItems.some(
         (item, index) =>
           item.price !== latestItems[index]?.price ||
-          item.currency !== latestItems[index]?.currency
+          item.currency !== latestItems[index]?.currency ||
+          item.pricingSnapshotId !== latestItems[index]?.pricingSnapshotId
       );
 
       if (hasChanges) {

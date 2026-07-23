@@ -1,0 +1,4 @@
+product [{"id":"9dc611af-6fad-4ed6-bf3d-f2ff302dbe4f","metadata":{"info_box_text":"QANEW-CORE-1783900000 info","upgrade_options":{"allow_new_account":true,"allow_own_account":true,"own_account_credential_requirement":"email_only"},"activation_guide":"QANEW-CORE-1783900000 guide"},"logo_key":"","max_subscriptions":0}]
+subs []
+map ERR relation "product_subcategory_mappings" does not exist
+labels ERR relation "product_label_assignments" does not exist

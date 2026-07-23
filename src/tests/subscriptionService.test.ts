@@ -3,6 +3,7 @@ import { SubscriptionService } from '../services/subscriptionService';
 import { serviceHandlerRegistry } from '../services/handlers';
 import { creditService } from '../services/creditService';
 import { catalogService } from '../services/catalogService';
+import { getDatabasePool } from '../config/database';
 
 // Mock dependencies
 jest.mock('../config/database');
@@ -31,6 +32,62 @@ describe('SubscriptionService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.restoreAllMocks();
+  });
+
+  it('persists cancellation reason and request time through the customer updater', async () => {
+    const requestedAt = new Date('2026-07-23T10:00:00.000Z');
+    const row = {
+      id: mockSubscriptionId,
+      user_id: mockUserId,
+      service_type: 'streaming',
+      service_plan: 'standard',
+      start_date: new Date('2026-01-01T00:00:00.000Z'),
+      end_date: new Date('2027-01-01T00:00:00.000Z'),
+      renewal_date: new Date('2027-01-01T00:00:00.000Z'),
+      status: 'active',
+      cancellation_requested_at: requestedAt,
+      cancellation_reason: 'No longer needed',
+      created_at: new Date('2026-01-01T00:00:00.000Z'),
+    };
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            ...row,
+            cancellation_requested_at: null,
+            cancellation_reason: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [row] });
+    (
+      getDatabasePool as jest.MockedFunction<typeof getDatabasePool>
+    ).mockReturnValue({ query } as any);
+
+    const result = await new SubscriptionService().updateSubscription(
+      mockSubscriptionId,
+      mockUserId,
+      {
+        cancellation_requested_at: requestedAt,
+        cancellation_reason: 'No longer needed',
+      }
+    );
+
+    expect(result.success).toBe(true);
+    const updateCall = query.mock.calls[1];
+    expect(updateCall?.[0]).toContain('cancellation_requested_at = $1');
+    expect(updateCall?.[0]).toContain('cancellation_reason = $2');
+    expect(updateCall?.[1]).toEqual([
+      requestedAt,
+      'No longer needed',
+      mockSubscriptionId,
+      mockUserId,
+    ]);
+    if (result.success) {
+      expect(result.data.cancellation_requested_at).toEqual(requestedAt);
+      expect(result.data.cancellation_reason).toBe('No longer needed');
+    }
   });
 
   describe('Validation Logic', () => {

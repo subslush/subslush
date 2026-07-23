@@ -1,0 +1,77 @@
+child	parent	fk
+subscriptions	users	FOREIGN KEY (delivered_by) REFERENCES users(id) ON DELETE SET NULL
+subscriptions	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+credits	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+admin_tasks	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+admin_tasks	users	FOREIGN KEY (assigned_admin) REFERENCES users(id) ON DELETE SET NULL
+credit_transactions	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+payment_refunds	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+payment_refunds	users	FOREIGN KEY (approved_by) REFERENCES users(id)
+payments	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+pre_registrations	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+pre_launch_rewards	users	FOREIGN KEY (redeemed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+referral_rewards	users	FOREIGN KEY (redeemed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+orders	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+user_perks	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+user_vouchers	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+user_raffle_entries	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+admin_audit_logs	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+credential_reveal_audit_logs	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+notifications	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+user_status_audit	users	FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
+user_status_audit	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+user_payment_methods	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+coupons	users	FOREIGN KEY (bound_user_id) REFERENCES users(id) ON DELETE SET NULL
+coupon_redemptions	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+pin_reset_requests	users	FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE SET NULL
+pin_reset_requests	users	FOREIGN KEY (confirmed_by) REFERENCES users(id) ON DELETE SET NULL
+pin_reset_requests	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+prelaunch_reward_tasks	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+guest_identities	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+order_entitlements	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+maxmind_risk_assessments	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+order_compliance_evidence_logs	users	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+admin_tasks	subscriptions	FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE
+payments	subscriptions	FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE SET NULL
+credential_reveal_audit_logs	subscriptions	FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE SET NULL
+notifications	subscriptions	FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE SET NULL
+subscription_upgrade_selections	subscriptions	FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE
+prelaunch_reward_tasks	subscriptions	FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE SET NULL
+subscription_renewals	subscriptions	FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE
+subscription_reminder_events	subscriptions	FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE
+order_entitlements	subscriptions	FOREIGN KEY (source_subscription_id) REFERENCES subscriptions(id) ON DELETE SET NULL
+payment_items	payments	FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE
+payment_events	payments	FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE SET NULL
+subscription_renewals	payments	FOREIGN KEY (invoice_payment_id) REFERENCES payments(id) ON DELETE SET NULL
+product_variants	products	FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+product_label_map	products	FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+product_media	products	FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+coupons	products	FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+product_fixed_price_history	products	FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+product_sub_category_map	products	FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+product_category_map	products	FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+subscriptions	product_variants	FOREIGN KEY (product_variant_id) REFERENCES product_variants(id) ON DELETE SET NULL
+credit_transactions	product_variants	FOREIGN KEY (product_variant_id) REFERENCES product_variants(id) ON DELETE SET NULL
+payments	product_variants	FOREIGN KEY (product_variant_id) REFERENCES product_variants(id) ON DELETE SET NULL
+price_history	product_variants	FOREIGN KEY (product_variant_id) REFERENCES product_variants(id) ON DELETE CASCADE
+order_items	product_variants	FOREIGN KEY (product_variant_id) REFERENCES product_variants(id) ON DELETE SET NULL
+product_variant_terms	product_variants	FOREIGN KEY (product_variant_id) REFERENCES product_variants(id) ON DELETE CASCADE
+subscriptions	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+admin_tasks	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+credit_transactions	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+payments	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+order_items	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+notifications	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+coupon_redemptions	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+subscription_upgrade_selections	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+payment_events	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+order_entitlements	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+maxmind_risk_assessments	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+order_compliance_evidence_logs	orders	FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+subscriptions	order_items	FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE SET NULL
+credit_transactions	order_items	FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE SET NULL
+payments	order_items	FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE SET NULL
+order_item_upgrade_selections	order_items	FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE CASCADE
+payment_items	order_items	FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE CASCADE
+order_entitlements	order_items	FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE SET NULL
+(75 rows)

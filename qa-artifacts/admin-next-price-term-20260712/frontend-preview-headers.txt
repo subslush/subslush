@@ -1,0 +1,7 @@
+HTTP/1.1 303 See Other
+Access-Control-Allow-Origin: *
+location: /auth/login
+Date: Sun, 12 Jul 2026 22:09:29 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+

@@ -24,6 +24,7 @@ export type RefundReason =
 export interface RefundRequest {
   id: string;
   paymentId: string;
+  productId?: string | null;
   userId: string;
   amount: number;
   reason: RefundReason;
@@ -231,8 +232,16 @@ export class RefundService {
     const pool = getDatabasePool();
     const result = await pool.query(
       `INSERT INTO admin_tasks
-        (subscription_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
-       SELECT NULL, $1, NULL, 'support', $2, 'high', $3, 'payment_refund', $4
+        (subscription_id, product_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
+       SELECT NULL,
+              (SELECT p.product_id FROM payments p
+               WHERE p.id::text = $6 OR p.provider_payment_id = $6
+               ORDER BY p.created_at DESC LIMIT 1),
+              $1,
+              (SELECT p.order_id FROM payments p
+               WHERE p.id::text = $6 OR p.provider_payment_id = $6
+               ORDER BY p.created_at DESC LIMIT 1),
+              'support', $2, 'high', $3, 'payment_refund', $4
        WHERE NOT EXISTS (
          SELECT 1
          FROM admin_tasks
@@ -241,7 +250,14 @@ export class RefundService {
            AND completed_at IS NULL
        )
        RETURNING id`,
-      [params.userId, dueDate, notes, dueDate, `%${params.refundId}%`]
+      [
+        params.userId,
+        dueDate,
+        notes,
+        dueDate,
+        `%${params.refundId}%`,
+        params.paymentId,
+      ]
     );
 
     return {
@@ -438,11 +454,14 @@ export class RefundService {
       };
 
       // Insert into payment_refunds table
-      await client.query(
+      const insertResult = await client.query(
         `
         INSERT INTO payment_refunds
-        (id, payment_id, user_id, amount, reason, description, status, created_at, updated_at, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        (id, payment_id, product_id, user_id, amount, reason, description, status, created_at, updated_at, metadata)
+        SELECT $1, p.id, p.product_id, $3, $4, $5, $6, $7, $8, $9, $10
+        FROM payments p
+        WHERE p.id = $2
+        RETURNING product_id
       `,
         [
           refund.id,
@@ -457,6 +476,10 @@ export class RefundService {
           JSON.stringify(refund.metadata || {}),
         ]
       );
+      if ((insertResult.rowCount ?? 0) !== 1) {
+        throw new Error('payment_not_found_for_refund');
+      }
+      refund.productId = insertResult.rows[0]?.product_id ?? null;
 
       await client.query('COMMIT');
       transactionOpen = false;
@@ -960,6 +983,7 @@ export class RefundService {
     const result: RefundRequest = {
       id: row.id,
       paymentId: row.payment_id,
+      productId: row.product_id ?? null,
       userId: row.user_id,
       amount: parseFloat(row.amount),
       reason: row.reason,

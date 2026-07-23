@@ -1,0 +1,19 @@
+{
+  "order": {
+    "id": "bcc2a101-e19d-4ba3-927d-a727d2f96435",
+    "status": "cancelled"
+  },
+  "payment": {
+    "id": "4c1d0dc4-1a9e-438e-ae3b-3613edc63c02",
+    "status": "expired",
+    "provider": "antom",
+    "created_at": "2026-07-08T17:41:01.850Z"
+  },
+  "redemption": {
+    "status": "voided"
+  },
+  "succeededControl": {
+    "order_status": "delivered",
+    "payment_status": "succeeded"
+  }
+}

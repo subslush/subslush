@@ -7,15 +7,11 @@ import { getDatabasePool } from '../../config/database';
 import { ErrorResponses, SuccessResponses } from '../../utils/response';
 import { Logger } from '../../utils/logger';
 import {
-  getSupportedCurrencies,
-  normalizeCurrencyCode,
-} from '../../utils/currency';
-import { FX_BASE_CURRENCY } from '../../services/fx/fxConfig';
-import {
   normalizeUpgradeOptions,
   normalizeUpgradeOptionsMetadata,
 } from '../../utils/upgradeOptions';
 import { validateMmuTermDivisibility } from '../../utils/mmuSchedule';
+import { validatePublishableFixedCatalog } from '../../utils/fixedCatalog';
 
 const parseBoolean = (value: unknown): boolean | undefined => {
   if (value === undefined || value === null) return undefined;
@@ -24,20 +20,16 @@ const parseBoolean = (value: unknown): boolean | undefined => {
   return undefined;
 };
 
-const hasValue = (value: unknown): boolean => {
-  if (value === undefined || value === null) return false;
-  if (typeof value === 'string') return value.trim().length > 0;
-  return true;
+const fixedProductBlocksLegacyMutation = async (
+  productId: string | null | undefined
+): Promise<boolean> => {
+  if (!productId) return false;
+  const product = await catalogService.getProductById(productId);
+  return product ? validatePublishableFixedCatalog(product).valid : false;
 };
 
-const parseInteger = (value: unknown): number | null => {
-  if (!hasValue(value)) return null;
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || !Number.isInteger(numeric)) {
-    return null;
-  }
-  return numeric;
-};
+const LEGACY_MUTATION_BLOCKED_MESSAGE =
+  'Variants and terms are read-only for a complete fixed product. Use Fixed Catalog Fields; use the product-level recovery action to deactivate accidental legacy rows.';
 
 const upgradeOptionsMetadataSchema = {
   type: 'object',
@@ -84,7 +76,7 @@ const upgradeOptionsMetadataSchema = {
 };
 
 async function validateProductMmuTerms(
-  productId: string,
+  _productId: string,
   metadata: Record<string, any> | null | undefined,
   durationMonths?: number | null
 ): Promise<{ valid: boolean; message?: string }> {
@@ -93,19 +85,7 @@ async function validateProductMmuTerms(
     return { valid: true };
   }
   const interval = options.manual_monthly_upgrade_interval_months || 1;
-  const pool = getDatabasePool();
-  const termsResult = await pool.query(
-    `SELECT DISTINCT pvt.months
-     FROM product_variants pv
-     JOIN product_variant_terms pvt ON pvt.product_variant_id = pv.id
-     WHERE pv.product_id = $1
-       AND COALESCE(pv.is_active, TRUE) = TRUE
-       AND COALESCE(pvt.is_active, TRUE) = TRUE`,
-    [productId]
-  );
-  const terms = termsResult.rows
-    .map(row => Number(row.months))
-    .filter(value => Number.isFinite(value) && value > 0);
+  const terms: number[] = [];
   if (durationMonths && Number.isFinite(Number(durationMonths))) {
     terms.push(Number(durationMonths));
   }
@@ -370,7 +350,7 @@ export async function adminCatalogRoutes(
             default_currency: { type: 'string' },
             max_subscriptions: { type: 'integer', minimum: 0 },
             duration_months: { type: ['integer', 'null'], minimum: 1 },
-            fixed_price_cents: { type: ['integer', 'null'], minimum: 0 },
+            fixed_price_cents: { type: ['integer', 'null'], minimum: 1 },
             fixed_price_currency: { type: ['string', 'null'] },
             status: { type: 'string', enum: ['active', 'inactive'] },
             metadata: upgradeOptionsMetadataSchema,
@@ -385,7 +365,7 @@ export async function adminCatalogRoutes(
         if (payload?.status === 'active' || payload?.status === undefined) {
           return ErrorResponses.badRequest(
             reply,
-            'Create the product as inactive, then add fixed pricing fields or variant pricing before activation.'
+            'Create the product as inactive, complete Fixed Catalog Fields, then publish it. A variant is not required.'
           );
         }
         if (payload?.metadata) {
@@ -465,7 +445,7 @@ export async function adminCatalogRoutes(
             default_currency: { type: 'string' },
             max_subscriptions: { type: 'integer', minimum: 0 },
             duration_months: { type: ['integer', 'null'], minimum: 1 },
-            fixed_price_cents: { type: ['integer', 'null'], minimum: 0 },
+            fixed_price_cents: { type: ['integer', 'null'], minimum: 1 },
             fixed_price_currency: { type: ['string', 'null'] },
             status: { type: 'string', enum: ['active', 'inactive'] },
             metadata: upgradeOptionsMetadataSchema,
@@ -507,131 +487,25 @@ export async function adminCatalogRoutes(
         }
 
         if (payload?.status === 'active') {
-          const durationMonthsRaw =
-            payload?.duration_months !== undefined
-              ? payload.duration_months
-              : before.duration_months;
-          const fixedPriceCentsRaw =
-            payload?.fixed_price_cents !== undefined
-              ? payload.fixed_price_cents
-              : before.fixed_price_cents;
-          const fixedPriceCurrencyRaw =
-            payload?.fixed_price_currency !== undefined
-              ? payload.fixed_price_currency
-              : before.fixed_price_currency;
-          const durationMonths = parseInteger(durationMonthsRaw);
-          const fixedPriceCents = parseInteger(fixedPriceCentsRaw);
-          const normalizedFixedCurrency =
-            typeof fixedPriceCurrencyRaw === 'string'
-              ? normalizeCurrencyCode(fixedPriceCurrencyRaw)
-              : null;
-          const requiredCurrencies = getSupportedCurrencies();
-          const hasSupportedFixedCurrency =
-            !!normalizedFixedCurrency &&
-            requiredCurrencies.includes(
-              normalizedFixedCurrency as (typeof requiredCurrencies)[number]
-            );
-          const hasPositiveDuration =
-            durationMonths !== null && durationMonths > 0;
-          const hasCompleteFixedCatalog =
-            fixedPriceCents !== null &&
-            fixedPriceCents >= 0 &&
-            hasSupportedFixedCurrency;
-          const hasAnyFixedCatalogField =
-            hasValue(durationMonthsRaw) ||
-            hasValue(fixedPriceCentsRaw) ||
-            hasValue(fixedPriceCurrencyRaw);
-
-          if (hasCompleteFixedCatalog && !hasPositiveDuration) {
-            payload.duration_months = 1;
-          }
-
-          if (!hasCompleteFixedCatalog) {
-            const activeVariants = await catalogService.listVariants(
-              productId,
-              true
-            );
-            if (activeVariants.length === 0) {
-              if (hasAnyFixedCatalogField) {
-                return ErrorResponses.badRequest(
-                  reply,
-                  'Cannot activate product: fixed catalog fields are incomplete. Set fixed_price_cents and a supported fixed_price_currency (duration_months defaults to 1 when omitted), or configure active variants.'
-                );
-              }
-              return ErrorResponses.badRequest(
-                reply,
-                'Cannot activate product without an active variant or fixed catalog fields'
-              );
-            }
-
-            const termMap = await catalogService.listVariantTermsForVariants(
-              activeVariants.map(variant => variant.id),
-              true
-            );
-            const missingTerms = activeVariants.filter(
-              variant => (termMap.get(variant.id) || []).length === 0
-            );
-            if (missingTerms.length > 0) {
-              const names = missingTerms
-                .map(variant => variant.name)
-                .filter(Boolean)
-                .slice(0, 3)
-                .join(', ');
-              const suffix = missingTerms.length > 3 ? '…' : '';
-              const detail = names ? ` (${names}${suffix})` : '';
-              return ErrorResponses.badRequest(
-                reply,
-                `Cannot activate product until all active variants have at least one term${detail}`
-              );
-            }
-
-            const listingDurationRaw =
+          const validation = validatePublishableFixedCatalog({
+            duration_months:
               payload.duration_months !== undefined
                 ? payload.duration_months
-                : before.duration_months;
-            const listingDurationMonths = Number(listingDurationRaw);
-            const hasDesignatedListingTerm =
-              Number.isInteger(listingDurationMonths) &&
-              listingDurationMonths > 0;
-            const activeTermMonths = new Set<number>();
-            for (const variant of activeVariants) {
-              for (const term of termMap.get(variant.id) || []) {
-                const months = Number(term.months);
-                if (Number.isInteger(months) && months > 0) {
-                  activeTermMonths.add(months);
-                }
-              }
-            }
-
-            if (!hasDesignatedListingTerm && activeTermMonths.size > 1) {
-              return ErrorResponses.badRequest(
-                reply,
-                'Cannot activate product: multiple active terms; designate the listing term or keep a single active term'
-              );
-            }
-
-            const variantIds = activeVariants.map(variant => variant.id);
-            const usdPriceMap =
-              await catalogService.listCurrentPricesForCurrency({
-                variantIds,
-                currency: FX_BASE_CURRENCY,
-              });
-
-            const missingBasePriceVariants = activeVariants.filter(
-              variant => !usdPriceMap.has(variant.id)
+                : before.duration_months,
+            fixed_price_cents:
+              payload.fixed_price_cents !== undefined
+                ? payload.fixed_price_cents
+                : before.fixed_price_cents,
+            fixed_price_currency:
+              payload.fixed_price_currency !== undefined
+                ? payload.fixed_price_currency
+                : before.fixed_price_currency,
+          });
+          if (!validation.valid) {
+            return ErrorResponses.badRequest(
+              reply,
+              validation.message || 'Fixed catalog fields are incomplete.'
             );
-
-            if (missingBasePriceVariants.length > 0) {
-              const preview = missingBasePriceVariants
-                .slice(0, 3)
-                .map(variant => variant.name || variant.id)
-                .join(', ');
-              const suffix = missingBasePriceVariants.length > 3 ? '…' : '';
-              return ErrorResponses.badRequest(
-                reply,
-                `Cannot activate product until all active variants have an active ${FX_BASE_CURRENCY} base price. Missing: ${preview}${suffix}`
-              );
-            }
           }
         }
 
@@ -659,6 +533,142 @@ export async function adminCatalogRoutes(
       } catch (error) {
         Logger.error('Admin update product failed:', error);
         return ErrorResponses.internalError(reply, 'Failed to update product');
+      }
+    }
+  );
+
+  fastify.post(
+    '/products/:productId/fixed-price/current',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['productId'],
+          properties: { productId: { type: 'string' } },
+        },
+        body: {
+          type: 'object',
+          required: ['price_cents', 'currency'],
+          properties: {
+            duration_months: { type: 'integer', minimum: 1 },
+            price_cents: { type: 'integer', minimum: 1 },
+            currency: { type: 'string', minLength: 3, maxLength: 10 },
+            comparison_price_cents: {
+              type: ['integer', 'null'],
+              minimum: 1,
+            },
+            metadata: { type: 'object' },
+          },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { productId } = request.params as { productId: string };
+        const body = request.body as {
+          duration_months?: number;
+          price_cents: number;
+          currency: string;
+          comparison_price_cents?: number | null;
+          metadata?: Record<string, unknown>;
+        };
+        const before = await catalogService.getProductById(productId);
+        if (!before) {
+          return ErrorResponses.notFound(reply, 'Product not found');
+        }
+        const result = await catalogService.setCurrentFixedProductPrice({
+          product_id: productId,
+          ...(body.duration_months !== undefined
+            ? { duration_months: body.duration_months }
+            : {}),
+          price_cents: body.price_cents,
+          currency: body.currency,
+          ...(body.comparison_price_cents !== undefined
+            ? { comparison_price_cents: body.comparison_price_cents }
+            : {}),
+          ...(body.metadata ? { metadata: body.metadata } : {}),
+        });
+        if (!result.success) {
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to set current fixed product price'
+          );
+        }
+        await logAdminAction(request, {
+          action: 'catalog.fixed_product_price.set_current',
+          entityType: 'product_fixed_price_history',
+          entityId: result.data?.id || null,
+          before,
+          after: result.data || null,
+          metadata: { productId },
+        });
+        return SuccessResponses.created(
+          reply,
+          result.data,
+          'Current fixed product price saved'
+        );
+      } catch (error) {
+        Logger.error('Admin set fixed product price failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to set current fixed product price'
+        );
+      }
+    }
+  );
+
+  fastify.post(
+    '/products/:productId/fixed-catalog/recover',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['productId'],
+          properties: { productId: { type: 'string' } },
+        },
+      },
+      preHandler: [authPreHandler, adminPreHandler],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const { productId } = request.params as { productId: string };
+        const before =
+          await catalogService.getLegacyCatalogCompatibility(productId);
+        const result =
+          await catalogService.recoverProductOnlyCatalog(productId);
+        if (!result.success) {
+          if (result.error === 'Product not found') {
+            return ErrorResponses.notFound(reply, result.error);
+          }
+          return ErrorResponses.badRequest(
+            reply,
+            result.error || 'Failed to switch to fixed catalog mode'
+          );
+        }
+        await logAdminAction(request, {
+          action: 'catalog.fixed_product.recover',
+          entityType: 'product',
+          entityId: productId,
+          before,
+          after: result.data || null,
+          metadata: {
+            preservation: 'legacy_rows_retained_variants_deactivated',
+          },
+        });
+        return SuccessResponses.ok(
+          reply,
+          result.data,
+          result.data?.already_product_only
+            ? 'Product already uses fixed catalog mode'
+            : 'Product switched to fixed catalog mode'
+        );
+      } catch (error) {
+        Logger.error('Admin fixed catalog recovery failed:', error);
+        return ErrorResponses.internalError(
+          reply,
+          'Failed to switch to fixed catalog mode'
+        );
       }
     }
   );
@@ -892,7 +902,14 @@ export async function adminCatalogRoutes(
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const result = await catalogService.createVariant(request.body as any);
+        const body = request.body as any;
+        if (await fixedProductBlocksLegacyMutation(body.product_id)) {
+          return ErrorResponses.badRequest(
+            reply,
+            LEGACY_MUTATION_BLOCKED_MESSAGE
+          );
+        }
+        const result = await catalogService.createVariant(body);
 
         if (!result.success) {
           return ErrorResponses.badRequest(
@@ -946,6 +963,15 @@ export async function adminCatalogRoutes(
       try {
         const { variantId } = request.params as { variantId: string };
         const before = await catalogService.getVariantById(variantId);
+        if (
+          before &&
+          (await fixedProductBlocksLegacyMutation(before.product_id))
+        ) {
+          return ErrorResponses.badRequest(
+            reply,
+            LEGACY_MUTATION_BLOCKED_MESSAGE
+          );
+        }
         const result = await catalogService.updateVariant(
           variantId,
           request.body as any
@@ -995,6 +1021,15 @@ export async function adminCatalogRoutes(
       try {
         const { variantId } = request.params as { variantId: string };
         const before = await catalogService.getVariantById(variantId);
+        if (
+          before &&
+          (await fixedProductBlocksLegacyMutation(before.product_id))
+        ) {
+          return ErrorResponses.badRequest(
+            reply,
+            LEGACY_MUTATION_BLOCKED_MESSAGE
+          );
+        }
         const result = await catalogService.deleteVariant(variantId);
 
         if (!result.success) {
@@ -1087,6 +1122,18 @@ export async function adminCatalogRoutes(
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const body = request.body as any;
+        const variant = await catalogService.getVariantById(
+          body.product_variant_id
+        );
+        if (
+          variant &&
+          (await fixedProductBlocksLegacyMutation(variant.product_id))
+        ) {
+          return ErrorResponses.badRequest(
+            reply,
+            LEGACY_MUTATION_BLOCKED_MESSAGE
+          );
+        }
         const productResult = await getDatabasePool().query(
           `SELECT p.metadata
            FROM product_variants pv
@@ -1170,6 +1217,18 @@ export async function adminCatalogRoutes(
         const { termId } = request.params as { termId: string };
         const before = await catalogService.getVariantTermById(termId);
         const body = request.body as any;
+        const variant = before
+          ? await catalogService.getVariantById(before.product_variant_id)
+          : null;
+        if (
+          variant &&
+          (await fixedProductBlocksLegacyMutation(variant.product_id))
+        ) {
+          return ErrorResponses.badRequest(
+            reply,
+            LEGACY_MUTATION_BLOCKED_MESSAGE
+          );
+        }
         if (before && body.months !== undefined) {
           const productResult = await getDatabasePool().query(
             `SELECT p.metadata
@@ -1244,6 +1303,19 @@ export async function adminCatalogRoutes(
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const { termId } = request.params as { termId: string };
+        const before = await catalogService.getVariantTermById(termId);
+        const variant = before
+          ? await catalogService.getVariantById(before.product_variant_id)
+          : null;
+        if (
+          variant &&
+          (await fixedProductBlocksLegacyMutation(variant.product_id))
+        ) {
+          return ErrorResponses.badRequest(
+            reply,
+            LEGACY_MUTATION_BLOCKED_MESSAGE
+          );
+        }
         const result = await catalogService.deleteVariantTerm(termId);
 
         if (!result.success) {

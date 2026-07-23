@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductsPage from './products/+page.svelte';
 import ProductDetailPage from './products/[productId=uuid]/+page.svelte';
@@ -11,9 +11,8 @@ import type { PageData as CouponsPageData } from './coupons/$types';
 
 const mocks = vi.hoisted(() => ({
   createProduct: vi.fn(),
-  createVariant: vi.fn(),
-  createVariantTerm: vi.fn(),
-  setCurrentPrice: vi.fn(),
+  setCurrentFixedProductPrice: vi.fn(),
+  recoverFixedCatalog: vi.fn(),
   updateProduct: vi.fn(),
   markOrderPaidManually: vi.fn(),
   createCoupon: vi.fn(),
@@ -24,9 +23,8 @@ vi.mock('$app/navigation', () => ({ invalidateAll: mocks.invalidateAll }));
 vi.mock('$lib/api/admin.js', () => ({
   adminService: {
     createProduct: mocks.createProduct,
-    createVariant: mocks.createVariant,
-    createVariantTerm: mocks.createVariantTerm,
-    setCurrentPrice: mocks.setCurrentPrice,
+    setCurrentFixedProductPrice: mocks.setCurrentFixedProductPrice,
+    recoverFixedCatalog: mocks.recoverFixedCatalog,
     updateProduct: mocks.updateProduct,
     createCoupon: mocks.createCoupon,
   },
@@ -35,7 +33,7 @@ vi.mock('$lib/api/adminNext.js', () => ({
   adminNextService: { markOrderPaidManually: mocks.markOrderPaidManually },
 }));
 
-const productData = { products: [], variantCounts: {}, error: '' };
+const productData = { products: [], error: '' };
 
 const productDetailData = {
   product: {
@@ -44,6 +42,9 @@ const productDetailData = {
     slug: 'smoke-product',
     status: 'inactive',
     default_currency: 'USD',
+    duration_months: 1,
+    fixed_price_cents: 999,
+    fixed_price_currency: 'USD',
     metadata: {
       upgrade_options: {
         allow_new_account: true,
@@ -52,9 +53,21 @@ const productDetailData = {
       },
     },
   },
-  variants: [],
-  variantTerms: [],
-  priceHistory: [],
+  fixedPriceHistory: [],
+  legacyCompatibility: {
+    variant_count: 0,
+    active_variant_count: 0,
+    term_count: 0,
+    price_history_count: 0,
+    subscription_count: 0,
+    order_item_count: 0,
+    payment_count: 0,
+    credit_transaction_count: 0,
+    fixed_catalog_preferred: true,
+  },
+  labels: [],
+  allLabels: [],
+  subCategories: [],
   media: [],
 };
 
@@ -83,9 +96,13 @@ const pendingOrderData = {
 describe('admin-next action forms', () => {
   beforeEach(() => {
     mocks.createProduct.mockResolvedValue({ id: 'product-id' });
-    mocks.createVariant.mockResolvedValue({ id: 'variant-id' });
-    mocks.createVariantTerm.mockResolvedValue({ id: 'term-id' });
-    mocks.setCurrentPrice.mockResolvedValue({ id: 'price-id' });
+    mocks.setCurrentFixedProductPrice.mockResolvedValue({ id: 'price-id' });
+    mocks.recoverFixedCatalog.mockResolvedValue({
+      already_product_only: true,
+      deactivated_variant_count: 0,
+      deactivated_variant_ids: [],
+      compatibility: productDetailData.legacyCompatibility,
+    });
     mocks.updateProduct.mockResolvedValue({ id: 'product-id' });
     mocks.markOrderPaidManually.mockResolvedValue({});
     mocks.createCoupon.mockResolvedValue({ id: 'coupon-id' });
@@ -93,11 +110,11 @@ describe('admin-next action forms', () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
     mocks.createProduct.mockReset();
-    mocks.createVariant.mockReset();
-    mocks.createVariantTerm.mockReset();
-    mocks.setCurrentPrice.mockReset();
+    mocks.setCurrentFixedProductPrice.mockReset();
+    mocks.recoverFixedCatalog.mockReset();
     mocks.updateProduct.mockReset();
     mocks.markOrderPaidManually.mockReset();
     mocks.createCoupon.mockReset();
@@ -112,8 +129,13 @@ describe('admin-next action forms', () => {
     await fireEvent.input(screen.getByLabelText('Slug'), { target: { value: 'qa-browser-product' } });
     await fireEvent.input(screen.getByLabelText('Service type'), { target: { value: 'qa' } });
     await fireEvent.input(screen.getByLabelText('Category'), { target: { value: 'QA' } });
+    const createPriceInput = document.querySelector<HTMLInputElement>(
+      'input[aria-describedby="create-price-help"]'
+    );
+    expect(createPriceInput).not.toBeNull();
+    await fireEvent.input(createPriceInput!, { target: { value: '1299' } });
 
-    const submit = screen.getByRole('button', { name: 'Create inactive product' });
+    const submit = screen.getByRole('button', { name: 'Create inactive fixed product' });
     expect((submit as HTMLButtonElement).disabled).toBe(false);
     await fireEvent.submit(submit.closest('form')!);
 
@@ -122,6 +144,9 @@ describe('admin-next action forms', () => {
       name: 'QA Browser Product',
       slug: 'qa-browser-product',
       status: 'inactive',
+      duration_months: 1,
+      fixed_price_cents: 1299,
+      fixed_price_currency: 'USD',
     }));
   });
 
@@ -194,27 +219,53 @@ describe('admin-next action forms', () => {
     await waitFor(() => expect(couponPage.getByText(expiredCode)).toBeTruthy());
   });
 
-  it('submits the one product variant through the native form', async () => {
-    render(ProductDetailPage, { data: productDetailData as unknown as ProductDetailPageData });
+  it('edits fixed catalog fields without exposing variant or term controls', async () => {
+    const view = render(ProductDetailPage, { data: productDetailData as unknown as ProductDetailPageData });
+    const productPage = within(view.container);
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Variants & Terms' }));
-    await fireEvent.input(screen.getByPlaceholderText('Name'), { target: { value: 'Smoke variant' } });
-    await fireEvent.input(screen.getByPlaceholderText('Code'), { target: { value: 'smoke-variant' } });
-    await fireEvent.submit(screen.getByRole('button', { name: 'Create product variant' }).closest('form')!);
+    expect(productPage.queryByRole('button', { name: 'Variants & Terms' })).toBeNull();
+    await fireEvent.click(productPage.getByRole('tab', { name: 'Fixed Catalog Fields' }));
+    const durationInput = view.container.querySelector<HTMLInputElement>(
+      'input[aria-describedby="duration-help"]'
+    );
+    const priceInput = view.container.querySelector<HTMLInputElement>(
+      'input[aria-describedby="fixed-price-help"]'
+    );
+    expect(durationInput).not.toBeNull();
+    expect(priceInput).not.toBeNull();
+    await fireEvent.input(durationInput!, { target: { value: '12' } });
+    await fireEvent.input(priceInput!, { target: { value: '10999' } });
+    await fireEvent.click(productPage.getByRole('button', { name: 'Save Fixed Catalog Fields' }));
 
-    await waitFor(() => expect(mocks.createVariant).toHaveBeenCalledTimes(1));
-    expect(mocks.createVariant).toHaveBeenCalledWith(expect.objectContaining({
-      product_id: 'product-id',
-      name: 'Smoke variant',
-      variant_code: 'smoke-variant',
+    await waitFor(() => expect(mocks.setCurrentFixedProductPrice).toHaveBeenCalledTimes(1));
+    expect(mocks.setCurrentFixedProductPrice).toHaveBeenCalledWith('product-id', expect.objectContaining({
+      duration_months: 12,
+      price_cents: 10999,
+      currency: 'USD',
     }));
+  });
+
+  it('updates current pricing against the product-only price history endpoint', async () => {
+    const view = render(ProductDetailPage, { data: productDetailData as unknown as ProductDetailPageData });
+    const productPage = within(view.container);
+    await fireEvent.click(productPage.getByRole('tab', { name: 'Pricing' }));
+    await fireEvent.input(productPage.getByLabelText('Current fixed price cents'), { target: { value: '1199' } });
+    await fireEvent.input(productPage.getByLabelText('Current comparison price cents'), { target: { value: '1499' } });
+    await fireEvent.click(productPage.getByRole('button', { name: 'Save current fixed price' }));
+
+    await waitFor(() => expect(mocks.setCurrentFixedProductPrice).toHaveBeenCalledTimes(1));
+    expect(mocks.setCurrentFixedProductPrice).toHaveBeenCalledWith('product-id', {
+      price_cents: 1199,
+      currency: 'USD',
+      comparison_price_cents: 1499,
+    });
   });
 
   it('persists strict-rules text and its incremented version in one product update', async () => {
     const view = render(ProductDetailPage, { data: productDetailData as unknown as ProductDetailPageData });
     const productPage = within(view.container);
 
-    await fireEvent.click(productPage.getByRole('button', { name: 'Fulfillment settings' }));
+    await fireEvent.click(productPage.getByRole('tab', { name: 'Fulfillment settings' }));
     const rulesInput = productPage.getByText('Rules text').closest('label')?.querySelector('textarea');
     expect(rulesInput).not.toBeNull();
     await fireEvent.input(rulesInput!, {
@@ -223,6 +274,10 @@ describe('admin-next action forms', () => {
     await fireEvent.click(productPage.getByRole('button', { name: 'Save fulfillment settings' }));
 
     await waitFor(() => expect(mocks.updateProduct).toHaveBeenCalledTimes(1));
+    const fulfillmentPayload = mocks.updateProduct.mock.calls[0]?.[1];
+    expect(fulfillmentPayload).not.toHaveProperty('fixed_price_cents');
+    expect(fulfillmentPayload).not.toHaveProperty('fixed_price_currency');
+    expect(fulfillmentPayload).not.toHaveProperty('duration_months');
     expect(mocks.updateProduct).toHaveBeenCalledWith(
       'product-id',
       expect.objectContaining({
@@ -243,7 +298,7 @@ describe('admin-next action forms', () => {
     });
     const productPage = within(view.container);
 
-    await fireEvent.click(productPage.getByRole('button', { name: 'Catalog' }));
+    await fireEvent.click(productPage.getByRole('tab', { name: 'Catalog' }));
     await fireEvent.input(productPage.getByLabelText('Delivery format title'), {
       target: { value: 'Activation code delivery' },
     });
@@ -253,6 +308,10 @@ describe('admin-next action forms', () => {
     await fireEvent.click(productPage.getByRole('button', { name: 'Save presentation' }));
 
     await waitFor(() => expect(mocks.updateProduct).toHaveBeenCalledTimes(1));
+    const presentationPayload = mocks.updateProduct.mock.calls[0]?.[1];
+    expect(presentationPayload).not.toHaveProperty('fixed_price_cents');
+    expect(presentationPayload).not.toHaveProperty('fixed_price_currency');
+    expect(presentationPayload).not.toHaveProperty('duration_months');
     expect(mocks.updateProduct).toHaveBeenCalledWith(
       'product-id',
       expect.objectContaining({

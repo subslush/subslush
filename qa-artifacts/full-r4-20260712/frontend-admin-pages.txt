@@ -1,0 +1,9 @@
+200 /admin
+200 /admin-next
+200 /admin-next/orders
+200 /admin-next/fulfillment
+200 /admin-next/subscriptions
+200 /admin-next/payments
+200 /admin-next/coupons
+200 /admin-next/users
+200 /admin-next/announcements

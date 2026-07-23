@@ -31,7 +31,14 @@ describe('Dashboard orders first-load data flow', () => {
     expect(page).toContain(
       'let subscriptionsByOrder: Record<string, Subscription[]> = data.subscriptionsByOrder || {};'
     );
-    expect(page).not.toContain('onMount(');
+    const onMountStart = page.indexOf('onMount(');
+    const reactiveDataStart = page.indexOf('$: orders = data.orders;');
+    const onMountSection =
+      onMountStart >= 0 && reactiveDataStart > onMountStart
+        ? page.slice(onMountStart, reactiveDataStart)
+        : '';
+    expect(onMountSection).not.toContain('loadOrderSubscriptions(');
+    expect(onMountSection).not.toContain('ordersService.listOrders(');
     expect(page).not.toContain('ordersService.listOrders(');
   });
 

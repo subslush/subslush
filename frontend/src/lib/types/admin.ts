@@ -223,6 +223,50 @@ export interface AdminPriceHistory {
   createdAt?: string;
 }
 
+export interface AdminFixedProductPriceHistory {
+  id: string;
+  product_id?: string | null;
+  productId?: string | null;
+  price_cents?: number | null;
+  priceCents?: number | null;
+  currency?: string | null;
+  starts_at?: string | null;
+  startsAt?: string | null;
+  ends_at?: string | null;
+  endsAt?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string;
+  createdAt?: string;
+}
+
+export interface AdminLegacyCatalogCompatibility {
+  variant_count: number;
+  active_variant_count: number;
+  term_count: number;
+  price_history_count: number;
+  subscription_count: number;
+  order_item_count: number;
+  payment_count: number;
+  credit_transaction_count: number;
+  fixed_catalog_preferred: boolean;
+}
+
+export interface AdminFixedCatalogRecoveryResult {
+  product_id: string;
+  already_product_only: boolean;
+  deactivated_variant_count: number;
+  deactivated_variant_ids: string[];
+  compatibility: AdminLegacyCatalogCompatibility;
+}
+
+export interface AdminSetCurrentFixedProductPriceInput {
+  duration_months?: number;
+  price_cents: number;
+  currency: string;
+  comparison_price_cents?: number | null;
+  metadata?: Record<string, unknown> | null;
+}
+
 export interface AdminSetCurrentPriceInput {
   product_variant_id: string;
   price_cents: number;
@@ -242,6 +286,10 @@ export interface AdminProductDetail {
   prices?: AdminPriceHistory[];
   variantTerms?: AdminProductVariantTerm[];
   variant_terms?: AdminProductVariantTerm[];
+  fixedPriceHistory?: AdminFixedProductPriceHistory[];
+  fixed_price_history?: AdminFixedProductPriceHistory[];
+  legacyCompatibility?: AdminLegacyCatalogCompatibility;
+  legacy_compatibility?: AdminLegacyCatalogCompatibility;
 }
 
 export interface AdminOrder {

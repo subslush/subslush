@@ -1,0 +1,300 @@
+[Sat Jul 11 18:03:19 2026] ACPI: Added _OSI(Processor Aggregator Device)
+[Sat Jul 11 18:03:19 2026] ACPI: 1 ACPI AML tables successfully acquired and loaded
+[Sat Jul 11 18:03:19 2026] ACPI: _OSC evaluation for CPUs failed, trying _PDC
+[Sat Jul 11 18:03:19 2026] ACPI: Interpreter enabled
+[Sat Jul 11 18:03:19 2026] ACPI: PM: (supports S0 S5)
+[Sat Jul 11 18:03:19 2026] ACPI: Using IOAPIC for interrupt routing
+[Sat Jul 11 18:03:19 2026] PCI: Using host bridge windows from ACPI; if necessary, use "pci=nocrs" and report a bug
+[Sat Jul 11 18:03:19 2026] PCI: Using E820 reservations for host bridge windows
+[Sat Jul 11 18:03:19 2026] ACPI: Enabled 1 GPEs in block 00 to 0F
+[Sat Jul 11 18:03:19 2026] iommu: Default domain type: Translated
+[Sat Jul 11 18:03:19 2026] iommu: DMA domain TLB invalidation policy: lazy mode
+[Sat Jul 11 18:03:19 2026] SCSI subsystem initialized
+[Sat Jul 11 18:03:19 2026] libata version 3.00 loaded.
+[Sat Jul 11 18:03:19 2026] pps_core: LinuxPPS API ver. 1 registered
+[Sat Jul 11 18:03:19 2026] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[Sat Jul 11 18:03:19 2026] PTP clock support registered
+[Sat Jul 11 18:03:19 2026] EDAC MC: Ver: 3.0.0
+[Sat Jul 11 18:03:19 2026] hv_vmbus: Vmbus version:5.3
+[Sat Jul 11 18:03:19 2026] hv_vmbus: Unknown GUID: 6e382d18-3336-4f4b-acc4-2b7703d4df4a
+[Sat Jul 11 18:03:19 2026] hv_vmbus: Unknown GUID: dde9cbc0-5060-4436-9448-ea1254a5d177
+[Sat Jul 11 18:03:19 2026] hv_vmbus: Unknown GUID: 6e382d18-3336-4f4b-acc4-2b7703d4df4a
+[Sat Jul 11 18:03:19 2026] NetLabel: Initializing
+[Sat Jul 11 18:03:19 2026] NetLabel:  domain hash size = 128
+[Sat Jul 11 18:03:19 2026] NetLabel:  protocols = UNLABELED CIPSOv4 CALIPSO
+[Sat Jul 11 18:03:19 2026] NetLabel:  unlabeled traffic allowed by default
+[Sat Jul 11 18:03:19 2026] PCI: Using ACPI for IRQ routing
+[Sat Jul 11 18:03:19 2026] PCI: System does not support PCI
+[Sat Jul 11 18:03:19 2026] vgaarb: loaded
+[Sat Jul 11 18:03:19 2026] clocksource: Switched to clocksource hyperv_clocksource_tsc_page
+[Sat Jul 11 18:03:19 2026] VFS: Disk quotas dquot_6.6.0
+[Sat Jul 11 18:03:19 2026] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+[Sat Jul 11 18:03:19 2026] FS-Cache: Loaded
+[Sat Jul 11 18:03:19 2026] pnp: PnP ACPI init
+[Sat Jul 11 18:03:19 2026] pnp: PnP ACPI: found 1 devices
+[Sat Jul 11 18:03:19 2026] clocksource: acpi_pm: mask: 0xffffff max_cycles: 0xffffff, max_idle_ns: 2085701024 ns
+[Sat Jul 11 18:03:19 2026] NET: Registered PF_INET protocol family
+[Sat Jul 11 18:03:19 2026] IP idents hash table entries: 262144 (order: 9, 2097152 bytes, linear)
+[Sat Jul 11 18:03:19 2026] tcp_listen_portaddr_hash hash table entries: 8192 (order: 5, 131072 bytes, linear)
+[Sat Jul 11 18:03:19 2026] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[Sat Jul 11 18:03:19 2026] TCP established hash table entries: 131072 (order: 8, 1048576 bytes, linear)
+[Sat Jul 11 18:03:19 2026] TCP bind hash table entries: 65536 (order: 9, 2097152 bytes, linear)
+[Sat Jul 11 18:03:19 2026] TCP: Hash tables configured (established 131072 bind 65536)
+[Sat Jul 11 18:03:19 2026] UDP hash table entries: 8192 (order: 6, 262144 bytes, linear)
+[Sat Jul 11 18:03:19 2026] UDP-Lite hash table entries: 8192 (order: 6, 262144 bytes, linear)
+[Sat Jul 11 18:03:19 2026] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[Sat Jul 11 18:03:19 2026] NET: Registered PF_XDP protocol family
+[Sat Jul 11 18:03:19 2026] PCI: CLS 0 bytes, default 64
+[Sat Jul 11 18:03:19 2026] PCI-DMA: Using software bounce buffering for IO (SWIOTLB)
+[Sat Jul 11 18:03:19 2026] software IO TLB: mapped [mem 0x00000000f4000000-0x00000000f8000000] (64MB)
+[Sat Jul 11 18:03:19 2026] Trying to unpack rootfs image as initramfs...
+[Sat Jul 11 18:03:19 2026] Freeing initrd memory: 2664K
+[Sat Jul 11 18:03:19 2026] RAPL PMU: API unit is 2^-32 Joules, 0 fixed counters, 10737418240 ms ovfl timer
+[Sat Jul 11 18:03:19 2026] Initialise system trusted keyrings
+[Sat Jul 11 18:03:19 2026] Key type blacklist registered
+[Sat Jul 11 18:03:19 2026] workingset: timestamp_bits=36 max_order=22 bucket_order=0
+[Sat Jul 11 18:03:19 2026] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[Sat Jul 11 18:03:19 2026] fuse: init (API version 7.39)
+[Sat Jul 11 18:03:19 2026] SGI XFS with ACLs, security attributes, realtime, verbose warnings, quota, no debug enabled
+[Sat Jul 11 18:03:19 2026] 9p: Installing v9fs 9p2000 file system support
+[Sat Jul 11 18:03:19 2026] Key type asymmetric registered
+[Sat Jul 11 18:03:19 2026] Asymmetric key parser 'x509' registered
+[Sat Jul 11 18:03:19 2026] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 245)
+[Sat Jul 11 18:03:19 2026] io scheduler mq-deadline registered
+[Sat Jul 11 18:03:19 2026] io scheduler kyber registered
+[Sat Jul 11 18:03:19 2026] hv_vmbus: registering driver hv_pci
+[Sat Jul 11 18:03:19 2026] hv_pci c4b741f5-5582-4c98-8f8b-2e082933c396: PCI VMBus probing: Using version 0x10004
+[Sat Jul 11 18:03:19 2026] hv_pci c4b741f5-5582-4c98-8f8b-2e082933c396: PCI host bridge to bus 5582:00
+[Sat Jul 11 18:03:19 2026] pci_bus 5582:00: root bus resource [mem 0x9ffe00000-0x9ffe02fff window]
+[Sat Jul 11 18:03:19 2026] pci_bus 5582:00: No busn resource found for root bus, will use [bus 00-ff]
+[Sat Jul 11 18:03:19 2026] pci 5582:00:00.0: [1af4:1043] type 00 class 0x010000
+[Sat Jul 11 18:03:19 2026] pci 5582:00:00.0: reg 0x10: [mem 0x9ffe00000-0x9ffe00fff 64bit]
+[Sat Jul 11 18:03:19 2026] pci 5582:00:00.0: reg 0x18: [mem 0x9ffe01000-0x9ffe01fff 64bit]
+[Sat Jul 11 18:03:19 2026] pci 5582:00:00.0: reg 0x20: [mem 0x9ffe02000-0x9ffe02fff 64bit]
+[Sat Jul 11 18:03:19 2026] pci_bus 5582:00: busn_res: [bus 00-ff] end is updated to 00
+[Sat Jul 11 18:03:19 2026] pci 5582:00:00.0: BAR 0: assigned [mem 0x9ffe00000-0x9ffe00fff 64bit]
+[Sat Jul 11 18:03:19 2026] pci 5582:00:00.0: BAR 2: assigned [mem 0x9ffe01000-0x9ffe01fff 64bit]
+[Sat Jul 11 18:03:19 2026] pci 5582:00:00.0: BAR 4: assigned [mem 0x9ffe02000-0x9ffe02fff 64bit]
+[Sat Jul 11 18:03:19 2026] hv_pci 07a72b12-0225-4628-95a4-11941cefe907: PCI VMBus probing: Using version 0x10004
+[Sat Jul 11 18:03:19 2026] hv_pci 07a72b12-0225-4628-95a4-11941cefe907: PCI host bridge to bus 0225:00
+[Sat Jul 11 18:03:19 2026] pci_bus 0225:00: No busn resource found for root bus, will use [bus 00-ff]
+[Sat Jul 11 18:03:19 2026] pci 0225:00:00.0: [1414:008e] type 00 class 0x030200
+[Sat Jul 11 18:03:19 2026] pci_bus 0225:00: busn_res: [bus 00-ff] end is updated to 00
+[Sat Jul 11 18:03:19 2026] hv_pci 5be765f2-ea0b-4dd3-9ce8-35109114aa9c: PCI VMBus probing: Using version 0x10004
+[Sat Jul 11 18:03:19 2026] hv_pci 5be765f2-ea0b-4dd3-9ce8-35109114aa9c: PCI host bridge to bus ea0b:00
+[Sat Jul 11 18:03:19 2026] pci_bus ea0b:00: No busn resource found for root bus, will use [bus 00-ff]
+[Sat Jul 11 18:03:19 2026] pci ea0b:00:00.0: [1414:008e] type 00 class 0x030200
+[Sat Jul 11 18:03:19 2026] pci_bus ea0b:00: busn_res: [bus 00-ff] end is updated to 00
+[Sat Jul 11 18:03:19 2026] ioatdma: Intel(R) QuickData Technology Driver 5.00
+[Sat Jul 11 18:03:19 2026] virtio-pci 5582:00:00.0: enabling device (0000 -> 0002)
+[Sat Jul 11 18:03:19 2026] Serial: 8250/16550 driver, 8 ports, IRQ sharing enabled
+[Sat Jul 11 18:03:19 2026] Linux agpgart interface v0.103
+[Sat Jul 11 18:03:19 2026] AMD-Vi: AMD IOMMUv2 functionality not available on this system - This is not a bug.
+[Sat Jul 11 18:03:19 2026] ACPI: bus type drm_connector registered
+[Sat Jul 11 18:03:19 2026] printk: console [hvc0] enabled
+[Sat Jul 11 18:03:19 2026] brd: module loaded
+[Sat Jul 11 18:03:19 2026] loop: module loaded
+[Sat Jul 11 18:03:19 2026] Loading iSCSI transport class v2.0-870.
+[Sat Jul 11 18:03:19 2026] rdac: device handler registered
+[Sat Jul 11 18:03:19 2026] Microchip SmartPQI Driver (v2.1.24-046)
+[Sat Jul 11 18:03:19 2026] VMware PVSCSI driver - version 1.0.7.0-k
+[Sat Jul 11 18:03:19 2026] hv_vmbus: registering driver hv_storvsc
+[Sat Jul 11 18:03:19 2026] PPP generic driver version 2.4.2
+[Sat Jul 11 18:03:19 2026] scsi host0: storvsc_host_t
+[Sat Jul 11 18:03:19 2026] VMware vmxnet3 virtual NIC driver - version 1.7.0.0-k-NAPI
+[Sat Jul 11 18:03:19 2026] hv_vmbus: registering driver hv_netvsc
+[Sat Jul 11 18:03:19 2026] Fusion MPT base driver 3.04.20
+[Sat Jul 11 18:03:19 2026] Copyright (c) 1999-2008 LSI Corporation
+[Sat Jul 11 18:03:19 2026] Fusion MPT SPI Host driver 3.04.20
+[Sat Jul 11 18:03:19 2026] Fusion MPT SAS Host driver 3.04.20
+[Sat Jul 11 18:03:19 2026] Fusion MPT misc device (ioctl) driver 3.04.20
+[Sat Jul 11 18:03:19 2026] mptctl: Registered with Fusion MPT base driver
+[Sat Jul 11 18:03:19 2026] mptctl: /dev/mptctl @ (major,minor=10,220)
+[Sat Jul 11 18:03:19 2026] i8042: PNP: No PS/2 controller found.
+[Sat Jul 11 18:03:19 2026] hv_vmbus: registering driver hyperv_keyboard
+[Sat Jul 11 18:03:19 2026] rtc_cmos 00:00: RTC can wake from S4
+[Sat Jul 11 18:03:19 2026] rtc_cmos 00:00: registered as rtc0
+[Sat Jul 11 18:03:19 2026] rtc_cmos 00:00: setting system clock to 2026-07-11T16:03:18 UTC (1783785798)
+[Sat Jul 11 18:03:19 2026] rtc_cmos 00:00: alarms up to one month, 114 bytes nvram
+[Sat Jul 11 18:03:19 2026] device-mapper: core: CONFIG_IMA_DISABLE_HTABLE is disabled. Duplicate IMA measurements will not be recorded in the IMA log.
+[Sat Jul 11 18:03:19 2026] device-mapper: uevent: version 1.0.3
+[Sat Jul 11 18:03:19 2026] device-mapper: ioctl: 4.48.0-ioctl (2023-03-01) initialised: dm-devel@redhat.com
+[Sat Jul 11 18:03:19 2026] intel_pstate: CPU model not supported
+[Sat Jul 11 18:03:19 2026] hv_utils: Registering HyperV Utility Driver
+[Sat Jul 11 18:03:19 2026] hv_vmbus: registering driver hv_utils
+[Sat Jul 11 18:03:19 2026] hv_vmbus: registering driver hv_balloon
+[Sat Jul 11 18:03:19 2026] hv_utils: TimeSync IC version 4.0
+[Sat Jul 11 18:03:19 2026] hv_vmbus: registering driver dxgkrnl
+[Sat Jul 11 18:03:19 2026] hv_balloon: Using Dynamic Memory protocol version 2.0
+[Sat Jul 11 18:03:19 2026] Free page reporting enabled
+[Sat Jul 11 18:03:19 2026] hv_balloon: Cold memory discard hint enabled with order 9
+[Sat Jul 11 18:03:19 2026] drop_monitor: Initializing network drop monitor service
+[Sat Jul 11 18:03:19 2026] NET: Registered PF_INET6 protocol family
+[Sat Jul 11 18:03:19 2026] Segment Routing with IPv6
+[Sat Jul 11 18:03:19 2026] In-situ OAM (IOAM) with IPv6
+[Sat Jul 11 18:03:19 2026] NET: Registered PF_PACKET protocol family
+[Sat Jul 11 18:03:19 2026] 9pnet: Installing 9P2000 support
+[Sat Jul 11 18:03:19 2026] NET: Registered PF_VSOCK protocol family
+[Sat Jul 11 18:03:19 2026] hv_vmbus: registering driver hv_sock
+[Sat Jul 11 18:03:19 2026] IPI shorthand broadcast: enabled
+[Sat Jul 11 18:03:19 2026] AVX2 version of gcm_enc/dec engaged.
+[Sat Jul 11 18:03:19 2026] AES CTR mode by8 optimization enabled
+[Sat Jul 11 18:03:19 2026] sched_clock: Marking stable (508014600, 692300)->(544494400, -35787500)
+[Sat Jul 11 18:03:19 2026] registered taskstats version 1
+[Sat Jul 11 18:03:19 2026] Loading compiled-in X.509 certificates
+[Sat Jul 11 18:03:19 2026] ima: No TPM chip found, activating TPM-bypass!
+[Sat Jul 11 18:03:19 2026] ima: Allocated hash algorithm: sha256
+[Sat Jul 11 18:03:19 2026] ima: No architecture policies found
+[Sat Jul 11 18:03:19 2026] RAS: Correctable Errors collector initialized.
+[Sat Jul 11 18:03:19 2026] clk: Disabling unused clocks
+[Sat Jul 11 18:03:19 2026] Freeing unused decrypted memory: 2028K
+[Sat Jul 11 18:03:19 2026] Freeing unused kernel image (initmem) memory: 4492K
+[Sat Jul 11 18:03:19 2026] Write protecting the kernel read-only data: 34816k
+[Sat Jul 11 18:03:19 2026] Freeing unused kernel image (rodata/data gap) memory: 840K
+[Sat Jul 11 18:03:19 2026] Run /init as init process
+[Sat Jul 11 18:03:19 2026]   with arguments:
+[Sat Jul 11 18:03:19 2026]     /init
+[Sat Jul 11 18:03:19 2026]   with environment:
+[Sat Jul 11 18:03:19 2026]     HOME=/
+[Sat Jul 11 18:03:19 2026]     TERM=linux
+[Sat Jul 11 18:03:19 2026]     WSL_ROOT_INIT=1
+[Sat Jul 11 18:03:19 2026]     WSL_ENABLE_CRASH_DUMP=1
+[Sat Jul 11 18:03:19 2026] scsi 0:0:0:0: Direct-Access     Msft     Virtual Disk     1.0  PQ: 0 ANSI: 5
+[Sat Jul 11 18:03:19 2026] scsi 0:0:0:1: Direct-Access     Msft     Virtual Disk     1.0  PQ: 0 ANSI: 5
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:0: Attached scsi generic sg0 type 0
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:0: [sda] 795536 512-byte logical blocks: (407 MB/388 MiB)
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:1: Attached scsi generic sg1 type 0
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:1: [sdb] 381016 512-byte logical blocks: (195 MB/186 MiB)
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:1: [sdb] Write Protect is on
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:1: [sdb] Mode Sense: 0f 00 80 00
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:0: [sda] Write Protect is on
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:0: [sda] Mode Sense: 0f 00 80 00
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:0: [sda] Write cache: disabled, read cache: enabled, doesn't support DPO or FUA
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:0: [sda] Attached SCSI disk
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:1: [sdb] Write cache: disabled, read cache: enabled, doesn't support DPO or FUA
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:1: [sdb] Attached SCSI disk
+[Sat Jul 11 18:03:19 2026] scsi 0:0:0:2: Direct-Access     Msft     Virtual Disk     1.0  PQ: 0 ANSI: 5
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:2: Attached scsi generic sg2 type 0
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:2: [sdc] 33554440 512-byte logical blocks: (17.2 GB/16.0 GiB)
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:2: [sdc] 4096-byte physical blocks
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:2: [sdc] Write Protect is off
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:2: [sdc] Mode Sense: 0f 00 00 00
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:2: [sdc] Write cache: enabled, read cache: enabled, doesn't support DPO or FUA
+[Sat Jul 11 18:03:19 2026] sd 0:0:0:2: [sdc] Attached SCSI disk
+[Sat Jul 11 18:03:19 2026] EXT4-fs (sda): mounted filesystem 00000000-0000-0000-0000-000000000000 ro without journal. Quota mode: none.
+[Sat Jul 11 18:03:19 2026] EXT4-fs (sdb): mounted filesystem 00000000-0000-0000-0000-000000000000 ro without journal. Quota mode: none.
+[Sat Jul 11 18:03:19 2026] tun: Universal TUN/TAP device driver, 1.6
+[Sat Jul 11 18:03:19 2026] Adding 16777216k swap on /dev/sdc.  Priority:-2 extents:1 across:16777216k 
+[Sat Jul 11 18:03:19 2026] bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+[Sat Jul 11 18:03:19 2026] Bridge firewalling registered
+[Sat Jul 11 18:03:20 2026] hv_pci 9c9c7e69-f6e3-4b24-9dc1-e586e7404810: PCI VMBus probing: Using version 0x10004
+[Sat Jul 11 18:03:20 2026] hv_pci 9c9c7e69-f6e3-4b24-9dc1-e586e7404810: PCI host bridge to bus f6e3:00
+[Sat Jul 11 18:03:20 2026] pci_bus f6e3:00: root bus resource [mem 0xc00000000-0xe00001fff window]
+[Sat Jul 11 18:03:20 2026] pci_bus f6e3:00: No busn resource found for root bus, will use [bus 00-ff]
+[Sat Jul 11 18:03:20 2026] pci f6e3:00:00.0: [1af4:105a] type 00 class 0x088000
+[Sat Jul 11 18:03:20 2026] pci f6e3:00:00.0: reg 0x10: [mem 0xe00000000-0xe00000fff 64bit]
+[Sat Jul 11 18:03:20 2026] pci f6e3:00:00.0: reg 0x18: [mem 0xe00001000-0xe00001fff 64bit]
+[Sat Jul 11 18:03:20 2026] pci f6e3:00:00.0: reg 0x20: [mem 0xc00000000-0xdffffffff 64bit]
+[Sat Jul 11 18:03:20 2026] pci_bus f6e3:00: busn_res: [bus 00-ff] end is updated to 00
+[Sat Jul 11 18:03:20 2026] pci f6e3:00:00.0: BAR 4: assigned [mem 0xc00000000-0xdffffffff 64bit]
+[Sat Jul 11 18:03:20 2026] pci f6e3:00:00.0: BAR 0: assigned [mem 0xe00000000-0xe00000fff 64bit]
+[Sat Jul 11 18:03:20 2026] pci f6e3:00:00.0: BAR 2: assigned [mem 0xe00001000-0xe00001fff 64bit]
+[Sat Jul 11 18:03:20 2026] virtio-pci f6e3:00:00.0: enabling device (0000 -> 0002)
+[Sat Jul 11 18:03:20 2026] virtiofs virtio1: Cache len: 0x200000000 @ 0xc00000000
+[Sat Jul 11 18:03:20 2026] scsi 0:0:0:3: Direct-Access     Msft     Virtual Disk     1.0  PQ: 0 ANSI: 5
+[Sat Jul 11 18:03:20 2026] sd 0:0:0:3: Attached scsi generic sg3 type 0
+[Sat Jul 11 18:03:20 2026] sd 0:0:0:3: [sdd] 2147483648 512-byte logical blocks: (1.10 TB/1.00 TiB)
+[Sat Jul 11 18:03:20 2026] sd 0:0:0:3: [sdd] 4096-byte physical blocks
+[Sat Jul 11 18:03:20 2026] sd 0:0:0:3: [sdd] Write Protect is off
+[Sat Jul 11 18:03:20 2026] sd 0:0:0:3: [sdd] Mode Sense: 0f 00 00 00
+[Sat Jul 11 18:03:20 2026] sd 0:0:0:3: [sdd] Write cache: enabled, read cache: enabled, doesn't support DPO or FUA
+[Sat Jul 11 18:03:20 2026] /dev/sdd: Can't open blockdev
+[Sat Jul 11 18:03:20 2026] sd 0:0:0:3: [sdd] Attached SCSI disk
+[Sat Jul 11 18:03:20 2026] EXT4-fs (sdd): mounted filesystem 39dfca65-78cf-48ff-9e73-fac37d6bfbb8 r/w with ordered data mode. Quota mode: none.
+[Sat Jul 11 18:03:21 2026] pulseaudio[234]: memfd_create() called without MFD_EXEC or MFD_NOEXEC_SEAL set
+[Sat Jul 11 18:03:22 2026] misc dxg: dxgk: dxgkio_is_feature_enabled: Ioctl failed: -22
+[Sat Jul 11 18:03:22 2026] misc dxg: dxgk: dxgkio_query_adapter_info: Ioctl failed: -22
+[Sat Jul 11 18:03:22 2026] misc dxg: dxgk: dxgkio_query_adapter_info: Ioctl failed: -22
+[Sat Jul 11 18:03:22 2026] misc dxg: dxgk: dxgkio_query_adapter_info: Ioctl failed: -22
+[Sat Jul 11 18:03:22 2026] misc dxg: dxgk: dxgkio_query_adapter_info: Ioctl failed: -2
+[Sat Jul 11 18:03:22 2026] misc dxg: dxgk: dxgkio_query_adapter_info: Ioctl failed: -22
+[Sat Jul 11 18:03:22 2026] misc dxg: dxgk: dxgkio_query_adapter_info: Ioctl failed: -22
+[Sat Jul 11 18:03:22 2026] misc dxg: dxgk: dxgkio_query_adapter_info: Ioctl failed: -22
+[Sat Jul 11 18:03:22 2026] misc dxg: dxgk: dxgkio_query_adapter_info: Ioctl failed: -2
+[Sat Jul 11 18:03:22 2026] Failed to connect to bus: No such file or directory
+[Sat Jul 11 18:03:22 2026] systemd-journald[48]: Collecting audit messages is disabled.
+[Sat Jul 11 18:03:22 2026] systemd-journald[48]: Received client request to flush runtime journal.
+[Sat Jul 11 18:03:22 2026] systemd-journald[48]: File /var/log/journal/7be25c47342542efb154ace6e4ea7ef5/system.journal corrupted or uncleanly shut down, renaming and replacing.
+[Sat Jul 11 18:03:23 2026] kvm_intel: Using Hyper-V Enlightened VMCS
+[Sat Jul 11 18:03:25 2026] TCP: eth0: Driver has suspect GRO implementation, TCP performance may be compromised.
+[Sat Jul 11 18:03:25 2026] WSL (205) ERROR: CheckConnection: getaddrinfo() failed: -5
+[Sat Jul 11 18:03:30 2026] systemd-journald[48]: /var/log/journal/7be25c47342542efb154ace6e4ea7ef5/user-1000.journal: Journal file uses a different sequence number ID, rotating.
+[Sat Jul 11 18:04:07 2026] hv_balloon: Max. dynamic memory size: 12288 MB
+[Sat Jul 11 18:32:50 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 18:34:19 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 18:57:49 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 19:10:49 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 19:12:49 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 19:34:49 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 21:43:20 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 22:25:49 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 22:51:49 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 23:11:19 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 23:30:19 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 23:45:19 2026] mini_init (189): drop_caches: 1
+[Sat Jul 11 23:55:19 2026] mini_init (189): drop_caches: 1
+[Sun Jul 12 00:24:49 2026] mini_init (189): drop_caches: 1
+[Sun Jul 12 00:33:09 2026] node: libvips worker: potentially unexpected fatal signal 11.
+[Sun Jul 12 00:33:09 2026] node: libvips worker: potentially unexpected fatal signal 11.
+[Sun Jul 12 00:33:09 2026] libvips worker[111870]: segfault at 7f13b0001 ip 00007f18f4ccb2cb sp 00007f18e7ffe770 error 4
+[Sun Jul 12 00:33:09 2026] libvips worker[111876]: segfault at 7f13b0001 ip 00007f18f4ccb2cb sp 00007f18e4ff8770 error 4
+[Sun Jul 12 00:33:09 2026]  in libvips-cpp.so.42[7f18f451c000+a02000] likely on CPU 5 (core 2, socket 0)
+[Sun Jul 12 00:33:09 2026] Code: 44 24 30 4c 39 f8 0f 84 41 03 00 00 0f 1f 00 49 8b 37 48 8d 55 d8 4c 8b 44 24 38 4c 8d 64 24 50 48 8b 4c 24 20 48 8b 7c 24 28 <48> 8b 06 ff 50 10 48 8b 9c 24 90 00 00 00 4c 8b b4 24 98 00 00 00
+[Sun Jul 12 00:33:09 2026] node: libvips worker: potentially unexpected fatal signal 11.
+[Sun Jul 12 00:33:09 2026]  in libvips-cpp.so.42[7f18f451c000+a02000] likely on CPU 2 (core 1, socket 0)
+[Sun Jul 12 00:33:09 2026] Code: 44 24 30 4c 39 f8 0f 84 41 03 00 00 0f 1f 00 49 8b 37 48 8d 55 d8 4c 8b 44 24 38 4c 8d 64 24 50 48 8b 4c 24 20 48 8b 7c 24 28 <48> 8b 06 ff 50 10 48 8b 9c 24 90 00 00 00 4c 8b b4 24 98 00 00 00
+[Sun Jul 12 00:33:09 2026] node: libvips worker: potentially unexpected fatal signal 11.
+[Sun Jul 12 00:33:09 2026] CPU: 5 PID: 111876 Comm: libvips worker Not tainted 6.6.87.2-microsoft-standard-WSL2 #1
+[Sun Jul 12 00:33:09 2026] CPU: 0 PID: 111873 Comm: libvips worker Not tainted 6.6.87.2-microsoft-standard-WSL2 #1
+[Sun Jul 12 00:33:09 2026] CPU: 2 PID: 111870 Comm: libvips worker Not tainted 6.6.87.2-microsoft-standard-WSL2 #1
+[Sun Jul 12 00:33:09 2026] CPU: 4 PID: 111877 Comm: libvips worker Not tainted 6.6.87.2-microsoft-standard-WSL2 #1
+[Sun Jul 12 00:33:09 2026] RIP: 0033:0x7f18f4ccb2cb
+[Sun Jul 12 00:33:09 2026] RIP: 0033:0x7f18f4ccb2cb
+[Sun Jul 12 00:33:09 2026] RIP: 0033:0x7f18f4ccb2cb
+[Sun Jul 12 00:33:09 2026] Code: 44 24 30 4c 39 f8 0f 84 41 03 00 00 0f 1f 00 49 8b 37 48 8d 55 d8 4c 8b 44 24 38 4c 8d 64 24 50 48 8b 4c 24 20 48 8b 7c 24 28 <48> 8b 06 ff 50 10 48 8b 9c 24 90 00 00 00 4c 8b b4 24 98 00 00 00
+[Sun Jul 12 00:33:09 2026] Code: 44 24 30 4c 39 f8 0f 84 41 03 00 00 0f 1f 00 49 8b 37 48 8d 55 d8 4c 8b 44 24 38 4c 8d 64 24 50 48 8b 4c 24 20 48 8b 7c 24 28 <48> 8b 06 ff 50 10 48 8b 9c 24 90 00 00 00 4c 8b b4 24 98 00 00 00
+[Sun Jul 12 00:33:09 2026] Code: 44 24 30 4c 39 f8 0f 84 41 03 00 00 0f 1f 00 49 8b 37 48 8d 55 d8 4c 8b 44 24 38 4c 8d 64 24 50 48 8b 4c 24 20 48 8b 7c 24 28 <48> 8b 06 ff 50 10 48 8b 9c 24 90 00 00 00 4c 8b b4 24 98 00 00 00
+[Sun Jul 12 00:33:09 2026] RIP: 0033:0x7f18f4ccb2cb
+[Sun Jul 12 00:33:09 2026] Code: 44 24 30 4c 39 f8 0f 84 41 03 00 00 0f 1f 00 49 8b 37 48 8d 55 d8 4c 8b 44 24 38 4c 8d 64 24 50 48 8b 4c 24 20 48 8b 7c 24 28 <48> 8b 06 ff 50 10 48 8b 9c 24 90 00 00 00 4c 8b b4 24 98 00 00 00
+[Sun Jul 12 00:33:09 2026] RSP: 002b:00007f18e4ff8770 EFLAGS: 00010206
+[Sun Jul 12 00:33:09 2026] RSP: 002b:00007f13bb7fd770 EFLAGS: 00010206
+
+[Sun Jul 12 00:33:09 2026] RSP: 002b:00007f18e67fb770 EFLAGS: 00010206
+[Sun Jul 12 00:33:09 2026] RSP: 002b:00007f18e7ffe770 EFLAGS: 00010206
+
+
+[Sun Jul 12 00:33:09 2026] RAX: 00007f13ac001498 RBX: 00007f13ac0014e0 RCX: 00007f13bb7fd8d0
+[Sun Jul 12 00:33:09 2026] RAX: 00007f13ac001498 RBX: 00007f13b4000ee0 RCX: 00007f18e4ff88d0
+[Sun Jul 12 00:33:09 2026] RAX: 00007f13ac001498 RBX: 00007f13b0001440 RCX: 00007f18e67fb8d0
+[Sun Jul 12 00:33:09 2026] RAX: 00007f13ac001498 RBX: 00007f13d0000ee0 RCX: 00007f18e7ffe8d0
+[Sun Jul 12 00:33:09 2026] RDX: 00007f13ac001530 RSI: 00000007f13b0001 RDI: 00007f13bb7fd800
+[Sun Jul 12 00:33:09 2026] RBP: 00007f13ac001558 R08: 00007f13bb7fdbe8 R09: 0000000000000040
+[Sun Jul 12 00:33:09 2026] RDX: 00007f13b4000f30 RSI: 00000007f13b0001 RDI: 00007f18e4ff8800
+[Sun Jul 12 00:33:09 2026] R10: 0000000000000001 R11: 0000000000000000 R12: 00007f13bb7fd7c0
+[Sun Jul 12 00:33:09 2026] R13: ffffffff000000ff R14: 0000000000000000 R15: 00007f13ac0013b0
+[Sun Jul 12 00:33:09 2026] RDX: 00007f13b0001490 RSI: 00000007f13b0001 RDI: 00007f18e67fb800
+[Sun Jul 12 00:33:09 2026] RBP: 00007f13b4000f58 R08: 00007f18e4ff8be8 R09: 0000000000000040
+[Sun Jul 12 00:33:09 2026] FS:  00007f13bb7fe6c0 GS:  0000000000000000
+[Sun Jul 12 00:33:09 2026] RBP: 00007f13b00014b8 R08: 00007f18e67fbbe8 R09: 0000000000000040
+[Sun Jul 12 00:33:09 2026] R10: 0000000000000001 R11: 0000000000000000 R12: 00007f18e4ff87c0
+[Sun Jul 12 00:33:09 2026] RDX: 00007f13d0000f30 RSI: 00000007f13b0001 RDI: 00007f18e7ffe800
+[Sun Jul 12 00:33:09 2026] R10: 0000000000000001 R11: 0000000000000000 R12: 00007f18e67fb7c0
+[Sun Jul 12 00:33:09 2026] R13: ffffffff000000ff R14: 0000000000000000 R15: 00007f13ac0013b0
+[Sun Jul 12 00:33:09 2026] RBP: 00007f13d0000f58 R08: 00007f18e7ffebe8 R09: 0000000000000040
+[Sun Jul 12 00:33:09 2026] FS:  00007f18e4ff96c0 GS:  0000000000000000
+[Sun Jul 12 00:33:09 2026] R13: ffffffff000000ff R14: 0000000000000000 R15: 00007f13ac0013b0
+[Sun Jul 12 00:33:09 2026] R10: 0000000000000001 R11: 0000000000000000 R12: 00007f18e7ffe7c0
+[Sun Jul 12 00:33:09 2026] FS:  00007f18e67fc6c0 GS:  0000000000000000
+[Sun Jul 12 00:33:09 2026] R13: ffffffff000000ff R14: 0000000000000000 R15: 00007f13ac0013b0
+[Sun Jul 12 00:33:09 2026] FS:  00007f18e7fff6c0 GS:  0000000000000000
+[Sun Jul 12 00:33:10 2026] WSL (111882 - CaptureCrash): Capturing crash for pid: 111355, executable: !home!yuri!.nvm!versions!node!v22.19.0!bin!node, signal: 11, port: 50005

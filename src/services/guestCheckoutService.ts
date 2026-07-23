@@ -11,12 +11,18 @@ import {
   createErrorResult,
   ServiceResult,
 } from '../types/service';
-import { normalizeUpgradeOptions } from '../utils/upgradeOptions';
+import {
+  normalizeUpgradeOptions,
+  ownAccountCredentialRequirementRequiresPassword,
+} from '../utils/upgradeOptions';
+import { buildFulfillmentConfigSnapshot } from '../utils/productIdentity';
 import type {
   GuestDraftInput,
   GuestDraftResult,
   GuestIdentityResult,
   CheckoutPricingSummary,
+  CheckoutPricingSummaryItem,
+  GuestDraftItemInput,
 } from '../types/checkout';
 
 const CLAIM_TOKEN_BYTES = 32;
@@ -80,6 +86,53 @@ const buildAppLink = (path: string): string => {
   const base = resolveAppBaseUrl();
   if (!base) return path;
   return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+};
+
+const validateGuestDraftUpgradeSelection = (
+  input: GuestDraftItemInput,
+  productMetadata: Record<string, any> | null | undefined
+): string | null => {
+  const options = normalizeUpgradeOptions(productMetadata);
+  const selectionType = input.selection_type ?? null;
+  const accountIdentifier = input.account_identifier?.trim() ?? '';
+  const hasCredentials =
+    typeof input.credentials === 'string' &&
+    input.credentials.trim().length > 0;
+
+  if (!selectionType) {
+    if (accountIdentifier || hasCredentials) {
+      return 'upgrade_selection_type_required';
+    }
+  } else if (selectionType === 'upgrade_new_account') {
+    if (options?.allow_new_account !== true) {
+      return 'upgrade_selection_not_available';
+    }
+    if (accountIdentifier || hasCredentials) {
+      return 'unexpected_own_account_credentials';
+    }
+  } else if (selectionType === 'upgrade_own_account') {
+    if (options?.allow_own_account !== true) {
+      return 'upgrade_selection_not_available';
+    }
+    if (!accountIdentifier) {
+      return 'own_account_identifier_required';
+    }
+    if (
+      ownAccountCredentialRequirementRequiresPassword(options) &&
+      !hasCredentials
+    ) {
+      return 'own_account_credentials_required';
+    }
+  }
+
+  if (
+    options?.manual_monthly_upgrade === true &&
+    input.manual_monthly_acknowledged !== true
+  ) {
+    return 'manual_monthly_acknowledgement_required';
+  }
+
+  return null;
 };
 
 const buildBrandedEmailIfSupported = (options: {
@@ -830,33 +883,51 @@ export class GuestCheckoutService {
       }
 
       const pricing = pricingResult.data;
+      for (const pricedItem of pricing.items) {
+        const selectionError = validateGuestDraftUpgradeSelection(
+          pricedItem.input,
+          pricedItem.product.metadata
+        );
+        if (selectionError) {
+          await client.query('ROLLBACK');
+          transactionOpen = false;
+          return createErrorResult(selectionError);
+        }
+      }
+
       const coupon = pricing.coupon ?? null;
       const normalizedCoupon = coupon?.code ?? null;
-      const pricingSummaryItems = pricing.items.map(item => ({
-        variant_id: item.productVariantId ?? item.product.id,
-        product_id: item.product.id,
-        product_name: item.product.name,
-        service_type: item.product.service_type ?? null,
-        variant_name: item.variant.name ?? null,
-        service_plan: item.planCode,
-        pricing_snapshot_id: item.pricingSnapshotId,
-        term_months: item.termMonths,
-        currency: item.currency,
-        base_price_cents: item.basePriceCents,
-        discount_percent: item.discountPercent,
-        term_subtotal_cents: item.termSubtotalCents,
-        term_discount_cents: item.termDiscountCents,
-        term_total_cents: item.termTotalCents,
-        coupon_discount_cents: item.couponDiscountCents,
-        final_total_cents: item.finalTotalCents,
-        settlement_currency: item.settlementCurrency,
-        settlement_base_price_cents: item.settlementBasePriceCents,
-        settlement_term_subtotal_cents: item.settlementTermSubtotalCents,
-        settlement_term_discount_cents: item.settlementTermDiscountCents,
-        settlement_term_total_cents: item.settlementTermTotalCents,
-        settlement_coupon_discount_cents: item.settlementCouponDiscountCents,
-        settlement_final_total_cents: item.settlementFinalTotalCents,
-      }));
+      const pricingSummaryItems: CheckoutPricingSummaryItem[] =
+        pricing.items.map(item => ({
+          variant_id: item.productVariantId ?? item.product.id,
+          product_id: item.product.id,
+          product_name: item.product.name,
+          duration_months: item.termMonths,
+          unit_price_cents: item.finalTotalCents,
+          total_price_cents: item.finalTotalCents,
+          catalog_mode: item.catalogMode,
+          service_type: item.product.service_type ?? null,
+          variant_name: item.variant.name ?? null,
+          service_plan: item.planCode,
+          pricing_snapshot_id: item.pricingSnapshotId,
+          catalog_pricing_snapshot_id: item.catalogPricingSnapshotId,
+          term_months: item.termMonths,
+          currency: item.currency,
+          base_price_cents: item.basePriceCents,
+          discount_percent: item.discountPercent,
+          term_subtotal_cents: item.termSubtotalCents,
+          term_discount_cents: item.termDiscountCents,
+          term_total_cents: item.termTotalCents,
+          coupon_discount_cents: item.couponDiscountCents,
+          final_total_cents: item.finalTotalCents,
+          settlement_currency: item.settlementCurrency,
+          settlement_base_price_cents: item.settlementBasePriceCents,
+          settlement_term_subtotal_cents: item.settlementTermSubtotalCents,
+          settlement_term_discount_cents: item.settlementTermDiscountCents,
+          settlement_term_total_cents: item.settlementTermTotalCents,
+          settlement_coupon_discount_cents: item.settlementCouponDiscountCents,
+          settlement_final_total_cents: item.settlementFinalTotalCents,
+        }));
 
       if (input.checkout_session_key) {
         await client.query(
@@ -1001,21 +1072,33 @@ export class GuestCheckoutService {
         const upgradeOptions = normalizeUpgradeOptions(
           pricedItem.product.metadata
         );
+        const fulfillmentConfigSnapshot = buildFulfillmentConfigSnapshot(
+          pricedItem.product.metadata
+        );
         const orderDescription = `Subscription: ${serviceType} ${planCode} (${pricedItem.termMonths} month${
           pricedItem.termMonths > 1 ? 's' : ''
         })`;
 
         const itemInsert = await client.query(
           `INSERT INTO order_items
-           (order_id, product_variant_id, quantity, unit_price_cents, base_price_cents, discount_percent,
+           (order_id, product_id, product_variant_id, product_name_snapshot,
+            product_slug_snapshot, duration_months_snapshot, fulfillment_config_snapshot,
+            catalog_mode_snapshot, quantity, unit_price_cents, base_price_cents, discount_percent,
             term_months, currency, total_price_cents, settlement_currency, settlement_unit_price_cents,
             settlement_base_price_cents, settlement_coupon_discount_cents, settlement_total_price_cents,
             description, metadata, auto_renew, coupon_discount_cents)
-           VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10, $11, $12, $13, $14,
+                   $15, $16, $17, $18, $19, $20, $21, $22, $23)
            RETURNING id`,
           [
             orderId,
+            pricedItem.product.id,
             pricedItem.productVariantId,
+            pricedItem.product.name,
+            pricedItem.product.slug,
+            pricedItem.termMonths,
+            JSON.stringify(fulfillmentConfigSnapshot),
+            pricedItem.catalogMode,
             pricedItem.finalTotalCents,
             pricedItem.basePriceCents,
             pricedItem.discountPercent,
@@ -1030,6 +1113,8 @@ export class GuestCheckoutService {
             orderDescription,
             JSON.stringify({
               product_id: pricedItem.product.id,
+              product_name: pricedItem.product.name,
+              product_slug: pricedItem.product.slug,
               product_variant_id:
                 pricedItem.productVariantId ?? pricedItem.product.id,
               pricing_reference_id:
@@ -1095,7 +1180,8 @@ export class GuestCheckoutService {
               {
                 orderItemId,
                 selectionType: pricedItem.input.selection_type ?? null,
-                accountIdentifier: pricedItem.input.account_identifier ?? null,
+                accountIdentifier:
+                  pricedItem.input.account_identifier?.trim() || null,
                 credentials: pricedItem.input.credentials ?? null,
                 manualMonthlyAcknowledgedAt:
                   pricedItem.input.manual_monthly_acknowledged === true
@@ -1160,6 +1246,18 @@ export class GuestCheckoutService {
       if (transactionOpen) {
         await client.query('ROLLBACK');
         transactionOpen = false;
+      }
+      const databaseCode =
+        error && typeof error === 'object' && 'code' in error
+          ? String(error.code)
+          : null;
+      if (databaseCode === '40P01' && input.coupon_code) {
+        Logger.warn('Coupon reservation race rolled back', {
+          event: 'coupon_reservation_deadlock_rollback',
+          guestIdentityId: input.guest_identity_id,
+          couponCode: input.coupon_code,
+        });
+        return createErrorResult('coupon_invalid');
       }
       Logger.error('Failed to upsert guest draft order:', error);
       return createErrorResult('Failed to create draft order');

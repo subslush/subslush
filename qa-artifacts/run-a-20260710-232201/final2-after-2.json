@@ -1,0 +1,56 @@
+{
+  "scanned": 3,
+  "findings": [
+    {
+      "subscription_id": "9b619566-b9df-442d-a1ed-d45de0e42241",
+      "order_id": "2b2e5ed6-c0a5-4de0-a926-cd7534eb0e79",
+      "customer_email": "hifegib740@wivstore.com",
+      "purchased_term_months": 12,
+      "interval_months": 2,
+      "immutable_anchor_currently_stored": "2026-07-09T22:44:59.256Z",
+      "inferred_initial_delivery_anchor": "2026-07-09T22:44:59.256Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 23,
+      "projected_excess_months_if_unfixed": 11,
+      "flags": []
+    },
+    {
+      "subscription_id": "a84c8871-b58a-4f8b-99fa-193ebf476277",
+      "order_id": "f3a388fe-e96d-45c8-92d3-4a936684daf1",
+      "customer_email": "69mkyypvtyho@teacher.unbox.edu.pl",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-09T19:58:32.658Z",
+      "inferred_initial_delivery_anchor": "2026-06-14T22:00:00.000Z",
+      "first_completed_task_created_at": "2026-07-09T19:58:23.911Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "anchor_after_first_completed_task_created",
+        "anchor_differs_from_initial_delivery",
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "abb2499c-4d4e-4f95-82f9-9f71b685b05d",
+      "order_id": "2b2e5ed6-c0a5-4de0-a926-cd7534eb0e79",
+      "customer_email": "hifegib740@wivstore.com",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2025-12-31T23:00:00.000Z",
+      "inferred_initial_delivery_anchor": "2026-07-09T22:44:59.173Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "anchor_differs_from_initial_delivery"
+      ]
+    }
+  ]
+}

@@ -299,8 +299,9 @@ export function validateMetadataForService(
 // Fastify JSON Schema for purchase request
 export const purchaseSubscriptionJsonSchema = {
   type: 'object',
-  required: ['variant_id', 'duration_months'],
+  anyOf: [{ required: ['product_id'] }, { required: ['variant_id'] }],
   properties: {
+    product_id: { type: 'string', format: 'uuid' },
     variant_id: {
       type: 'string',
       minLength: 1,
@@ -308,8 +309,8 @@ export const purchaseSubscriptionJsonSchema = {
     duration_months: {
       type: 'number',
       minimum: 1,
-      default: 1,
     },
+    pricing_snapshot_id: { type: 'string', minLength: 1, maxLength: 255 },
     metadata: {
       type: 'object',
       additionalProperties: true,
@@ -318,14 +319,16 @@ export const purchaseSubscriptionJsonSchema = {
       type: 'boolean',
       default: false,
     },
+    coupon_code: { type: 'string', minLength: 1 },
   },
 } as const;
 
 // Validation request schema
 export const validatePurchaseJsonSchema = {
   type: 'object',
-  required: ['variant_id', 'duration_months'],
+  anyOf: [{ required: ['product_id'] }, { required: ['variant_id'] }],
   properties: {
+    product_id: { type: 'string', format: 'uuid' },
     variant_id: {
       type: 'string',
       minLength: 1,
@@ -333,8 +336,9 @@ export const validatePurchaseJsonSchema = {
     duration_months: {
       type: 'number',
       minimum: 1,
-      default: 1,
     },
+    pricing_snapshot_id: { type: 'string', minLength: 1, maxLength: 255 },
+    coupon_code: { type: 'string', minLength: 1 },
   },
 } as const;
 

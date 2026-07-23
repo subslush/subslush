@@ -1,0 +1,14 @@
+{
+  "tag": "QA-A3-1783755163533",
+  "product_id": "2b839e13-cfdf-411e-87de-3b1e2854451e",
+  "variant_id": "48efcd81-7128-4839-bfdd-1768d148e89d",
+  "inverse_order_id": "df633a9e-9fe4-4544-8acf-8190a9065bfe",
+  "inverse_subscription_id": "4d9c233a-c4d7-4115-b511-d9b4450c8778",
+  "inverse_user": {
+    "id": "e38f12db-a4c0-4811-ac4e-f774b3f9fc16",
+    "email": "qa-a3-1783755163533-inverse@example.test"
+  },
+  "registered_coupon_order_id": "a32d93b4-bd05-43bc-8952-7d1751464c86",
+  "expiry_order_id": "0bb327e7-e363-4d27-9803-752d40be3b59",
+  "reused_order_id": "499ee6e6-5e28-4e48-bdcf-722359b8f045"
+}

@@ -24,6 +24,11 @@ function mapRow(row: any): OrderEntitlement {
     id: row.id,
     order_id: row.order_id,
     order_item_id: row.order_item_id ?? null,
+    product_id: row.product_id ?? null,
+    product_name_snapshot: row.product_name_snapshot ?? null,
+    product_slug_snapshot: row.product_slug_snapshot ?? null,
+    fulfillment_config_snapshot:
+      parseMetadata(row.fulfillment_config_snapshot) ?? null,
     user_id: row.user_id,
     status: row.status,
     starts_at: row.starts_at,
@@ -55,6 +60,10 @@ export class OrderEntitlementService {
             (
               order_id,
               order_item_id,
+              product_id,
+              product_name_snapshot,
+              product_slug_snapshot,
+              fulfillment_config_snapshot,
               user_id,
               status,
               starts_at,
@@ -66,7 +75,7 @@ export class OrderEntitlementService {
               source_subscription_id,
               metadata
             )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
            ON CONFLICT ON CONSTRAINT order_entitlements_source_subscription_id_key
            DO UPDATE
            SET order_id = EXCLUDED.order_id,
@@ -74,6 +83,10 @@ export class OrderEntitlementService {
                  EXCLUDED.order_item_id,
                  order_entitlements.order_item_id
                ),
+               product_id = COALESCE(EXCLUDED.product_id, order_entitlements.product_id),
+               product_name_snapshot = COALESCE(EXCLUDED.product_name_snapshot, order_entitlements.product_name_snapshot),
+               product_slug_snapshot = COALESCE(EXCLUDED.product_slug_snapshot, order_entitlements.product_slug_snapshot),
+               fulfillment_config_snapshot = COALESCE(EXCLUDED.fulfillment_config_snapshot, order_entitlements.fulfillment_config_snapshot),
                user_id = EXCLUDED.user_id,
                status = EXCLUDED.status,
                starts_at = EXCLUDED.starts_at,
@@ -95,6 +108,12 @@ export class OrderEntitlementService {
           [
             input.order_id,
             input.order_item_id ?? null,
+            input.product_id ?? null,
+            input.product_name_snapshot ?? null,
+            input.product_slug_snapshot ?? null,
+            input.fulfillment_config_snapshot
+              ? JSON.stringify(input.fulfillment_config_snapshot)
+              : null,
             input.user_id,
             status,
             input.starts_at,
@@ -117,6 +136,10 @@ export class OrderEntitlementService {
             (
               order_id,
               order_item_id,
+              product_id,
+              product_name_snapshot,
+              product_slug_snapshot,
+              fulfillment_config_snapshot,
               user_id,
               status,
               starts_at,
@@ -127,10 +150,14 @@ export class OrderEntitlementService {
               mmu_cycle_total,
               metadata
             )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15)
            ON CONFLICT ON CONSTRAINT order_entitlements_order_item_id_key
            DO UPDATE
            SET order_id = EXCLUDED.order_id,
+               product_id = COALESCE(EXCLUDED.product_id, order_entitlements.product_id),
+               product_name_snapshot = COALESCE(EXCLUDED.product_name_snapshot, order_entitlements.product_name_snapshot),
+               product_slug_snapshot = COALESCE(EXCLUDED.product_slug_snapshot, order_entitlements.product_slug_snapshot),
+               fulfillment_config_snapshot = COALESCE(EXCLUDED.fulfillment_config_snapshot, order_entitlements.fulfillment_config_snapshot),
                user_id = EXCLUDED.user_id,
                status = EXCLUDED.status,
                starts_at = EXCLUDED.starts_at,
@@ -152,6 +179,12 @@ export class OrderEntitlementService {
           [
             input.order_id,
             input.order_item_id,
+            input.product_id ?? null,
+            input.product_name_snapshot ?? null,
+            input.product_slug_snapshot ?? null,
+            input.fulfillment_config_snapshot
+              ? JSON.stringify(input.fulfillment_config_snapshot)
+              : null,
             input.user_id,
             status,
             input.starts_at,
@@ -171,6 +204,10 @@ export class OrderEntitlementService {
         `INSERT INTO order_entitlements
           (
             order_id,
+            product_id,
+            product_name_snapshot,
+            product_slug_snapshot,
+            fulfillment_config_snapshot,
             user_id,
             status,
             starts_at,
@@ -181,10 +218,16 @@ export class OrderEntitlementService {
             mmu_cycle_total,
             metadata
           )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING *`,
         [
           input.order_id,
+          input.product_id ?? null,
+          input.product_name_snapshot ?? null,
+          input.product_slug_snapshot ?? null,
+          input.fulfillment_config_snapshot
+            ? JSON.stringify(input.fulfillment_config_snapshot)
+            : null,
           input.user_id,
           status,
           input.starts_at,

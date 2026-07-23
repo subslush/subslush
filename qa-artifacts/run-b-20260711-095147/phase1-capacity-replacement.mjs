@@ -1,0 +1,61 @@
+import { chromium } from '/home/yuri/projects/ss/frontend/node_modules/playwright-core/index.mjs';
+import fs from 'node:fs/promises';
+
+const artifact = '/home/yuri/projects/ss/qa-artifacts/run-b-20260711-095147';
+const baseUrl = 'http://127.0.0.1:3000';
+const adminToken = (await fs.readFile(`${artifact}/admin-token.txt`, 'utf8')).trim();
+const products = ['36920bc8-0477-4bd3-8a0e-e18acf1db130', '7a5ba660-d52d-4a3a-b15d-652932899929', '5e220741-d926-45cf-a40e-39dc3674aabe'];
+await fs.appendFile(`${artifact}/phase1-steps.jsonl`, `${JSON.stringify({ phase: 1, action: 'Webhook creates fulfillment records for supported UI catalog', expected: 'One subscription and task per paid order item', actual: '0 subscriptions/tasks; all product max_subscriptions values were 0 and errors were logged after paid state committed', result: 'FAIL', evidence: 'phase1-db-assertions.json and backend.log 08:13:24' })}\n`);
+await fs.appendFile(`${artifact}/defects.jsonl`, `${JSON.stringify({ id: 'QA-B1-D04', severity: 'Critical', title: 'Supported admin product defaults allow paid orphan orders with no subscriptions/tasks', repro: ['Create products in /admin-next without changing optional Max subscriptions', 'Activate, checkout, and send signed successful webhook', 'Query subscriptions/admin_tasks'], expected: 'Unlimited/sane default or checkout refusal; paid fulfillment creation is atomic', actual: 'max_subscriptions becomes 0; webhook commits in_process/payment/coupon/email while each subscription creation fails and no tasks exist', suspected: 'frontend/src/routes/admin-next/products/[productId=uuid]/+page.svelte max_subscriptions binding; Stripe success path in src/routes/payments.ts/payment service subscription error handling' })}\n`);
+
+const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+const adminContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+await adminContext.addCookies([{ name: 'auth_token', value: adminToken, url: `${baseUrl}/` }, { name: 'csrf_token', value: 'qa-b1-csrf', url: `${baseUrl}/` }]);
+const adminPage = await adminContext.newPage();
+adminPage.setDefaultTimeout(20000);
+for (const id of products) {
+  await adminPage.goto(`${baseUrl}/admin-next/products/${id}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  const consent = adminPage.getByRole('button', { name: 'Reject non-essential' });
+  if (await consent.isVisible({ timeout: 2000 }).catch(() => false)) await consent.click();
+  await adminPage.getByLabel('Max subscriptions').fill('100');
+  const responsePromise = adminPage.waitForResponse(response => response.request().method() === 'PATCH' && new URL(response.url()).pathname === `/api/v1/admin/products/${id}`);
+  await adminPage.getByRole('button', { name: 'Save basics' }).click();
+  const response = await responsePromise;
+  if (!response.ok()) throw new Error(`Capacity save failed ${id}: ${response.status()}`);
+}
+await adminPage.screenshot({ path: `${artifact}/screenshots/024-phase1-capacity-workaround.png`, fullPage: true });
+await fs.appendFile(`${artifact}/phase1-steps.jsonl`, `${JSON.stringify({ phase: 1, action: 'Configure QA-B1 capacities to 100 via supported Products UI', expected: 'Downstream-only workaround after QA-B1-D04', actual: 'Three PATCH requests returned 200', result: 'PASS_WITH_WORKAROUND', evidence: 'screenshots/024-phase1-capacity-workaround.png' })}\n`);
+await adminContext.close();
+
+const simulationLog = await fs.readFile(`${artifact}/simulations.log`, 'utf8');
+const cartJson = simulationLog.match(/AFTER=(\[[^\n]+\])/)?.[1];
+const guestEmail = `qa-b1-final-${Date.now()}@example.test`;
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const page = await context.newPage();
+page.setDefaultTimeout(20000);
+await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+const consent = page.getByRole('button', { name: 'Reject non-essential' });
+if (await consent.isVisible({ timeout: 3000 }).catch(() => false)) await consent.click();
+await page.evaluate(value => { localStorage.setItem('subslush_cart', value); localStorage.removeItem('checkout_draft_state'); }, cartJson);
+await page.goto(`${baseUrl}/checkout`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.getByLabel('Account email').fill('qa-b1-own-account@example.test');
+await page.getByLabel('Account password').fill('QA-B1-Own-Pass!123');
+await page.getByLabel('DELIVERY EMAIL').fill(guestEmail);
+await page.getByRole('button', { name: 'Got a discount code?' }).click();
+await page.getByPlaceholder('Enter code').fill('QA-B1-TEST15');
+const responsePromise = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/checkout/draft');
+await page.getByRole('button', { name: 'APPLY' }).click();
+const response = await responsePromise;
+const payload = await response.json();
+if (!response.ok()) throw new Error(`Final replacement draft failed ${response.status()}: ${JSON.stringify(payload)}`);
+await page.getByText('Coupon applied.', { exact: true }).waitFor();
+await page.screenshot({ path: `${artifact}/screenshots/025-phase1-final-replacement.png`, fullPage: true });
+const data = payload.data ?? payload;
+const state = JSON.parse(await page.evaluate(() => localStorage.getItem('checkout_draft_state') || '{}'));
+const prior = JSON.parse(await fs.readFile(`${artifact}/phase1-identities.json`, 'utf8'));
+const ids = { guestEmail, guestIdentityId: state.guestIdentityId, checkoutSessionKey: data.checkout_session_key, primaryOrderId: data.order_id, originalFailedOrderId: prior.originalFailedOrderId, capacityFailedOrderId: prior.primaryOrderId };
+await fs.writeFile(`${artifact}/phase1-identities.json`, JSON.stringify(ids, null, 2));
+await context.storageState({ path: `${artifact}/phase1-primary-customer-storage.json` });
+await fs.appendFile(`${artifact}/phase1-steps.jsonl`, `${JSON.stringify({ phase: 1, action: 'Final replacement discounted draft after capacity workaround', expected: 'Fresh reserved discounted order for downstream lifecycle', actual: `Order ${data.order_id}, HTTP 200`, result: 'PASS_WITH_WORKAROUND', evidence: 'screenshots/025-phase1-final-replacement.png' })}\n`);
+await context.close();
+await browser.close();

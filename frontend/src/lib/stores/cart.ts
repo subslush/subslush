@@ -16,8 +16,10 @@ export type CartItem = {
   quantity: number;
   description?: string;
   features?: string[];
+  productId?: string;
   variantId?: string;
   termMonths?: number;
+  pricingSnapshotId?: string;
   autoRenew?: boolean;
   upgradeSelectionType?: UpgradeSelectionType | null;
   ownAccountCredentialRequirement?: OwnAccountCredentialRequirement | null;
@@ -26,9 +28,17 @@ export type CartItem = {
 
 const STORAGE_KEY = 'subslush_cart';
 const { subscribe: subscribeCartAddPulse, set: setCartAddPulse } = writable(0);
+const { subscribe: subscribeCartRecoveryNotice, set: setCartRecoveryNotice } =
+  writable<string | null>(null);
 
 export const cartAddPulse = {
   subscribe: subscribeCartAddPulse
+};
+
+export const cartRecoveryNotice = {
+  subscribe: subscribeCartRecoveryNotice,
+  clear: () => setCartRecoveryNotice(null),
+  show: (message: string) => setCartRecoveryNotice(message)
 };
 
 const sanitizeCartItem = (raw: unknown): CartItem | null => {
@@ -68,12 +78,24 @@ const sanitizeCartItem = (raw: unknown): CartItem | null => {
     features: Array.isArray(candidate.features)
       ? candidate.features.filter((item: unknown) => typeof item === 'string')
       : undefined,
+    productId:
+      typeof candidate.productId === 'string'
+        ? candidate.productId
+        : typeof candidate.product_id === 'string'
+          ? candidate.product_id
+          : undefined,
     variantId: typeof candidate.variantId === 'string' ? candidate.variantId : undefined,
     termMonths:
       typeof candidate.termMonths === 'number' &&
       Number.isFinite(candidate.termMonths)
       ? Math.max(1, Math.floor(candidate.termMonths))
       : undefined,
+    pricingSnapshotId:
+      typeof candidate.pricingSnapshotId === 'string'
+        ? candidate.pricingSnapshotId
+        : typeof candidate.pricing_snapshot_id === 'string'
+          ? candidate.pricing_snapshot_id
+          : undefined,
     autoRenew:
       typeof candidate.autoRenew === 'boolean' ? candidate.autoRenew : undefined,
     upgradeSelectionType:
@@ -92,7 +114,7 @@ const sanitizeCartItem = (raw: unknown): CartItem | null => {
         : undefined,
   };
 
-  if (!item.id || !item.serviceName || !item.plan) {
+  if (!item.id || !item.serviceName || !item.plan || !item.productId) {
     return null;
   }
 
@@ -110,9 +132,19 @@ function loadCart(): CartItem[] {
     const sanitized = parsed
       .map(sanitizeCartItem)
       .filter((item): item is CartItem => item !== null);
+    const removedCount = parsed.length - sanitized.length;
+    if (removedCount > 0) {
+      setCartRecoveryNotice(
+        `${removedCount} saved cart ${removedCount === 1 ? 'item was' : 'items were'} removed because the product information was outdated. Please add ${removedCount === 1 ? 'it' : 'them'} again from the catalog.`
+      );
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+    }
     return sanitized;
   } catch (error) {
     console.error('Failed to load cart from storage:', error);
+    setCartRecoveryNotice(
+      'Your saved cart could not be restored. Please add the products again from the catalog.'
+    );
     return [];
   }
 }
@@ -182,6 +214,13 @@ function createCartStore() {
       persistCart(sanitized);
       set(sanitized);
     },
+    removeInvalidItems: (ids: string[], message: string) => update(current => {
+      const invalidIds = new Set(ids);
+      const updated = current.filter(item => !invalidIds.has(item.id));
+      persistCart(updated);
+      setCartRecoveryNotice(message);
+      return updated;
+    }),
     clear: () => {
       persistCart([]);
       set([]);

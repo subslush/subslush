@@ -291,11 +291,16 @@ async function revealOrderItemCredentials(params: {
             s.id AS subscription_id,
             s.order_item_id,
             s.credentials_encrypted,
-            p.metadata AS product_metadata
+            COALESCE(
+              s.fulfillment_config_snapshot,
+              oi.fulfillment_config_snapshot,
+              p.metadata
+            ) AS product_metadata
      FROM orders o
      JOIN subscriptions s ON s.order_id = o.id
+     LEFT JOIN order_items oi ON oi.id = s.order_item_id
      LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-     LEFT JOIN products p ON p.id = pv.product_id
+     LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
      WHERE o.id = $1
        AND o.user_id = $2
        AND s.id = $3`,
@@ -756,11 +761,18 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       }
       const pool = getDatabasePool();
       const result = await pool.query(
-        `SELECT o.contact_email, s.order_item_id, p.metadata AS product_metadata
+        `SELECT o.contact_email,
+                s.order_item_id,
+                COALESCE(
+                  s.fulfillment_config_snapshot,
+                  oi.fulfillment_config_snapshot,
+                  p.metadata
+                ) AS product_metadata
          FROM orders o
          JOIN subscriptions s ON s.order_id = o.id
+         LEFT JOIN order_items oi ON oi.id = s.order_item_id
          LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-         LEFT JOIN products p ON p.id = pv.product_id
+         LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
          WHERE o.id = $1
            AND o.user_id = $2
            AND s.id = $3`,
@@ -987,14 +999,14 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
         if (entitlements.length > 0) {
           const orderItemsResult = await pool.query(
             `SELECT oi.id,
-                    COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+                    COALESCE(oi.product_name_snapshot, p.name, oi.metadata->>'product_name') AS product_name,
                     COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                     oi.term_months,
                     oi.metadata,
-                    p.metadata AS product_metadata
+                    COALESCE(oi.fulfillment_config_snapshot, p.metadata) AS product_metadata
              FROM order_items oi
              LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
-             LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+             LEFT JOIN products p ON p.id = COALESCE(oi.product_id, pv.product_id)
              WHERE oi.order_id = $1`,
             [orderId]
           );
@@ -1164,14 +1176,14 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
         if (entitlements.length > 0) {
           const orderItemsResult = await pool.query(
             `SELECT oi.id,
-                    COALESCE(p.name, oi.metadata->>'product_name') AS product_name,
+                    COALESCE(oi.product_name_snapshot, p.name, oi.metadata->>'product_name') AS product_name,
                     COALESCE(pv.name, oi.metadata->>'variant_name') AS variant_name,
                     oi.term_months,
                     oi.metadata,
-                    p.metadata AS product_metadata
+                    COALESCE(oi.fulfillment_config_snapshot, p.metadata) AS product_metadata
              FROM order_items oi
              LEFT JOIN product_variants pv ON pv.id = oi.product_variant_id
-             LEFT JOIN products p ON p.id::text = COALESCE(pv.product_id::text, oi.metadata->>'product_id')
+             LEFT JOIN products p ON p.id = COALESCE(oi.product_id, pv.product_id)
              WHERE oi.order_id = $1`,
             [orderId]
           );
@@ -1267,7 +1279,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           `SELECT s.id, p.metadata AS product_metadata
            FROM subscriptions s
            LEFT JOIN product_variants pv ON pv.id = s.product_variant_id
-           LEFT JOIN products p ON p.id = pv.product_id
+           LEFT JOIN products p ON p.id = COALESCE(s.product_id, pv.product_id)
            WHERE s.order_id = $1
            ORDER BY s.created_at ASC`,
           [orderId]

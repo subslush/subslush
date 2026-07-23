@@ -1,0 +1,2 @@
+303 /admin /dashboard
+303 /admin-next /dashboard

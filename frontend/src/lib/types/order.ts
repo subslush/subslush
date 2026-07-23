@@ -25,9 +25,14 @@ export interface PaymentMethodBadge {
 export interface OrderItem {
   id: string;
   order_id: string;
+  product_id?: string | null;
   product_variant_id?: string | null;
   product_name?: string | null;
   variant_name?: string | null;
+  product_name_snapshot?: string | null;
+  product_slug_snapshot?: string | null;
+  duration_months_snapshot?: number | null;
+  fulfillment_config_snapshot?: Record<string, unknown> | null;
   quantity: number;
   unit_price_cents: number;
   base_price_cents?: number | null;
@@ -95,6 +100,10 @@ export interface OrderEntitlement {
   id: string;
   order_id: string;
   order_item_id?: string | null;
+  product_id?: string | null;
+  product_name_snapshot?: string | null;
+  product_slug_snapshot?: string | null;
+  fulfillment_config_snapshot?: Record<string, unknown> | null;
   user_id: string;
   status: 'active' | 'expired' | 'cancelled' | 'pending';
   starts_at: string;

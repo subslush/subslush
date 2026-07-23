@@ -1,0 +1,5 @@
+403 /admin/fulfillment/orders/00000000-0000-4000-8000-000000000001
+403 /admin/next/orders
+403 /admin/next/coupons/newsletter
+403 /admin/subscriptions/00000000-0000-4000-8000-000000000002/credentials
+403 /admin/tasks/00000000-0000-4000-8000-000000000002/credentials

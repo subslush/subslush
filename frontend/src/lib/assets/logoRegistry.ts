@@ -1,6 +1,6 @@
 import netflixLogo from '$lib/assets/netflix_logo.jpg?picture';
 import spotifyLogo from '$lib/assets/spotify_logo.png?picture';
-import chatgptLogo from '$lib/assets/chatgpt-logo.jpg?picture';
+import chatgptLogo from '$lib/assets/chatgpt-logo.webp?picture';
 import adobeccLogo from '$lib/assets/adobecc-logo.png?picture';
 import youtubeLogo from '$lib/assets/yt_logo.webp?picture';
 import amazonprimevideoLogo from '$lib/assets/amznprime_logo.png?picture';

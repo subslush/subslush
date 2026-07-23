@@ -61,12 +61,19 @@ import {
 } from '../utils/currency';
 import { resolveCountryCodeFromRequestIp } from '../utils/countryFromIp';
 import { notificationService } from '../services/notificationService';
-import { resolveVariantPricing } from '../services/variantPricingService';
+import {
+  resolveComparisonPriceCents,
+  resolveSellableProduct,
+} from '../services/sellableProductService';
+import { attachLegacyVariantDeprecation } from '../utils/catalogApiCompatibility';
+import { sendSellableProductError } from '../utils/catalogApiErrors';
 import {
   computeEffectiveMonthlyCents,
   computeTermPricing,
 } from '../utils/termPricing';
 import { fxDisplayPricingService } from '../services/fx/fxDisplayPricingService';
+import { isPublishableFixedCatalog } from '../utils/fixedCatalog';
+import { buildFulfillmentConfigSnapshot } from '../utils/productIdentity';
 
 // Rate limiting handlers (fixes plugin encapsulation issues)
 const subscriptionQueryRateLimit = createRateLimitHandler({
@@ -174,8 +181,9 @@ const FastifySchemas = {
   // Body schemas
   purchaseSubscriptionInput: {
     type: 'object',
-    required: ['variant_id', 'duration_months'],
+    anyOf: [{ required: ['product_id'] }, { required: ['variant_id'] }],
     properties: {
+      product_id: { type: 'string', format: 'uuid' },
       variant_id: {
         type: 'string',
         minLength: 1,
@@ -183,8 +191,8 @@ const FastifySchemas = {
       duration_months: {
         type: 'number',
         minimum: 1,
-        default: 1,
       },
+      pricing_snapshot_id: { type: 'string', minLength: 1, maxLength: 255 },
       metadata: {
         type: 'object',
         additionalProperties: true,
@@ -202,16 +210,17 @@ const FastifySchemas = {
 
   validatePurchaseInput: {
     type: 'object',
-    required: ['variant_id', 'duration_months'],
+    anyOf: [{ required: ['product_id'] }, { required: ['variant_id'] }],
     properties: {
+      product_id: { type: 'string', format: 'uuid' },
       variant_id: {
         type: 'string',
         minLength: 1,
       },
+      pricing_snapshot_id: { type: 'string', minLength: 1, maxLength: 255 },
       duration_months: {
         type: 'number',
         minimum: 1,
-        default: 1,
       },
       coupon_code: {
         type: 'string',
@@ -235,7 +244,8 @@ const FastifySchemas = {
         maxItems: 50,
         items: {
           type: 'object',
-          required: ['cart_item_id', 'variant_id'],
+          required: ['cart_item_id'],
+          anyOf: [{ required: ['product_id'] }, { required: ['variant_id'] }],
           properties: {
             cart_item_id: {
               type: 'string',
@@ -246,6 +256,10 @@ const FastifySchemas = {
               type: 'string',
               minLength: 1,
               maxLength: 128,
+            },
+            product_id: {
+              type: ['string', 'null'],
+              format: 'uuid',
             },
             term_months: {
               type: 'number',
@@ -336,6 +350,49 @@ type AvailablePlan = {
   category_keys?: string[] | null;
   product_id: string;
   variant_id: string;
+  catalog_mode: 'fixed_product' | 'legacy_variant';
+  duration_months: number | null;
+  price_cents: number;
+  comparison_price_cents: number | null;
+  pricing_snapshot_id: string;
+  availability: 'available';
+};
+
+type CatalogDiagnostic = {
+  code:
+    | 'missing_service_type'
+    | 'missing_plan_code'
+    | 'legacy_terms_unavailable'
+    | 'price_unavailable'
+    | 'invalid_fixed_catalog';
+  product_id: string;
+  listing_id: string;
+  catalog_mode: 'legacy_variant' | 'fixed_product';
+  message: string;
+};
+
+const addCatalogDiagnostic = (
+  diagnostics: CatalogDiagnostic[],
+  diagnostic: CatalogDiagnostic
+): void => {
+  if (
+    diagnostics.some(
+      entry =>
+        entry.code === diagnostic.code &&
+        entry.product_id === diagnostic.product_id &&
+        entry.listing_id === diagnostic.listing_id
+    )
+  ) {
+    return;
+  }
+  diagnostics.push(diagnostic);
+};
+
+const attachCatalogDiagnostics = (
+  reply: FastifyReply,
+  diagnostics: CatalogDiagnostic[]
+): void => {
+  reply.header('X-Catalog-Diagnostics-Count', String(diagnostics.length));
 };
 
 type AdminTaskPriority = 'low' | 'medium' | 'high' | 'urgent';
@@ -535,118 +592,36 @@ function readMetadataString(
   return undefined;
 }
 
-function readMetadataInteger(
-  metadata: Record<string, unknown> | null | undefined,
-  keys: string[]
-): number | null {
-  if (!metadata || typeof metadata !== 'object') {
-    return null;
-  }
-  for (const key of keys) {
-    const value = metadata[key];
-    if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
-      return value;
-    }
-    if (typeof value === 'string') {
-      const parsed = Number(value.trim());
-      if (Number.isInteger(parsed) && parsed >= 0) {
-        return parsed;
-      }
-    }
-  }
-  return null;
-}
-
-function readComparisonPriceCurrency(
-  metadata: Record<string, unknown> | null | undefined
-): SupportedCurrency {
-  return (
-    normalizeCurrencyCode(
-      readMetadataString(metadata, [
-        'comparison_price_currency',
-        'comparisonPriceCurrency',
-        'compare_at_price_currency',
-        'compareAtPriceCurrency',
-      ])
-    ) || 'USD'
-  );
-}
-
 async function resolveDisplayComparisonPriceCents(params: {
   metadata: Record<string, unknown> | null | undefined;
   displayCurrency: string;
 }): Promise<number | null> {
-  const comparisonPriceCents = readMetadataInteger(params.metadata, [
-    'comparison_price_cents',
-    'comparisonPriceCents',
-    'compare_at_price_cents',
-    'compareAtPriceCents',
-  ]);
-  if (comparisonPriceCents === null) {
-    return null;
-  }
-
-  const displayCurrency = normalizeCurrencyCode(params.displayCurrency);
-  const comparisonCurrency = readComparisonPriceCurrency(params.metadata);
-  if (!displayCurrency) {
-    return null;
-  }
-  if (comparisonCurrency === displayCurrency) {
-    return comparisonPriceCents;
-  }
-  if (comparisonCurrency !== 'USD') {
-    return null;
-  }
-
-  const converted =
-    await fxDisplayPricingService.convertUsdCentsToDisplayCurrency({
-      usdCents: comparisonPriceCents,
-      currency: displayCurrency,
-    });
-  return converted?.priceCents ?? null;
+  return resolveComparisonPriceCents(params);
 }
 
 async function resolveFixedProductDisplayPrice(params: {
+  productId: string;
   fixedPriceCents: number;
   fixedPriceCurrency: string | null;
   currentFixedPriceCents: number;
   currentFixedPriceCurrency: string | null;
   preferredCurrency: SupportedCurrency;
-}): Promise<{ priceCents: number; currency: SupportedCurrency } | null> {
-  if (
-    Number.isInteger(params.currentFixedPriceCents) &&
-    params.currentFixedPriceCents >= 0 &&
-    params.currentFixedPriceCurrency === params.preferredCurrency
-  ) {
-    return {
-      priceCents: params.currentFixedPriceCents,
-      currency: params.currentFixedPriceCurrency,
-    };
-  }
-
-  if (params.fixedPriceCurrency === params.preferredCurrency) {
-    return {
-      priceCents: params.fixedPriceCents,
-      currency: params.fixedPriceCurrency,
-    };
-  }
-
-  if (params.fixedPriceCurrency !== 'USD') {
+}): Promise<{
+  priceCents: number;
+  currency: SupportedCurrency;
+  pricingSnapshotId: string;
+} | null> {
+  const resolved = await resolveSellableProduct({
+    context: 'public_catalog_fixed_product',
+    productId: params.productId,
+    currency: params.preferredCurrency,
+  });
+  if (!resolved.ok || resolved.data.catalogMode !== 'fixed_product')
     return null;
-  }
-
-  const converted =
-    await fxDisplayPricingService.convertUsdCentsToDisplayCurrency({
-      usdCents: params.fixedPriceCents,
-      currency: params.preferredCurrency,
-    });
-  if (!converted) {
-    return null;
-  }
-
   return {
-    priceCents: converted.priceCents,
-    currency: converted.currency,
+    priceCents: resolved.data.priceCents,
+    currency: resolved.data.currency as SupportedCurrency,
+    pricingSnapshotId: resolved.data.pricingSnapshotId,
   };
 }
 
@@ -819,8 +794,8 @@ async function ensureMissingPriceTask(params: {
 
     const result = await pool.query(
       `INSERT INTO admin_tasks
-        (subscription_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
-       SELECT NULL, NULL, NULL, $1::varchar(50), $2, $3, $4, $5::varchar(50), $6
+        (subscription_id, product_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
+       SELECT NULL, $7::uuid, NULL, NULL, $1::varchar(50), $2, $3, $4, $5::varchar(50), $6
        WHERE NOT EXISTS (
          SELECT 1
          FROM admin_tasks
@@ -836,6 +811,7 @@ async function ensureMissingPriceTask(params: {
         notes,
         MISSING_PRICE_TASK_CATEGORY,
         dueDate,
+        params.productId,
       ]
     );
 
@@ -860,8 +836,8 @@ async function ensureMissingPlanTask(params: {
 
     const result = await pool.query(
       `INSERT INTO admin_tasks
-        (subscription_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
-       SELECT NULL, NULL, NULL, $1::varchar(50), $2, $3, $4, $5::varchar(50), $6
+        (subscription_id, product_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
+       SELECT NULL, $7::uuid, NULL, NULL, $1::varchar(50), $2, $3, $4, $5::varchar(50), $6
        WHERE NOT EXISTS (
          SELECT 1
          FROM admin_tasks
@@ -877,6 +853,7 @@ async function ensureMissingPlanTask(params: {
         notes,
         MISSING_PLAN_TASK_CATEGORY,
         dueDate,
+        params.productId,
       ]
     );
 
@@ -902,8 +879,8 @@ async function ensureMissingTermTask(params: {
 
     const result = await pool.query(
       `INSERT INTO admin_tasks
-        (subscription_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
-       SELECT NULL, NULL, NULL, $1::varchar(50), $2, $3, $4, $5::varchar(50), $6
+        (subscription_id, product_id, user_id, order_id, task_type, due_date, priority, notes, task_category, sla_due_at)
+       SELECT NULL, $7::uuid, NULL, NULL, $1::varchar(50), $2, $3, $4, $5::varchar(50), $6
        WHERE NOT EXISTS (
          SELECT 1
          FROM admin_tasks
@@ -919,6 +896,7 @@ async function ensureMissingTermTask(params: {
         notes,
         MISSING_TERM_TASK_CATEGORY,
         dueDate,
+        params.productId,
       ]
     );
 
@@ -1043,6 +1021,7 @@ export async function subscriptionRoutes(
         ]);
         const variantIds = listings.map(listing => listing.variant.id);
         const fixedProductIds = fixedProducts.map(product => product.id);
+        const catalogDiagnostics: CatalogDiagnostic[] = [];
         const [
           currentPriceMap,
           fallbackUsdPriceMap,
@@ -1083,11 +1062,7 @@ export async function subscriptionRoutes(
               category: CATALOG_TERMS_UNAVAILABLE_TASK_CATEGORY,
             });
           }
-          reply.header('X-Catalog-Terms-Status', 'unavailable');
-          return ErrorResponses.serviceUnavailable(
-            reply,
-            'Catalog terms unavailable'
-          );
+          reply.header('X-Catalog-Terms-Status', 'degraded');
         }
 
         const categoryAssignmentMap =
@@ -1103,7 +1078,11 @@ export async function subscriptionRoutes(
           category?: string | null;
           sub_category?: string | null;
           category_assignments?: ProductCategoryAssignment[];
-        }) => {
+        }): {
+          category: string | null;
+          subCategory: string | null;
+          categoryKeys: string[];
+        } => {
           const categoryAssignments =
             categoryAssignmentMap.get(product.id) ||
             product.category_assignments ||
@@ -1144,6 +1123,14 @@ export async function subscriptionRoutes(
               productId: product.id,
               slug: product.slug,
             });
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'missing_service_type',
+              product_id: product.id,
+              listing_id: variant.id,
+              catalog_mode: 'legacy_variant',
+              message:
+                'Legacy listing omitted because service type is missing.',
+            });
             continue;
           }
 
@@ -1160,6 +1147,14 @@ export async function subscriptionRoutes(
                 serviceType,
               })
             );
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'missing_plan_code',
+              product_id: product.id,
+              listing_id: variant.id,
+              catalog_mode: 'legacy_variant',
+              message:
+                'Legacy listing omitted because its plan code is missing.',
+            });
             continue;
           }
 
@@ -1178,6 +1173,14 @@ export async function subscriptionRoutes(
                 planCode,
               })
             );
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'legacy_terms_unavailable',
+              product_id: product.id,
+              listing_id: variant.id,
+              catalog_mode: 'legacy_variant',
+              message:
+                'Legacy listing omitted because it has no readable active term.',
+            });
             continue;
           }
 
@@ -1212,6 +1215,13 @@ export async function subscriptionRoutes(
                 planCode,
               })
             );
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'price_unavailable',
+              product_id: product.id,
+              listing_id: variant.id,
+              catalog_mode: 'legacy_variant',
+              message: `Legacy listing omitted because no ${preferredCurrency} or convertible USD price is available.`,
+            });
             continue;
           }
           const price = priceCents / 100;
@@ -1225,6 +1235,14 @@ export async function subscriptionRoutes(
                 planCode,
               })
             );
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'price_unavailable',
+              product_id: product.id,
+              listing_id: variant.id,
+              catalog_mode: 'legacy_variant',
+              message:
+                'Legacy listing omitted because its price currency is invalid.',
+            });
             continue;
           }
 
@@ -1239,16 +1257,12 @@ export async function subscriptionRoutes(
             planCode;
           const description = variant.description || '';
           const badges = normalizeStringList(variant.metadata?.['badges']);
+          const taxonomy = resolveProductTaxonomy(product);
 
           const planEntry: AvailablePlan = {
-            ...(() => {
-              const taxonomy = resolveProductTaxonomy(product);
-              return {
-                category: taxonomy.category,
-                sub_category: taxonomy.subCategory,
-                category_keys: taxonomy.categoryKeys,
-              };
-            })(),
+            category: taxonomy.category,
+            sub_category: taxonomy.subCategory,
+            category_keys: taxonomy.categoryKeys,
             plan: planCode,
             name: displayName,
             display_name: displayName,
@@ -1263,6 +1277,16 @@ export async function subscriptionRoutes(
             logoKey: product.logo_key ?? null,
             product_id: product.id,
             variant_id: variant.id,
+            catalog_mode: 'legacy_variant',
+            duration_months: null,
+            price_cents: priceCents,
+            comparison_price_cents: null,
+            pricing_snapshot_id:
+              readMetadataString(currentPrice?.metadata, ['snapshot_id']) ||
+              currentPrice?.id ||
+              fallbackUsdPrice?.id ||
+              variant.id,
+            availability: 'available',
           };
 
           if (!services[serviceType]) {
@@ -1278,6 +1302,13 @@ export async function subscriptionRoutes(
             Logger.warn('Fixed product missing service_type', {
               productId: product.id,
               slug: product.slug,
+            });
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'missing_service_type',
+              product_id: product.id,
+              listing_id: product.id,
+              catalog_mode: 'fixed_product',
+              message: 'Fixed product omitted because service type is missing.',
             });
             continue;
           }
@@ -1300,7 +1331,7 @@ export async function subscriptionRoutes(
             !Number.isInteger(durationMonths) ||
             durationMonths <= 0 ||
             !Number.isInteger(fixedPriceCents) ||
-            fixedPriceCents < 0 ||
+            fixedPriceCents <= 0 ||
             !fixedPriceCurrency
           ) {
             Logger.warn('Fixed product missing pricing fields', {
@@ -1309,10 +1340,19 @@ export async function subscriptionRoutes(
               fixedPriceCents: product.fixed_price_cents,
               fixedPriceCurrency: product.fixed_price_currency,
             });
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'invalid_fixed_catalog',
+              product_id: product.id,
+              listing_id: product.id,
+              catalog_mode: 'fixed_product',
+              message:
+                'Fixed product omitted because duration, price, or currency is invalid.',
+            });
             continue;
           }
 
           const resolvedPrice = await resolveFixedProductDisplayPrice({
+            productId: product.id,
             fixedPriceCents,
             fixedPriceCurrency,
             currentFixedPriceCents,
@@ -1322,7 +1362,11 @@ export async function subscriptionRoutes(
           const resolvedPriceCents = resolvedPrice?.priceCents ?? Number.NaN;
           const resolvedCurrency = resolvedPrice?.currency ?? null;
 
-          if (!Number.isInteger(resolvedPriceCents) || !resolvedCurrency) {
+          if (
+            !resolvedPrice ||
+            !Number.isInteger(resolvedPriceCents) ||
+            !resolvedCurrency
+          ) {
             missingPriceTasks.push(
               ensureMissingPriceTask({
                 productId: product.id,
@@ -1331,6 +1375,13 @@ export async function subscriptionRoutes(
                 planCode: product.slug,
               })
             );
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'price_unavailable',
+              product_id: product.id,
+              listing_id: product.id,
+              catalog_mode: 'fixed_product',
+              message: `Fixed product omitted because no ${preferredCurrency} display price is available.`,
+            });
             continue;
           }
 
@@ -1341,16 +1392,18 @@ export async function subscriptionRoutes(
             ]) || product.name;
           const features = normalizeStringList(product.metadata?.['features']);
           const badges = normalizeStringList(product.metadata?.['badges']);
+          const taxonomy = resolveProductTaxonomy(product);
+          const comparisonPriceCents = await resolveDisplayComparisonPriceCents(
+            {
+              metadata: product.metadata,
+              displayCurrency: resolvedCurrency,
+            }
+          );
 
           const planEntry: AvailablePlan = {
-            ...(() => {
-              const taxonomy = resolveProductTaxonomy(product);
-              return {
-                category: taxonomy.category,
-                sub_category: taxonomy.subCategory,
-                category_keys: taxonomy.categoryKeys,
-              };
-            })(),
+            category: taxonomy.category,
+            sub_category: taxonomy.subCategory,
+            category_keys: taxonomy.categoryKeys,
             plan: product.slug,
             name: displayName,
             display_name: displayName,
@@ -1365,6 +1418,16 @@ export async function subscriptionRoutes(
             logoKey: product.logo_key ?? null,
             product_id: product.id,
             variant_id: product.id,
+            catalog_mode: 'fixed_product',
+            duration_months: durationMonths,
+            price_cents: resolvedPriceCents,
+            comparison_price_cents:
+              comparisonPriceCents !== null &&
+              comparisonPriceCents > resolvedPriceCents
+                ? comparisonPriceCents
+                : null,
+            pricing_snapshot_id: resolvedPrice.pricingSnapshotId,
+            availability: 'available',
           };
 
           if (!services[serviceType]) {
@@ -1410,9 +1473,11 @@ export async function subscriptionRoutes(
           }
         }
 
+        attachCatalogDiagnostics(reply, catalogDiagnostics);
         return SuccessResponses.ok(reply, {
           services,
           total_plans: totalPlans,
+          catalog_diagnostics: catalogDiagnostics,
         });
       } catch (error) {
         Logger.error('Failed to fetch available plans:', error);
@@ -1703,6 +1768,7 @@ export async function subscriptionRoutes(
         ]);
         const variantIds = listings.map(listing => listing.variant.id);
         const fixedProductIds = fixedProducts.map(product => product.id);
+        const catalogDiagnostics: CatalogDiagnostic[] = [];
         const [
           currentPriceMap,
           fallbackUsdPriceMap,
@@ -1746,11 +1812,7 @@ export async function subscriptionRoutes(
               category: CATALOG_TERMS_UNAVAILABLE_TASK_CATEGORY,
             });
           }
-          reply.header('X-Catalog-Terms-Status', 'unavailable');
-          return ErrorResponses.serviceUnavailable(
-            reply,
-            'Catalog terms unavailable'
-          );
+          reply.header('X-Catalog-Terms-Status', 'degraded');
         }
 
         const missingPriceTasks: Array<Promise<boolean>> = [];
@@ -1771,6 +1833,8 @@ export async function subscriptionRoutes(
             platform: string | null;
             region: string | null;
             comparisonPriceCents: number | null;
+            catalogMode: 'fixed_product' | 'legacy_variant';
+            pricingSnapshotId: string;
           }
         >();
 
@@ -1784,6 +1848,14 @@ export async function subscriptionRoutes(
               productId: product.id,
               slug: product.slug,
             });
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'missing_service_type',
+              product_id: product.id,
+              listing_id: variant.id,
+              catalog_mode: 'legacy_variant',
+              message:
+                'Legacy listing omitted because service type is missing.',
+            });
             continue;
           }
 
@@ -1796,6 +1868,14 @@ export async function subscriptionRoutes(
                 serviceType,
               })
             );
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'missing_plan_code',
+              product_id: product.id,
+              listing_id: variant.id,
+              catalog_mode: 'legacy_variant',
+              message:
+                'Legacy listing omitted because its plan code is missing.',
+            });
             continue;
           }
 
@@ -1809,6 +1889,14 @@ export async function subscriptionRoutes(
                 planCode,
               })
             );
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'legacy_terms_unavailable',
+              product_id: product.id,
+              listing_id: variant.id,
+              catalog_mode: 'legacy_variant',
+              message:
+                'Legacy listing omitted because it has no readable active term.',
+            });
             continue;
           }
 
@@ -1832,6 +1920,13 @@ export async function subscriptionRoutes(
                 planCode,
               })
             );
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'price_unavailable',
+              product_id: product.id,
+              listing_id: variant.id,
+              catalog_mode: 'legacy_variant',
+              message: `Legacy listing omitted because no ${preferredCurrency} or convertible USD price is available.`,
+            });
             continue;
           }
 
@@ -1845,6 +1940,14 @@ export async function subscriptionRoutes(
                 planCode,
               })
             );
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'price_unavailable',
+              product_id: product.id,
+              listing_id: variant.id,
+              catalog_mode: 'legacy_variant',
+              message:
+                'Legacy listing omitted because its price currency is invalid.',
+            });
             continue;
           }
 
@@ -1885,6 +1988,14 @@ export async function subscriptionRoutes(
             !Number.isFinite(minMonthlyCents) ||
             !Number.isFinite(actualPriceCents)
           ) {
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'price_unavailable',
+              product_id: product.id,
+              listing_id: variant.id,
+              catalog_mode: 'legacy_variant',
+              message:
+                'Legacy listing omitted because its term pricing is invalid.',
+            });
             continue;
           }
 
@@ -1939,12 +2050,28 @@ export async function subscriptionRoutes(
               platform: platform || null,
               region: region || null,
               comparisonPriceCents,
+              catalogMode: 'legacy_variant',
+              pricingSnapshotId:
+                readMetadataString(currentPrice?.metadata, ['snapshot_id']) ||
+                currentPrice?.id ||
+                fallbackUsdPrice?.id ||
+                variant.id,
             });
           }
         }
 
         for (const product of fixedProducts) {
           const serviceType = product.service_type?.toLowerCase();
+          if (!serviceType) {
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'missing_service_type',
+              product_id: product.id,
+              listing_id: product.id,
+              catalog_mode: 'fixed_product',
+              message: 'Fixed product omitted because service type is missing.',
+            });
+            continue;
+          }
           const fixedPriceCents = Number(product.fixed_price_cents);
           const durationMonths = Number(product.duration_months);
           const fixedPriceCurrency = normalizeCurrencyCode(
@@ -1961,15 +2088,24 @@ export async function subscriptionRoutes(
 
           if (
             !Number.isInteger(fixedPriceCents) ||
-            fixedPriceCents < 0 ||
+            fixedPriceCents <= 0 ||
             !Number.isInteger(durationMonths) ||
             durationMonths <= 0 ||
             !fixedPriceCurrency
           ) {
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'invalid_fixed_catalog',
+              product_id: product.id,
+              listing_id: product.id,
+              catalog_mode: 'fixed_product',
+              message:
+                'Fixed product omitted because duration, price, or currency is invalid.',
+            });
             continue;
           }
 
           const resolvedPrice = await resolveFixedProductDisplayPrice({
+            productId: product.id,
             fixedPriceCents,
             fixedPriceCurrency,
             currentFixedPriceCents,
@@ -1979,7 +2115,11 @@ export async function subscriptionRoutes(
           const resolvedPriceCents = resolvedPrice?.priceCents ?? Number.NaN;
           const resolvedCurrency = resolvedPrice?.currency ?? null;
 
-          if (!Number.isInteger(resolvedPriceCents) || !resolvedCurrency) {
+          if (
+            !resolvedPrice ||
+            !Number.isInteger(resolvedPriceCents) ||
+            !resolvedCurrency
+          ) {
             if (serviceType) {
               missingPriceTasks.push(
                 ensureMissingPriceTask({
@@ -1990,6 +2130,13 @@ export async function subscriptionRoutes(
                 })
               );
             }
+            addCatalogDiagnostic(catalogDiagnostics, {
+              code: 'price_unavailable',
+              product_id: product.id,
+              listing_id: product.id,
+              catalog_mode: 'fixed_product',
+              message: `Fixed product omitted because no ${preferredCurrency} display price is available.`,
+            });
             continue;
           }
 
@@ -2047,6 +2194,8 @@ export async function subscriptionRoutes(
               platform: platform || null,
               region: region || null,
               comparisonPriceCents,
+              catalogMode: 'fixed_product',
+              pricingSnapshotId: resolvedPrice.pricingSnapshotId,
             });
           }
         }
@@ -2066,50 +2215,56 @@ export async function subscriptionRoutes(
             Array.from(productMap.keys())
           );
 
-        const products = Array.from(productMap.values()).map(entry => ({
-          ...(function () {
-            const assignments =
-              productCategoryAssignments.get(entry.product.id) ||
-              entry.product.category_assignments ||
-              [];
-            const primaryAssignment =
-              assignments.find(assignment => assignment.is_primary) ||
-              assignments[0] ||
-              null;
-            return {
-              category:
-                primaryAssignment?.category ?? entry.product.category ?? null,
-              sub_category: entry.product.sub_category ?? null,
-              category_keys: buildCategoryKeys(
-                assignments,
-                primaryAssignment?.category ?? entry.product.category ?? null
-              ),
-            };
-          })(),
-          product_id: entry.product.id,
-          variant_id: entry.variantId,
-          slug: entry.product.slug,
-          name: entry.product.name,
-          description: entry.product.description ?? '',
-          service_type: entry.product.service_type ?? null,
-          logo_key: entry.product.logo_key ?? null,
-          platform: entry.platform,
-          region: entry.region,
-          currency: entry.currency,
-          from_price: entry.minMonthlyCents / 100,
-          from_term_months: entry.fromTermMonths,
-          from_discount_percent: entry.fromDiscountPercent,
-          max_discount_percent: entry.maxDiscountPercent,
-          actual_price: entry.actualPriceCents / 100,
-          comparison_price:
-            entry.comparisonPriceCents !== null
-              ? entry.comparisonPriceCents / 100
-              : null,
-        }));
+        const products = Array.from(productMap.values()).map(entry => {
+          const assignments =
+            productCategoryAssignments.get(entry.product.id) ||
+            entry.product.category_assignments ||
+            [];
+          const primaryAssignment =
+            assignments.find(assignment => assignment.is_primary) ||
+            assignments[0] ||
+            null;
+          return {
+            category:
+              primaryAssignment?.category ?? entry.product.category ?? null,
+            sub_category: entry.product.sub_category ?? null,
+            category_keys: buildCategoryKeys(
+              assignments,
+              primaryAssignment?.category ?? entry.product.category ?? null
+            ),
+            product_id: entry.product.id,
+            variant_id: entry.variantId,
+            catalog_mode: entry.catalogMode,
+            duration_months: entry.fromTermMonths,
+            price_cents: entry.actualPriceCents,
+            comparison_price_cents: entry.comparisonPriceCents,
+            pricing_snapshot_id: entry.pricingSnapshotId,
+            availability: 'available',
+            slug: entry.product.slug,
+            name: entry.product.name,
+            description: entry.product.description ?? '',
+            service_type: entry.product.service_type ?? null,
+            logo_key: entry.product.logo_key ?? null,
+            platform: entry.platform,
+            region: entry.region,
+            currency: entry.currency,
+            from_price: entry.minMonthlyCents / 100,
+            from_term_months: entry.fromTermMonths,
+            from_discount_percent: entry.fromDiscountPercent,
+            max_discount_percent: entry.maxDiscountPercent,
+            actual_price: entry.actualPriceCents / 100,
+            comparison_price:
+              entry.comparisonPriceCents !== null
+                ? entry.comparisonPriceCents / 100
+                : null,
+          };
+        });
 
+        attachCatalogDiagnostics(reply, catalogDiagnostics);
         return SuccessResponses.ok(reply, {
           products,
           total_products: products.length,
+          catalog_diagnostics: catalogDiagnostics,
         });
       } catch (error) {
         Logger.error('Failed to fetch product listings:', error);
@@ -2203,7 +2358,9 @@ export async function subscriptionRoutes(
           });
         }
 
-        if (variants.length === 0) {
+        // Fixed fields are canonical when complete. Active legacy variants are
+        // ignored here but remain readable by their historical identifiers.
+        if (isPublishableFixedCatalog(product)) {
           const durationMonths = Number(product.duration_months);
           const fixedPriceCents = Number(product.fixed_price_cents);
           const fixedPriceCurrency = normalizeCurrencyCode(
@@ -2226,13 +2383,14 @@ export async function subscriptionRoutes(
             !Number.isInteger(durationMonths) ||
             durationMonths <= 0 ||
             !Number.isInteger(fixedPriceCents) ||
-            fixedPriceCents < 0 ||
+            fixedPriceCents <= 0 ||
             !fixedPriceCurrency
           ) {
             return ErrorResponses.notFound(reply, 'Product not available');
           }
 
           const resolvedPrice = await resolveFixedProductDisplayPrice({
+            productId: product.id,
             fixedPriceCents,
             fixedPriceCurrency,
             currentFixedPriceCents,
@@ -2242,7 +2400,11 @@ export async function subscriptionRoutes(
           const resolvedPriceCents = resolvedPrice?.priceCents ?? Number.NaN;
           const resolvedCurrency = resolvedPrice?.currency ?? null;
 
-          if (!Number.isInteger(resolvedPriceCents) || !resolvedCurrency) {
+          if (
+            !resolvedPrice ||
+            !Number.isInteger(resolvedPriceCents) ||
+            !resolvedCurrency
+          ) {
             if (serviceType) {
               await ensureMissingPriceTask({
                 productId: product.id,
@@ -2277,6 +2439,8 @@ export async function subscriptionRoutes(
               category: product.category ?? null,
               sub_category: product.sub_category ?? null,
               duration_months: durationMonths,
+              fixed_price_cents: fixedPriceCents,
+              fixed_price_currency: fixedPriceCurrency,
               category_keys: product.category_keys ?? null,
               terms_conditions: termsConditions,
               upgrade_options: upgradeOptions,
@@ -2319,6 +2483,20 @@ export async function subscriptionRoutes(
                 ],
               },
             ],
+            offer: {
+              product_id: product.id,
+              duration_months: durationMonths,
+              price_cents: resolvedPriceCents,
+              comparison_price_cents:
+                fixedComparisonPriceCents !== null &&
+                fixedComparisonPriceCents > resolvedPriceCents
+                  ? fixedComparisonPriceCents
+                  : null,
+              currency: resolvedCurrency,
+              pricing_snapshot_id: resolvedPrice.pricingSnapshotId,
+              availability: 'available',
+              catalog_mode: 'fixed_product',
+            },
             country_code: requestCountryCode || null,
           });
         }
@@ -2455,6 +2633,19 @@ export async function subscriptionRoutes(
             badges,
             base_price: priceCents / 100,
             currency,
+            duration_months: listingTerms[0]?.months ?? null,
+            price_cents: termOptions[0]
+              ? Math.round(termOptions[0].total_price * 100)
+              : null,
+            comparison_price_cents:
+              termOptions[0]?.comparison_price !== null &&
+              termOptions[0]?.comparison_price !== undefined
+                ? Math.round(termOptions[0].comparison_price * 100)
+                : null,
+            pricing_snapshot_id:
+              readMetadataString(currentPrice?.metadata, ['snapshot_id']) ||
+              currentPrice?.id ||
+              variant.id,
             term_options: termOptions,
           });
         }
@@ -2491,6 +2682,19 @@ export async function subscriptionRoutes(
             extra_features: extraFeatures,
           },
           variants: variantResponses,
+          offer: {
+            product_id: product.id,
+            variant_id: variantResponses[0]?.id ?? null,
+            duration_months: variantResponses[0]?.duration_months ?? null,
+            price_cents: variantResponses[0]?.price_cents ?? null,
+            comparison_price_cents:
+              variantResponses[0]?.comparison_price_cents ?? null,
+            currency: variantResponses[0]?.currency ?? null,
+            pricing_snapshot_id:
+              variantResponses[0]?.pricing_snapshot_id ?? null,
+            availability: 'available',
+            catalog_mode: 'legacy_variant',
+          },
           country_code: requestCountryCode || null,
         });
       } catch (error) {
@@ -2508,7 +2712,8 @@ export async function subscriptionRoutes(
       currency?: string | null;
       items: Array<{
         cart_item_id: string;
-        variant_id: string;
+        variant_id?: string | null;
+        product_id?: string | null;
         term_months?: number | null;
         quantity?: number | null;
       }>;
@@ -2527,7 +2732,8 @@ export async function subscriptionRoutes(
           currency?: string | null;
           items: Array<{
             cart_item_id: string;
-            variant_id: string;
+            variant_id?: string | null;
+            product_id?: string | null;
             term_months?: number | null;
             quantity?: number | null;
           }>;
@@ -2537,6 +2743,9 @@ export async function subscriptionRoutes(
     ) => {
       try {
         const body = request.body || { items: [] };
+        if (body.items.some(item => Boolean(item.variant_id))) {
+          attachLegacyVariantDeprecation(reply);
+        }
         const requestCurrency =
           normalizeCurrencyCode(body.currency) ||
           resolveRequestCurrency(request);
@@ -2549,13 +2758,18 @@ export async function subscriptionRoutes(
                 : '';
             const variantId =
               typeof item.variant_id === 'string' ? item.variant_id.trim() : '';
-
-            if (!cartItemId || !variantId) {
+            const requestedProductId =
+              typeof item.product_id === 'string'
+                ? item.product_id.trim()
+                : null;
+            if (!cartItemId || (!requestedProductId && !variantId)) {
               return {
                 ok: false as const,
                 cart_item_id: cartItemId,
-                variant_id: variantId,
-                reason: 'invalid_item',
+                product_id: requestedProductId,
+                variant_id: variantId || null,
+                code: 'PRODUCT_ID_REQUIRED',
+                message: 'A product_id is required.',
               };
             }
 
@@ -2564,7 +2778,7 @@ export async function subscriptionRoutes(
               Number.isFinite(item.term_months) &&
               item.term_months >= 1
                 ? Math.floor(item.term_months)
-                : 1;
+                : null;
             const quantity =
               typeof item.quantity === 'number' &&
               Number.isFinite(item.quantity) &&
@@ -2572,18 +2786,22 @@ export async function subscriptionRoutes(
                 ? Math.floor(item.quantity)
                 : 1;
 
-            const pricing = await resolveVariantPricing({
-              variantId,
+            const pricing = await resolveSellableProduct({
+              context: 'cart_pricing_preview',
+              productId: requestedProductId,
+              legacyVariantId: variantId || null,
               currency: requestCurrency,
-              termMonths,
+              durationMonths: termMonths,
             });
 
             if (!pricing.ok) {
               return {
                 ok: false as const,
                 cart_item_id: cartItemId,
-                variant_id: variantId,
-                reason: pricing.error,
+                product_id: requestedProductId,
+                variant_id: variantId || null,
+                code: pricing.code,
+                message: pricing.message,
               };
             }
 
@@ -2592,12 +2810,19 @@ export async function subscriptionRoutes(
             return {
               ok: true as const,
               cart_item_id: cartItemId,
-              variant_id: variantId,
-              term_months: termMonths,
+              variant_id: pricing.data.legacyVariantId,
+              product_id: pricing.data.productId,
+              duration_months: pricing.data.durationMonths,
+              term_months: pricing.data.durationMonths,
               quantity,
+              unit_price_cents: pricing.data.snapshot.totalPriceCents,
+              line_total_cents:
+                pricing.data.snapshot.totalPriceCents * quantity,
               unit_price: unitPrice,
               line_total: unitPrice * quantity,
               currency: pricing.data.currency,
+              pricing_snapshot_id: pricing.data.pricingSnapshotId,
+              catalog_mode: pricing.data.catalogMode,
             };
           })
         );
@@ -2609,31 +2834,49 @@ export async function subscriptionRoutes(
             ): item is {
               ok: true;
               cart_item_id: string;
-              variant_id: string;
+              variant_id: string | null;
+              product_id: string;
+              duration_months: number;
               term_months: number;
               quantity: number;
+              unit_price_cents: number;
+              line_total_cents: number;
               unit_price: number;
               line_total: number;
               currency: string;
+              pricing_snapshot_id: string;
+              catalog_mode: 'fixed_product' | 'legacy_variant';
             } => item.ok
           )
           .map(
             ({
               cart_item_id,
               variant_id,
+              product_id,
+              duration_months,
               term_months,
               quantity,
+              unit_price_cents,
+              line_total_cents,
               unit_price,
               line_total,
               currency,
+              pricing_snapshot_id,
+              catalog_mode,
             }) => ({
               cart_item_id,
               variant_id,
+              product_id,
+              duration_months,
               term_months,
               quantity,
+              unit_price_cents,
+              line_total_cents,
               unit_price,
               line_total,
               currency,
+              pricing_snapshot_id,
+              catalog_mode,
             })
           );
         const skippedItems = pricedItems
@@ -2643,14 +2886,19 @@ export async function subscriptionRoutes(
             ): item is {
               ok: false;
               cart_item_id: string;
-              variant_id: string;
-              reason: string;
+              product_id: string | null;
+              variant_id: string | null;
+              code: string;
+              message: string;
             } => !item.ok
           )
-          .map(({ cart_item_id, variant_id, reason }) => ({
+          .map(({ cart_item_id, product_id, variant_id, code, message }) => ({
             cart_item_id,
+            product_id,
             variant_id,
-            reason,
+            code,
+            message,
+            reason: code,
           }));
 
         return SuccessResponses.ok(reply, {
@@ -2766,8 +3014,10 @@ export async function subscriptionRoutes(
   // Validate purchase eligibility (requires auth)
   fastify.post<{
     Body: {
-      variant_id: string;
+      product_id?: string;
+      variant_id?: string;
       duration_months?: number;
+      pricing_snapshot_id?: string;
       coupon_code?: string;
     };
   }>(
@@ -2784,8 +3034,10 @@ export async function subscriptionRoutes(
     async (
       request: FastifyRequest<{
         Body: {
-          variant_id: string;
+          product_id?: string;
+          variant_id?: string;
           duration_months?: number;
+          pricing_snapshot_id?: string;
           coupon_code?: string;
         };
       }>,
@@ -2797,54 +3049,49 @@ export async function subscriptionRoutes(
           return ErrorResponses.unauthorized(reply, 'Authentication required');
         }
 
-        const { variant_id, duration_months = 1, coupon_code } = request.body;
+        const {
+          product_id,
+          variant_id,
+          duration_months,
+          pricing_snapshot_id,
+          coupon_code,
+        } = request.body;
+        if (variant_id) attachLegacyVariantDeprecation(reply);
 
         Logger.info('Validating purchase eligibility', {
           userId,
-          variantId: variant_id,
+          productId: product_id ?? null,
+          legacyVariantId: variant_id ?? null,
           duration: duration_months,
         });
 
-        const pricingResult = await resolveVariantPricing({
-          variantId: variant_id,
+        const pricingResult = await resolveSellableProduct({
+          context: 'validate_purchase',
+          productId: product_id ?? null,
+          legacyVariantId: variant_id ?? null,
           currency: 'USD',
-          termMonths: duration_months,
+          durationMonths: duration_months ?? null,
+          expectedPricingSnapshotId: pricing_snapshot_id ?? null,
         });
 
         if (!pricingResult.ok) {
-          if (
-            pricingResult.error === 'variant_not_found' ||
-            pricingResult.error === 'inactive'
-          ) {
-            return ErrorResponses.badRequest(
-              reply,
-              'Subscription plan is not available'
-            );
-          }
-          if (pricingResult.error === 'term_unavailable') {
-            return SuccessResponses.ok(reply, {
-              can_purchase: false,
-              reason: 'Selected duration is not available for this plan',
-              required_credits: 0,
-              existing_subscription: null,
-            });
-          }
-          return SuccessResponses.ok(reply, {
-            can_purchase: false,
-            reason: 'Pricing unavailable for this plan',
-            required_credits: 0,
-            existing_subscription: null,
-          });
+          return sendSellableProductError(
+            reply,
+            pricingResult.code,
+            pricingResult.details
+          );
         }
 
         const {
           product,
-          variant,
           snapshot,
           currency,
-          productVariantId,
-          planCode,
+          legacyVariantId: productVariantId,
+          itemCode: planCode,
+          pricingSnapshotId,
+          catalogMode,
         } = pricingResult.data;
+        const variant = pricingResult.data.legacyVariant;
         const upgradeOptionsRaw = normalizeUpgradeOptions(product.metadata);
         const upgradeValidation = validateUpgradeOptions(upgradeOptionsRaw);
         if (!upgradeValidation.valid) {
@@ -2909,7 +3156,7 @@ export async function subscriptionRoutes(
           });
         }
         const variantFeatures = normalizeStringList(
-          variant.metadata?.['features']
+          variant?.metadata?.['features']
         );
         const productFeatures = normalizeStringList(
           product.metadata?.['features']
@@ -2922,15 +3169,15 @@ export async function subscriptionRoutes(
               : handlerPlan?.features || [];
 
         const displayName =
-          readMetadataString(variant.metadata, [
+          readMetadataString(variant?.metadata, [
             'display_name',
             'displayName',
           ]) ||
-          variant.name ||
+          variant?.name ||
           handlerPlan?.name ||
           product.name ||
           planCode;
-        const description = variant.description || '';
+        const description = variant?.description || product.description || '';
 
         // Check if user can purchase
         if (productVariantId) {
@@ -2939,6 +3186,19 @@ export async function subscriptionRoutes(
             productVariantId
           );
 
+          if (!validation.canPurchase) {
+            return SuccessResponses.ok(reply, {
+              can_purchase: false,
+              reason: validation.reason,
+              required_credits: price,
+              existing_subscription: validation.existing_subscription,
+            });
+          }
+        } else {
+          const validation = await subscriptionService.canPurchaseProduct(
+            userId,
+            product.id
+          );
           if (!validation.canPurchase) {
             return SuccessResponses.ok(reply, {
               can_purchase: false,
@@ -2983,10 +3243,20 @@ export async function subscriptionRoutes(
           price,
           currency,
           features,
+          product_id: product.id,
+          ...(productVariantId ? { variant_id: productVariantId } : {}),
+          catalog_mode: catalogMode,
+          duration_months: snapshot.termMonths,
+          price_cents: finalTotalCents,
         };
 
         return SuccessResponses.ok(reply, {
           can_purchase: true,
+          product_id: product.id,
+          variant_id: productVariantId,
+          duration_months: snapshot.termMonths,
+          catalog_mode: catalogMode,
+          pricing_snapshot_id: pricingSnapshotId,
           plan_details: planDetails,
           required_credits: price,
           user_balance: balance.availableBalance,
@@ -3014,8 +3284,10 @@ export async function subscriptionRoutes(
   // Purchase subscription (requires auth) - CRITICAL ENDPOINT
   fastify.post<{
     Body: {
-      variant_id: string;
+      product_id?: string;
+      variant_id?: string;
       duration_months?: number;
+      pricing_snapshot_id?: string;
       metadata?: SubscriptionMetadata;
       auto_renew?: boolean;
       coupon_code?: string;
@@ -3034,8 +3306,10 @@ export async function subscriptionRoutes(
     async (
       request: FastifyRequest<{
         Body: {
-          variant_id: string;
+          product_id?: string;
+          variant_id?: string;
           duration_months?: number;
+          pricing_snapshot_id?: string;
           metadata?: SubscriptionMetadata;
           auto_renew?: boolean;
           coupon_code?: string;
@@ -3050,35 +3324,37 @@ export async function subscriptionRoutes(
         }
 
         const {
+          product_id,
           variant_id,
-          duration_months = 1,
+          duration_months,
+          pricing_snapshot_id,
           metadata,
           coupon_code,
         } = request.body;
+        if (variant_id) attachLegacyVariantDeprecation(reply);
         const auto_renew = false;
 
         Logger.info('Processing subscription purchase', {
           userId,
-          variantId: variant_id,
+          productId: product_id ?? null,
+          legacyVariantId: variant_id ?? null,
           duration: duration_months,
         });
 
-        const pricingResult = await resolveVariantPricing({
-          variantId: variant_id,
+        const pricingResult = await resolveSellableProduct({
+          context: 'purchase_subscription',
+          productId: product_id ?? null,
+          legacyVariantId: variant_id ?? null,
           currency: 'USD',
-          termMonths: duration_months,
+          durationMonths: duration_months ?? null,
+          expectedPricingSnapshotId: pricing_snapshot_id ?? null,
         });
 
         if (!pricingResult.ok) {
-          if (pricingResult.error === 'term_unavailable') {
-            return ErrorResponses.badRequest(
-              reply,
-              'Selected duration is not available for this plan'
-            );
-          }
-          return ErrorResponses.badRequest(
+          return sendSellableProductError(
             reply,
-            'Subscription plan is not available'
+            pricingResult.code,
+            pricingResult.details
           );
         }
 
@@ -3086,8 +3362,8 @@ export async function subscriptionRoutes(
           product,
           snapshot,
           currency,
-          productVariantId,
-          planCode,
+          legacyVariantId: productVariantId,
+          itemCode: planCode,
           catalogMode,
         } = pricingResult.data;
         const upgradeOptionsRaw = normalizeUpgradeOptions(product.metadata);
@@ -3118,6 +3394,22 @@ export async function subscriptionRoutes(
             metadata
           );
 
+          if (!validation.canPurchase) {
+            return sendError(
+              reply,
+              HttpStatus.CONFLICT,
+              'Purchase Not Allowed',
+              validation.reason || 'Purchase validation failed',
+              'PURCHASE_VALIDATION_FAILED',
+              { existingSubscription: validation.existing_subscription }
+            );
+          }
+        } else {
+          const validation = await subscriptionService.canPurchaseProduct(
+            userId,
+            product.id,
+            metadata
+          );
           if (!validation.canPurchase) {
             return sendError(
               reply,
@@ -3209,7 +3501,15 @@ export async function subscriptionRoutes(
 
         const orderItems = [
           {
+            product_id: product.id,
             product_variant_id: productVariantId,
+            product_name_snapshot: product.name,
+            product_slug_snapshot: product.slug,
+            duration_months_snapshot: snapshot.termMonths,
+            fulfillment_config_snapshot: buildFulfillmentConfigSnapshot(
+              product.metadata
+            ),
+            catalog_mode_snapshot: catalogMode,
             quantity: 1,
             unit_price_cents: finalTotalCents,
             base_price_cents: snapshot.basePriceCents,
@@ -3373,6 +3673,7 @@ export async function subscriptionRoutes(
           },
           {
             orderId: order.id,
+            productId: product.id,
             ...(productVariantId ? { productVariantId } : {}),
             priceCents: finalTotalCents,
             basePriceCents: snapshot.basePriceCents,
@@ -3428,7 +3729,17 @@ export async function subscriptionRoutes(
           renewal_date: renewalDate,
           auto_renew,
           order_id: order.id,
+          product_id: product.id,
           product_variant_id: productVariantId,
+          product_name_snapshot: product.name,
+          product_slug_snapshot: product.slug,
+          duration_months_snapshot: snapshot.termMonths,
+          unit_price_cents_snapshot: finalTotalCents,
+          total_price_cents_snapshot: finalTotalCents,
+          currency_snapshot: currency,
+          fulfillment_config_snapshot: buildFulfillmentConfigSnapshot(
+            product.metadata
+          ),
           price_cents: termTotalCents,
           base_price_cents: snapshot.basePriceCents,
           discount_percent: snapshot.discountPercent,
@@ -3467,6 +3778,7 @@ export async function subscriptionRoutes(
             },
             {
               orderId: order.id,
+              productId: product.id,
               ...(productVariantId ? { productVariantId } : {}),
               priceCents: finalTotalCents,
               basePriceCents: snapshot.basePriceCents,
@@ -3549,6 +3861,12 @@ export async function subscriptionRoutes(
         const entitlement = await orderEntitlementService.upsertEntitlement({
           order_id: order.id,
           order_item_id: orderItemId,
+          product_id: product.id,
+          product_name_snapshot: product.name,
+          product_slug_snapshot: product.slug,
+          fulfillment_config_snapshot: buildFulfillmentConfigSnapshot(
+            product.metadata
+          ),
           user_id: userId,
           status: createdSubscription.status,
           starts_at: subscriptionStartAt,
@@ -3584,6 +3902,11 @@ export async function subscriptionRoutes(
           reply,
           {
             order_id: order.id,
+            product_id: product.id,
+            variant_id: productVariantId,
+            duration_months: snapshot.termMonths,
+            catalog_mode: catalogMode,
+            pricing_snapshot_id: pricingResult.data.pricingSnapshotId,
             subscription: subResult.data,
             upgrade_options: upgradeOptions ?? null,
             transaction: {

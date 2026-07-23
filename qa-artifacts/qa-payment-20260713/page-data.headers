@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Access-Control-Allow-Origin: *
+cache-control: private, no-store
+content-length: 160
+content-type: application/json
+set-cookie: preferred_currency=USD; Max-Age=31536000; Path=/; Secure; SameSite=Lax
+Date: Mon, 13 Jul 2026 15:41:28 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+

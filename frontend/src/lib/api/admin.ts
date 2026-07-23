@@ -7,6 +7,9 @@ import type {
   AdminProductLabel,
   AdminProductMedia,
   AdminPriceHistory,
+  AdminFixedProductPriceHistory,
+  AdminFixedCatalogRecoveryResult,
+  AdminSetCurrentFixedProductPriceInput,
   AdminSetCurrentPriceInput,
   AdminProductDetail,
   AdminProductVariantTerm,
@@ -110,13 +113,17 @@ export class AdminService {
     const payload = unwrap<AdminProductDetail>(response) || ({} as AdminProductDetail);
     const priceHistory = payload.priceHistory || payload.price_history || payload.prices || [];
     const variantTerms = payload.variantTerms || payload.variant_terms || [];
+    const fixedPriceHistory = payload.fixedPriceHistory || payload.fixed_price_history || [];
+    const legacyCompatibility = payload.legacyCompatibility || payload.legacy_compatibility;
     return {
       product: payload.product,
       variants: payload.variants || [],
       labels: payload.labels || [],
       media: payload.media || [],
       priceHistory,
-      variantTerms
+      variantTerms,
+      fixedPriceHistory,
+      ...(legacyCompatibility ? { legacyCompatibility } : {})
     };
   }
 
@@ -133,6 +140,25 @@ export class AdminService {
   async updateProduct(productId: string, payload: Partial<AdminProduct>): Promise<AdminProduct> {
     const response = await this.client.patch(`${API_ENDPOINTS.ADMIN.PRODUCTS}/${productId}`, payload);
     return unwrap<AdminProduct>(response);
+  }
+
+  async setCurrentFixedProductPrice(
+    productId: string,
+    payload: AdminSetCurrentFixedProductPriceInput
+  ): Promise<AdminFixedProductPriceHistory> {
+    const response = await this.client.post(
+      `${API_ENDPOINTS.ADMIN.PRODUCTS}/${productId}/fixed-price/current`,
+      payload
+    );
+    return unwrap<AdminFixedProductPriceHistory>(response);
+  }
+
+  async recoverFixedCatalog(productId: string): Promise<AdminFixedCatalogRecoveryResult> {
+    const response = await this.client.post(
+      `${API_ENDPOINTS.ADMIN.PRODUCTS}/${productId}/fixed-catalog/recover`,
+      {}
+    );
+    return unwrap<AdminFixedCatalogRecoveryResult>(response);
   }
 
   async listVariants(params?: QueryParams): Promise<AdminProductVariant[]> {

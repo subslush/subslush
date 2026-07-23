@@ -1,0 +1,253 @@
+{
+  "result": "PASS",
+  "steps": [
+    {
+      "phase": 0,
+      "action": "Create QA-B2 Streaming in Products UI",
+      "expected": "POST request and visible inactive product",
+      "actual": "HTTP 201, product listed",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/001-phase0-p1-created.png"
+    },
+    {
+      "phase": 0,
+      "action": "Save QA-B2 Streaming basics",
+      "expected": "Fields persist through visible request",
+      "actual": "HTTP 200, success shown",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Create QA-B2 Streaming variant",
+      "expected": "Variant request and visible row",
+      "actual": "HTTP 201, variant 1e72ee05-1282-4d04-aae0-27b4c3281dd6",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Add 1-month term to QA-B2 Streaming",
+      "expected": "Term saves via UI",
+      "actual": "HTTP 201, term visible",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Add 6-month term to QA-B2 Streaming",
+      "expected": "Term saves via UI",
+      "actual": "HTTP 201, term visible",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Set QA-B2 Streaming current price separately",
+      "expected": "Price request succeeds and price is visible",
+      "actual": "HTTP 201",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/002-phase0-p1-price.png"
+    },
+    {
+      "phase": 0,
+      "action": "Save QA-B2 Streaming fulfillment settings",
+      "expected": "Settings save with visible success",
+      "actual": "HTTP 200",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/003-phase0-p1-fulfillment.png"
+    },
+    {
+      "phase": 0,
+      "action": "Create QA-B2 AI Tool in Products UI",
+      "expected": "POST request and visible inactive product",
+      "actual": "HTTP 201, product listed",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/004-phase0-p2-created.png"
+    },
+    {
+      "phase": 0,
+      "action": "Save QA-B2 AI Tool basics",
+      "expected": "Fields persist through visible request",
+      "actual": "HTTP 200, success shown",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Create QA-B2 AI Tool variant",
+      "expected": "Variant request and visible row",
+      "actual": "HTTP 201, variant a8cca186-6fbf-4750-8c79-7dee0f8016fa",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Add 12-month term to QA-B2 AI Tool",
+      "expected": "Term saves via UI",
+      "actual": "HTTP 201, term visible",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Set QA-B2 AI Tool current price separately",
+      "expected": "Price request succeeds and price is visible",
+      "actual": "HTTP 201",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/005-phase0-p2-price.png"
+    },
+    {
+      "phase": 0,
+      "action": "Save QA-B2 AI Tool fulfillment settings",
+      "expected": "Settings save with visible success",
+      "actual": "HTTP 200",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/006-phase0-p2-fulfillment.png"
+    },
+    {
+      "phase": 0,
+      "action": "Create QA-B2 Link Product in Products UI",
+      "expected": "POST request and visible inactive product",
+      "actual": "HTTP 201, product listed",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/007-phase0-p3-created.png"
+    },
+    {
+      "phase": 0,
+      "action": "Save QA-B2 Link Product basics",
+      "expected": "Fields persist through visible request",
+      "actual": "HTTP 200, success shown",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Create QA-B2 Link Product variant",
+      "expected": "Variant request and visible row",
+      "actual": "HTTP 201, variant b619c54d-e1cc-413c-b332-92f52a06a65a",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Add 12-month term to QA-B2 Link Product",
+      "expected": "Term saves via UI",
+      "actual": "HTTP 201, term visible",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Set QA-B2 Link Product current price separately",
+      "expected": "Price request succeeds and price is visible",
+      "actual": "HTTP 201",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/008-phase0-p3-price.png"
+    },
+    {
+      "phase": 0,
+      "action": "Save QA-B2 Link Product fulfillment settings",
+      "expected": "Settings save with visible success",
+      "actual": "HTTP 200",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/009-phase0-p3-fulfillment.png"
+    },
+    {
+      "phase": 0,
+      "action": "Negative MMU divisibility: set P1 interval 4 with 6-month term",
+      "expected": "Visible divisibility error and rejected request",
+      "actual": "HTTP 400, exact error visible",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/010-phase0-p1-mmu-negative.png"
+    },
+    {
+      "phase": 0,
+      "action": "Restore P1 MMU interval to 1",
+      "expected": "Supported setting restored",
+      "actual": "HTTP 200",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Activate QA-B2 Streaming",
+      "expected": "Snapshot-backed product activates",
+      "actual": "HTTP 200, Active chip visible",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Activate QA-B2 AI Tool",
+      "expected": "Snapshot-backed product activates",
+      "actual": "HTTP 200, Active chip visible",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Activate QA-B2 Link Product",
+      "expected": "Snapshot-backed product activates",
+      "actual": "HTTP 200, Active chip visible",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Create QA-B2 Snapshotless Negative in Products UI",
+      "expected": "POST request and visible inactive product",
+      "actual": "HTTP 201, product listed",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/011-phase0-snapshotless-created.png"
+    },
+    {
+      "phase": 0,
+      "action": "Save QA-B2 Snapshotless Negative basics",
+      "expected": "Fields persist through visible request",
+      "actual": "HTTP 200, success shown",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Create QA-B2 Snapshotless Negative variant",
+      "expected": "Variant request and visible row",
+      "actual": "HTTP 201, variant 5c13e522-0514-4a49-a3c6-14e3512888cf",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Add 1-month term to QA-B2 Snapshotless Negative",
+      "expected": "Term saves via UI",
+      "actual": "HTTP 201, term visible",
+      "result": "PASS",
+      "evidence": ""
+    },
+    {
+      "phase": 0,
+      "action": "Snapshot-less product activation negative",
+      "expected": "Activation refused without snapshot-backed active USD price",
+      "actual": "HTTP 400: Cannot activate product until all active variants have an active USD base price. Missing: QA-B2 Snapshotless Variant",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/012-phase0-snapshotless-refusal.png"
+    },
+    {
+      "phase": 0,
+      "action": "Verify three pricing snapshots in DB",
+      "expected": "Three distinct succeeded snapshot IDs attached to current price metadata",
+      "actual": "[{\"product_id\":\"9cba9694-b34d-49de-8cd7-fe4d2d947730\",\"name\":\"QA-B2 AI Tool\",\"variant_id\":\"a8cca186-6fbf-4750-8c79-7dee0f8016fa\",\"price_id\":\"a2f78e34-4f3a-4c61-9046-54504fe4efdf\",\"snapshot_id\":\"42b192aa-c728-4a07-a11b-dd65b9b2ec11\",\"snapshot_status\":\"succeeded\"},{\"product_id\":\"73687c87-8018-4b35-8dd3-866d4ded59ca\",\"name\":\"QA-B2 Link Product\",\"variant_id\":\"b619c54d-e1cc-413c-b332-92f52a06a65a\",\"price_id\":\"43bc6b48-8474-4eec-8104-9d78245b72cb\",\"snapshot_id\":\"90cd2cf0-b9ca-4d73-b941-26c05b3562e2\",\"snapshot_status\":\"succeeded\"},{\"product_id\":\"6d6cb1c1-e3a0-4b98-8beb-b1f60a7a08cc\",\"name\":\"QA-B2 Streaming\",\"variant_id\":\"1e72ee05-1282-4d04-aae0-27b4c3281dd6\",\"price_id\":\"15c64786-bf4d-4b61-b507-c1cc6a2cdb32\",\"snapshot_id\":\"5e0d6c67-7a43-497e-836c-2c89eb4fdb80\",\"snapshot_status\":\"succeeded\"}]",
+      "result": "PASS",
+      "evidence": "phase0-snapshot-db.json"
+    },
+    {
+      "phase": 0,
+      "action": "Create QA-B2-TEST15 coupon",
+      "expected": "15%, global, highest item, max 5, active window and listed",
+      "actual": "HTTP 201, coupon listed",
+      "result": "PASS",
+      "evidence": "qa-artifacts/run-b-20260711-195750/screenshots/013-phase0-coupon-created.png"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "event": "evt_QA_B2_REG_1783795500611",
+  "status": 200,
+  "state": {
+    "status": "in_process",
+    "is_guest": false,
+    "subscriptions": 1,
+    "tasks": 1
+  },
+  "pass": true
+}

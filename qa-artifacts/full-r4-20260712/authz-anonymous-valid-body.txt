@@ -1,0 +1,3 @@
+401 POST activation-ready valid body
+401 POST activation-instructions valid body
+401 POST activation-link valid body

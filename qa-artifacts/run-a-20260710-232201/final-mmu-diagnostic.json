@@ -1,0 +1,363 @@
+{
+  "scanned": 22,
+  "findings": [
+    {
+      "subscription_id": "0c6c9fd0-dfe9-4c45-9931-5f28a75fb14c",
+      "order_id": "0105e358-6a7f-43f1-af2e-8e2d3b3c19e5",
+      "customer_email": "guest+a31c028b-ae1a-4cea-ab0b-71c15d210560@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T18:51:19.362Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T18:51:19.362Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": []
+    },
+    {
+      "subscription_id": "1423227a-0ae8-478b-bd48-0ca95ff1f62e",
+      "order_id": "dc39feca-2f10-44d5-ac4b-8b2bd6458bd3",
+      "customer_email": "guest+b36ee78c-6bd9-469c-8986-79ac07d91812@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T19:03:34.456Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T19:03:34.456Z",
+      "first_completed_task_created_at": "2026-07-10T19:03:34.941Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "1c052bbf-165f-4d59-9319-78fee1ebe9c1",
+      "order_id": "99ae7177-e743-437c-9322-6983cba63192",
+      "customer_email": "guest+4663b540-8758-462f-a479-174b0b7f0719@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T21:28:58.584Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T21:28:58.584Z",
+      "first_completed_task_created_at": "2026-07-10T21:28:58.934Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "24bdb10e-6142-480a-b743-725aeb44e9b5",
+      "order_id": "c82e2af3-5608-474e-a971-c53f05f65dab",
+      "customer_email": "guest+1cedb602-e313-410c-ae39-dd9138a66518@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T18:55:26.921Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T18:55:26.921Z",
+      "first_completed_task_created_at": "2026-07-10T18:55:27.374Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "33a48af2-83b3-4136-85bf-1c511fefbc9a",
+      "order_id": "12915ec6-eef8-4836-971f-08b3e6a7abcf",
+      "customer_email": "guest+290950ae-ee2c-4274-a5e0-ac44fd704139@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T18:53:22.219Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T18:53:22.219Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": []
+    },
+    {
+      "subscription_id": "3816a135-feaf-4a55-abdf-794f16cb325c",
+      "order_id": "09f6af3e-d3aa-4688-a0ec-ef4ccdd0a27d",
+      "customer_email": "guest+81d98db3-6042-40f8-a7f5-2ef4a2dfc63e@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T18:43:54.484Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T18:43:54.484Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": []
+    },
+    {
+      "subscription_id": "411d9020-0652-4671-a5e7-003074e9a5d7",
+      "order_id": "4dd4b9e1-30fc-4e2e-a1b9-3042e93b9289",
+      "customer_email": "guest+6f3d1526-ce11-4574-9317-7feb7e2c19a3@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T19:00:56.259Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T19:00:56.259Z",
+      "first_completed_task_created_at": "2026-07-10T19:00:56.726Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "48fda3c9-0c27-4f62-a64d-4c5f5224092a",
+      "order_id": "22413e72-a0a1-4ee8-8929-d4f1b4db2bc0",
+      "customer_email": "guest+6d703151-381b-4235-9712-475b7a8b120d@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T19:06:36.880Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T19:06:36.880Z",
+      "first_completed_task_created_at": "2026-07-10T19:06:37.355Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "52c7112b-8adf-44d2-b7f1-2d384f5a4cdc",
+      "order_id": "60146696-99fd-4d2d-b7da-65f1b8e41182",
+      "customer_email": "guest+fdcee802-765f-4264-945e-9136af3c11b6@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T18:47:46.931Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T18:47:46.931Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": []
+    },
+    {
+      "subscription_id": "5c87fac1-bf1c-4045-963e-629f518e318d",
+      "order_id": "02ea7878-906a-4469-8397-d54f58c791e8",
+      "customer_email": "guest+e03a5350-3fee-43ea-8a67-5518d39c1c2b@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T18:54:33.358Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T18:54:33.358Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": []
+    },
+    {
+      "subscription_id": "9b619566-b9df-442d-a1ed-d45de0e42241",
+      "order_id": "2b2e5ed6-c0a5-4de0-a926-cd7534eb0e79",
+      "customer_email": "hifegib740@wivstore.com",
+      "purchased_term_months": 12,
+      "interval_months": 2,
+      "immutable_anchor_currently_stored": "2026-07-09T22:44:59.256Z",
+      "inferred_initial_delivery_anchor": "2026-07-09T22:44:59.256Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 23,
+      "projected_excess_months_if_unfixed": 11,
+      "flags": []
+    },
+    {
+      "subscription_id": "a25ede9f-1b22-47eb-8f86-9667a6670ad8",
+      "order_id": "bd833078-4cca-44d5-b032-c333876f7af5",
+      "customer_email": "guest+6c035bd2-8489-43d8-894b-8c6e1024186e@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T20:57:39.436Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T20:57:39.436Z",
+      "first_completed_task_created_at": "2026-07-10T20:57:40.103Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "a79929c7-9840-4876-9451-91a1ef1b1c95",
+      "order_id": "7001a15c-bf4f-4d6d-bd44-d72945dbbea0",
+      "customer_email": "guest+f5288793-3ece-4e73-be9d-00f7e0424a97@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T18:56:53.641Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T18:56:53.641Z",
+      "first_completed_task_created_at": "2026-07-10T18:56:54.010Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "a84c8871-b58a-4f8b-99fa-193ebf476277",
+      "order_id": "f3a388fe-e96d-45c8-92d3-4a936684daf1",
+      "customer_email": "69mkyypvtyho@teacher.unbox.edu.pl",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-09T19:58:32.658Z",
+      "inferred_initial_delivery_anchor": "2026-06-14T22:00:00.000Z",
+      "first_completed_task_created_at": "2026-07-09T19:58:23.911Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "anchor_after_first_completed_task_created",
+        "anchor_differs_from_initial_delivery",
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "a9cfa8ae-9c3a-48ae-b63f-836e494e6f0a",
+      "order_id": "029e5ed1-462b-40e5-b95a-c5c84a4e2b28",
+      "customer_email": "guest+40e32ea3-27d2-47a2-8234-460f4a456fa2@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T20:19:34.851Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T20:19:34.851Z",
+      "first_completed_task_created_at": "2026-07-10T20:19:35.913Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "abb2499c-4d4e-4f95-82f9-9f71b685b05d",
+      "order_id": "2b2e5ed6-c0a5-4de0-a926-cd7534eb0e79",
+      "customer_email": "hifegib740@wivstore.com",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2025-12-31T23:00:00.000Z",
+      "inferred_initial_delivery_anchor": "2026-07-09T22:44:59.173Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "anchor_differs_from_initial_delivery"
+      ]
+    },
+    {
+      "subscription_id": "ac577eeb-fbe2-4bfa-8c30-69870b55258b",
+      "order_id": "f5a19944-22a4-4e69-9729-1693c03979be",
+      "customer_email": "guest+d49d57ab-f1b2-4bbd-a1be-e47303e6caed@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T20:20:32.096Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T20:20:32.096Z",
+      "first_completed_task_created_at": "2026-07-10T20:20:33.802Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "caa799fb-1e0f-4338-8942-c9ec6a806ecf",
+      "order_id": "2f4d4a14-2c78-48d2-a078-a207aacff138",
+      "customer_email": "guest+0228fcab-f175-420d-8217-41a3e4dd691d@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T18:42:25.004Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T18:42:25.004Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": []
+    },
+    {
+      "subscription_id": "eadb179b-2801-4525-98b9-b6346713b5f7",
+      "order_id": "6286af5e-8adc-43c0-9c2e-897644fe49b9",
+      "customer_email": "guest+7d5b09d2-37f0-4614-a674-d709c75c83ae@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T19:05:38.090Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T19:05:38.090Z",
+      "first_completed_task_created_at": "2026-07-10T19:05:38.605Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "ef24bb34-a52f-4ef9-ad0a-5549c83bf125",
+      "order_id": "42516f1e-6118-42df-8e1e-fab97c4aa70a",
+      "customer_email": "guest+73032b63-f44b-4e95-afb5-47719bacabdc@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T19:02:37.778Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T19:02:37.778Z",
+      "first_completed_task_created_at": "2026-07-10T19:02:38.227Z",
+      "completed_cycles": 1,
+      "highest_completed_cycle_index": 1,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": [
+        "repeat_schedule_can_overdeliver_by_5_months"
+      ]
+    },
+    {
+      "subscription_id": "f37db0e0-af57-4557-88f1-2ac7f31b3618",
+      "order_id": "f714e1cd-96a4-49a0-b94e-c64824107c8e",
+      "customer_email": "guest+158a7647-b380-44ec-9c27-3eb02bd67ff0@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T18:48:22.226Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T18:48:22.226Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": []
+    },
+    {
+      "subscription_id": "f6d517df-870d-4161-b9f3-4fcbcc764872",
+      "order_id": "8b980109-d366-49e5-8b38-76cdb05be270",
+      "customer_email": "guest+4c30921c-079b-480e-9942-1759d75e2ca5@guest.local",
+      "purchased_term_months": 6,
+      "interval_months": 1,
+      "immutable_anchor_currently_stored": "2026-07-10T18:43:06.536Z",
+      "inferred_initial_delivery_anchor": "2026-07-10T18:43:06.536Z",
+      "first_completed_task_created_at": null,
+      "completed_cycles": 0,
+      "highest_completed_cycle_index": null,
+      "projected_total_months_if_unfixed": 11,
+      "projected_excess_months_if_unfixed": 5,
+      "flags": []
+    }
+  ]
+}
