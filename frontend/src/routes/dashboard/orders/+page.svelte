@@ -1,625 +1,697 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
-  import { CheckCircle, Eye, EyeOff, Receipt, X } from 'lucide-svelte';
-  import { ordersService } from '$lib/api/orders.js';
-  import type { PageData } from './$types';
-  import type { OrderItem, OrderListItem } from '$lib/types/order.js';
-  import type { Subscription } from '$lib/types/subscription.js';
-  import StrictRulesNotice from '$lib/components/dashboard/StrictRulesNotice.svelte';
-  import { requiresStrictRulesAcknowledgement } from '$lib/utils/strictRules.js';
-  import { VERIFIED_NOTICE_STORAGE_KEY } from '$lib/utils/authConfirmation.js';
+	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { CheckCircle, Eye, EyeOff, Receipt, X } from 'lucide-svelte';
+	import { ordersService } from '$lib/api/orders.js';
+	import type { PageData } from './$types';
+	import type { OrderItem, OrderListItem } from '$lib/types/order.js';
+	import type { Subscription } from '$lib/types/subscription.js';
+	import StrictRulesNotice from '$lib/components/dashboard/StrictRulesNotice.svelte';
+	import { requiresStrictRulesAcknowledgement } from '$lib/utils/strictRules.js';
+	import { VERIFIED_NOTICE_STORAGE_KEY } from '$lib/utils/authConfirmation.js';
 
-  export let data: PageData;
+	export let data: PageData;
 
-  let orders: OrderListItem[] = data.orders;
-  let pagination = data.pagination;
-  let subscriptionsByOrder: Record<string, Subscription[]> = data.subscriptionsByOrder || {};
-  let subscriptionsData = data.subscriptionsByOrder;
-  let revealedCredentialsByItem: Record<string, string> = {};
-  let revealLoadingByItem: Record<string, boolean> = {};
-  let revealErrorByItem: Record<string, string> = {};
-  let copyMessageByItem: Record<string, string> = {};
-  let activationReadyCheckedByItem: Record<string, boolean> = {};
-  let actionMessageByItem: Record<string, string> = {};
-  let rulesAcceptedByItem: Record<string, boolean> = {};
-  let rulesModal:
-    | { orderId: string; subscription: Subscription; checked: boolean; loading: boolean; error: string }
-    | null = null;
-  let showVerifiedNotice = false;
+	let orders: OrderListItem[] = data.orders;
+	let pagination = data.pagination;
+	let subscriptionsByOrder: Record<string, Subscription[]> = data.subscriptionsByOrder || {};
+	let subscriptionsData = data.subscriptionsByOrder;
+	let revealedCredentialsByItem: Record<string, string> = {};
+	let revealLoadingByItem: Record<string, boolean> = {};
+	let revealErrorByItem: Record<string, string> = {};
+	let copyMessageByItem: Record<string, string> = {};
+	let activationReadyCheckedByItem: Record<string, boolean> = {};
+	let activationReadyLoadingByItem: Record<string, boolean> = {};
+	let rulesAcceptedByItem: Record<string, boolean> = {};
+	let rulesModal: {
+		orderId: string;
+		subscription: Subscription;
+		checked: boolean;
+		loading: boolean;
+		error: string;
+	} | null = null;
+	let showVerifiedNotice = false;
 
-  onMount(() => {
-    try {
-      showVerifiedNotice =
-        window.sessionStorage.getItem(VERIFIED_NOTICE_STORAGE_KEY) === '1';
-      window.sessionStorage.removeItem(VERIFIED_NOTICE_STORAGE_KEY);
-    } catch {
-      showVerifiedNotice = false;
-    }
+	onMount(() => {
+		try {
+			showVerifiedNotice = window.sessionStorage.getItem(VERIFIED_NOTICE_STORAGE_KEY) === '1';
+			window.sessionStorage.removeItem(VERIFIED_NOTICE_STORAGE_KEY);
+		} catch {
+			showVerifiedNotice = false;
+		}
 
-    if (showVerifiedNotice) {
-      const timeoutId = window.setTimeout(() => {
-        showVerifiedNotice = false;
-      }, 8000);
-      return () => window.clearTimeout(timeoutId);
-    }
-  });
+		if (showVerifiedNotice) {
+			const timeoutId = window.setTimeout(() => {
+				showVerifiedNotice = false;
+			}, 8000);
+			return () => window.clearTimeout(timeoutId);
+		}
+	});
 
-  $: orders = data.orders;
-  $: pagination = data.pagination;
-  $: if (data.subscriptionsByOrder !== subscriptionsData) {
-    subscriptionsData = data.subscriptionsByOrder;
-    subscriptionsByOrder = data.subscriptionsByOrder || {};
-  }
+	$: orders = data.orders;
+	$: pagination = data.pagination;
+	$: if (data.subscriptionsByOrder !== subscriptionsData) {
+		subscriptionsData = data.subscriptionsByOrder;
+		subscriptionsByOrder = data.subscriptionsByOrder || {};
+	}
 
-  function formatDate(value?: string | null): string {
-    if (!value) return '-';
-    return new Date(value).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  }
+	function formatDate(value?: string | null): string {
+		if (!value) return '-';
+		return new Date(value).toLocaleDateString('en-US', {
+			month: 'short',
+			day: 'numeric',
+			year: 'numeric'
+		});
+	}
 
-  function formatAmount(order: OrderListItem): string {
-    const amountCents =
-      order.display_total_cents ?? order.total_cents ?? order.subtotal_cents ?? 0;
-    const currency = order.display_currency || order.currency || 'USD';
-    try {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: currency.toUpperCase()
-      }).format(amountCents / 100);
-    } catch {
-      return `$${(amountCents / 100).toFixed(2)}`;
-    }
-  }
+	function formatAmount(order: OrderListItem): string {
+		const amountCents = order.display_total_cents ?? order.total_cents ?? order.subtotal_cents ?? 0;
+		const currency = order.display_currency || order.currency || 'USD';
+		try {
+			return new Intl.NumberFormat('en-US', {
+				style: 'currency',
+				currency: currency.toUpperCase()
+			}).format(amountCents / 100);
+		} catch {
+			return `$${(amountCents / 100).toFixed(2)}`;
+		}
+	}
 
-  function formatServiceLabel(value: string): string {
-    return value
-      .replace(/[_-]+/g, ' ')
-      .trim()
-      .replace(/\b\w/g, char => char.toUpperCase());
-  }
+	function formatServiceLabel(value: string): string {
+		return value
+			.replace(/[_-]+/g, ' ')
+			.trim()
+			.replace(/\b\w/g, (char) => char.toUpperCase());
+	}
 
-  function humanizeSlugWords(value: string): string {
-    return value
-      .split(/[_-\s]+/)
-      .filter(part => part.length > 0)
-      .map(part =>
-        /^\d+$/.test(part)
-          ? part
-          : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
-      )
-      .join(' ');
-  }
+	function humanizeSlugWords(value: string): string {
+		return value
+			.split(/[_-\s]+/)
+			.filter((part) => part.length > 0)
+			.map((part) =>
+				/^\d+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+			)
+			.join(' ');
+	}
 
-  function humanizeOrderLabel(value: string): string {
-    const trimmed = stripOrderPrefix(value).replace(/\s+/g, ' ').trim();
-    if (!trimmed) return '';
+	function humanizeOrderLabel(value: string): string {
+		const trimmed = stripOrderPrefix(value).replace(/\s+/g, ' ').trim();
+		if (!trimmed) return '';
 
-    const durationMatch = trimmed.match(/\((\d+\s+month(?:s)?)\)$/i);
-    const durationText = durationMatch ? durationMatch[1].toLowerCase() : '';
-    const core = durationMatch
-      ? trimmed.slice(0, durationMatch.index).trim()
-      : trimmed;
+		const durationMatch = trimmed.match(/\((\d+\s+month(?:s)?)\)$/i);
+		const durationText = durationMatch ? durationMatch[1].toLowerCase() : '';
+		const core = durationMatch ? trimmed.slice(0, durationMatch.index).trim() : trimmed;
 
-    const normalizeCore = (input: string): string => {
-      const normalized = input.trim().replace(/\s+/g, ' ');
-      if (!normalized) return '';
+		const normalizeCore = (input: string): string => {
+			const normalized = input.trim().replace(/\s+/g, ' ');
+			if (!normalized) return '';
 
-      const segments = normalized.split(' ').filter(Boolean);
-      if (segments.length > 1) {
-        const [firstSegment, ...restSegments] = segments;
-        const rest = restSegments.join(' ').trim();
-        if (
-          firstSegment &&
-          rest &&
-          (/[_-]/.test(firstSegment) || firstSegment === firstSegment.toLowerCase())
-        ) {
-          const firstLabel = humanizeSlugWords(firstSegment)
-            .replace(/\s+subscription$/i, '')
-            .trim();
-          const restLabel = normalizeCore(rest);
-          if (
-            firstLabel &&
-            restLabel &&
-            restLabel.toLowerCase().startsWith(firstLabel.toLowerCase())
-          ) {
-            return restLabel;
-          }
-        }
-      }
+			const segments = normalized.split(' ').filter(Boolean);
+			if (segments.length > 1) {
+				const [firstSegment, ...restSegments] = segments;
+				const rest = restSegments.join(' ').trim();
+				if (
+					firstSegment &&
+					rest &&
+					(/[_-]/.test(firstSegment) || firstSegment === firstSegment.toLowerCase())
+				) {
+					const firstLabel = humanizeSlugWords(firstSegment)
+						.replace(/\s+subscription$/i, '')
+						.trim();
+					const restLabel = normalizeCore(rest);
+					if (
+						firstLabel &&
+						restLabel &&
+						restLabel.toLowerCase().startsWith(firstLabel.toLowerCase())
+					) {
+						return restLabel;
+					}
+				}
+			}
 
-      const slugLike = /[_-]/.test(normalized) || normalized === normalized.toLowerCase();
-      if (!slugLike) {
-        return normalized.replace(/\s+subscription$/i, '').trim();
-      }
+			const slugLike = /[_-]/.test(normalized) || normalized === normalized.toLowerCase();
+			if (!slugLike) {
+				return normalized.replace(/\s+subscription$/i, '').trim();
+			}
 
-      return humanizeSlugWords(normalized)
-        .replace(/\s+subscription$/i, '')
-        .trim();
-    };
+			return humanizeSlugWords(normalized)
+				.replace(/\s+subscription$/i, '')
+				.trim();
+		};
 
-    const normalizedCore = normalizeCore(core);
-    if (!durationText) {
-      return normalizedCore;
-    }
+		const normalizedCore = normalizeCore(core);
+		if (!durationText) {
+			return normalizedCore;
+		}
 
-    return normalizedCore.toLowerCase().includes(durationText)
-      ? normalizedCore
-      : `${normalizedCore} (${durationText})`;
-  }
+		return normalizedCore.toLowerCase().includes(durationText)
+			? normalizedCore
+			: `${normalizedCore} (${durationText})`;
+	}
 
-  function formatDurationLabel(termMonths?: number | null): string {
-    const normalized =
-      termMonths !== null && termMonths !== undefined ? Number(termMonths) : null;
-    if (!normalized || !Number.isFinite(normalized) || normalized <= 0) return '';
-    const months = Math.floor(normalized);
-    return `(${months} month${months === 1 ? '' : 's'})`;
-  }
+	function formatDurationLabel(termMonths?: number | null): string {
+		const normalized = termMonths !== null && termMonths !== undefined ? Number(termMonths) : null;
+		if (!normalized || !Number.isFinite(normalized) || normalized <= 0) return '';
+		const months = Math.floor(normalized);
+		return `(${months} month${months === 1 ? '' : 's'})`;
+	}
 
-  function stripOrderPrefix(label: string): string {
-    return label
-      .replace(/^subscription\s+purchase\s*[:\-–—]\s*/i, '')
-      .replace(/^subscription\s*[:\-–—]\s*/i, '')
-      .trim();
-  }
+	function stripOrderPrefix(label: string): string {
+		return label
+			.replace(/^subscription\s+purchase\s*[:\-–—]\s*/i, '')
+			.replace(/^subscription\s*[:\-–—]\s*/i, '')
+			.trim();
+	}
 
-  function formatOrderItemLabel(item: OrderItem | undefined, serviceType?: string): string {
-    const productName = humanizeOrderLabel(item?.product_name?.trim() || '');
-    const variantName = humanizeOrderLabel(item?.variant_name?.trim() || '');
-    if (productName || variantName) {
-      const baseLabel =
-        productName && variantName
-          ? variantName.toLowerCase().startsWith(productName.toLowerCase())
-            ? variantName
-            : `${productName} ${variantName}`
-          : productName || variantName;
-      const durationLabel = formatDurationLabel(item?.term_months ?? null);
-      const durationText = durationLabel.replace(/[()]/g, '').toLowerCase();
-      return durationLabel && !baseLabel.toLowerCase().includes(durationText)
-        ? `${baseLabel} ${durationLabel}`
-        : baseLabel;
-    }
+	function formatOrderItemLabel(item: OrderItem | undefined, serviceType?: string): string {
+		const productName = humanizeOrderLabel(item?.product_name?.trim() || '');
+		const variantName = humanizeOrderLabel(item?.variant_name?.trim() || '');
+		if (productName || variantName) {
+			const baseLabel =
+				productName && variantName
+					? variantName.toLowerCase().startsWith(productName.toLowerCase())
+						? variantName
+						: `${productName} ${variantName}`
+					: productName || variantName;
+			const durationLabel = formatDurationLabel(item?.term_months ?? null);
+			const durationText = durationLabel.replace(/[()]/g, '').toLowerCase();
+			return durationLabel && !baseLabel.toLowerCase().includes(durationText)
+				? `${baseLabel} ${durationLabel}`
+				: baseLabel;
+		}
 
-    const description = item?.description
-      ? humanizeOrderLabel(item.description)
-      : '';
-    if (description) {
-      return description;
-    }
+		const description = item?.description ? humanizeOrderLabel(item.description) : '';
+		if (description) {
+			return description;
+		}
 
-    return serviceType ? formatServiceLabel(serviceType) : '';
-  }
+		return serviceType ? formatServiceLabel(serviceType) : '';
+	}
 
-  function canRevealCredentials(order: OrderListItem, subscription: Subscription): boolean {
-    return order.status === 'delivered' || subscription.status === 'active';
-  }
+	function canRevealCredentials(order: OrderListItem, subscription: Subscription): boolean {
+		return order.status === 'delivered' || subscription.status === 'active';
+	}
 
-  function getCredentialsUnavailableMessage(order: OrderListItem): string {
-    if (['in_process', 'paid', 'pending_payment', 'cart'].includes(order.status)) {
-      return 'Your order is still being processed. Credentials will be available after delivery.';
-    }
-    return '';
-  }
+	function getCredentialsUnavailableMessage(order: OrderListItem): string {
+		if (['in_process', 'paid', 'pending_payment', 'cart'].includes(order.status)) {
+			return 'Your order is still being processed. Credentials will be available after delivery.';
+		}
+		return '';
+	}
 
-  function getOrderItemsSummary(order: OrderListItem): string[] {
-    const metadata = order.metadata && typeof order.metadata === 'object'
-      ? (order.metadata as Record<string, unknown>)
-      : null;
-    const serviceType = metadata && typeof metadata.service_type === 'string'
-      ? metadata.service_type
-      : undefined;
-    if (order.items && order.items.length > 0) {
-      const labels = order.items
-        .map(item => formatOrderItemLabel(item, serviceType))
-        .filter(label => label.length > 0);
-      if (labels.length > 0) return labels;
-    }
+	function getOrderItemsSummary(order: OrderListItem): string[] {
+		const metadata =
+			order.metadata && typeof order.metadata === 'object'
+				? (order.metadata as Record<string, unknown>)
+				: null;
+		const serviceType =
+			metadata && typeof metadata.service_type === 'string' ? metadata.service_type : undefined;
+		if (order.items && order.items.length > 0) {
+			const labels = order.items
+				.map((item) => formatOrderItemLabel(item, serviceType))
+				.filter((label) => label.length > 0);
+			if (labels.length > 0) return labels;
+		}
 
-    if (serviceType) {
-      return [formatServiceLabel(serviceType)];
-    }
-    return [`Order ${order.id.slice(0, 8)}`];
-  }
+		if (serviceType) {
+			return [formatServiceLabel(serviceType)];
+		}
+		return [`Order ${order.id.slice(0, 8)}`];
+	}
 
-  function statusLabel(status: string): string {
-    return status
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, char => char.toUpperCase());
-  }
+	function statusLabel(status: string): string {
+		return status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+	}
 
-  function updatePage(nextPage: number) {
-    const params = new URLSearchParams();
-    params.set('page', `${nextPage}`);
-    params.set('limit', `${pagination.limit}`);
-    if (data.filters.status) params.set('status', data.filters.status);
-    if (data.filters.paymentProvider) params.set('payment_provider', data.filters.paymentProvider);
-    goto(`/dashboard/orders?${params.toString()}`);
-  }
+	function updatePage(nextPage: number) {
+		const params = new URLSearchParams();
+		params.set('page', `${nextPage}`);
+		params.set('limit', `${pagination.limit}`);
+		if (data.filters.status) params.set('status', data.filters.status);
+		if (data.filters.paymentProvider) params.set('payment_provider', data.filters.paymentProvider);
+		goto(`/dashboard/orders?${params.toString()}`);
+	}
 
-  function clearRevealedCredentials(subscriptionId: string) {
-    const { [subscriptionId]: _removed, ...rest } = revealedCredentialsByItem;
-    revealedCredentialsByItem = rest;
-  }
+	function clearRevealedCredentials(subscriptionId: string) {
+		const { [subscriptionId]: _removed, ...rest } = revealedCredentialsByItem;
+		revealedCredentialsByItem = rest;
+	}
 
-  function parseCredentials(raw: string): Record<string, string> | null {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        const entries = Object.entries(parsed).reduce<Record<string, string>>(
-          (acc, [key, value]) => {
-            acc[key] = typeof value === 'string' ? value : JSON.stringify(value);
-            return acc;
-          },
-          {}
-        );
-        return entries;
-      }
-    } catch {
-      return null;
-    }
-    return null;
-  }
+	function parseCredentials(raw: string): Record<string, string> | null {
+		try {
+			const parsed = JSON.parse(raw);
+			if (parsed && typeof parsed === 'object') {
+				const entries = Object.entries(parsed).reduce<Record<string, string>>(
+					(acc, [key, value]) => {
+						acc[key] = typeof value === 'string' ? value : JSON.stringify(value);
+						return acc;
+					},
+					{}
+				);
+				return entries;
+			}
+		} catch {
+			return null;
+		}
+		return null;
+	}
 
-  async function copyCredentials(subscriptionId: string, value: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-      copyMessageByItem = {
-        ...copyMessageByItem,
-        [subscriptionId]: 'Copied to clipboard.'
-      };
-      setTimeout(() => {
-        copyMessageByItem = { ...copyMessageByItem, [subscriptionId]: '' };
-      }, 2000);
-    } catch {
-      copyMessageByItem = {
-        ...copyMessageByItem,
-        [subscriptionId]: 'Copy failed. Please copy manually.'
-      };
-    }
-  }
+	async function copyCredentials(subscriptionId: string, value: string) {
+		try {
+			await navigator.clipboard.writeText(value);
+			copyMessageByItem = {
+				...copyMessageByItem,
+				[subscriptionId]: 'Copied to clipboard.'
+			};
+			setTimeout(() => {
+				copyMessageByItem = { ...copyMessageByItem, [subscriptionId]: '' };
+			}, 2000);
+		} catch {
+			copyMessageByItem = {
+				...copyMessageByItem,
+				[subscriptionId]: 'Copy failed. Please copy manually.'
+			};
+		}
+	}
 
-  function getOrderSubscriptions(order: OrderListItem): Subscription[] {
-    return subscriptionsByOrder[order.id] || [];
-  }
+	function getOrderSubscriptions(order: OrderListItem): Subscription[] {
+		return subscriptionsByOrder[order.id] || [];
+	}
 
-  function findOrderItemForSubscription(order: OrderListItem, subscription: Subscription): OrderItem | undefined {
-    return order.items?.find(item => item.id === subscription.order_item_id);
-  }
+	function findOrderItemForSubscription(
+		order: OrderListItem,
+		subscription: Subscription
+	): OrderItem | undefined {
+		return order.items?.find((item) => item.id === subscription.order_item_id);
+	}
 
-  async function loadOrderSubscriptions(orderId: string) {
-    try {
-      const response = await ordersService.getOrderSubscriptions(orderId);
-      subscriptionsByOrder = { ...subscriptionsByOrder, [orderId]: response.subscriptions || [] };
-    } catch (error) {
-      console.warn('Failed to load order subscriptions:', error);
-    }
-  }
+	async function loadOrderSubscriptions(orderId: string) {
+		try {
+			const response = await ordersService.getOrderSubscriptions(orderId);
+			subscriptionsByOrder = { ...subscriptionsByOrder, [orderId]: response.subscriptions || [] };
+		} catch (error) {
+			console.warn('Failed to load order subscriptions:', error);
+		}
+	}
 
-  async function revealCredentials(orderId: string, subscription: Subscription) {
-    if (requiresStrictRulesAcknowledgement(subscription, rulesAcceptedByItem[subscription.id] === true)) {
-      rulesModal = { orderId, subscription, checked: false, loading: false, error: '' };
-      return;
-    }
-    await revealCredentialsAfterRules(orderId, subscription.id);
-  }
+	async function revealCredentials(orderId: string, subscription: Subscription) {
+		if (
+			requiresStrictRulesAcknowledgement(
+				subscription,
+				rulesAcceptedByItem[subscription.id] === true
+			)
+		) {
+			rulesModal = { orderId, subscription, checked: false, loading: false, error: '' };
+			return;
+		}
+		await revealCredentialsAfterRules(orderId, subscription.id);
+	}
 
-  async function revealCredentialsAfterRules(orderId: string, subscriptionId: string) {
-    revealLoadingByItem = { ...revealLoadingByItem, [subscriptionId]: true };
-    revealErrorByItem = { ...revealErrorByItem, [subscriptionId]: '' };
-    try {
-      const response = await ordersService.revealOrderItemCredentials(orderId, subscriptionId);
-      revealedCredentialsByItem = {
-        ...revealedCredentialsByItem,
-        [subscriptionId]: response.credentials
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to reveal credentials.';
-      revealErrorByItem = { ...revealErrorByItem, [subscriptionId]: message };
-    } finally {
-      revealLoadingByItem = { ...revealLoadingByItem, [subscriptionId]: false };
-    }
-  }
+	async function revealCredentialsAfterRules(orderId: string, subscriptionId: string) {
+		revealLoadingByItem = { ...revealLoadingByItem, [subscriptionId]: true };
+		revealErrorByItem = { ...revealErrorByItem, [subscriptionId]: '' };
+		try {
+			const response = await ordersService.revealOrderItemCredentials(orderId, subscriptionId);
+			revealedCredentialsByItem = {
+				...revealedCredentialsByItem,
+				[subscriptionId]: response.credentials
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unable to reveal credentials.';
+			revealErrorByItem = { ...revealErrorByItem, [subscriptionId]: message };
+		} finally {
+			revealLoadingByItem = { ...revealLoadingByItem, [subscriptionId]: false };
+		}
+	}
 
-  async function acceptRulesAndReveal() {
-    if (!rulesModal || !rulesModal.checked) return;
-    const current = rulesModal;
-    rulesModal = { ...current, loading: true, error: '' };
-    try {
-      await ordersService.acceptOrderItemRules(current.orderId, current.subscription.id);
-      rulesAcceptedByItem = { ...rulesAcceptedByItem, [current.subscription.id]: true };
-      rulesModal = null;
-      await revealCredentialsAfterRules(current.orderId, current.subscription.id);
-    } catch (error) {
-      rulesModal = {
-        ...current,
-        loading: false,
-        error: error instanceof Error ? error.message : 'Unable to accept rules.'
-      };
-    }
-  }
+	async function acceptRulesAndReveal() {
+		if (!rulesModal || !rulesModal.checked) return;
+		const current = rulesModal;
+		rulesModal = { ...current, loading: true, error: '' };
+		try {
+			await ordersService.acceptOrderItemRules(current.orderId, current.subscription.id);
+			rulesAcceptedByItem = { ...rulesAcceptedByItem, [current.subscription.id]: true };
+			rulesModal = null;
+			await revealCredentialsAfterRules(current.orderId, current.subscription.id);
+		} catch (error) {
+			rulesModal = {
+				...current,
+				loading: false,
+				error: error instanceof Error ? error.message : 'Unable to accept rules.'
+			};
+		}
+	}
 
-  async function confirmActivationReady(orderId: string, subscriptionId: string) {
-    try {
-      await ordersService.confirmActivationReady(
-        orderId,
-        subscriptionId,
-        activationReadyCheckedByItem[subscriptionId] === true
-      );
-      actionMessageByItem = { ...actionMessageByItem, [subscriptionId]: 'Activation readiness sent.' };
-      await loadOrderSubscriptions(orderId);
-    } catch (error) {
-      revealErrorByItem = {
-        ...revealErrorByItem,
-        [subscriptionId]: error instanceof Error ? error.message : 'Unable to confirm readiness.'
-      };
-    }
-  }
-
+	async function confirmActivationReady(orderId: string, subscriptionId: string) {
+		if (activationReadyLoadingByItem[subscriptionId]) return;
+		revealErrorByItem = { ...revealErrorByItem, [subscriptionId]: '' };
+		activationReadyLoadingByItem = {
+			...activationReadyLoadingByItem,
+			[subscriptionId]: true
+		};
+		try {
+			const response = await ordersService.confirmActivationReady(
+				orderId,
+				subscriptionId,
+				activationReadyCheckedByItem[subscriptionId] === true
+			);
+			// Update the card immediately so the acknowledgement is replaced by the
+			// in-progress state even before the follow-up read completes.
+			subscriptionsByOrder = {
+				...subscriptionsByOrder,
+				[orderId]: (subscriptionsByOrder[orderId] || []).map((subscription) =>
+					subscription.id === subscriptionId
+						? {
+								...subscription,
+								activation_handshake_state: response.activation_handshake_state,
+								activation_customer_ready_at: new Date().toISOString()
+							}
+						: subscription
+				)
+			};
+			await loadOrderSubscriptions(orderId);
+		} catch (error) {
+			revealErrorByItem = {
+				...revealErrorByItem,
+				[subscriptionId]: error instanceof Error ? error.message : 'Unable to confirm readiness.'
+			};
+		} finally {
+			activationReadyLoadingByItem = {
+				...activationReadyLoadingByItem,
+				[subscriptionId]: false
+			};
+		}
+	}
 </script>
 
 <svelte:head>
-  <title>Orders - SubSlush</title>
-  <meta name="description" content="Review your recent subscription orders." />
+	<title>Orders - SubSlush</title>
+	<meta name="description" content="Review your recent subscription orders." />
 </svelte:head>
 
 {#if showVerifiedNotice}
-  <div
-    class="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900 shadow-lg"
-    role="status"
-    aria-live="polite"
-  >
-    <CheckCircle class="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-    <div class="min-w-0">
-      <p class="text-sm font-semibold">Email verified</p>
-      <p class="mt-0.5 text-sm text-emerald-800">
-        Your account is confirmed and you are now signed in.
-      </p>
-    </div>
-    <button
-      type="button"
-      class="ml-auto rounded p-0.5 text-emerald-700 hover:bg-emerald-100"
-      aria-label="Dismiss confirmation"
-      on:click={() => (showVerifiedNotice = false)}
-    >
-      <X class="h-4 w-4" />
-    </button>
-  </div>
+	<div
+		class="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900 shadow-lg"
+		role="status"
+		aria-live="polite"
+	>
+		<CheckCircle class="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+		<div class="min-w-0">
+			<p class="text-sm font-semibold">Email verified</p>
+			<p class="mt-0.5 text-sm text-emerald-800">
+				Your account is confirmed and you are now signed in.
+			</p>
+		</div>
+		<button
+			type="button"
+			class="ml-auto rounded p-0.5 text-emerald-700 hover:bg-emerald-100"
+			aria-label="Dismiss confirmation"
+			on:click={() => (showVerifiedNotice = false)}
+		>
+			<X class="h-4 w-4" />
+		</button>
+	</div>
 {/if}
 
 <section class="space-y-4">
-  <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-    <div class="flex items-center justify-between flex-wrap gap-3">
-      <div>
-        <h1 class="text-2xl font-semibold text-gray-900">Orders</h1>
-        <p class="text-sm text-gray-600 mt-1">View purchases and payment method details.</p>
-      </div>
-      {#if orders.length > 0}
-        <a
-          href="/browse"
-          class="inline-flex items-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2 text-sm font-medium text-white transition hover:opacity-95"
-        >
-          Go shopping
-        </a>
-      {/if}
-    </div>
-  </div>
+	<div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+		<div class="flex items-center justify-between flex-wrap gap-3">
+			<div>
+				<h1 class="text-2xl font-semibold text-gray-900">Orders</h1>
+				<p class="text-sm text-gray-600 mt-1">View purchases and payment method details.</p>
+			</div>
+			{#if orders.length > 0}
+				<a
+					href="/browse"
+					class="inline-flex items-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2 text-sm font-medium text-white transition hover:opacity-95"
+				>
+					Go shopping
+				</a>
+			{/if}
+		</div>
+	</div>
 
-  {#if data.error}
-    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-      {data.error}
-    </div>
-  {/if}
+	{#if data.error}
+		<div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+			{data.error}
+		</div>
+	{/if}
 
-  {#if orders.length === 0}
-    <div class="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
-      <div class="mx-auto mb-3 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-        <Receipt size={18} class="text-gray-500" />
-      </div>
-      <p class="text-sm font-medium text-gray-900">No orders yet.</p>
-      <p class="text-sm text-gray-600 mt-1">Your completed orders will appear here.</p>
-      <a
-        href="/browse"
-        class="mt-4 inline-flex items-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2 text-sm font-medium text-white transition hover:opacity-95"
-      >
-        Go shopping
-      </a>
-    </div>
-  {:else}
-    <div class="space-y-3">
-      {#each orders as order}
-        <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-          <div class="flex items-start justify-between gap-6">
-            <div class="min-w-0">
-              <p class="text-[11px] uppercase tracking-wide text-gray-400">Items</p>
-              <div class="mt-1 space-y-1">
-                {#each getOrderItemsSummary(order) as itemLabel}
-                  <p class="text-sm font-medium text-gray-900">{itemLabel}</p>
-                {/each}
-              </div>
-              <p class="mt-1 text-xs text-gray-500">Order {order.id.slice(0, 8)}</p>
-              <div class="mt-3 grid grid-cols-2 gap-3 text-xs text-gray-600 sm:grid-cols-3">
-                <div>
-                  <p class="text-[11px] uppercase tracking-wide text-gray-400">Status</p>
-                  <p class="text-sm font-medium text-gray-700">{statusLabel(order.status)}</p>
-                </div>
-                {#if order.payment_method_badge}
-                  <div>
-                    <p class="text-[11px] uppercase tracking-wide text-gray-400">Payment</p>
-                    <p class="text-sm font-medium text-gray-700">{order.payment_method_badge.label}</p>
-                  </div>
-                {/if}
-              </div>
-            </div>
-            <div class="text-right">
-              <p class="text-lg font-semibold text-gray-900">{formatAmount(order)}</p>
-              <p class="text-xs text-gray-500 mt-1">Total</p>
-              <p class="text-xs text-gray-500 mt-3">{formatDate(order.created_at)}</p>
-            </div>
-          </div>
-          <div class="mt-4 space-y-3 border-t border-gray-100 pt-4">
-            {#if getOrderSubscriptions(order).length > 0}
-              {#each getOrderSubscriptions(order) as subscription}
-                {@const orderItem = findOrderItemForSubscription(order, subscription)}
-                <div class="rounded-lg border border-gray-200 p-3">
-                  <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p class="text-sm font-medium text-gray-900">
-                        {formatOrderItemLabel(orderItem, subscription.service_type)}
-                      </p>
-                      <p class="mt-1 text-xs text-gray-500">
-                        {statusLabel(subscription.status)}
-                        {#if subscription.term_months}
-                          · {subscription.term_months} month{subscription.term_months === 1 ? '' : 's'}
-                        {/if}
-                      </p>
-                    </div>
-                    {#if !revealedCredentialsByItem[subscription.id] && canRevealCredentials(order, subscription)}
-                      <button
-                        class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                        disabled={revealLoadingByItem[subscription.id]}
-                        on:click={() => revealCredentials(order.id, subscription)}
-                      >
-                        <Eye size={14} />
-                        {revealLoadingByItem[subscription.id] ? 'Revealing...' : 'Reveal'}
-                      </button>
-                    {:else if revealedCredentialsByItem[subscription.id]}
-                      <button
-                        class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                        on:click={() => clearRevealedCredentials(subscription.id)}
-                      >
-                        <EyeOff size={14} />
-                        Hide
-                      </button>
-                    {:else if getCredentialsUnavailableMessage(order)}
-                      <p class="text-xs text-gray-500">{getCredentialsUnavailableMessage(order)}</p>
-                    {/if}
-                  </div>
+	{#if orders.length === 0}
+		<div class="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
+			<div class="mx-auto mb-3 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+				<Receipt size={18} class="text-gray-500" />
+			</div>
+			<p class="text-sm font-medium text-gray-900">No orders yet.</p>
+			<p class="text-sm text-gray-600 mt-1">Your completed orders will appear here.</p>
+			<a
+				href="/browse"
+				class="mt-4 inline-flex items-center rounded-lg bg-gradient-to-r from-purple-700 to-pink-600 px-4 py-2 text-sm font-medium text-white transition hover:opacity-95"
+			>
+				Go shopping
+			</a>
+		</div>
+	{:else}
+		<div class="space-y-3">
+			{#each orders as order}
+				<div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+					<div class="flex items-start justify-between gap-6">
+						<div class="min-w-0">
+							<p class="text-[11px] uppercase tracking-wide text-gray-400">Items</p>
+							<div class="mt-1 space-y-1">
+								{#each getOrderItemsSummary(order) as itemLabel}
+									<p class="text-sm font-medium text-gray-900">{itemLabel}</p>
+								{/each}
+							</div>
+							<p class="mt-1 text-xs text-gray-500">Order {order.id.slice(0, 8)}</p>
+							<div class="mt-3 grid grid-cols-2 gap-3 text-xs text-gray-600 sm:grid-cols-3">
+								<div>
+									<p class="text-[11px] uppercase tracking-wide text-gray-400">Status</p>
+									<p class="text-sm font-medium text-gray-700">{statusLabel(order.status)}</p>
+								</div>
+								{#if order.payment_method_badge}
+									<div>
+										<p class="text-[11px] uppercase tracking-wide text-gray-400">Payment</p>
+										<p class="text-sm font-medium text-gray-700">
+											{order.payment_method_badge.label}
+										</p>
+									</div>
+								{/if}
+							</div>
+						</div>
+						<div class="text-right">
+							<p class="text-lg font-semibold text-gray-900">{formatAmount(order)}</p>
+							<p class="text-xs text-gray-500 mt-1">Total</p>
+							<p class="text-xs text-gray-500 mt-3">{formatDate(order.created_at)}</p>
+						</div>
+					</div>
+					<div class="mt-4 space-y-3 border-t border-gray-100 pt-4">
+						{#if getOrderSubscriptions(order).length > 0}
+							{#each getOrderSubscriptions(order) as subscription}
+								{@const orderItem = findOrderItemForSubscription(order, subscription)}
+								<div class="rounded-lg border border-gray-200 p-3">
+									<div class="flex flex-wrap items-start justify-between gap-3">
+										<div>
+											<p class="text-sm font-medium text-gray-900">
+												{formatOrderItemLabel(orderItem, subscription.service_type)}
+											</p>
+											<p class="mt-1 text-xs text-gray-500">
+												{statusLabel(subscription.status)}
+												{#if subscription.term_months}
+													· {subscription.term_months} month{subscription.term_months === 1
+														? ''
+														: 's'}
+												{/if}
+											</p>
+										</div>
+										{#if !revealedCredentialsByItem[subscription.id] && canRevealCredentials(order, subscription)}
+											<button
+												class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+												disabled={revealLoadingByItem[subscription.id]}
+												on:click={() => revealCredentials(order.id, subscription)}
+											>
+												<Eye size={14} />
+												{revealLoadingByItem[subscription.id] ? 'Revealing...' : 'Reveal'}
+											</button>
+										{:else if revealedCredentialsByItem[subscription.id]}
+											<button
+												class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+												on:click={() => clearRevealedCredentials(subscription.id)}
+											>
+												<EyeOff size={14} />
+												Hide
+											</button>
+										{:else if getCredentialsUnavailableMessage(order)}
+											<p class="text-xs text-gray-500">{getCredentialsUnavailableMessage(order)}</p>
+										{/if}
+									</div>
 
-                  {#if subscription.activation_handshake_state === 'awaiting_customer' || subscription.activation_handshake_state === 'instructions_delivered'}
-                    <div class="mt-4 overflow-hidden rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-4 shadow-sm">
-                      <div class="flex items-start gap-3">
-                        <div class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white">1</div>
-                        <div>
-                          <p class="text-sm font-semibold text-violet-950">Ready to activate?</p>
-                          <p class="mt-1 text-xs leading-5 text-violet-900 whitespace-pre-wrap">
-                        {subscription.product_options?.activation_instructions_template || 'Review the delivered activation instructions, then confirm when you are ready for the activation link.'}
-                          </p>
-                        </div>
-                      </div>
-                      <label class="mt-4 flex items-start gap-2 text-xs font-medium text-violet-950">
-                        <input
-                          class="mt-0.5 rounded border-violet-300 text-violet-600 focus:ring-violet-500"
-                          type="checkbox"
-                          bind:checked={activationReadyCheckedByItem[subscription.id]}
-                        />
-                        <span>I understand</span>
-                      </label>
-                      <button
-                        class="mt-4 inline-flex items-center rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:from-violet-700 hover:to-fuchsia-700 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={!activationReadyCheckedByItem[subscription.id]}
-                        on:click={() => confirmActivationReady(order.id, subscription.id)}
-                      >
-                        I'm ready to activate
-                      </button>
-                    </div>
-                  {/if}
+									{#if subscription.activation_handshake_state === 'awaiting_customer' || subscription.activation_handshake_state === 'instructions_delivered'}
+										<div
+											class="mt-4 overflow-hidden rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-4 shadow-sm"
+										>
+											<div class="flex items-start gap-3">
+												<div
+													class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white"
+												>
+													1
+												</div>
+												<div>
+													<p class="text-sm font-semibold text-violet-950">Ready to activate?</p>
+													<p class="mt-1 text-xs leading-5 text-violet-900 whitespace-pre-wrap">
+														{subscription.product_options?.activation_instructions_template ||
+															'Review the delivered activation instructions, then confirm when you are ready for the activation link.'}
+													</p>
+												</div>
+											</div>
+											<label
+												class="mt-4 flex items-start gap-2 text-xs font-medium text-violet-950"
+											>
+												<input
+													class="mt-0.5 rounded border-violet-300 text-violet-600 focus:ring-violet-500"
+													type="checkbox"
+													bind:checked={activationReadyCheckedByItem[subscription.id]}
+												/>
+												<span>I understand</span>
+											</label>
+											<button
+												class="mt-4 inline-flex items-center rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:from-violet-700 hover:to-fuchsia-700 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+												disabled={!activationReadyCheckedByItem[subscription.id] ||
+													activationReadyLoadingByItem[subscription.id]}
+												on:click={() => confirmActivationReady(order.id, subscription.id)}
+											>
+												{activationReadyLoadingByItem[subscription.id]
+													? 'Confirming...'
+													: "I'm ready to activate"}
+											</button>
+										</div>
+									{:else if subscription.activation_handshake_state === 'customer_ready'}
+										<div
+											class="mt-4 rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-4 shadow-sm"
+											role="status"
+											aria-live="polite"
+										>
+											<div class="flex items-start gap-3">
+												<CheckCircle class="mt-0.5 h-5 w-5 shrink-0 text-sky-600" />
+												<div>
+													<p class="text-sm font-semibold text-sky-950">
+														We’re generating your activation link
+													</p>
+													<p class="mt-1 text-xs leading-5 text-sky-900">
+														SubSlush is now generating your activation link. We’ll email you as soon
+														as it’s ready and update it in your order credentials.
+													</p>
+												</div>
+											</div>
+										</div>
+									{/if}
 
-                  {#if revealErrorByItem[subscription.id]}
-                    <p class="mt-2 text-xs text-red-600">{revealErrorByItem[subscription.id]}</p>
-                  {/if}
-                  {#if actionMessageByItem[subscription.id]}
-                    <p class="mt-2 text-xs text-green-700">{actionMessageByItem[subscription.id]}</p>
-                  {/if}
-                  {#if revealedCredentialsByItem[subscription.id]}
-                    {@const parsedCredentials = parseCredentials(revealedCredentialsByItem[subscription.id])}
-                    {#if parsedCredentials}
-                      <div class="mt-3 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                        {#each Object.entries(parsedCredentials) as [key, value]}
-                          <div class="flex items-start justify-between gap-3 text-xs">
-                            <span class="font-medium uppercase tracking-wide text-gray-500">{key}</span>
-                            <span class="max-w-[70%] break-all text-right text-gray-700">{value}</span>
-                          </div>
-                        {/each}
-                      </div>
-                    {:else}
-                      <p class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 whitespace-pre-wrap break-words">
-                        {revealedCredentialsByItem[subscription.id]}
-                      </p>
-                    {/if}
-                    <button
-                      class="mt-2 inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                      on:click={() => copyCredentials(subscription.id, revealedCredentialsByItem[subscription.id])}
-                    >
-                      Copy credentials
-                    </button>
-                    {#if copyMessageByItem[subscription.id]}
-                      <p class="mt-2 text-xs text-gray-500">{copyMessageByItem[subscription.id]}</p>
-                    {/if}
-                  {/if}
-                </div>
-              {/each}
-            {:else}
-              <p class="text-xs text-gray-500">{getCredentialsUnavailableMessage(order)}</p>
-            {/if}
-          </div>
-        </div>
-      {/each}
-    </div>
+									{#if revealErrorByItem[subscription.id]}
+										<p class="mt-2 text-xs text-red-600">{revealErrorByItem[subscription.id]}</p>
+									{/if}
+									{#if revealedCredentialsByItem[subscription.id]}
+										{@const parsedCredentials = parseCredentials(
+											revealedCredentialsByItem[subscription.id]
+										)}
+										{#if parsedCredentials}
+											<div class="mt-3 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+												{#each Object.entries(parsedCredentials) as [key, value]}
+													<div class="flex items-start justify-between gap-3 text-xs">
+														<span class="font-medium uppercase tracking-wide text-gray-500"
+															>{key}</span
+														>
+														<span class="max-w-[70%] break-all text-right text-gray-700"
+															>{value}</span
+														>
+													</div>
+												{/each}
+											</div>
+										{:else}
+											<p
+												class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 whitespace-pre-wrap break-words"
+											>
+												{revealedCredentialsByItem[subscription.id]}
+											</p>
+										{/if}
+										<button
+											class="mt-2 inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+											on:click={() =>
+												copyCredentials(
+													subscription.id,
+													revealedCredentialsByItem[subscription.id]
+												)}
+										>
+											Copy credentials
+										</button>
+										{#if copyMessageByItem[subscription.id]}
+											<p class="mt-2 text-xs text-gray-500">{copyMessageByItem[subscription.id]}</p>
+										{/if}
+									{/if}
+								</div>
+							{/each}
+						{:else}
+							<p class="text-xs text-gray-500">{getCredentialsUnavailableMessage(order)}</p>
+						{/if}
+					</div>
+				</div>
+			{/each}
+		</div>
 
-    {#if pagination.total > pagination.limit}
-      <div class="flex items-center justify-between mt-4">
-        <button
-          on:click={() => updatePage(data.page - 1)}
-          class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
-          disabled={data.page <= 1}
-        >
-          Previous
-        </button>
-        <p class="text-xs text-gray-500">Page {data.page}</p>
-        <button
-          on:click={() => updatePage(data.page + 1)}
-          class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
-          disabled={!pagination.hasMore}
-        >
-          Next
-        </button>
-      </div>
-    {/if}
-  {/if}
+		{#if pagination.total > pagination.limit}
+			<div class="flex items-center justify-between mt-4">
+				<button
+					on:click={() => updatePage(data.page - 1)}
+					class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+					disabled={data.page <= 1}
+				>
+					Previous
+				</button>
+				<p class="text-xs text-gray-500">Page {data.page}</p>
+				<button
+					on:click={() => updatePage(data.page + 1)}
+					class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+					disabled={!pagination.hasMore}
+				>
+					Next
+				</button>
+			</div>
+		{/if}
+	{/if}
 </section>
 
 {#if rulesModal}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-    <div class="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
-      <h2 class="text-base font-semibold text-gray-900">Rules acknowledgement</h2>
-      <StrictRulesNotice
-        text={rulesModal.subscription.product_options?.strict_rules_text || 'You must follow the rules for this item.'}
-      />
-      <label class="mt-4 flex items-start gap-2 text-sm text-gray-700">
-        <input class="mt-1" type="checkbox" bind:checked={rulesModal.checked} />
-        <span>I understand that breaking these rules deactivates the subscription and voids warranty, replacements and refunds.</span>
-      </label>
-      {#if rulesModal.error}
-        <p class="mt-2 text-xs text-red-600">{rulesModal.error}</p>
-      {/if}
-      <div class="mt-4 flex justify-end gap-2">
-        <button
-          class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700"
-          on:click={() => (rulesModal = null)}
-        >
-          Cancel
-        </button>
-        <button
-          class="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-          disabled={!rulesModal.checked || rulesModal.loading}
-          on:click={acceptRulesAndReveal}
-        >
-          {rulesModal.loading ? 'Accepting...' : 'Accept'}
-        </button>
-      </div>
-    </div>
-  </div>
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+		<div class="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
+			<h2 class="text-base font-semibold text-gray-900">Rules acknowledgement</h2>
+			<StrictRulesNotice
+				text={rulesModal.subscription.product_options?.strict_rules_text ||
+					'You must follow the rules for this item.'}
+			/>
+			<label class="mt-4 flex items-start gap-2 text-sm text-gray-700">
+				<input class="mt-1" type="checkbox" bind:checked={rulesModal.checked} />
+				<span
+					>I understand that breaking these rules deactivates the subscription and voids warranty,
+					replacements and refunds.</span
+				>
+			</label>
+			{#if rulesModal.error}
+				<p class="mt-2 text-xs text-red-600">{rulesModal.error}</p>
+			{/if}
+			<div class="mt-4 flex justify-end gap-2">
+				<button
+					class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700"
+					on:click={() => (rulesModal = null)}
+				>
+					Cancel
+				</button>
+				<button
+					class="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+					disabled={!rulesModal.checked || rulesModal.loading}
+					on:click={acceptRulesAndReveal}
+				>
+					{rulesModal.loading ? 'Accepting...' : 'Accept'}
+				</button>
+			</div>
+		</div>
+	</div>
 {/if}

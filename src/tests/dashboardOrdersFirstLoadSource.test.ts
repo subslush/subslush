@@ -42,6 +42,15 @@ describe('Dashboard orders first-load data flow', () => {
     expect(page).not.toContain('ordersService.listOrders(');
   });
 
+  it('replaces activation acknowledgement with a generation confirmation after the customer is ready', () => {
+    expect(page).toContain(
+      "subscription.activation_handshake_state === 'customer_ready'"
+    );
+    expect(page).toContain('We’re generating your activation link');
+    expect(page).toContain('SubSlush is now generating your activation link.');
+    expect(page).not.toContain('Activation readiness sent.');
+  });
+
   it('keeps every subscription field consumed by dashboard item UI and gates in the typed SSR route payload', () => {
     const ordersRoute = fs.readFileSync(
       path.resolve(__dirname, '../routes/orders.ts'),
