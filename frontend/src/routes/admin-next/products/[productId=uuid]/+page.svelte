@@ -59,6 +59,33 @@
     };
   };
   const setOption = (key: string, value: unknown) => setOptions({ [key]: value });
+  const replaceOptions = (options: Record<string, unknown>) => {
+    product.metadata = {
+      ...(product.metadata || {}),
+      upgrade_options: options,
+    };
+  };
+  const setActivationLinkHandshake = (enabled: boolean) => {
+    const next: Record<string, unknown> = {
+      ...upgradeOptions,
+      activation_link_handshake: enabled,
+    };
+    if (!enabled) {
+      delete next.activation_instructions_template;
+      delete next.activationInstructionsTemplate;
+    }
+    replaceOptions(next);
+  };
+  const setStrictRules = (enabled: boolean) => {
+    const next: Record<string, unknown> = { ...upgradeOptions, strict_rules: enabled };
+    if (!enabled) {
+      delete next.strict_rules_text;
+      delete next.strictRulesText;
+      delete next.strict_rules_version;
+      delete next.strictRulesVersion;
+    }
+    replaceOptions(next);
+  };
 
   const buildPreview = (interval: number) => {
     const safeInterval = Number.isFinite(interval) && interval > 0 ? Math.floor(interval) : 1;
@@ -351,9 +378,9 @@
       {#if upgradeOptions.allow_own_account}<label><span>Own-account credential requirement</span><select value={upgradeOptions.own_account_credential_requirement || ''} on:change={(event) => setOption('own_account_credential_requirement', event.currentTarget.value || null)}><option value="">Email and password (default)</option><option value="email_and_password">Email and password</option><option value="email_only">Email only</option></select></label>{/if}
       <label class="check"><input type="checkbox" checked={upgradeOptions.manual_monthly_upgrade === true} on:change={(event) => setOption('manual_monthly_upgrade', event.currentTarget.checked)} /><span><b>Manual monthly upgrade (MMU)</b></span></label>
       {#if upgradeOptions.manual_monthly_upgrade}<label><span>Interval (months)</span><input type="number" min="1" max="12" value={upgradeOptions.manual_monthly_upgrade_interval_months || 1} on:input={(event) => setOption('manual_monthly_upgrade_interval_months', Number(event.currentTarget.value))} /><small>Fixed duration must be divisible by the interval.</small><p>{termsPreview}</p></label>{/if}
-      <label class="check"><input type="checkbox" checked={upgradeOptions.activation_link_handshake === true} on:change={(event) => setOption('activation_link_handshake', event.currentTarget.checked)} /><span><b>Activation-link handshake</b></span></label>
+      <label class="check"><input type="checkbox" checked={upgradeOptions.activation_link_handshake === true} on:change={(event) => setActivationLinkHandshake(event.currentTarget.checked)} /><span><b>Activation-link handshake</b></span></label>
       {#if upgradeOptions.activation_link_handshake}<label><span>Default instruction template</span><textarea maxlength="4000" value={upgradeOptions.activation_instructions_template || ''} on:input={(event) => setOption('activation_instructions_template', event.currentTarget.value)}></textarea></label>{/if}
-      <label class="check"><input type="checkbox" checked={upgradeOptions.strict_rules === true} on:change={(event) => setOption('strict_rules', event.currentTarget.checked)} /><span><b>Strict rules</b></span></label>
+      <label class="check"><input type="checkbox" checked={upgradeOptions.strict_rules === true} on:change={(event) => setStrictRules(event.currentTarget.checked)} /><span><b>Strict rules</b></span></label>
       {#if upgradeOptions.strict_rules}<label><span>Rules text</span><textarea maxlength="8000" value={upgradeOptions.strict_rules_text || ''} on:input={(event) => setOptions({ strict_rules_text: event.currentTarget.value, strict_rules_version: Number(upgradeOptions.strict_rules_version || 1) + 1 })}></textarea><small>Customers must accept these rules before credentials are revealed. Acceptance is logged as evidence. Rules are versioned — current: v{upgradeOptions.strict_rules_version || 1}.</small></label>{/if}
       <button type="button" disabled={saving} on:click={saveProduct}>Save fulfillment settings</button>
     </div></AdminCard>

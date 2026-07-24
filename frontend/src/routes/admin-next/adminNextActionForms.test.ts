@@ -292,6 +292,49 @@ describe('admin-next action forms', () => {
     );
   });
 
+  it('removes disabled handshake and strict-rules fields before saving fulfillment settings', async () => {
+    const productWithDisabledFields = structuredClone(productDetailData);
+    productWithDisabledFields.product.metadata.upgrade_options = {
+      allow_new_account: true,
+      activation_link_handshake: true,
+      activation_instructions_template: '',
+      strict_rules: true,
+      strict_rules_text: '',
+      strict_rules_version: 1,
+    } as any;
+    const view = render(ProductDetailPage, {
+      data: productWithDisabledFields as unknown as ProductDetailPageData,
+    });
+    const productPage = within(view.container);
+
+    await fireEvent.click(productPage.getByRole('tab', { name: 'Fulfillment settings' }));
+    const activationToggle = productPage
+      .getByText('Activation-link handshake')
+      .closest('label')
+      ?.querySelector('input');
+    const strictRulesToggle = productPage
+      .getByText('Strict rules')
+      .closest('label')
+      ?.querySelector('input');
+    expect(activationToggle).not.toBeNull();
+    expect(strictRulesToggle).not.toBeNull();
+
+    await fireEvent.change(activationToggle!, { target: { checked: false } });
+    await fireEvent.change(strictRulesToggle!, { target: { checked: false } });
+    await fireEvent.click(productPage.getByRole('button', { name: 'Save fulfillment settings' }));
+
+    await waitFor(() => expect(mocks.updateProduct).toHaveBeenCalledTimes(1));
+    const options = mocks.updateProduct.mock.calls[0]?.[1]?.metadata?.upgrade_options;
+    expect(options).toMatchObject({
+      allow_new_account: true,
+      activation_link_handshake: false,
+      strict_rules: false,
+    });
+    expect(options).not.toHaveProperty('activation_instructions_template');
+    expect(options).not.toHaveProperty('strict_rules_text');
+    expect(options).not.toHaveProperty('strict_rules_version');
+  });
+
   it('persists custom delivery-format copy from the catalog presentation form', async () => {
     const view = render(ProductDetailPage, {
       data: productDetailData as unknown as ProductDetailPageData,
